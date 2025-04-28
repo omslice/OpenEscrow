@@ -100,6 +100,8 @@ If you would like to contribute to OpenEscrow’s development, adoption, or publ
 
 🌐 [Gitcoin](https://explorer.gitcoin.co/#/projects/0x05a570572fd3b79ac1f9a9f214db9bfd174c42786e14c314152fb8300a7c37f1)
 
+🔗 [Github](https://github.com/omslice/OpenEscrow)
+
 🔗 [LinkedIn](https://www.linkedin.com/company/openescrow)
 
 ---
