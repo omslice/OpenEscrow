@@ -1,6 +1,6 @@
 ## OpenEscrow - Build trust. Unlock opportunity.
 
-[Email](mailto:omri@ogconsultingllc.com) - [Gitcoin](https://explorer.gitcoin.co/#/projects/0x05a570572fd3b79ac1f9a9f214db9bfd174c42786e14c314152fb8300a7c37f1) - [Github](https://github.com/omslice/OpenEscrow) - [LinkedIn](https://www.linkedin.com/company/openescrow)
+[X](https://x.com/0penEscrow) - [Gitcoin](https://explorer.gitcoin.co/#/projects/0x05a570572fd3b79ac1f9a9f214db9bfd174c42786e14c314152fb8300a7c37f1) - [Github](https://github.com/omslice/OpenEscrow) - [LinkedIn](https://www.linkedin.com/company/openescrow)
 
 ### A Housing Blockchain Solution for Social Good
 
@@ -97,7 +97,7 @@ Omri Gross is an outgoing Senior Clearance and Policy Advisor at the U.S. Depart
 We are seeking developers, testers, advisors, and ecosystem champions.  
 If you would like to contribute to OpenEscrow’s development, adoption, or public outreach, please reach out!
 
-[Email](mailto:omri@ogconsultingllc.com)
+[X](https://x.com/0penEscrow)
 
 [Gitcoin](https://explorer.gitcoin.co/#/projects/0x05a570572fd3b79ac1f9a9f214db9bfd174c42786e14c314152fb8300a7c37f1)
 
