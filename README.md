@@ -98,7 +98,9 @@ If you would like to contribute to OpenEscrow’s development, adoption, or publ
 
 ✉️ [omri@ogconsultingllc.com](mailto:omri@ogconsultingllc.com)
 
-🌐 [OpenEscrow - Gitcoin](https://explorer.gitcoin.co/#/projects/0x05a570572fd3b79ac1f9a9f214db9bfd174c42786e14c314152fb8300a7c37f1)
+🌐 [Gitcoin](https://explorer.gitcoin.co/#/projects/0x05a570572fd3b79ac1f9a9f214db9bfd174c42786e14c314152fb8300a7c37f1)
+
+🔗 [LinkedIn](https://www.linkedin.com/company/openescrow)
 
 ---
 
