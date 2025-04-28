@@ -1,4 +1,5 @@
-# OpenEscrow – Build Trust. Unlock Opportunity.
+# OpenEscrow
+Build Trust. Unlock Opportunity.
 
 ## 🏡 A Housing Blockchain Solution for Social Good
 
