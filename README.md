@@ -29,24 +29,22 @@ OpenEscrow provides:
 
 ### Why OpenEscrow Matters
 
-OpenEscrow offers a practical demonstration of how blockchain can be used to serve the public good - not for speculation or profit - but for resolving real-world challenges like housing insecurity, distrust, and the financial burdens of legal enforcement.
-
-It also aligns with key priorities for many public sector agencies:
-- Promoting financial inclusion
-- Supporting tenant and landlord protections
+OpenEscrow also aligns with key priorities for public goods and the public sector in general:
+- Promoting financial inclusion for underserved communities
+- Supporting tenant and landlord trust and protections
 - Reducing cost and complexity in housing dispute resolution
-- Providing transparent systems for public and affordable housing programs
+- Providing transparent, trust-minimized security deposit management
 
 There is no company, profit model, or licensing fee behind OpenEscrow. It is a digital public good - free infrastructure for communities, governments, and NGOs to adotp, build on, or deploy as needed.
 
 Security deposit handling is a major global pain point:
-- 25% of tenants report disputes with landlords over deposits
+- 25%+ of tenants report disputes with landlords over deposits
 - Lack of transparency and legal fees cause housing insecurity
 - Small claims courts are flooded with deposit dispute cases
 - Many jurisdictions impose triple damages for improper withholding
 
 By leveraging blockchain:
-- OpenEscrow creates **transparent and trust-minimized** processes
+- OpenEscrow creates **transparent and trust-minimized** management
 - Reduces legal costs and landlord/tenant disputes
 - Supports affordable housing programs with better financial controls
 - Demonstrates how blockchain can serve real-world needs, not speculation
