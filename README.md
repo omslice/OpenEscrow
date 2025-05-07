@@ -1,6 +1,6 @@
 ## OpenEscrow - Build trust. Unlock opportunity.
 
-[X](https://x.com/0penEscrow) | [Gitcoin](https://explorer.gitcoin.co/#/projects/0x05a570572fd3b79ac1f9a9f214db9bfd174c42786e14c314152fb8300a7c37f1) | [Github](https://github.com/omslice/OpenEscrow) | [LinkedIn](https://www.linkedin.com/company/openescrow)
+[X](https://x.com/0penEscrow) | [Gitcoin](https://explorer.gitcoin.co/#/projects/0x05a570572fd3b79ac1f9a9f214db9bfd174c42786e14c314152fb8300a7c37f1) | [Github](https://github.com/omslice/OpenEscrow) | [LinkedIn](https://www.linkedin.com/company/openescrow) | [Article](https://docs.google.com/document/d/188zr80-7RBODezQ4k1-SjybDxDOcsVyIbCL1zq5uvf4/edit?usp=sharing)
 
 ### A Housing Blockchain Solution for Social Good
 
