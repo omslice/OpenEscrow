@@ -4,7 +4,7 @@
 
 ### A Housing Blockchain Solution for Social Good
 
-**OpenEscrow** is a free, open-source blockchain application that transforms rental security deposit management by replacing costly, opaque third-party intermediaries with transparent, trust-minimized smart contracts.  
+**OpenEscrow** is a free, open source app for transparent and fair management of the rental security deposit, that builds trust and unlocks financial opportunity between tenants and landlords by using smart contracts to serve as a neutral 3rd party escrow agent. 
 
 Built as a digital public good — not for profit — OpenEscrow promotes financial inclusion, housing stability, and real-world trust without centralized control.
 
@@ -16,14 +16,19 @@ There is no company, licensing fee, or monetization model behind OpenEscrow — 
 
 OpenEscrow provides:
 - Smart contract-based escrow management for rental deposits
-- Transparent deposit release, dispute workflows, and invoice tracking
-- Optional yield generation through tokenized U.S. Treasuries
-- One-click reporting and automated notification system
-- Opt-in reputation and review mechanism
-- Multilingual and globally accessible deployment
+- Invoice upload requirement for each deduction
+- Automated on-chain notifications
+- Tenant dispute/approval mechanics
+- Optional yield generation through U.S. Treasury-backed stablecoins
+- One-click report generation
+- Opt-in reputation system
 - Future-dated refunds
-- Fiat onramps (planned) via services like Moonpay or NowPayments
-- Wallet abstraction (planned) for email/social media login support
+- Web2 iterface, no wallet, transaction interaction (unless desired)
+- Fiat on/off ramps via services like Moonpay or NowPayments
+- Wallet abstraction for email/social media login support
+- Multilingual and globally accessible deployment
+- Can be deployed on any chain without need for cross-chain functionality
+- Future plans to support other types of escrow arrangements
 
 ---
 
