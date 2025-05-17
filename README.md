@@ -40,7 +40,7 @@ OpenEscrow also aligns with key priorities for public goods and the public secto
 - Reducing cost and complexity in housing dispute resolution
 - Providing transparent, trust-minimized security deposit management
 
-There is no company, profit model, or licensing fee behind OpenEscrow. It is a digital public good - free infrastructure for communities, governments, and NGOs to adotp, build on, or deploy as needed.
+There is no company, profit model, or licensing fee behind OpenEscrow. It is a digital public good - free infrastructure for communities, governments, and NGOs to adopt, build on top of, or deploy as needed.
 
 Security deposit handling is a major global pain point:
 - 25%+ of tenants report disputes with landlords over deposits
