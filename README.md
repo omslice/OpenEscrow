@@ -48,6 +48,10 @@ Security deposit handling is a major global pain point:
 - Small claims courts are flooded with deposit dispute cases
 - Many jurisdictions impose triple damages for improper withholding
 
+These issues are generally due to:
+- Lack of transparency or controls in deductions
+- No standardized documentation
+
 By leveraging blockchain:
 - OpenEscrow creates **transparent and trust-minimized** management
 - Reduces legal costs and landlord/tenant disputes
