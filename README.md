@@ -146,7 +146,7 @@ Hanane contributes to open-source EVM projects, is active in smart contract secu
 
 As Tech Lead on OpenEscrow, she is responsible for protocol design, core implementation, and test architecture.
 
-[GitHub](https://github.com/HananeBendisari) | [LinkedIn](https://www.linkedin.com/in/hananebendisari)
+[GitHub](https://github.com/HananeBendisari) | [LinkedIn](https://www.linkedin.com/in/hanane-bendisari/)
 
 ---
 
