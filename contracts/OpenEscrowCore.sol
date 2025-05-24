@@ -2,6 +2,8 @@
 pragma solidity ^0.8.19;
 
 import "./IRulesModule.sol";
+import "./IYieldModule.sol";
+
 
 
 /// @title OpenEscrowCore - Core escrow contract for rental deposits
@@ -94,6 +96,23 @@ contract OpenEscrowCore {
         require(success, "Transfer failed");
 
         emit FundsReleased(_agreementId);
+
+     // Handle yield module if defined
+        if (agreement.yieldModule != address(0)) {
+            (uint256 tenantShare, uint256 landlordShare) = IYieldModule(agreement.yieldModule).claimYield(_agreementId);
+
+            if (tenantShare > 0) {
+                (bool okTenant, ) = agreement.tenant.call{value: tenantShare}("");
+                require(okTenant, "Yield transfer to tenant failed");
+            }
+
+            if (landlordShare > 0) {
+                (bool okLandlord, ) = agreement.landlord.call{value: landlordShare}("");
+                require(okLandlord, "Yield transfer to landlord failed");
+            }
+        }
+
+
     }
 
     /// @notice Allows the tenant to reclaim the deposit if funds haven't been released
@@ -112,5 +131,8 @@ contract OpenEscrowCore {
         require(success, "Refund transfer failed");
 
         emit FundsRefunded(_agreementId);
+
+        // TODO: optionally claim and return yield to tenant if module present
+
     }
 }
