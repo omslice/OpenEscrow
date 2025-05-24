@@ -5,6 +5,9 @@ import "forge-std/Test.sol";
 import "../contracts/OpenEscrowCore.sol";
 import "../contracts/MockRulesModule.sol";
 
+/// @title OpenEscrowCoreTest
+/// @notice Foundry test suite for OpenEscrowCore contract
+/// @dev Covers creation, refund, release, and module integration logic
 contract OpenEscrowCoreTest is Test {
     OpenEscrowCore public escrow;
     MockRulesModule public rules;
@@ -12,14 +15,15 @@ contract OpenEscrowCoreTest is Test {
     address tenant = address(1);
     address landlord = address(2);
 
+    /// @notice Deploys contract and sets up initial state before each test
     function setUp() public {
         escrow = new OpenEscrowCore();
         rules = new MockRulesModule();
 
-        vm.deal(tenant, 10 ether); // Give the tenant some ETH
+        vm.deal(tenant, 10 ether); // give ETH to tenant
     }
 
-    /// @notice Should revert if release blocked by rules module
+    /// @notice Should revert if release is blocked by rules module
     function testReleaseBlockedByRulesModule() public {
         vm.prank(tenant);
         escrow.createAgreement{value: 1 ether}(
@@ -29,14 +33,14 @@ contract OpenEscrowCoreTest is Test {
             address(0)
         );
 
-        vm.warp(block.timestamp + 2);
+        vm.warp(block.timestamp + 2); // fast forward time
         rules.setAllowRelease(false);
 
         vm.expectRevert("Release blocked by rules module");
         escrow.releaseFunds(0);
     }
 
-    /// @notice Should succeed if release allowed by rules module
+    /// @notice Should succeed if release is allowed by rules module
     function testReleaseAllowedByRulesModule() public {
         vm.prank(tenant);
         escrow.createAgreement{value: 1 ether}(
@@ -113,7 +117,7 @@ contract OpenEscrowCoreTest is Test {
         assertEq(yieldModule, address(0));
     }
 
-    /// @notice Should revert if refund is called too early (before releaseTime)
+    /// @notice Should revert if refund is called before releaseTime
     function testRefund_RevertIfTooEarly() public {
         vm.prank(tenant);
         escrow.createAgreement{value: 1 ether}(
@@ -128,7 +132,7 @@ contract OpenEscrowCoreTest is Test {
         escrow.refund(0);
     }
 
-    /// @notice Should revert if refund is called by non-tenant
+    /// @notice Should revert if refund is called by someone other than tenant
     function testRefund_RevertIfNotTenant() public {
         vm.prank(tenant);
         escrow.createAgreement{value: 1 ether}(
@@ -140,12 +144,12 @@ contract OpenEscrowCoreTest is Test {
 
         vm.warp(block.timestamp + 2);
 
-        vm.prank(landlord);
+        vm.prank(landlord); // invalid sender
         vm.expectRevert("Only tenant");
         escrow.refund(0);
     }
 
-    /// @notice Should revert if already released
+    /// @notice Should revert if refund is called after funds already released
     function testRefund_RevertIfAlreadyReleased() public {
         vm.prank(tenant);
         escrow.createAgreement{value: 1 ether}(
@@ -163,7 +167,7 @@ contract OpenEscrowCoreTest is Test {
         escrow.refund(0);
     }
 
-    /// @notice Should succeed and send funds back to tenant
+    /// @notice Should successfully refund tenant after release time if not yet released
     function testRefund_Success() public {
         vm.prank(tenant);
         escrow.createAgreement{value: 1 ether}(
