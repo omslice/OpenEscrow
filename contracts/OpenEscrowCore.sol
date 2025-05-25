@@ -50,7 +50,7 @@ contract OpenEscrowCore {
         uint256 _releaseTime,
         address _rulesModule,
         address _yieldModule
-    ) external payable {
+    ) external payable returns (uint256){
         require(msg.value > 0, "Must send some ETH");
         require(_landlord != address(0), "Invalid landlord address");
         require(_releaseTime > block.timestamp, "Release time must be in the future");
@@ -72,6 +72,8 @@ contract OpenEscrowCore {
         // Emit events for UI / monitoring
         emit AgreementCreated(id, msg.sender, _landlord, msg.value);
         emit FundsDeposited(id, msg.value);
+
+        return id;
     }
 
     /// @notice Releases funds to the landlord after the release time has passed
@@ -126,13 +128,20 @@ contract OpenEscrowCore {
 
         agreement.refunded = true;
 
-        // Send the full amount back to the tenant
-        (bool success, ) = agreement.tenant.call{value: agreement.amount}("");
+        // Claim yield if module present
+        uint256 yieldAmount = 0;
+        if (address(agreement.yieldModule) != address(0)) {
+            (uint256 tenantShare, ) = IYieldModule(agreement.yieldModule).claimYield(_agreementId);
+            yieldAmount = tenantShare;
+        }
+        uint256 totalRefund = agreement.amount + yieldAmount;
+
+
+        // Send the full amount + yield back to the tenant
+        (bool success, ) = agreement.tenant.call{value: totalRefund}("");
         require(success, "Refund transfer failed");
 
         emit FundsRefunded(_agreementId);
-
-        // TODO: optionally claim and return yield to tenant if module present
 
     }
 }

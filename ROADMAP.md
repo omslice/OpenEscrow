@@ -26,6 +26,7 @@ This roadmap tracks the key milestones for the MVP delivery in 2025.
 - Reputation module (opt-in)
 - Multilingual UX
 - Fiat ramps integration (optional)
+- Partial refund logic (per agreement, state tracked, mutual validation)
 
 ---
 
