@@ -14,6 +14,41 @@ There is no company, licensing fee, or monetization model behind OpenEscrow — 
 
 ---
 
+## System Wireframe
+
+  [Tenant Wallet]
+            |
+     createAgreement()
+            |
+     +-------------+
+     | OpenEscrow  |---> (optional call) ---> [RulesModule]
+     |   Core      |---> (optional call) ---> [YieldModule]
+     +-------------+
+            |
+   [Factory]--- createVault() ---> [UserVaults]
+            |
+         [EscrowViewer]
+            |
+      read info/multicall
+            v
+       [Dashboard / UI]
+
+---
+
+## Core Entities & Functions
+
+| Entity         | Type      | Description                                             | Key Functions                              |
+|----------------|-----------|--------------------------------------------------------|--------------------------------------------|
+| OpenEscrowCore | Contract  | Main escrow logic, handles deposits, releases, refunds | createAgreement, releaseFunds, refund      |
+| Factory        | Contract  | Creates vaults/escrows for each user                   | createVault, getVault                      |
+| EscrowViewer   | Contract  | Read-only view, off-chain reading for UI/dashboards    | getAgreement, getAllAgreements             |
+| RulesModule    | Interface | Optional module to add rules/validation                | validateRelease                            |
+| YieldModule    | Interface | Optional yield integration (Aave/Compound/mock)        | claimYield, viewYield                      |
+| Agreement      | Struct    | Data for a single escrow (tenant, landlord, amount…)   | (in OpenEscrowCore.agreements mapping)     |
+
+---
+
+
 ### MVP Scope (Q3 2025)
 
 - Escrow for rental deposits
@@ -117,6 +152,55 @@ We are seeking **$60,000** to build, audit, and launch a secure, fully open-sour
 - React (Frontend web development)
 - Web3Auth (planned wallet abstraction)
 - Optional fiat onramp integration (e.g., Moonpay, NowPayments)
+
+---
+
+## 🧪 How to Test Locally
+
+1. **Install Foundry (if not already)**
+   ```bash
+   curl -L https://foundry.paradigm.xyz | bash
+   foundryup
+
+2. **Clone the repo and install**
+   ```bash
+   git clone <repo_url>
+   cd OpenEscrow
+
+3. **Run all testsl**
+   ```bash
+   forge test
+
+4. **Run a single test suite**
+   ```bash
+   forge test --match-contract RefundWithYieldTest
+
+5. **See gas usage**
+   ```bash
+   forge test --gas-report
+
+All core flows (refund, release, yield, factory, viewer) are fully tested and should pass [PASS].
+
+---
+
+## Features Covered / TODO / Roadmap
+
+### ✅ Features Covered
+
+- Modular escrow contract with pluggable modules (rules, yield)
+- Refund and release flows with tested yield split (tenant/landlord)
+- Factory for multi-user/multi-vault management
+- EscrowViewer for off-chain dashboard/analytics
+- Core error handling and revert tests
+
+### 🟡 TODO / Roadmap
+
+- EIP-712 signature-based interactions (walletless UX)
+- Factory advanced (clones, multi-chain, mapping)
+- EscrowViewer: batch reads, indexer, pagination
+- UI: Minimal testnet demo / Remix playground
+- Partial refund logic (see contract TODO)
+- Docs polish, NatSpec, audit pass, contributor guide
 
 ---
 
