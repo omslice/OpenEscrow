@@ -33,11 +33,11 @@ There is no company, licensing fee, or monetization model behind OpenEscrow — 
             v
       [Dashboard / UI]
 
-      ### Project Overview
-
 ---
 
-### OpenEscrow provides:
+### Project Overview
+
+OpenEscrow provides:
 
 - Smart contract-based escrow management for rental deposits
 - Invoice upload requirement for each deduction
@@ -131,7 +131,7 @@ We are seeking **$60,000** to build, audit, and launch a secure, fully open-sour
 
 ---
 
-## Technical Stack
+### Technical Stack
 
 - Solidity (Smart Contracts)
 - IPFS (Decentralized invoice/document storage)
@@ -142,7 +142,7 @@ We are seeking **$60,000** to build, audit, and launch a secure, fully open-sour
 
 ---
 
-## 🧪 How to Test Locally
+### How to Test Locally
 
 1. **Install Foundry (if not already)**
    ```bash
@@ -170,7 +170,7 @@ We are seeking **$60,000** to build, audit, and launch a secure, fully open-sour
 
 ---
 
-## Features Covered / TODO / Roadmap
+### Features Covered / TODO / Roadmap
 
 ### ✅ Features Covered
 
@@ -197,7 +197,7 @@ We are seeking **$60,000** to build, audit, and launch a secure, fully open-sour
 
 ### About the Project Lead
 
-**Omri Gross**  
+***Omri Gross***  
 Founder of OpenEscrow | Housing Blockchain Specialist
 
 Omri Gross is an outgoing Senior Clearance and Policy Advisor at the U.S. Department of Housing and Urban Development (HUD) with over 15 years of experience in regulatory compliance across multiple disciplines. He serves as Housing Work Group Lead for the Government Blockchain Association (GBA), is a founding member of the U.N. Dynamic Coalition on Blockchain Assurance and Standardization and recently authored a Housing Supplement to the GBA's Blockchain Maturity Model (BMM). Omri has been researching and using blockchain for more than a decade, operates his own Ethereum nodes, and boasts an extensive onchain footprint across dozens of chains, testnets, protocols and products, particularly in the DeFi space. Omri is the Founder and Principal Consultant for OG Consulting LLC, providing expert regulatory compliance and public-private strategy guidance for emerging technology solution providers. By combining his technical blockchain expertise with a public-sector career dedicated to advancing public trust, transparency, and equitable systems, Omri is focused on applying his skill-set to drive public-private adoption of blockchain and emerging technology.
@@ -208,7 +208,7 @@ Omri Gross is an outgoing Senior Clearance and Policy Advisor at the U.S. Depart
 
 ### About the Technical Lead
 
-**Hanane Bendisari**  
+***Hanane Bendisari***  
 Tech Lead | Solidity Developer | Hackathon Finalist @ Consensus 2025
 
 Hanane is a Solidity developer with a multidisciplinary background in engineering, finance, and smart contract security.  
@@ -249,7 +249,7 @@ OpenEscrow is released under the **MIT License**, encouraging open collaboration
 
 ---
 
-## 🚀 Build trust. Unlock opportunity. Together.
+### 🚀 Build trust. Unlock opportunity. Together.
 
 
 
