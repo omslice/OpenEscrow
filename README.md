@@ -6,7 +6,7 @@
 
 ### A Housing Blockchain Solution for Social Good
 
-**OpenEscrow** is a free, open source app for transparent and fair management of the rental security deposit, that builds trust and unlocks financial opportunity between tenants and landlords by using smart contracts to serve as a neutral 3rd party escrow agent. 
+**OpenEscrow** is a free, open source app for transparent and fair management of the rental security deposit, that builds trust and unlocks financial opportunity between tenants and landlords by using smart contracts to serve as a neutral 3rd party escrow agent.
 
 Built as a digital public good — not for profit — OpenEscrow promotes financial inclusion, housing stability, and real-world trust without centralized control.
 
@@ -16,71 +16,35 @@ There is no company, licensing fee, or monetization model behind OpenEscrow — 
 
 ## System Wireframe
 
-     [Tenant Wallet]
-            |
-     createAgreement()
-            |
-     +-------------+
-     | OpenEscrow  |---> (optional call) ---> [RulesModule]
-     |   Core      |---> (optional call) ---> [YieldModule]
-     +-------------+
-            |
-     [Factory]--- createVault() ---> [UserVaults]
-            |
-      [EscrowViewer]
-            |
-     read info/multicall
-            v
-      [Dashboard / UI]
+This flow illustrates the full life cycle of a rental deposit agreement through OpenEscrow. It reflects a more transparent and tenant-centric logic, where the deposit is considered the tenant's property by default. A notice period is required before any release process can begin, and the landlord must submit a claim that is externally validated to override the default refund. The flow also includes optional integration with a yield module (for on-chain interest) and a read-only viewer contract to power the UI.
 
----
+> 💡 **Token Choice Note:**  
+> WYST is the default payment token, but users may also choose supported stablecoins such as USDC or USDY. As long as sufficient liquidity exists on DEXs or CEXs, no dedicated pool is required. Users without a balance in their selected token will be prompted to swap before depositing.
 
-### Project Overview
-
-OpenEscrow provides:
-
-- Smart contract-based escrow management for rental deposits
-- Invoice upload requirement for each deduction
-- Automated on-chain notifications
-- Tenant dispute/approval mechanics
-- Optional yield generation through U.S. Treasury-backed stablecoins
-- One-click report generation
-- Opt-in reputation system
-- Future-dated refunds
-- Web2 interface, no wallet, transaction interaction (unless desired)
-- Fiat on/off ramps via services like Moonpay or NowPayments
-- Wallet abstraction for email/social media login support
-- Multilingual and globally accessible deployment
-- Can be deployed on any chain without need for cross-chain functionality
-- Future plans to support other types of escrow arrangements
+➡️ [View full protocol flow](docs/protocol-flow.md) — lifecycle, logic, and onchain events  
+🛠️ [View developer reference](docs/dev-reference.md) — functions, structs, and module interfaces
 
 ---
 
 ### Why OpenEscrow Matters
 
-OpenEscrow also aligns with key priorities for public goods and the public sector in general:
-- Promoting financial inclusion for underserved communities
-- Supporting tenant and landlord trust and protections
-- Reducing cost and complexity in housing dispute resolution
-- Providing transparent, trust-minimized security deposit management
+OpenEscrow redefines how rental deposits are handled by aligning with the reality that **the deposit legally belongs to the tenant** until a valid claim proves otherwise.
 
-There is no company, profit model, or licensing fee behind OpenEscrow. It is a digital public good - free infrastructure for communities, governments, and NGOs to adopt, build on top of, or deploy as needed.
+This updated model:
 
-Security deposit handling is a major global pain point:
-- 25%+ of tenants report disputes with landlords over deposits
-- Lack of transparency and legal fees cause housing insecurity
-- Small claims courts are flooded with deposit dispute cases
-- Many jurisdictions impose triple damages for improper withholding
+* Promotes financial inclusion for underserved communities
+* Prevents abuse of power by landlords
+* Aligns with small claims court principles: burden of proof is on the claimant (landlord)
+* Reduces stress and legal cost for tenants
+* Provides programmable transparency through `rulesModule`
+* Makes claims auditable, reproducible, and automated
 
-These issues are generally due to:
-- Lack of transparency or controls in deductions
-- No standardized documentation
+Traditional models transfer the deposit unless the tenant proves otherwise. OpenEscrow **inverts that logic** to reflect real-world fairness: if there is no valid claim, **the tenant keeps the deposit**.
 
-By leveraging blockchain:
-- OpenEscrow creates **transparent and trust-minimized** management
-- Reduces legal costs and landlord/tenant disputes
-- Supports affordable housing programs with better financial controls
-- Demonstrates how blockchain can serve real-world needs, not speculation
+---
+
+(Le reste du README reste inchangé : Project Overview, Roadmap, Technical Stack, Tests, Features, Funding Plan, Team Bios, Contribution instructions...)
+
 
 ---
 
@@ -191,7 +155,7 @@ We are seeking **$60,000** to build, audit, and launch a secure, fully open-sour
 
 > All core flows are tested and production-grade.
 
-**For a detailed breakdown of all smart contract objects, functions, technical flows, and developer documentation, see [technical-overview.md](./technical-overview.md).**
+**For a detailed breakdown of smart contract architecture, lifecycle logic, and developer references, see [docs/technical-overview.md](./docs/technical-overview.md) and [docs/dev-reference.md](./docs/dev-reference.md).**
 
 ---
 

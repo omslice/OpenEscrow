@@ -101,16 +101,11 @@ contract OpenEscrowCore {
 
      // Handle yield module if defined
         if (agreement.yieldModule != address(0)) {
-            (uint256 tenantShare, uint256 landlordShare) = IYieldModule(agreement.yieldModule).claimYield(_agreementId);
+            (uint256 tenantShare, ) = IYieldModule(agreement.yieldModule).claimYield(_agreementId);
 
             if (tenantShare > 0) {
                 (bool okTenant, ) = agreement.tenant.call{value: tenantShare}("");
                 require(okTenant, "Yield transfer to tenant failed");
-            }
-
-            if (landlordShare > 0) {
-                (bool okLandlord, ) = agreement.landlord.call{value: landlordShare}("");
-                require(okLandlord, "Yield transfer to landlord failed");
             }
         }
 
