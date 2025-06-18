@@ -213,7 +213,7 @@ OpenEscrow is released under the **MIT License**, encouraging open collaboration
 
 ---
 
-### 🚀 Build trust. Unlock opportunity. Together.
+### 🚀 Build trust. Unlock opportunity.
 
 
 
