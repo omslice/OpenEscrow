@@ -2,115 +2,117 @@
 
 ## 1. Contract Architecture
 
+### ▸ `EscrowFactory.sol`
+Deploys a dedicated smart contract (vault) for each escrow agreement.  
+Each contract is fully self-contained and owns its own funds and logic.
+
 ### ▸ `OpenEscrowCore.sol`
-Core escrow logic:
-- Escrow creation (`createAgreement`)
-- Controlled release (`releaseFunds`)
+Core logic for each individual agreement:
+- Initialization (`initialize`)
+- Controlled fund release (`releaseFunds`)
 - Tenant-triggered refund (`refund`)
-- Modular via `rulesModule` and `yieldModule`
-- Handles deduction claims, tenant disputes, and release logic
+- Optional plug-in modules: `rulesModule` and `yieldModule`
+
+### ▸ `EscrowViewer.sol`
+Read-only helper contract for UI and analytics.  
+Fetches all agreement data off-chain.
 
 ### ▸ `IRulesModule.sol`
-Interface for external rule validators.  
-Example: validate release conditions (e.g. delivery confirmed, invoice present).
+Interface for external validation logic.  
+Example: enforce that an IPFS invoice is present before release.
 
 ### ▸ `IYieldModule.sol`
 Interface for external yield logic.  
-Allows funds to generate yield while escrowed.
+Allows funds to generate and split yield while escrowed.
 
-### ▸ `MockRulesModule.sol`
-Used in tests. Can be toggled to allow/block releases.
-
-### ▸ `MockYieldModule.sol`
-Simulates passive yield. Can return fixed or dynamic values.
+### ▸ `MockRulesModule.sol` / `MockYieldModule.sol`
+Testing mocks for validation and yield simulation.
 
 ---
 
 ## 2. Data Model
 
-### `EscrowAgreement` struct:
-| Field          | Description |
-|----------------|-------------|
-| `tenant`       | Sender of the funds |
-| `landlord`     | Receiver of the funds |
-| `amount`       | ETH or token amount deposited |
-| `releaseTime`  | Timestamp after which release is allowed |
-| `released`     | Whether funds have been released |
-| `refunded`     | Whether it was refunded instead |
-| `rulesModule`  | External logic for validation (optional) |
-| `yieldModule`  | External yield contract (optional) |
-| `invoiceHash`  | IPFS hash of landlord's deduction claim (optional) |
-| `claimedAmount`| Proposed deduction amount (optional) |
-| `disputed`     | True if tenant formally disputed the claim |
-| `disputedAt`   | Timestamp of the dispute (for audit/legal trace)
+### Struct: `EscrowAgreement`
+| Field           | Description |
+|-----------------|-------------|
+| `tenant`        | Sender of the funds |
+| `landlord`      | Receiver of the funds |
+| `amount`        | ETH or token deposited |
+| `releaseTime`   | Unlock timestamp (e.g. lease expiry + 60 days) |
+| `released`      | Whether the funds have been released |
+| `refunded`      | Whether a refund was triggered instead |
+| `rulesModule`   | External validation logic (optional) |
+| `yieldModule`   | Yield module address (optional) |
+| `invoiceHash`   | IPFS hash of landlord’s deduction claim (optional) |
+| `claimedAmount` | Amount the landlord is claiming (optional) |
+| `disputed`      | Whether the tenant formally disputed the claim |
+| `disputedAt`    | When the dispute was registered (for traceability)
 
 ---
 
 ## 3. Execution Flow
 
-### `createAgreement(...)`
-- `msg.sender` initiates the escrow with parameters
-- Agreement stored in mapping with incremental ID
-- Emits an `AgreementCreated` event
+### `createAgreement(...)` (via `EscrowFactory`)
+- Deploys a new smart contract (vault)
+- Initializes agreement with tenant/landlord details, modules, etc.
+- Emits `AgreementCreated`
 
 ### `releaseFunds(...)`
 - Callable by anyone after `releaseTime`
-- Pre-conditions:
-  - Agreement not refunded or already released
-  - Optional validation by `rulesModule` (e.g. IPFS invoice presence)
+- Checks:
+  - Not refunded or already released
+  - If `rulesModule` is present → must validate (e.g. invoice present)
 - Handles claim logic:
-  - If no claim: full release to tenant or landlord as configured
-  - If claim exists: checks validation rules (if enabled)
-  - Dispute does **not block release**, but is recorded onchain
-- Splits amount and distributes yield:
-  - `claimedAmount → landlord`
-  - Remainder → tenant
-  - Yield distributed as per module config
+  - If no claim → full refund to tenant
+  - If claim → split funds (`claimedAmount → landlord`, rest → tenant)
+- If yield module active → `claimYield()` and distribute according to configured shares
 
 ### `refund(...)`
-- Callable only by the tenant
-- Only after `releaseTime`
-- Transfers full amount back to tenant
-- TODO: also claim and transfer tenant’s share of yield
+- Callable only by tenant
+- Only if `releaseTime` has passed and funds not yet released
+- Refunds full amount to tenant
+- TODO: auto-claim tenant’s yield as well
 
 ---
 
 ## 4. Testing Strategy
 
-- **Unit tests**:
+- ✅ Unit tests for mock modules
   - `MockRulesModule.t.sol`
   - `MockYieldModule.t.sol`
-
-- **Core logic tests**:
-  - `OpenEscrowCore.t.sol` (full path coverage)
-
-- **Integration tests**:
-  - `ReleaseWithYield.t.sol` (realistic end-to-end flows)
-
----
-
-## 5. TODO / Next Steps
-
-- [x] Integrate `claimYield()` in `refund()`
-- [ ] Add deduction flow:
-  - Store `invoiceHash` and `claimedAmount`
-  - Support `submitClaim()`, `editClaim()`, and `cancelClaim()` before release
-- [ ] Add tenant dispute tracking:
-  - Store `disputed` flag and `disputedAt` timestamp
-  - Record disputes without blocking funds
-- [ ] Add fallback release after timeout (optional automation via Gelato or offchain cron)
-- [ ] Expand rulesModule examples (e.g. max claim %, required invoice, deadlines)
-- [ ] Add gas profiling (`forge test --gas-report`)
-- [ ] Ensure full interface coverage and complete NatSpec annotations
-- [ ] Extend support for token-based escrows (e.g. WYST or USDC via ERC20 interface)
+- ✅ Full logic coverage
+  - `OpenEscrowCore.t.sol` for all paths
+- ✅ Integration / Scenario testing
+  - `ReleaseWithYield.t.sol` (end-to-end)
+  - `EscrowFactory.t.sol`, `EscrowViewer.t.sol`
 
 ---
 
-## Notes
+## 5. Design Principles
 
-- Tenant and landlord interaction is offchain/UI driven, but all critical actions and disputes are recorded onchain.
-- IPFS is used to store and reference deduction documents (invoices).
-- Disputes are **non-blocking**: they provide legal traceability, but do not prevent fund release.
-- Modules (`rulesModule`, `yieldModule`) are pluggable and optional.
+- Vault-per-agreement: one smart contract per escrow instance (via factory)
+- Pluggable logic: rules and yield modules can be swapped
+- Onchain traceability: all claims and disputes are recorded
+- Disputes don’t block release — they provide audit trail
+- UI & offchain orchestration: all interactions are front-end initiated
 
-> For full contract interfaces, structs, function references, and developer-facing details, see [dev-reference.md](./dev-reference.md).
+---
+
+## 6. TODO / Next Steps
+
+- [x] Move to vault-based deployment (`EscrowFactory`)
+- [x] Refactor for `initialize()` proxy pattern
+- [x] Modularize `rulesModule` and `yieldModule`
+- [x] Add IPFS invoice & claim flow
+- [x] Track disputes without blocking execution
+- [ ] Add `submitClaim`, `editClaim`, `cancelClaim`
+- [ ] Implement `claimYield()` in `refund()`
+- [ ] Add automation support (e.g. Gelato fallback)
+- [ ] Batch reading & pagination in `EscrowViewer`
+- [ ] Extend support for ERC20 (WYST, USDC)
+- [ ] Add full gas profiling & NatSpec
+
+---
+
+> See [protocol-flow.md](./protocol-flow.md) for the full user-facing lifecycle.  
+> See [README.md](./README.md) for project vision, team, funding, and roadmap.

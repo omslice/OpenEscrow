@@ -22,7 +22,6 @@ This flow illustrates the full life cycle of a rental deposit agreement through 
 > WYST is the default payment token, but users may also choose supported stablecoins such as USDC or USDY. As long as sufficient liquidity exists on DEXs or CEXs, no dedicated pool is required. Users without a balance in their selected token will be prompted to swap before depositing.
 
 ➡️ [View full protocol flow](docs/protocol-flow.md) — lifecycle, logic, and onchain events  
-🛠️ [View developer reference](docs/dev-reference.md) — functions, structs, and module interfaces
 
 ---
 
