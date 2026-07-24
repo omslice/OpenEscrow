@@ -10,7 +10,7 @@ import { WithdrawSection } from "./WithdrawSection";
 import { ArbiterReplacementSection } from "./ArbiterReplacementSection";
 
 export function AgreementCard({ id, onRemove }: { id: bigint; onRemove?: () => void }) {
-  const { agreement, exists, isLoading, error } = useAgreement(id);
+  const { agreement, exists, isLoading, error, refetch } = useAgreement(id);
 
   if (isLoading) return <div className="card">Loading agreement #{id.toString()}...</div>;
   if (error || !exists || !agreement) {
@@ -26,17 +26,21 @@ export function AgreementCard({ id, onRemove }: { id: bigint; onRemove?: () => v
     );
   }
 
+  // Every action component calls this on success so the dashboard reflects the
+  // new state immediately, instead of waiting up to 5s for the next poll.
+  const onRefetch = () => void refetch();
+
   return (
     <div className="card agreement-card">
       <AgreementDashboard id={id} agreement={agreement} />
-      <ArbiterActions id={id} agreement={agreement} />
-      <TenantFundAction id={id} agreement={agreement} />
-      <ClaimSection id={id} agreement={agreement} />
-      <ResponseSection id={id} agreement={agreement} />
-      <DisputeResolutionSection id={id} agreement={agreement} />
-      <ArbiterReplacementSection id={id} agreement={agreement} />
-      <TimeoutSection id={id} agreement={agreement} />
-      <WithdrawSection id={id} agreement={agreement} />
+      <ArbiterActions id={id} agreement={agreement} onRefetch={onRefetch} />
+      <TenantFundAction id={id} agreement={agreement} onRefetch={onRefetch} />
+      <ClaimSection id={id} agreement={agreement} onRefetch={onRefetch} />
+      <ResponseSection id={id} agreement={agreement} onRefetch={onRefetch} />
+      <DisputeResolutionSection id={id} agreement={agreement} onRefetch={onRefetch} />
+      <ArbiterReplacementSection id={id} agreement={agreement} onRefetch={onRefetch} />
+      <TimeoutSection id={id} agreement={agreement} onRefetch={onRefetch} />
+      <WithdrawSection id={id} agreement={agreement} onRefetch={onRefetch} />
       {onRemove && (
         <button className="btn btn-ghost small" onClick={onRemove}>
           Stop tracking this agreement

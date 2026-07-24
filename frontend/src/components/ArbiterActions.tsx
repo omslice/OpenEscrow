@@ -3,7 +3,15 @@ import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
 
-export function ArbiterActions({ id, agreement }: { id: bigint; agreement: Agreement }) {
+export function ArbiterActions({
+  id,
+  agreement,
+  onRefetch,
+}: {
+  id: bigint;
+  agreement: Agreement;
+  onRefetch?: () => void;
+}) {
   const { address } = useAccount();
   if (agreement.phase !== Phase.Proposed) return null;
   if (address?.toLowerCase() !== agreement.arbiter.toLowerCase()) return null;
@@ -22,6 +30,7 @@ export function ArbiterActions({ id, agreement }: { id: bigint; agreement: Agree
           functionName="acceptArbiterRole"
           args={[id]}
           label="Accept arbiter role"
+          onSuccess={onRefetch}
         />
         <TxButton
           address={OPEN_ESCROW_ADDRESS}
@@ -30,6 +39,7 @@ export function ArbiterActions({ id, agreement }: { id: bigint; agreement: Agree
           args={[id]}
           label="Decline"
           className="btn btn-ghost"
+          onSuccess={onRefetch}
         />
       </div>
     </div>

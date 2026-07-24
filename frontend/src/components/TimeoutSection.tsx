@@ -9,7 +9,15 @@ import { TxButton } from "./TxButton";
  * these requires an explicit transaction from someone. These buttons only render once
  * their deadline has actually passed, since calling early would just revert.
  */
-export function TimeoutSection({ id, agreement }: { id: bigint; agreement: Agreement }) {
+export function TimeoutSection({
+  id,
+  agreement,
+  onRefetch,
+}: {
+  id: bigint;
+  agreement: Agreement;
+  onRefetch?: () => void;
+}) {
   const { address } = useAccount();
   const now = useNow();
   const isTenant = address?.toLowerCase() === agreement.tenant.toLowerCase();
@@ -25,6 +33,7 @@ export function TimeoutSection({ id, agreement }: { id: bigint; agreement: Agree
           functionName="withdrawNoClaim"
           args={[id]}
           label="Withdraw full deposit"
+          onSuccess={onRefetch}
         />
       </div>
     );
@@ -44,6 +53,7 @@ export function TimeoutSection({ id, agreement }: { id: bigint; agreement: Agree
           functionName="finalizeNoResponse"
           args={[id]}
           label="Escalate to dispute"
+          onSuccess={onRefetch}
         />
       </div>
     );
@@ -63,6 +73,7 @@ export function TimeoutSection({ id, agreement }: { id: bigint; agreement: Agree
           functionName="claimArbiterTimeout"
           args={[id]}
           label="Send disputed funds to tenant"
+          onSuccess={onRefetch}
         />
       </div>
     );

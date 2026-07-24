@@ -7,7 +7,15 @@ import { TxButton } from "./TxButton";
 
 type Mode = "accept" | "partial" | "dispute";
 
-export function ResponseSection({ id, agreement }: { id: bigint; agreement: Agreement }) {
+export function ResponseSection({
+  id,
+  agreement,
+  onRefetch,
+}: {
+  id: bigint;
+  agreement: Agreement;
+  onRefetch?: () => void;
+}) {
   const { address } = useAccount();
   const [mode, setMode] = useState<Mode>("accept");
   const [partialAmount, setPartialAmount] = useState("");
@@ -65,6 +73,7 @@ export function ResponseSection({ id, agreement }: { id: bigint; agreement: Agre
         args={[id, accepted >= 0n ? accepted : 0n]}
         label="Submit response"
         disabled={!validAmount}
+        onSuccess={onRefetch}
       />
     </div>
   );

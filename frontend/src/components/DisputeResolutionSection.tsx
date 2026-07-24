@@ -6,7 +6,15 @@ import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
 import { EvidenceList } from "./EvidenceList";
 
-export function DisputeResolutionSection({ id, agreement }: { id: bigint; agreement: Agreement }) {
+export function DisputeResolutionSection({
+  id,
+  agreement,
+  onRefetch,
+}: {
+  id: bigint;
+  agreement: Agreement;
+  onRefetch?: () => void;
+}) {
   const { address } = useAccount();
   const [award, setAward] = useState("");
 
@@ -50,6 +58,7 @@ export function DisputeResolutionSection({ id, agreement }: { id: bigint; agreem
         args={[id, awardRaw ?? 0n]}
         label="Submit ruling"
         disabled={!valid}
+        onSuccess={onRefetch}
       />
     </div>
   );

@@ -5,7 +5,15 @@ import { formatUSDC } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
 
-export function TenantFundAction({ id, agreement }: { id: bigint; agreement: Agreement }) {
+export function TenantFundAction({
+  id,
+  agreement,
+  onRefetch,
+}: {
+  id: bigint;
+  agreement: Agreement;
+  onRefetch?: () => void;
+}) {
   const { address } = useAccount();
   const isTenant = address?.toLowerCase() === agreement.tenant.toLowerCase();
 
@@ -64,6 +72,7 @@ export function TenantFundAction({ id, agreement }: { id: bigint; agreement: Agr
           functionName="tenantAcceptAndFund"
           args={[id]}
           label="2. Accept and fund"
+          onSuccess={onRefetch}
         />
       )}
     </div>

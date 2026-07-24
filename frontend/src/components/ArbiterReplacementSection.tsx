@@ -14,7 +14,15 @@ const REPLACEABLE = new Set<number>([Phase.ReadyToFund, Phase.Active, Phase.Clai
  * touched by this, even mid-dispute - replacing an arbiter can never extend how long
  * funds stay locked.
  */
-export function ArbiterReplacementSection({ id, agreement }: { id: bigint; agreement: Agreement }) {
+export function ArbiterReplacementSection({
+  id,
+  agreement,
+  onRefetch,
+}: {
+  id: bigint;
+  agreement: Agreement;
+  onRefetch?: () => void;
+}) {
   const { address } = useAccount();
   const [candidate, setCandidate] = useState("");
 
@@ -43,6 +51,7 @@ export function ArbiterReplacementSection({ id, agreement }: { id: bigint; agree
           args={[id]}
           label="Resign as arbiter"
           className="btn btn-ghost"
+          onSuccess={onRefetch}
         />
       )}
 
@@ -64,6 +73,7 @@ export function ArbiterReplacementSection({ id, agreement }: { id: bigint; agree
               candidate.toLowerCase() === agreement.landlord.toLowerCase() ||
               candidate.toLowerCase() === agreement.tenant.toLowerCase()
             }
+            onSuccess={onRefetch}
           />
         </>
       )}
@@ -83,6 +93,7 @@ export function ArbiterReplacementSection({ id, agreement }: { id: bigint; agree
                 functionName="confirmArbiterReplacement"
                 args={[id]}
                 label="Confirm replacement"
+                onSuccess={onRefetch}
               />
             )}
             {isProposer && (
@@ -93,6 +104,7 @@ export function ArbiterReplacementSection({ id, agreement }: { id: bigint; agree
                 args={[id]}
                 label="Cancel proposal"
                 className="btn btn-ghost"
+                onSuccess={onRefetch}
               />
             )}
             {isPendingArbiter && agreement.pendingArbiterConfirmed && (
@@ -102,6 +114,7 @@ export function ArbiterReplacementSection({ id, agreement }: { id: bigint; agree
                 functionName="acceptArbiterRole"
                 args={[id]}
                 label="Accept arbiter role"
+                onSuccess={onRefetch}
               />
             )}
           </div>

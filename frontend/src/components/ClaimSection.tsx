@@ -6,7 +6,15 @@ import { TxButton } from "./TxButton";
 import { useEvidenceInputs } from "./EvidenceInputs";
 import { useState } from "react";
 
-export function ClaimSection({ id, agreement }: { id: bigint; agreement: Agreement }) {
+export function ClaimSection({
+  id,
+  agreement,
+  onRefetch,
+}: {
+  id: bigint;
+  agreement: Agreement;
+  onRefetch?: () => void;
+}) {
   const { address } = useAccount();
   const { fields, contentHash, uri, valid } = useEvidenceInputs();
   const [amount, setAmount] = useState("");
@@ -41,6 +49,7 @@ export function ClaimSection({ id, agreement }: { id: bigint; agreement: Agreeme
           args={amountRaw !== null ? [id, amountRaw, contentHash, uri, 0] : [id, 0n, contentHash, uri, 0]}
           label="Submit claim"
           disabled={!valid || amountRaw === null || amountRaw <= 0n || amountRaw > agreement.depositAmount}
+          onSuccess={onRefetch}
         />
       </div>
     );
@@ -68,6 +77,7 @@ export function ClaimSection({ id, agreement }: { id: bigint; agreement: Agreeme
           args={amountRaw !== null ? [id, amountRaw, contentHash, uri, 1] : [id, 0n, contentHash, uri, 1]}
           label="Amend claim"
           disabled={!valid || amountRaw === null || amountRaw > agreement.claimedAmount}
+          onSuccess={onRefetch}
         />
       </div>
     );

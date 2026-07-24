@@ -4,7 +4,15 @@ import { formatUSDC } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
 
-export function WithdrawSection({ id, agreement }: { id: bigint; agreement: Agreement }) {
+export function WithdrawSection({
+  id,
+  agreement,
+  onRefetch,
+}: {
+  id: bigint;
+  agreement: Agreement;
+  onRefetch?: () => void;
+}) {
   const { address } = useAccount();
   if (!address) return null;
 
@@ -28,6 +36,7 @@ export function WithdrawSection({ id, agreement }: { id: bigint; agreement: Agre
         functionName="withdraw"
         args={[id]}
         label={`Withdraw ${formatUSDC(credited)} USDC`}
+        onSuccess={onRefetch}
       />
     </div>
   );
