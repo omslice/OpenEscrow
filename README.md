@@ -10,9 +10,10 @@ The rest of this document describes the long-term project vision. The current, n
 **contract-only MVP** is implemented and deployed to Base Sepolia:
 
 - Spec: [`docs/mvp-spec.md`](docs/mvp-spec.md) (with [`docs/adr/`](docs/adr/) and [`docs/open-questions.md`](docs/open-questions.md))
-- Contract: [`contracts/OpenEscrow.sol`](contracts/OpenEscrow.sol), tested via `forge test` (127 tests: unit, auth, deadline-boundary, fuzz, stateful invariant)
+- Contract: [`contracts/OpenEscrow.sol`](contracts/OpenEscrow.sol), tested via `forge test` (130 tests: unit, auth, deadline-boundary, fuzz, stateful invariant)
+- Security: [`docs/security-review.md`](docs/security-review.md) - manual review + Slither; one Medium finding, fixed
 - Deployed on Base Sepolia (chain id 84532), both verified on Sourcify (exact match):
-  - `OpenEscrow`: [`0xFe0270679261cFC546822Cc453C5aD73f29a721C`](https://repo.sourcify.dev/contracts/full_match/84532/0xFe0270679261cFC546822Cc453C5aD73f29a721C/)
+  - `OpenEscrow`: [`0x976A28fc54323de8FEBE757FfFbdd6fCd5092894`](https://repo.sourcify.dev/contracts/full_match/84532/0x976A28fc54323de8FEBE757FfFbdd6fCd5092894/)
   - Test USDC (`MockUSDC`): [`0xE129b23BD89904D363ba226eE52deC74185D7789`](https://repo.sourcify.dev/contracts/full_match/84532/0xE129b23BD89904D363ba226eE52deC74185D7789/)
 - Minimal demo frontend: [`frontend/`](frontend/README.md)
 

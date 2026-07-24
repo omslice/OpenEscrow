@@ -6,11 +6,14 @@ directly to the deployed contracts on Base Sepolia - no backend server, no persi
 
 ## Deployed addresses (Base Sepolia, chain id 84532)
 
-- `OpenEscrow`: `0xFe0270679261cFC546822Cc453C5aD73f29a721C`
-- `MockUSDC` (test token, freely mintable): `0xE129b23BD89904D363ba226eE52deC74185D7789`
+- `OpenEscrow`: `0x976A28fc54323de8FEBE757FfFbdd6fCd5092894` (redeployed 2026-07-24 after the fix in
+  `../docs/security-review.md`; the prior address `0xFe02...a721C` ran pre-fix bytecode and is retired -
+  any agreements created there, including the original smoke-test agreement, are no longer reachable
+  through this frontend)
+- `MockUSDC` (test token, freely mintable): `0xE129b23BD89904D363ba226eE52deC74185D7789` (unchanged)
 
 See `../script/DeployOpenEscrow.s.sol` and `../script/DeployMockUSDC.s.sol` if you need to redeploy;
-update `src/contracts/config.ts` with the new addresses afterward.
+update `src/contracts/config.ts` (address *and* `DEPLOYMENT_BLOCK`) with the new values afterward.
 
 ## Running locally
 
