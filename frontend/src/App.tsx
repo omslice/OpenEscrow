@@ -7,6 +7,7 @@ import { useTrackedAgreements } from "./lib/useTrackedAgreements";
 import { useDiscoverAgreements } from "./lib/useDiscoverAgreements";
 import { TestFunds } from "./components/TestFunds";
 import { PublicIntro } from "./components/PublicIntro";
+import { isJurisdictionCode, rememberJurisdiction } from "./lib/jurisdictions";
 import "./App.css";
 
 type Tab = "create" | "track";
@@ -30,7 +31,12 @@ function App() {
     const idParam = new URLSearchParams(window.location.search).get("id");
     if (idParam === null) return;
     try {
-      addId(BigInt(idParam));
+      const id = BigInt(idParam);
+      addId(id);
+      const jurisdictionParam = new URLSearchParams(window.location.search).get("jurisdiction");
+      if (jurisdictionParam && isJurisdictionCode(jurisdictionParam)) {
+        rememberJurisdiction(id, jurisdictionParam);
+      }
       setTab("track");
     } catch {
       // ignore malformed id in the URL

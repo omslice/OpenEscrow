@@ -3,6 +3,7 @@ import { countdown, formatTimestamp, formatUSDC, shortAddr } from "../lib/format
 import { useNow } from "../lib/useNow";
 import type { Agreement } from "../lib/useAgreement";
 import { useAccount } from "wagmi";
+import { jurisdictionLabel, readJurisdiction } from "../lib/jurisdictions";
 
 function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | null {
   switch (agreement.phase) {
@@ -28,6 +29,7 @@ export function AgreementDashboard({ id, agreement }: { id: bigint; agreement: A
       : normalized === agreement.landlord.toLowerCase()
         ? agreement.landlordWithdrawable
         : 0n;
+  const jurisdiction = readJurisdiction(id);
 
   return (
     <div className="dashboard">
@@ -76,6 +78,12 @@ export function AgreementDashboard({ id, agreement }: { id: bigint; agreement: A
           {shortAddr(agreement.arbiter)} {agreement.arbiterAccepted ? "(accepted)" : "(pending acceptance)"}
           {agreement.arbiterDeclined && " - declined"}
           {agreement.arbiterResigned && " - resigned"}
+        </span>
+      </div>
+      <div className="dashboard-row">
+        <span className="label">Jurisdiction context</span>
+        <span>
+          {jurisdictionLabel(jurisdiction)} <small className="offchain-label">off-chain</small>
         </span>
       </div>
       {agreement.claimedAmount > 0n && (

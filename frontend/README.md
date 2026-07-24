@@ -51,5 +51,10 @@ Agreement discovery has two paths: a "Scan for my agreements" button that chunke
 This is a reasonable trade-off for a testnet demo with a handful of agreements - it is not how a
 production version should do discovery at scale (that needs a real indexer/subgraph).
 
+The create form also collects optional jurisdiction context. That value travels in the shared
+agreement link and is stored in the browser for display on the dashboard; it is not stored or
+validated on-chain and does not change contract behavior. The UI labels it as off-chain research
+context because none of the listed jurisdiction profiles have completed legal review.
+
 Not implemented: any production-grade wallet UX (WalletConnect, mobile, etc.) - this is a testnet
 demo, not a production app. See `../docs/open-questions.md` for the non-UI (legal/product) gaps.

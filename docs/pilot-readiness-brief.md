@@ -15,6 +15,8 @@ Choose exactly one initial jurisdiction and user segment:
   another legally reviewed model.
 
 Do not build jurisdiction-specific contract behavior before these choices are written down.
+The demo's jurisdiction selector is only an off-chain research label; choosing an option there does
+not satisfy this decision or imply that counsel has approved the workflow for that location.
 
 ## Counsel work package
 

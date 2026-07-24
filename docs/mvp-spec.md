@@ -328,7 +328,7 @@ Legend: U = unit, F = fuzz, I = invariant.
 ## 14. Minimal frontend journey
 
 1. **Connect wallet.** Detect/prompt switch to Base Sepolia.
-2. **Landlord: create agreement.** Form for tenant address, arbiter address, deposit amount (USDC, human-readable input converted to base units), claim window start date, claim/response/arbiter-ruling periods (sensible presets + custom). Submits `createAgreement`.
+2. **Landlord: create agreement.** Form for tenant address, arbiter address, deposit amount (USDC, human-readable input converted to base units), claim window start date, claim/response/arbiter-ruling periods (sensible presets + custom), and optional jurisdiction context. Submits `createAgreement`. Jurisdiction context is explicitly off-chain: the frontend stores it in the shared URL and local browser storage, while the contract neither validates nor enforces it.
 3. **Arbiter: accept/decline.** A link/notification surface (off-chain, e.g. shared URL) showing pending arbiter invitations; one button each for accept/decline.
 4. **Tenant: review and fund.** Read-only summary of proposed terms (this is the tenant's only chance to review before committing — no on-chain negotiation, §1). Two transactions: `approve` then `tenantAcceptAndFund`, or a single UI step that queues both.
 5. **Agreement dashboard** (all parties). Current phase, countdown to the next relevant deadline, deposit amount, claimed amount if any, evidence link, withdrawable balance for the connected address with a withdraw button.

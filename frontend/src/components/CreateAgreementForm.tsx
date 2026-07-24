@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { decodeEventLog, isAddress } from "viem";
 import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import {
@@ -9,6 +9,12 @@ import {
   OPEN_ESCROW_ADDRESS,
 } from "../contracts/config";
 import { parseUSDC } from "../lib/format";
+import {
+  JURISDICTIONS,
+  jurisdictionLabel,
+  rememberJurisdiction,
+  type JurisdictionCode,
+} from "../lib/jurisdictions";
 import { useTrackedAgreements } from "../lib/useTrackedAgreements";
 
 const DAY = 24 * 60 * 60;
@@ -34,29 +40,38 @@ export function CreateAgreementForm() {
   const [claimDays, setClaimDays] = useState("30");
   const [responseDays, setResponseDays] = useState("2");
   const [arbiterDays, setArbiterDays] = useState("3");
+  const [jurisdiction, setJurisdiction] = useState<JurisdictionCode>("testnet-generic");
   const [createdId, setCreatedId] = useState<bigint | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const submittedJurisdiction = useRef<JurisdictionCode>("testnet-generic");
+  const handledReceipt = useRef<`0x${string}` | null>(null);
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { data: receipt, isLoading: isMining } = useWaitForTransactionReceipt({ hash });
 
-  if (receipt && createdId === null) {
+  useEffect(() => {
+    if (!receipt || handledReceipt.current === receipt.transactionHash) return;
+    handledReceipt.current = receipt.transactionHash;
+
     for (const log of receipt.logs) {
       try {
         const decoded = decodeEventLog({ abi: OpenEscrowABI, data: log.data, topics: log.topics });
         if (decoded.eventName === "AgreementProposed") {
           const id = (decoded.args as unknown as { id: bigint }).id;
           setCreatedId(id);
+          rememberJurisdiction(id, submittedJurisdiction.current);
           addId(id);
           const url = new URL(window.location.href);
           url.searchParams.set("id", id.toString());
+          url.searchParams.set("jurisdiction", submittedJurisdiction.current);
           window.history.replaceState(null, "", url.toString());
+          break;
         }
       } catch {
         // not this event, ignore
       }
     }
-  }
+  }, [receipt, addId]);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -102,6 +117,7 @@ export function CreateAgreementForm() {
     const responsePeriod = BigInt(Number(responseDays) * DAY);
     const arbiterPeriod = BigInt(Number(arbiterDays) * DAY);
 
+    submittedJurisdiction.current = jurisdiction;
     writeContract({
       address: OPEN_ESCROW_ADDRESS,
       abi: OpenEscrowABI,
@@ -125,6 +141,25 @@ export function CreateAgreementForm() {
         You become the landlord. The tenant funds nothing until the arbiter you name below has
         explicitly accepted the role (spec decision 4) - no on-chain negotiation happens after this,
         so make sure these terms are agreed off-chain first.
+      </p>
+
+      <label>
+        Jurisdiction context
+        <select
+          value={jurisdiction}
+          onChange={(e) => setJurisdiction(e.target.value as JurisdictionCode)}
+        >
+          {JURISDICTIONS.map((option) => (
+            <option key={option.code} value={option.code}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="jurisdiction-notice">
+        Research context only: this selection is saved off-chain and shared in the agreement link.
+        It has not been legally reviewed and does not change the contract's deadlines, claim rules,
+        or enforceability.
       </p>
 
       <label>
@@ -171,6 +206,9 @@ export function CreateAgreementForm() {
           <p>
             Created agreement #{createdId.toString()}. Share this link with your tenant and arbiter -
             opening it takes them straight to it, and it's also now tracked in "My agreements" below.
+          </p>
+          <p>
+            Jurisdiction context: {jurisdictionLabel(submittedJurisdiction.current)} (off-chain).
           </p>
           <code>{window.location.href}</code>
         </div>

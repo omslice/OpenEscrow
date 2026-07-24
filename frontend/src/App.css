@@ -223,7 +223,8 @@
 }
 
 .card input,
-.card textarea {
+.card textarea,
+.card select {
   display: block;
   width: 100%;
   margin-top: 4px;
@@ -374,6 +375,26 @@
 
 .dashboard-row .label {
   color: var(--text);
+}
+
+.offchain-label {
+  display: inline-block;
+  margin-left: 4px;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 10px;
+  vertical-align: middle;
+}
+
+.jurisdiction-notice {
+  margin: -4px 0 16px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--warning);
+  background: var(--warning-bg);
+  color: var(--text);
+  font-size: 12px;
 }
 
 .dashboard-row.highlight {
