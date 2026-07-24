@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Layout } from "./components/Layout";
 import { CreateAgreementForm } from "./components/CreateAgreementForm";
 import { AgreementCard } from "./components/AgreementCard";
@@ -11,6 +11,20 @@ function App() {
   const [tab, setTab] = useState<Tab>("track");
   const { ids, addId, removeId } = useTrackedAgreements();
   const [manualId, setManualId] = useState("");
+
+  // A landlord's shared link (?id=X) should land directly on that agreement.
+  useEffect(() => {
+    const idParam = new URLSearchParams(window.location.search).get("id");
+    if (idParam === null) return;
+    try {
+      addId(BigInt(idParam));
+      setTab("track");
+    } catch {
+      // ignore malformed id in the URL
+    }
+    // Intentionally runs once on mount only - this is a one-time "arrived via link" check.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <Layout>

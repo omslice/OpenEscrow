@@ -10,6 +10,13 @@ export const USDC_DECIMALS = 6;
 
 export const chain = baseSepolia;
 
+// Mirrors OpenEscrow's MIN_PERIOD/MAX_PERIOD/MAX_CLAIM_WINDOW_OFFSET constants exactly -
+// used only for client-side validation so users see a clear message instead of a raw
+// revert; the contract remains the actual source of truth for these bounds.
+export const MIN_PERIOD_SECONDS = 5 * 60;
+export const MAX_PERIOD_SECONDS = 365 * 24 * 60 * 60;
+export const MAX_CLAIM_WINDOW_OFFSET_SECONDS = 3650 * 24 * 60 * 60;
+
 // JSON imports lose literal string types (e.g. `type: string` instead of `type: "function"`),
 // so viem's `Abi` type needs an explicit assertion here - the underlying data is a real ABI
 // straight from `forge inspect`, this isn't loosening any actual runtime behavior.

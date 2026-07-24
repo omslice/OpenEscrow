@@ -1,11 +1,27 @@
 import { useState } from "react";
 import { decodeEventLog } from "viem";
 import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-import { OpenEscrowABI, OPEN_ESCROW_ADDRESS } from "../contracts/config";
+import {
+  MAX_CLAIM_WINDOW_OFFSET_SECONDS,
+  MAX_PERIOD_SECONDS,
+  MIN_PERIOD_SECONDS,
+  OpenEscrowABI,
+  OPEN_ESCROW_ADDRESS,
+} from "../contracts/config";
 import { parseUSDC } from "../lib/format";
 import { useTrackedAgreements } from "../lib/useTrackedAgreements";
 
 const DAY = 24 * 60 * 60;
+const MAX_PERIOD_DAYS = MAX_PERIOD_SECONDS / DAY;
+
+function validatePeriodDays(days: string, label: string): string | null {
+  const n = Number(days);
+  if (!Number.isFinite(n) || n <= 0) return `${label} must be a positive number of days.`;
+  const seconds = n * DAY;
+  if (seconds < MIN_PERIOD_SECONDS) return `${label} is below the contract's minimum (5 minutes).`;
+  if (seconds > MAX_PERIOD_SECONDS) return `${label} exceeds the contract's maximum (${MAX_PERIOD_DAYS} days).`;
+  return null;
+}
 
 export function CreateAgreementForm() {
   const { isConnected } = useAccount();
@@ -32,6 +48,9 @@ export function CreateAgreementForm() {
           const id = (decoded.args as unknown as { id: bigint }).id;
           setCreatedId(id);
           addId(id);
+          const url = new URL(window.location.href);
+          url.searchParams.set("id", id.toString());
+          window.history.replaceState(null, "", url.toString());
         }
       } catch {
         // not this event, ignore
@@ -55,7 +74,22 @@ export function CreateAgreementForm() {
     }
     if (depositRaw <= 0n) return setFormError("Deposit must be greater than zero.");
 
-    const startSec = BigInt(Math.floor(new Date(claimWindowStart).getTime() / 1000));
+    for (const [days, label] of [
+      [claimDays, "Claim period"],
+      [responseDays, "Response period"],
+      [arbiterDays, "Arbiter ruling period"],
+    ] as const) {
+      const err = validatePeriodDays(days, label);
+      if (err) return setFormError(err);
+    }
+
+    const nowSec = Math.floor(Date.now() / 1000);
+    const startSec = Math.floor(new Date(claimWindowStart).getTime() / 1000);
+    if (startSec < nowSec) return setFormError("Claim window start must be in the future.");
+    if (startSec - nowSec > MAX_CLAIM_WINDOW_OFFSET_SECONDS) {
+      return setFormError("Claim window start is too far in the future.");
+    }
+
     const claimPeriod = BigInt(Number(claimDays) * DAY);
     const responsePeriod = BigInt(Number(responseDays) * DAY);
     const arbiterPeriod = BigInt(Number(arbiterDays) * DAY);
@@ -68,7 +102,7 @@ export function CreateAgreementForm() {
         tenant as `0x${string}`,
         arbiter as `0x${string}`,
         depositRaw,
-        startSec,
+        BigInt(startSec),
         claimPeriod,
         responsePeriod,
         arbiterPeriod,
@@ -125,10 +159,13 @@ export function CreateAgreementForm() {
       {formError && <p className="tx-error">{formError}</p>}
       {error && <p className="tx-error">{error.message.split("\n")[0]}</p>}
       {createdId !== null && (
-        <p className="tx-success">
-          Created agreement #{createdId.toString()}. Share this id with your tenant and arbiter - it's
-          also now tracked in "My agreements" below.
-        </p>
+        <div className="tx-success">
+          <p>
+            Created agreement #{createdId.toString()}. Share this link with your tenant and arbiter -
+            opening it takes them straight to it, and it's also now tracked in "My agreements" below.
+          </p>
+          <code>{window.location.href}</code>
+        </div>
       )}
     </form>
   );
