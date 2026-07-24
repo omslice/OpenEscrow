@@ -26,6 +26,20 @@ npm run dev
 Requires an injected wallet (MetaMask etc.) connected to Base Sepolia. Once connected, use the
 in-app **Get 1,000 test USDC** button. The mock token is freely mintable and has no value.
 
+### Optional account and embedded-wallet setup
+
+Set `VITE_PRIVY_APP_ID` in `.env.local` to enable Google account creation, automatic embedded EVM
+wallet creation for Google users without a wallet, and external-wallet linking:
+
+```bash
+cp .env.example .env.local
+```
+
+Google and wallet login must also be enabled in the Privy dashboard, with the local and production
+OpenEscrow origins added to the allowed-origin list. When the variable is absent, the existing
+injected-wallet connection remains active. See `../docs/account-notifications-mvp.md` for the
+implemented boundary and the server-side work still required before email delivery is active.
+
 Run all frontend checks with:
 
 ```bash
@@ -43,7 +57,9 @@ npm run e2e:live
 Implemented: propose -> arbiter accept/decline/renominate -> tenant approve+fund -> claim submit/amend ->
 tenant respond (accept/partial/dispute) -> arbiter resolve -> permissionless timeout triggers ->
 pull-based withdraw, mutual-consent arbiter replacement, plus a live deadline countdown and an
-evidence trail view.
+evidence trail view. The optional account layer supports Google authentication, automatically
+provisioned embedded EVM wallets, linked external EVM wallets, active-wallet selection, and
+device-local notification preferences.
 
 Agreement discovery has two paths: a "Scan for my agreements" button that chunked-scans
 `AgreementProposed`/`ArbiterReplaced` event logs for the connected address (see

@@ -1,8 +1,25 @@
+import { lazy, Suspense } from "react";
 import { useAccount, useConnect, useDisconnect, useSwitchChain } from "wagmi";
 import { chain } from "../contracts/config";
+import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import { shortAddr } from "../lib/format";
 
+const PrivyConnectWallet = lazy(() =>
+  import("./PrivyConnectWallet").then((module) => ({ default: module.PrivyConnectWallet })),
+);
+
 export function ConnectWallet() {
+  if (ACCOUNT_AUTH_ENABLED) {
+    return (
+      <Suspense fallback={<button className="btn btn-primary" disabled>Loading account...</button>}>
+        <PrivyConnectWallet />
+      </Suspense>
+    );
+  }
+  return <DirectWalletAccess />;
+}
+
+function DirectWalletAccess() {
   const { address, isConnected, chainId } = useAccount();
   const { connect, connectors, isPending } = useConnect();
   const { disconnect } = useDisconnect();
@@ -15,7 +32,7 @@ export function ConnectWallet() {
         disabled={isPending}
         className="btn btn-primary"
       >
-        {isPending ? "Connecting..." : "Connect Wallet"}
+        {isPending ? "Connecting..." : "Connect own wallet"}
       </button>
     );
   }

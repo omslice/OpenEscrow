@@ -5,6 +5,14 @@
   text-align: left;
 }
 
+.app-loading {
+  max-width: 900px;
+  margin: 80px auto;
+  padding: 24px;
+  color: var(--text);
+  text-align: center;
+}
+
 .app-header {
   display: flex;
   justify-content: space-between;
@@ -282,6 +290,12 @@
   color: var(--text-h);
 }
 
+.btn-secondary {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
 .btn-ghost.small {
   font-size: 12px;
   padding: 4px 10px;
@@ -297,6 +311,28 @@
   display: flex;
   gap: 8px;
   align-items: center;
+}
+
+.account-entry {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.account-summary {
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+.account-email {
+  max-width: 230px;
+  overflow: hidden;
+  color: var(--text-h);
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chain-badge {
@@ -315,6 +351,105 @@
   background: var(--code-bg);
   border: 1px solid var(--border);
   color: var(--text-h);
+}
+
+.account-center {
+  background: var(--surface);
+}
+
+.account-center-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.account-center-heading h2,
+.account-center h3 {
+  margin: 0;
+}
+
+.account-center h3 {
+  margin-bottom: 8px;
+  color: var(--text-h);
+  font-size: 14px;
+}
+
+.account-status,
+.active-wallet {
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--success-bg);
+  color: var(--success);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.account-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
+  gap: 20px;
+}
+
+.wallet-list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+}
+
+.wallet-list li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.wallet-list li div,
+.wallet-list li strong,
+.wallet-list li span {
+  display: block;
+}
+
+.wallet-list li span {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+
+.wallet-list .active-wallet {
+  color: var(--success);
+  font-family: inherit;
+}
+
+.notification-preferences {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.notification-preferences label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 8px 0;
+  color: var(--text-h);
+}
+
+.notification-preferences input {
+  width: auto;
+  margin: 2px 0 0;
+}
+
+.notification-boundary {
+  margin: 12px 0 0;
+  color: var(--warning);
+  font-size: 12px;
 }
 
 .dashboard {
@@ -528,6 +663,15 @@
   }
 
   .how-it-works {
+    grid-template-columns: 1fr;
+  }
+
+  .account-entry,
+  .account-summary {
+    justify-content: flex-start;
+  }
+
+  .account-grid {
     grid-template-columns: 1fr;
   }
 }

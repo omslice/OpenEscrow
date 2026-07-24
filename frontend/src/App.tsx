@@ -7,6 +7,7 @@ import { useTrackedAgreements } from "./lib/useTrackedAgreements";
 import { useDiscoverAgreements } from "./lib/useDiscoverAgreements";
 import { TestFunds } from "./components/TestFunds";
 import { PublicIntro } from "./components/PublicIntro";
+import { AccountCenter } from "./components/AccountCenter";
 import { isJurisdictionCode, rememberJurisdiction } from "./lib/jurisdictions";
 import "./App.css";
 
@@ -48,6 +49,7 @@ function App() {
   return (
     <Layout>
       <PublicIntro onStart={startDemo} />
+      <AccountCenter />
 
       <nav className="tabs" id="demo-workspace">
         <button className={tab === "track" ? "tab active" : "tab"} onClick={() => setTab("track")}>
