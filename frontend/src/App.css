@@ -1,0 +1,251 @@
+.app-shell {
+  max-width: 780px;
+  margin: 0 auto;
+  padding: 24px 16px 64px;
+  text-align: left;
+}
+
+.app-header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  border-bottom: 1px solid #33333a;
+  padding-bottom: 16px;
+  margin-bottom: 24px;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 28px;
+}
+
+.tagline {
+  margin: 0;
+  font-size: 13px;
+  opacity: 0.7;
+}
+
+.app-footer {
+  margin-top: 40px;
+  font-size: 12px;
+  opacity: 0.65;
+  border-top: 1px solid #33333a;
+  padding-top: 16px;
+}
+
+.tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.tab {
+  padding: 8px 16px;
+  border-radius: 8px 8px 0 0;
+  border: 1px solid #33333a;
+  border-bottom: none;
+  background: transparent;
+  cursor: pointer;
+  opacity: 0.6;
+}
+
+.tab.active {
+  opacity: 1;
+  font-weight: 600;
+}
+
+.card {
+  border: 1px solid #33333a;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+  text-align: left;
+}
+
+.card h2 {
+  margin-top: 0;
+}
+
+.card label {
+  display: block;
+  margin-bottom: 14px;
+  font-size: 13px;
+  opacity: 0.85;
+}
+
+.card input,
+.card textarea {
+  display: block;
+  width: 100%;
+  margin-top: 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  border: 1px solid #4a4a52;
+  background: #1a1a1e;
+  color: inherit;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.hint {
+  font-size: 13px;
+  opacity: 0.7;
+  margin-top: 0;
+}
+
+.warning {
+  font-size: 12px;
+  color: #e0a030;
+  border-left: 3px solid #e0a030;
+  padding-left: 8px;
+}
+
+.btn {
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-primary {
+  background: #4a6dff;
+  color: white;
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: #4a4a52;
+  color: inherit;
+}
+
+.btn-ghost.small {
+  font-size: 12px;
+  padding: 4px 10px;
+  opacity: 0.6;
+}
+
+.btn-warning {
+  background: #e0a030;
+  color: #1a1a1e;
+}
+
+.connect-wallet {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.chain-badge {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #1e3a2a;
+  color: #6adf9b;
+}
+
+.address-badge {
+  font-size: 13px;
+  font-family: monospace;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #1a1a1e;
+  border: 1px solid #33333a;
+}
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 16px;
+}
+
+.dashboard-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 14px;
+  gap: 12px;
+}
+
+.dashboard-row .label {
+  opacity: 0.6;
+}
+
+.dashboard-row.highlight {
+  background: #24242c;
+  border-radius: 6px;
+  padding: 8px;
+  font-weight: 600;
+}
+
+.phase-badge {
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  background: #2a2a33;
+}
+
+.action-section {
+  border-top: 1px dashed #33333a;
+  padding-top: 16px;
+  margin-top: 16px;
+}
+
+.action-section h3 {
+  margin-top: 0;
+  margin-bottom: 6px;
+}
+
+.button-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+
+.radio-row {
+  display: flex;
+  gap: 16px;
+  margin-bottom: 12px;
+  font-size: 14px;
+}
+
+.radio-row label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tx-button {
+  margin-top: 8px;
+}
+
+.tx-error {
+  color: #ff6b6b;
+  font-size: 13px;
+}
+
+.tx-success {
+  color: #6adf9b;
+  font-size: 13px;
+}
+
+.evidence-list ul {
+  padding-left: 18px;
+  font-size: 12px;
+}
+
+.evidence-list code {
+  word-break: break-all;
+}
+
+.agreement-card {
+  border-width: 2px;
+}

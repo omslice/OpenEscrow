@@ -1,0 +1,1461 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "MAX_CLAIM_WINDOW_OFFSET",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MAX_PERIOD",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "MIN_PERIOD",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "TOKEN",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IERC20"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "acceptArbiterRole",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "agreements",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "landlord",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "arbiterAccepted",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "arbiterResigned",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "claimAmended",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "pendingArbiterConfirmed",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
+        "name": "tenant",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "phase",
+        "type": "uint8",
+        "internalType": "enum OpenEscrow.Phase"
+      },
+      {
+        "name": "closeReason",
+        "type": "uint8",
+        "internalType": "enum OpenEscrow.CloseReason"
+      },
+      {
+        "name": "arbiter",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "pendingArbiter",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "pendingArbiterProposer",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "agreedAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "depositAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "claimWindowStart",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "claimPeriod",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "responsePeriod",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "arbiterRulingPeriod",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "claimSubmissionDeadline",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "responseDeadline",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "disputeCreatedAt",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "arbiterRulingDeadline",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "claimedAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "tenantWithdrawable",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "landlordWithdrawable",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "locked",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "withdrawn",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "amendClaim",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "newAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "contentHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "uri",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "evidenceType",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "cancelArbiterReplacementProposal",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "cancelProposal",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "claimArbiterTimeout",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "confirmArbiterReplacement",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "createAgreement",
+    "inputs": [
+      {
+        "name": "tenant",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "arbiter",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "depositAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "claimWindowStart",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "claimPeriod",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "responsePeriod",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "arbiterRulingPeriod",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "declineArbiterRole",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "evidenceCount",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "finalizeNoResponse",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "getAgreement",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple",
+        "internalType": "struct OpenEscrow.Agreement",
+        "components": [
+          {
+            "name": "landlord",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "arbiterAccepted",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "arbiterResigned",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "claimAmended",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "pendingArbiterConfirmed",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "tenant",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "phase",
+            "type": "uint8",
+            "internalType": "enum OpenEscrow.Phase"
+          },
+          {
+            "name": "closeReason",
+            "type": "uint8",
+            "internalType": "enum OpenEscrow.CloseReason"
+          },
+          {
+            "name": "arbiter",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "pendingArbiter",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "pendingArbiterProposer",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
+            "name": "agreedAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "depositAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "claimWindowStart",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "claimPeriod",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "responsePeriod",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "arbiterRulingPeriod",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "claimSubmissionDeadline",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "responseDeadline",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "disputeCreatedAt",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "arbiterRulingDeadline",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "claimedAmount",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "tenantWithdrawable",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "landlordWithdrawable",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "locked",
+            "type": "uint256",
+            "internalType": "uint256"
+          },
+          {
+            "name": "withdrawn",
+            "type": "uint256",
+            "internalType": "uint256"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "getEvidence",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "tuple[]",
+        "internalType": "struct OpenEscrow.Evidence[]",
+        "components": [
+          {
+            "name": "contentHash",
+            "type": "bytes32",
+            "internalType": "bytes32"
+          },
+          {
+            "name": "uri",
+            "type": "string",
+            "internalType": "string"
+          },
+          {
+            "name": "evidenceType",
+            "type": "uint8",
+            "internalType": "uint8"
+          },
+          {
+            "name": "timestamp",
+            "type": "uint64",
+            "internalType": "uint64"
+          },
+          {
+            "name": "submittedBy",
+            "type": "address",
+            "internalType": "address"
+          }
+        ]
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "nextAgreementId",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "proposeArbiterReplacement",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "newArbiter",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "renominateArbiter",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "newArbiter",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "resignAsArbiter",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "resolveDispute",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "awardToLandlord",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "respondToClaim",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "acceptedAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "submitClaim",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "contentHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "uri",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "evidenceType",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "submitEvidence",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "contentHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "uri",
+        "type": "string",
+        "internalType": "string"
+      },
+      {
+        "name": "evidenceType",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "tenantAcceptAndFund",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "withdraw",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "withdrawNoClaim",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "AgreementFunded",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "AgreementProposed",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "landlord",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "tenant",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "arbiter",
+        "type": "address",
+        "indexed": false,
+        "internalType": "address"
+      },
+      {
+        "name": "agreedAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "claimWindowStart",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      },
+      {
+        "name": "claimPeriod",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      },
+      {
+        "name": "responsePeriod",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      },
+      {
+        "name": "arbiterRulingPeriod",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ArbiterAccepted",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "arbiter",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ArbiterDeclined",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "arbiter",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ArbiterRenominated",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "oldArbiter",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newArbiter",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ArbiterReplaced",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "oldArbiter",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newArbiter",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ArbiterReplacementCancelled",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ArbiterReplacementConfirmed",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "confirmer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ArbiterReplacementProposed",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "proposer",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "newArbiter",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ArbiterResigned",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "arbiter",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ArbiterTimedOut",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "awardedToTenant",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ClaimAmended",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "newAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "additionalReleasedToTenant",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ClaimResponded",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "acceptedAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "disputedAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ClaimRetracted",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ClaimSubmitted",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "unclaimedReleased",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "DisputeCreated",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "disputedAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "arbiterRulingDeadline",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "DisputeResolved",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "awardedToLandlord",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "awardedToTenant",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "EvidenceSubmitted",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "index",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "submittedBy",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "contentHash",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "evidenceType",
+        "type": "uint8",
+        "indexed": false,
+        "internalType": "uint8"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "NoClaimWithdrawal",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ProposalCancelled",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "ResponseTimedOut",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "disputedAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "Withdrawn",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "party",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "AgreementDoesNotExist",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "AmendmentMustNotIncrease",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ArbiterHasResigned",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ArbiterRulingWindowClosed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ArbiterRulingWindowStillOpen",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "CannotConfirmOwnProposal",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ClaimAlreadyAmended",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ClaimWindowClosed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ClaimWindowNotOpen",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ClaimWindowStillOpen",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "DepositMismatch",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidAward",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidClaimAmount",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidClaimWindowStart",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidEvidence",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidPeriod",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidPhase",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidResponseAmount",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidRoleAssignment",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NoReplacementPending",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotAuthorized",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NothingToWithdraw",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ReentrancyGuardReentrantCall",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ReplacementAlreadyConfirmed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ResponseWindowClosed",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ResponseWindowStillOpen",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "SafeERC20FailedOperation",
+    "inputs": [
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      }
+    ]
+  },
+  {
+    "type": "error",
+    "name": "ZeroAddress",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroDeposit",
+    "inputs": []
+  }
+]

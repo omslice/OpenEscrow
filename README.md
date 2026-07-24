@@ -4,6 +4,23 @@
 
 ---
 
+### MVP status (Base Sepolia testnet)
+
+The rest of this document describes the long-term project vision. The current, narrower
+**contract-only MVP** is implemented and deployed to Base Sepolia:
+
+- Spec: [`docs/mvp-spec.md`](docs/mvp-spec.md) (with [`docs/adr/`](docs/adr/) and [`docs/open-questions.md`](docs/open-questions.md))
+- Contract: [`contracts/OpenEscrow.sol`](contracts/OpenEscrow.sol), tested via `forge test` (127 tests: unit, auth, deadline-boundary, fuzz, stateful invariant)
+- Deployed on Base Sepolia (chain id 84532): `OpenEscrow` at `0xFe0270679261cFC546822Cc453C5aD73f29a721C`, test USDC at `0xE129b23BD89904D363ba226eE52deC74185D7789`
+- Minimal demo frontend: [`frontend/`](frontend/README.md)
+
+This MVP intentionally narrows (and in one place corrects) the vision below: single pinned token,
+single mutually-accepted arbiter per agreement, no yield/fiat ramps/DAO/multi-chain, and disputes
+that block release rather than just get logged. See the spec's decision log for what's approved vs.
+still open.
+
+---
+
 ### A Housing Blockchain Solution for Social Good
 
 **OpenEscrow** is a free, open source app for transparent and fair management of the rental security deposit, that builds trust and unlocks financial opportunity between tenants and landlords by using smart contracts to serve as a neutral 3rd party escrow agent.
