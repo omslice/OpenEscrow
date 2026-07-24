@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import { MockUSDCABI, OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, USDC_ADDRESS } from "../contracts/config";
 import { formatUSDC } from "../lib/format";
@@ -17,7 +18,15 @@ export function TenantFundAction({ id, agreement }: { id: bigint; agreement: Agr
   });
 
   const { writeContract: approve, data: approveHash, isPending: approving } = useWriteContract();
-  const { isLoading: approveMining } = useWaitForTransactionReceipt({ hash: approveHash });
+  const { isLoading: approveMining, isSuccess: approveConfirmed } = useWaitForTransactionReceipt({
+    hash: approveHash,
+  });
+
+  // Refetch once the approve tx is actually mined, not merely submitted - the
+  // periodic refetchInterval above is only a backstop in case this misses a beat.
+  useEffect(() => {
+    if (approveConfirmed) refetchAllowance();
+  }, [approveConfirmed, refetchAllowance]);
 
   if (agreement.phase !== Phase.ReadyToFund) return null;
   if (!isTenant) return null;
@@ -38,15 +47,12 @@ export function TenantFundAction({ id, agreement }: { id: bigint; agreement: Agr
           className="btn btn-primary"
           disabled={approving || approveMining}
           onClick={() =>
-            approve(
-              {
-                address: USDC_ADDRESS,
-                abi: MockUSDCABI,
-                functionName: "approve",
-                args: [OPEN_ESCROW_ADDRESS, needed],
-              },
-              { onSuccess: () => setTimeout(() => refetchAllowance(), 1500) },
-            )
+            approve({
+              address: USDC_ADDRESS,
+              abi: MockUSDCABI,
+              functionName: "approve",
+              args: [OPEN_ESCROW_ADDRESS, needed],
+            })
           }
         >
           {approving ? "Confirm in wallet..." : approveMining ? "Mining..." : `1. Approve ${formatUSDC(needed)} USDC`}
