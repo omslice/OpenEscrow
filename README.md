@@ -6,6 +6,8 @@
 
 OpenEscrow explores a simple product hypothesis: a rental security deposit should remain protected by default, while a landlord who seeks a deduction must submit a timely claim that the tenant can accept or dispute.
 
+**Public testnet demo:** [openescrow-demo.omrigross.chatgpt.site](https://openescrow-demo.omrigross.chatgpt.site)
+
 The project is an open-source public-interest prototype. It is not a law firm, bank, licensed escrow provider, production custody service, or substitute for jurisdiction-specific legal advice.
 
 ## Current status
@@ -31,6 +33,8 @@ The current source includes:
 - [`docs/mvp-spec.md`](docs/mvp-spec.md) — normative MVP behavior
 - [`docs/open-questions.md`](docs/open-questions.md) — legal and product questions blocking real-money use
 - [`docs/security-review.md`](docs/security-review.md) — internal review record and limitations
+- [`docs/usability-test-plan.md`](docs/usability-test-plan.md) — moderated research script and success gate
+- [`docs/pilot-readiness-brief.md`](docs/pilot-readiness-brief.md) — legal, partner, privacy, and audit handoff
 
 ### Verification snapshot
 
@@ -121,4 +125,3 @@ See [`ROADMAP.md`](ROADMAP.md) for release gates.
 Issues and pull requests are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before proposing changes.
 
 OpenEscrow is licensed under the [MIT License](LICENSE).
-

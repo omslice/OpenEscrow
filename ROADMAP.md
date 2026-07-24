@@ -4,7 +4,7 @@ This roadmap is organized around evidence and release gates rather than speculat
 
 ## Gate 1 — Testnet technical MVP
 
-**Status: implemented; hardening in progress**
+**Status: implemented; awaiting moderated external evaluation**
 
 - [x] Normative claim/dispute state machine
 - [x] Shared escrow contract with one pinned token
@@ -14,9 +14,9 @@ This roadmap is organized around evidence and release gates rather than speculat
 - [x] Unit, fuzz, deadline-boundary, authorization, and invariant tests
 - [x] Base Sepolia deployment and source verification
 - [x] Minimal frontend and full lifecycle demonstration
-- [ ] Independent implementation review
-- [ ] Continuous integration for contracts and frontend
-- [ ] Public hosted testnet demo
+- [x] Second implementation review and documented addendum
+- [x] Continuous integration for contracts and frontend
+- [x] Public hosted testnet demo
 - [ ] Five moderated usability sessions
 
 **Exit criterion:** an outside evaluator can complete the no-claim, accepted-claim, and disputed-claim scenarios without developer intervention, and all automated checks remain green.
@@ -77,4 +77,3 @@ These features are not part of the viable MVP and should not be built until the 
 - Decentralized arbitration
 - Protocol fees
 - Upgradeability
-

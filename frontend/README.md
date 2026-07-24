@@ -4,6 +4,8 @@ Minimal React + wagmi/viem frontend implementing the user journey in `docs/mvp-s
 directly to the deployed contracts on Base Sepolia - no backend server, no persistent indexer
 (agreement discovery is a client-side event-log scan, see below).
 
+Public demo: https://openescrow-demo.omrigross.chatgpt.site
+
 ## Deployed addresses (Base Sepolia, chain id 84532)
 
 - `OpenEscrow`: `0x4365f7B9632d083F1a03D57AE56a0e6d239ef62F` (deployed 2026-07-24 after the

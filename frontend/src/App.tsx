@@ -6,6 +6,7 @@ import { AgreementCard } from "./components/AgreementCard";
 import { useTrackedAgreements } from "./lib/useTrackedAgreements";
 import { useDiscoverAgreements } from "./lib/useDiscoverAgreements";
 import { TestFunds } from "./components/TestFunds";
+import { PublicIntro } from "./components/PublicIntro";
 import "./App.css";
 
 type Tab = "create" | "track";
@@ -17,6 +18,12 @@ function App() {
   const { discover, isScanning, scanError } = useDiscoverAgreements();
   const [manualId, setManualId] = useState("");
   const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const startDemo = () => {
+    setTab("create");
+    window.requestAnimationFrame(() => {
+      document.getElementById("demo-workspace")?.scrollIntoView({ behavior: "smooth" });
+    });
+  };
 
   // A landlord's shared link (?id=X) should land directly on that agreement.
   useEffect(() => {
@@ -34,7 +41,9 @@ function App() {
 
   return (
     <Layout>
-      <nav className="tabs">
+      <PublicIntro onStart={startDemo} />
+
+      <nav className="tabs" id="demo-workspace">
         <button className={tab === "track" ? "tab active" : "tab"} onClick={() => setTab("track")}>
           My agreements
         </button>
