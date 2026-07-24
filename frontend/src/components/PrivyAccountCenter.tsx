@@ -100,13 +100,21 @@ export function PrivyAccountCenter() {
                       <strong>{isEmbedded ? "OpenEscrow wallet" : "Connected wallet"}</strong>
                       <span title={wallet.address}>{shortAddr(wallet.address)}</span>
                     </div>
-                    {isActive ? (
-                      <span className="active-wallet">Active</span>
-                    ) : (
-                      <button className="btn btn-ghost" onClick={() => setActiveWallet(wallet)}>
-                        Use wallet
+                    <div className="wallet-actions">
+                      {isActive ? (
+                        <span className="active-wallet">Active</span>
+                      ) : (
+                        <button className="btn btn-ghost" onClick={() => setActiveWallet(wallet)}>
+                          Use wallet
+                        </button>
+                      )}
+                      <button
+                        className="btn btn-ghost"
+                        onClick={() => void navigator.clipboard.writeText(wallet.address)}
+                      >
+                        Copy address
                       </button>
-                    )}
+                    </div>
                   </li>
                 );
               })}
@@ -118,6 +126,10 @@ export function PrivyAccountCenter() {
           >
             Connect another EVM wallet
           </button>
+          <p className="hint wallet-support-note">
+            Rabby is available through installed-wallet detection. If it is not installed in this
+            browser, choose WalletConnect and search for Rabby.
+          </p>
         </div>
       </div>
 

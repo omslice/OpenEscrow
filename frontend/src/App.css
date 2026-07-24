@@ -74,6 +74,12 @@
   color: var(--text-h);
 }
 
+.test-funds small {
+  display: block;
+  margin-top: 3px;
+  color: var(--text);
+}
+
 .test-funds .tx-button {
   margin: 0;
 }
@@ -296,6 +302,11 @@
   color: var(--accent);
 }
 
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .btn-ghost.small {
   font-size: 12px;
   padding: 4px 10px;
@@ -427,6 +438,22 @@
   font-family: inherit;
 }
 
+.wallet-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.wallet-actions .btn {
+  padding: 4px 8px;
+  font-size: 11px;
+}
+
+.wallet-support-note {
+  margin: 8px 0 0;
+}
+
 .notification-preferences {
   margin-top: 20px;
   padding-top: 16px;
@@ -530,6 +557,61 @@
   background: var(--warning-bg);
   color: var(--text);
   font-size: 12px;
+}
+
+.participant-summary {
+  margin: 16px 0;
+  padding: 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--accent-bg);
+}
+
+.participant-summary span,
+.participant-summary strong,
+.participant-summary small {
+  display: block;
+}
+
+.participant-summary span,
+.participant-summary small,
+.field-help {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.participant-summary strong {
+  margin: 3px 0;
+  color: var(--text-h);
+}
+
+.participant-resolution {
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.invite-actions {
+  display: flex;
+  gap: 8px;
+  margin: -2px 0 14px;
+  flex-wrap: wrap;
+}
+
+.participant-resolution summary {
+  color: var(--text-h);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.participant-resolution .hint {
+  margin-top: 10px;
+}
+
+.field-help {
+  margin: -8px 0 14px;
 }
 
 .dashboard-row.highlight {

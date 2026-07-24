@@ -23,8 +23,10 @@ npm install
 npm run dev
 ```
 
-Requires an injected wallet (MetaMask etc.) connected to Base Sepolia. Once connected, use the
-in-app **Get 1,000 test USDC** button. The mock token is freely mintable and has no value.
+Requires an EVM wallet connected to Base Sepolia. Once connected, use the in-app
+**Get 1,000 test USDC — gas covered** button. With Privy gas sponsorship enabled for Base Sepolia,
+the app sponsors this transaction so a new embedded-wallet user does not need test ETH. The mock
+token is freely mintable and has no value.
 
 ### Optional account and embedded-wallet setup
 
@@ -36,9 +38,12 @@ cp .env.example .env.local
 ```
 
 Google and wallet login must also be enabled in the Privy dashboard, with the local and production
-OpenEscrow origins added to the allowed-origin list. When the variable is absent, the existing
-injected-wallet connection remains active. See `../docs/account-notifications-mvp.md` for the
-implemented boundary and the server-side work still required before email delivery is active.
+OpenEscrow origins added to the allowed-origin list. Enable native gas sponsorship for Base Sepolia
+before using the sponsored test-USDC claim. The wallet picker detects installed EVM extensions
+(including Rabby) and includes the searchable WalletConnect registry as a fallback. When the
+variable is absent, the existing injected-wallet connection remains active. See
+`../docs/account-notifications-mvp.md` for the implemented boundary and the server-side work still
+required before email delivery is active.
 
 Run all frontend checks with:
 
@@ -72,5 +77,11 @@ agreement link and is stored in the browser for display on the dashboard; it is 
 validated on-chain and does not change contract behavior. The UI labels it as off-chain research
 context because none of the listed jurisdiction profiles have completed legal review.
 
-Not implemented: any production-grade wallet UX (WalletConnect, mobile, etc.) - this is a testnet
-demo, not a production app. See `../docs/open-questions.md` for the non-UI (legal/product) gaps.
+The proposal form is email-first: the signed-in identity is the landlord, with tenant and arbiter
+emails collected as the participant identifiers. Until the server-side invitation registry is
+connected, their mapped wallet addresses must still be supplied in the clearly labeled temporary
+resolution section before the onchain agreement can be created.
+
+Not implemented: automatic invitation delivery and wallet resolution, a production indexer, or a
+fiat-to-USDC security-deposit onramp. See `../docs/open-questions.md` for the non-UI
+(legal/product) gaps.

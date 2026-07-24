@@ -19,6 +19,12 @@ export function AppProviders({ children }: { children: ReactNode }) {
           accentColor: "#275D38",
           showWalletLoginFirst: false,
           walletChainType: "ethereum-only",
+          walletList: [
+            "detected_ethereum_wallets",
+            "metamask",
+            "coinbase_wallet",
+            "wallet_connect",
+          ],
         },
         embeddedWallets: {
           ethereum: {

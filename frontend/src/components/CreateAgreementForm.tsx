@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { usePrivy } from "@privy-io/react-auth";
 import { decodeEventLog, isAddress } from "viem";
 import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import {
@@ -15,10 +16,12 @@ import {
   rememberJurisdiction,
   type JurisdictionCode,
 } from "../lib/jurisdictions";
+import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import { useTrackedAgreements } from "../lib/useTrackedAgreements";
 
 const DAY = 24 * 60 * 60;
 const MAX_PERIOD_DAYS = MAX_PERIOD_SECONDS / DAY;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function validatePeriodDays(days: string, label: string): string | null {
   const n = Number(days);
@@ -29,17 +32,34 @@ function validatePeriodDays(days: string, label: string): string | null {
   return null;
 }
 
-export function CreateAgreementForm() {
+function openInvite(email: string, role: "tenant" | "arbiter") {
+  const inviteUrl = `${window.location.origin}/?invite=${role}`;
+  const subject = "You have been invited to OpenEscrow";
+  const body = [
+    `You have been invited to participate in an OpenEscrow security-deposit agreement as the ${role}.`,
+    "",
+    `Create or sign in to your OpenEscrow account here: ${inviteUrl}`,
+    "",
+    "OpenEscrow will create an EVM wallet for you when you sign up with Google, or you can connect your own wallet. For this MVP, copy that wallet address from your account and send it back to the landlord so it can be mapped to this agreement.",
+    "",
+    "This is a Base Sepolia testnet demonstration. Do not send real funds.",
+  ].join("\n");
+  window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
   const { address, isConnected } = useAccount();
   const { addId } = useTrackedAgreements();
 
-  const [tenant, setTenant] = useState("");
-  const [arbiter, setArbiter] = useState("");
+  const [tenantEmail, setTenantEmail] = useState("");
+  const [arbiterEmail, setArbiterEmail] = useState("");
+  const [tenantWallet, setTenantWallet] = useState("");
+  const [arbiterWallet, setArbiterWallet] = useState("");
   const [deposit, setDeposit] = useState("100");
   const [claimWindowStart, setClaimWindowStart] = useState("");
   const [claimDays, setClaimDays] = useState("30");
-  const [responseDays, setResponseDays] = useState("2");
-  const [arbiterDays, setArbiterDays] = useState("3");
+  const [responseDays, setResponseDays] = useState("7");
+  const [arbiterDays, setArbiterDays] = useState("7");
   const [jurisdiction, setJurisdiction] = useState<JurisdictionCode>("testnet-generic");
   const [createdId, setCreatedId] = useState<bigint | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
@@ -78,13 +98,35 @@ export function CreateAgreementForm() {
     setFormError(null);
     setCreatedId(null);
 
-    if (!tenant || !arbiter) return setFormError("Tenant and arbiter addresses are required.");
-    if (!isAddress(tenant)) return setFormError("Tenant address is not a valid Ethereum address.");
-    if (!isAddress(arbiter)) return setFormError("Arbiter address is not a valid Ethereum address.");
-    if (tenant.toLowerCase() === arbiter.toLowerCase()) {
+    if (ACCOUNT_AUTH_ENABLED && !landlordEmail) {
+      return setFormError("The landlord must link a verified email before proposing an agreement.");
+    }
+    if (!EMAIL_PATTERN.test(tenantEmail)) return setFormError("Enter a valid tenant email.");
+    if (!EMAIL_PATTERN.test(arbiterEmail)) return setFormError("Enter a valid arbiter email.");
+    if (tenantEmail.toLowerCase() === arbiterEmail.toLowerCase()) {
+      return setFormError("Tenant and arbiter must use different emails.");
+    }
+    if (
+      tenantEmail.toLowerCase() === landlordEmail.toLowerCase() ||
+      arbiterEmail.toLowerCase() === landlordEmail.toLowerCase()
+    ) {
+      return setFormError("Landlord, tenant, and arbiter must use different emails.");
+    }
+    if (!tenantWallet || !arbiterWallet) {
+      return setFormError(
+        "Both participant wallets must be resolved before this draft can be finalized onchain.",
+      );
+    }
+    if (!isAddress(tenantWallet)) return setFormError("The mapped tenant wallet is not valid.");
+    if (!isAddress(arbiterWallet)) return setFormError("The mapped arbiter wallet is not valid.");
+    if (tenantWallet.toLowerCase() === arbiterWallet.toLowerCase()) {
       return setFormError("Tenant and arbiter must be different addresses.");
     }
-    if (address && (tenant.toLowerCase() === address.toLowerCase() || arbiter.toLowerCase() === address.toLowerCase())) {
+    if (
+      address &&
+      (tenantWallet.toLowerCase() === address.toLowerCase() ||
+        arbiterWallet.toLowerCase() === address.toLowerCase())
+    ) {
       return setFormError("Tenant and arbiter must both be different from your connected (landlord) address.");
     }
     if (!claimWindowStart) return setFormError("Claim window start date is required.");
@@ -123,8 +165,8 @@ export function CreateAgreementForm() {
       abi: OpenEscrowABI,
       functionName: "createAgreement",
       args: [
-        tenant as `0x${string}`,
-        arbiter as `0x${string}`,
+        tenantWallet as `0x${string}`,
+        arbiterWallet as `0x${string}`,
         depositRaw,
         BigInt(startSec),
         claimPeriod,
@@ -138,10 +180,15 @@ export function CreateAgreementForm() {
     <form className="card" onSubmit={submit}>
       <h2>Propose a new agreement</h2>
       <p className="hint">
-        You become the landlord. The tenant funds nothing until the arbiter you name below has
-        explicitly accepted the role (spec decision 4) - no on-chain negotiation happens after this,
-        so make sure these terms are agreed off-chain first.
+        You are the landlord. Invite the tenant and arbiter by email; each email will be matched to
+        the wallet created for their OpenEscrow account, or to a wallet they connect themselves.
       </p>
+
+      <div className="participant-summary">
+        <span>Landlord email</span>
+        <strong>{landlordEmail || "Link Google in your account settings first"}</strong>
+        <small>The active wallet is used as the onchain landlord.</small>
+      </div>
 
       <label>
         Jurisdiction context
@@ -163,25 +210,87 @@ export function CreateAgreementForm() {
       </p>
 
       <label>
-        Tenant address
-        <input value={tenant} onChange={(e) => setTenant(e.target.value)} placeholder="0x..." />
+        Tenant email
+        <input
+          value={tenantEmail}
+          onChange={(e) => setTenantEmail(e.target.value)}
+          placeholder="tenant@example.com"
+          type="email"
+          autoComplete="email"
+        />
       </label>
       <label>
-        Arbiter address
-        <input value={arbiter} onChange={(e) => setArbiter(e.target.value)} placeholder="0x..." />
+        Arbiter email
+        <input
+          value={arbiterEmail}
+          onChange={(e) => setArbiterEmail(e.target.value)}
+          placeholder="arbiter@example.com"
+          type="email"
+          autoComplete="email"
+        />
       </label>
+      <div className="invite-actions">
+        <button
+          className="btn btn-secondary"
+          type="button"
+          disabled={!EMAIL_PATTERN.test(tenantEmail)}
+          onClick={() => openInvite(tenantEmail, "tenant")}
+        >
+          Email tenant setup invite
+        </button>
+        <button
+          className="btn btn-secondary"
+          type="button"
+          disabled={!EMAIL_PATTERN.test(arbiterEmail)}
+          onClick={() => openInvite(arbiterEmail, "arbiter")}
+        >
+          Email arbiter setup invite
+        </button>
+      </div>
+      <p className="field-help">
+        These buttons open a prewritten invitation in your email app. Automatic sending and wallet
+        matching will replace this manual bridge once the server-side invitation service is active.
+      </p>
+      <details className="participant-resolution">
+        <summary>Participant wallet resolution — temporary MVP step</summary>
+        <p className="hint">
+          Automatic email invitations and account-to-wallet matching require the invitation
+          service now being built. Until it is connected, enter the wallets supplied by the
+          tenant and arbiter to finalize this draft onchain.
+        </p>
+        <label>
+          Tenant wallet mapped to {tenantEmail || "tenant email"}
+          <input
+            value={tenantWallet}
+            onChange={(e) => setTenantWallet(e.target.value)}
+            placeholder="0x..."
+          />
+        </label>
+        <label>
+          Arbiter wallet mapped to {arbiterEmail || "arbiter email"}
+          <input
+            value={arbiterWallet}
+            onChange={(e) => setArbiterWallet(e.target.value)}
+            placeholder="0x..."
+          />
+        </label>
+      </details>
       <label>
         Deposit amount (USDC)
         <input value={deposit} onChange={(e) => setDeposit(e.target.value)} type="number" min="0" step="0.000001" />
       </label>
       <label>
-        Claim window start
+        Expected lease expiration / claim window start
         <input
           value={claimWindowStart}
           onChange={(e) => setClaimWindowStart(e.target.value)}
           type="datetime-local"
         />
       </label>
+      <p className="field-help">
+        For this demo, the claim window opens when the lease is expected to expire. Actual legal
+        deadlines may depend on move-out, possession, and the selected jurisdiction.
+      </p>
       <label>
         Claim period (days the landlord has to submit a claim once the window opens)
         <input value={claimDays} onChange={(e) => setClaimDays(e.target.value)} type="number" min="1" />
@@ -196,7 +305,7 @@ export function CreateAgreementForm() {
       </label>
 
       <button className="btn btn-primary" type="submit" disabled={!isConnected || isPending || isMining}>
-        {isPending ? "Confirm in wallet..." : isMining ? "Mining..." : "Create agreement"}
+        {isPending ? "Confirm in wallet..." : isMining ? "Mining..." : "Finalize agreement onchain"}
       </button>
 
       {formError && <p className="tx-error">{formError}</p>}
@@ -214,5 +323,19 @@ export function CreateAgreementForm() {
         </div>
       )}
     </form>
+  );
+}
+
+function PrivyCreateAgreementForm() {
+  const { user } = usePrivy();
+  const landlordEmail = user?.google?.email ?? user?.email?.address ?? "";
+  return <AgreementForm landlordEmail={landlordEmail} />;
+}
+
+export function CreateAgreementForm() {
+  return ACCOUNT_AUTH_ENABLED ? (
+    <PrivyCreateAgreementForm />
+  ) : (
+    <AgreementForm landlordEmail="" />
   );
 }
