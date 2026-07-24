@@ -234,6 +234,7 @@ contract OpenEscrow is ReentrancyGuard {
         }
 
         if (a.pendingArbiter != address(0) && msg.sender == a.pendingArbiter && a.pendingArbiterConfirmed) {
+            _requireReplaceablePhase(a.phase);
             address old = a.arbiter;
             a.arbiter = a.pendingArbiter;
             a.arbiterAccepted = true;
@@ -267,6 +268,13 @@ contract OpenEscrow is ReentrancyGuard {
         a.arbiterAccepted = false;
         a.arbiterResigned = false;
         a.phase = Phase.Proposed;
+        // A pending replacement proposal from a prior ReadyToFund period is now moot -
+        // the phase guards in confirmArbiterReplacement/acceptArbiterRole already make it
+        // unusable, but clearing it here keeps a stale "pending replacement" from lingering
+        // in reads (e.g. the frontend) for a proposal that can never actually complete.
+        a.pendingArbiter = address(0);
+        a.pendingArbiterProposer = address(0);
+        a.pendingArbiterConfirmed = false;
         emit ArbiterRenominated(id, old, newArbiter);
     }
 
@@ -481,6 +489,7 @@ contract OpenEscrow is ReentrancyGuard {
 
     function confirmArbiterReplacement(uint256 id) external {
         Agreement storage a = _agreement(id);
+        _requireReplaceablePhase(a.phase);
         if (a.pendingArbiter == address(0)) revert NoReplacementPending();
         if (msg.sender != a.landlord && msg.sender != a.tenant) revert NotAuthorized();
         if (msg.sender == a.pendingArbiterProposer) revert CannotConfirmOwnProposal();

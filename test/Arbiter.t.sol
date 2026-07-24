@@ -324,4 +324,84 @@ contract ArbiterTest is Base {
         vm.expectRevert(OpenEscrow.NotAuthorized.selector);
         escrow.resignAsArbiter(id);
     }
+
+    // ---- regression: replacement steps must re-validate phase, not just at propose time ----
+    // A prior version only checked _requireReplaceablePhase in proposeArbiterReplacement.
+    // Since replacement is a multi-step process (propose -> confirm -> accept), the phase
+    // could legitimately change in between, and confirm/accept had no guard of their own.
+
+    /// @notice If the underlying dispute resolves before the confirmed replacement is
+    ///         accepted, the acceptance must not be allowed to mutate a Closed agreement.
+    function test_replacement_acceptRevertsIfAgreementClosedBeforeAcceptance() public {
+        uint256 id = _disputed(DEPOSIT / 2, 0);
+
+        vm.prank(landlord);
+        escrow.proposeArbiterReplacement(id, newArbiter);
+        vm.prank(tenant);
+        escrow.confirmArbiterReplacement(id);
+
+        // The dispute resolves (by the *old* arbiter) before newArbiter ever accepts.
+        vm.prank(arbiter);
+        escrow.resolveDispute(id, 0);
+        assertEq(uint8(_phase(id)), uint8(OpenEscrow.Phase.Closed));
+
+        address arbiterBefore = escrow.getAgreement(id).arbiter;
+        vm.prank(newArbiter);
+        vm.expectRevert(OpenEscrow.InvalidPhase.selector);
+        escrow.acceptArbiterRole(id);
+
+        // Confirms the agreement's arbiter is frozen once Closed - no stale acceptance
+        // can mutate it or re-emit ArbiterReplaced after the fact.
+        assertEq(escrow.getAgreement(id).arbiter, arbiterBefore);
+    }
+
+    /// @notice Same root cause, confirm-side: confirming after closure must also revert.
+    function test_replacement_confirmRevertsIfAgreementClosedBeforeConfirmation() public {
+        uint256 id = _disputed(DEPOSIT / 2, 0);
+
+        vm.prank(landlord);
+        escrow.proposeArbiterReplacement(id, newArbiter);
+
+        vm.prank(arbiter);
+        escrow.resolveDispute(id, 0);
+        assertEq(uint8(_phase(id)), uint8(OpenEscrow.Phase.Closed));
+
+        vm.prank(tenant);
+        vm.expectRevert(OpenEscrow.InvalidPhase.selector);
+        escrow.confirmArbiterReplacement(id);
+    }
+
+    /// @notice A confirmed-but-not-yet-accepted replacement must not let the candidate
+    ///         hijack the arbiter slot after the landlord has since renominated someone
+    ///         else - renominateArbiter must invalidate the stale pending proposal.
+    function test_renominateArbiter_invalidatesStaleConfirmedReplacement() public {
+        uint256 id = _propose();
+        _acceptArbiter(id);
+
+        vm.prank(landlord);
+        escrow.proposeArbiterReplacement(id, newArbiter);
+        vm.prank(tenant);
+        escrow.confirmArbiterReplacement(id);
+        assertTrue(escrow.getAgreement(id).pendingArbiterConfirmed);
+
+        address freshArbiter = makeAddr("freshArbiter");
+        vm.prank(landlord);
+        escrow.renominateArbiter(id, freshArbiter);
+
+        // The stale confirmed candidate can no longer accept and hijack the slot.
+        vm.prank(newArbiter);
+        vm.expectRevert(OpenEscrow.NotAuthorized.selector);
+        escrow.acceptArbiterRole(id);
+
+        OpenEscrow.Agreement memory a = escrow.getAgreement(id);
+        assertEq(a.arbiter, freshArbiter);
+        assertFalse(a.arbiterAccepted);
+        assertEq(a.pendingArbiter, address(0));
+        assertEq(uint8(a.phase), uint8(OpenEscrow.Phase.Proposed));
+
+        // The agreement is still perfectly usable - the intended arbiter can accept normally.
+        vm.prank(freshArbiter);
+        escrow.acceptArbiterRole(id);
+        assertEq(uint8(_phase(id)), uint8(OpenEscrow.Phase.ReadyToFund));
+    }
 }
