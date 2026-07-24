@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { decodeEventLog } from "viem";
+import { decodeEventLog, isAddress } from "viem";
 import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import {
   MAX_CLAIM_WINDOW_OFFSET_SECONDS,
@@ -24,7 +24,7 @@ function validatePeriodDays(days: string, label: string): string | null {
 }
 
 export function CreateAgreementForm() {
-  const { isConnected } = useAccount();
+  const { address, isConnected } = useAccount();
   const { addId } = useTrackedAgreements();
 
   const [tenant, setTenant] = useState("");
@@ -64,6 +64,14 @@ export function CreateAgreementForm() {
     setCreatedId(null);
 
     if (!tenant || !arbiter) return setFormError("Tenant and arbiter addresses are required.");
+    if (!isAddress(tenant)) return setFormError("Tenant address is not a valid Ethereum address.");
+    if (!isAddress(arbiter)) return setFormError("Arbiter address is not a valid Ethereum address.");
+    if (tenant.toLowerCase() === arbiter.toLowerCase()) {
+      return setFormError("Tenant and arbiter must be different addresses.");
+    }
+    if (address && (tenant.toLowerCase() === address.toLowerCase() || arbiter.toLowerCase() === address.toLowerCase())) {
+      return setFormError("Tenant and arbiter must both be different from your connected (landlord) address.");
+    }
     if (!claimWindowStart) return setFormError("Claim window start date is required.");
 
     let depositRaw: bigint;

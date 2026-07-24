@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { isAddress } from "viem";
 import { useAccount } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
 import { shortAddr } from "../lib/format";
@@ -58,7 +59,11 @@ export function ArbiterReplacementSection({ id, agreement }: { id: bigint; agree
             functionName="proposeArbiterReplacement"
             args={[id, candidate]}
             label="Propose replacement"
-            disabled={candidate.length !== 42}
+            disabled={
+              !isAddress(candidate) ||
+              candidate.toLowerCase() === agreement.landlord.toLowerCase() ||
+              candidate.toLowerCase() === agreement.tenant.toLowerCase()
+            }
           />
         </>
       )}
