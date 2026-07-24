@@ -6,10 +6,9 @@ directly to the deployed contracts on Base Sepolia - no backend server, no persi
 
 ## Deployed addresses (Base Sepolia, chain id 84532)
 
-- `OpenEscrow`: `0x976A28fc54323de8FEBE757FfFbdd6fCd5092894` (redeployed 2026-07-24 after the fix in
-  `../docs/security-review.md`; the prior address `0xFe02...a721C` ran pre-fix bytecode and is retired -
-  any agreements created there, including the original smoke-test agreement, are no longer reachable
-  through this frontend)
+- `OpenEscrow`: `0x4365f7B9632d083F1a03D57AE56a0e6d239ef62F` (deployed 2026-07-24 after the
+  independent review addendum in `../docs/security-review.md`; earlier addresses run superseded
+  bytecode and are intentionally retired)
 - `MockUSDC` (test token, freely mintable): `0xE129b23BD89904D363ba226eE52deC74185D7789` (unchanged)
 
 See `../script/DeployOpenEscrow.s.sol` and `../script/DeployMockUSDC.s.sol` if you need to redeploy;
@@ -22,19 +21,24 @@ npm install
 npm run dev
 ```
 
-Requires an injected wallet (MetaMask etc.) connected to Base Sepolia, and some test USDC. Mint some
-to your address with:
+Requires an injected wallet (MetaMask etc.) connected to Base Sepolia. Once connected, use the
+in-app **Get 1,000 test USDC** button. The mock token is freely mintable and has no value.
+
+Run all frontend checks with:
 
 ```bash
-cast send 0xE129b23BD89904D363ba226eE52deC74185D7789 "mint(address,uint256)" <your address> 1000000000 \
-  --rpc-url https://sepolia.base.org --private-key <a funded Base Sepolia key>
+npm run check
 ```
 
-(1000000000 = 1000 USDC, since the token uses 6 decimals.)
+For a live three-wallet test after configuring `.env` and `.env.testroles`:
+
+```bash
+npm run e2e:live
+```
 
 ## What's here vs. what isn't
 
-Implemented: propose -> arbiter accept/decline -> tenant approve+fund -> claim submit/amend ->
+Implemented: propose -> arbiter accept/decline/renominate -> tenant approve+fund -> claim submit/amend ->
 tenant respond (accept/partial/dispute) -> arbiter resolve -> permissionless timeout triggers ->
 pull-based withdraw, mutual-consent arbiter replacement, plus a live deadline countdown and an
 evidence trail view.

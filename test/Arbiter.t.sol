@@ -256,6 +256,36 @@ contract ArbiterTest is Base {
         escrow.cancelArbiterReplacementProposal(id);
     }
 
+    function test_replacement_pendingStateClearedWhenAgreementCloses() public {
+        uint256 id = _readyAgreement();
+        vm.prank(landlord);
+        escrow.proposeArbiterReplacement(id, newArbiter);
+
+        _submitClaim(id, 200e6);
+        vm.prank(tenant);
+        escrow.respondToClaim(id, 200e6);
+
+        OpenEscrow.Agreement memory a = escrow.getAgreement(id);
+        assertEq(uint8(a.phase), uint8(OpenEscrow.Phase.Closed));
+        assertEq(a.pendingArbiter, address(0));
+        assertEq(a.pendingArbiterProposer, address(0));
+        assertFalse(a.pendingArbiterConfirmed);
+    }
+
+    function test_replacement_cancelRevertsAfterAgreementCloses() public {
+        uint256 id = _readyAgreement();
+        vm.prank(landlord);
+        escrow.proposeArbiterReplacement(id, newArbiter);
+
+        vm.warp(_claimSubmissionDeadline(id));
+        vm.prank(tenant);
+        escrow.withdrawNoClaim(id);
+
+        vm.prank(landlord);
+        vm.expectRevert(OpenEscrow.InvalidPhase.selector);
+        escrow.cancelArbiterReplacementProposal(id);
+    }
+
     /// @notice Core guarantee: replacement mid-dispute never extends how long funds
     ///         stay locked, even though both parties agree to it.
     function test_replacement_duringDispute_neverExtendsRulingDeadline() public {
@@ -306,6 +336,16 @@ contract ArbiterTest is Base {
         vm.prank(arbiter);
         vm.expectRevert(OpenEscrow.ArbiterHasResigned.selector);
         escrow.resolveDispute(id, 0);
+    }
+
+    function test_resignAsArbiter_revertsOnRepeatResignation() public {
+        uint256 id = _readyAgreement();
+        vm.prank(arbiter);
+        escrow.resignAsArbiter(id);
+
+        vm.prank(arbiter);
+        vm.expectRevert(OpenEscrow.ArbiterHasResigned.selector);
+        escrow.resignAsArbiter(id);
     }
 
     function test_resignAsArbiter_timeoutStillWorksAfterResignation() public {

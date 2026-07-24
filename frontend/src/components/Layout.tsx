@@ -5,10 +5,20 @@ export function Layout({ children }: { children: ReactNode }) {
   return (
     <div className="app-shell">
       <header className="app-header">
-        <h1>OpenEscrow</h1>
-        <p className="tagline">Base Sepolia demo - testnet funds only, not a production deployment.</p>
+        <div>
+          <p className="eyebrow">Rental deposit protection · Base Sepolia</p>
+          <h1>OpenEscrow</h1>
+          <p className="tagline">
+            The deposit stays protected unless a landlord submits a claim the tenant accepts or an
+            agreed arbiter resolves.
+          </p>
+        </div>
         <ConnectWallet />
       </header>
+      <div className="demo-notice" role="status">
+        <strong>Testnet demonstration.</strong> Test tokens only. Do not upload personal information
+        or use this app for a real tenancy.
+      </div>
       <main className="app-main">{children}</main>
       <footer className="app-footer">
         <p>

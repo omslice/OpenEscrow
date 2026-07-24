@@ -1,46 +1,80 @@
-# OpenEscrow – MVP Roadmap
+# OpenEscrow roadmap
 
-This roadmap tracks the key milestones for MVP delivery across 2025–2026.
+This roadmap is organized around evidence and release gates rather than speculative features or calendar promises.
 
----
+## Gate 1 — Testnet technical MVP
 
-## Phase 1: Core Smart Contracts (Q3 2025)
-- Finalize modular contract architecture (`OpenEscrowCore`, factory, viewer)
-- Add support for:
-  - IPFS invoice validation
-  - Onchain dispute flagging
-  - Optional `rulesModule` and `yieldModule`
-- Deploy to Optimism testnet
-- Write unit and integration tests (Foundry)
-- Document technical overview and lifecycle logic (Mermaid)
+**Status: implemented; hardening in progress**
 
----
+- [x] Normative claim/dispute state machine
+- [x] Shared escrow contract with one pinned token
+- [x] Explicit arbiter acceptance and mutual-consent replacement
+- [x] Tenant-default no-response and arbiter-timeout behavior
+- [x] Pull-based withdrawals and reentrancy protection
+- [x] Unit, fuzz, deadline-boundary, authorization, and invariant tests
+- [x] Base Sepolia deployment and source verification
+- [x] Minimal frontend and full lifecycle demonstration
+- [ ] Independent implementation review
+- [ ] Continuous integration for contracts and frontend
+- [ ] Public hosted testnet demo
+- [ ] Five moderated usability sessions
 
-## Phase 2: Web & Backend Integration (Q3–Q4 2025)
-- Build minimal web frontend (React or SvelteKit)
-- Connect to deployed smart contracts
-- Implement deposit, refund, release, and yield actions
-- Add onchain/offchain notifications (event logs + UI)
-- Display agreement status via `EscrowViewer`
+**Exit criterion:** an outside evaluator can complete the no-claim, accepted-claim, and disputed-claim scenarios without developer intervention, and all automated checks remain green.
 
----
+## Gate 2 — One-jurisdiction pilot design
 
-## Phase 3: Feature Expansion (Q4 2025 – Q1 2026)
-- Yield strategy integration (e.g., USDC + yield-bearing token support)
-- Add support for multiple ERC20 tokens (e.g. WYST, USDY)
-- Enable partial refund logic (state tracked, validated per agreement)
-- Optional modules:
-  - Reputation system
-  - Wallet abstraction
-  - Fiat ramps (e.g., MoonPay)
-- UX: Multilingual interface and mobile optimization
+**Status: not started**
 
----
+- [ ] Select one jurisdiction and intended user segment
+- [ ] Retain qualified legal counsel
+- [ ] Resolve Category A in [`docs/open-questions.md`](docs/open-questions.md)
+- [ ] Identify a mediation, legal-aid, housing, or property-management partner
+- [ ] Define evidence privacy, access, and retention
+- [ ] Define user disclosures and informed consent
+- [ ] Decide whether blockchain custody is legally permissible and operationally useful
+- [ ] Convert statutory requirements into a reviewed jurisdiction policy profile
 
-## Phase 4: Public Launch & Ecosystem Outreach (Q1 2026)
-- Finalize audit & documentation (NatSpec, `CONTRIBUTING.md`)
-- Deploy mainnet version (Optimism or Base)
-- Open-source the full repo
-- Outreach to housing partners, NGOs, and legal clinics
-- Prepare for legal admissibility pilot (court-compatible proofs)
+**Exit criterion:** counsel and the pilot partner approve a written workflow that maps applicable law to product behavior.
+
+## Gate 3 — Pilot-ready product
+
+**Status: blocked on Gate 2**
+
+- [ ] Replace developer terminology with role-based guided tasks
+- [ ] Add production-grade wallet and mobile flows
+- [ ] Add notifications for every required deadline and action
+- [ ] Add a scalable agreement indexer
+- [ ] Implement access-controlled evidence storage
+- [ ] Add structured, itemized landlord claims
+- [ ] Add operational monitoring and support procedures
+- [ ] Commission an independent smart-contract audit
+- [ ] Complete accessibility, privacy, and threat-model reviews
+
+**Exit criterion:** a narrowly scoped pilot can operate without exposing personal information or depending on a developer to move agreements forward.
+
+## Gate 4 — Supervised real-world pilot
+
+**Status: future**
+
+- [ ] Start with a small participant cohort and explicit limits
+- [ ] Monitor completion, dispute, abandonment, and support rates
+- [ ] Compare the workflow with existing deposit handling
+- [ ] Record legal, operational, and user-experience failures
+- [ ] Publish a transparent pilot evaluation
+
+**Exit criterion:** evidence supports continuing, changing the custody model, or stopping.
+
+## Explicitly deferred
+
+These features are not part of the viable MVP and should not be built until the pilot demonstrates a need:
+
+- Yield-bearing deposits
+- Multiple tokens
+- Multi-chain deployments
+- Fiat ramps
+- Reputation systems
+- DAO governance
+- Decentralized arbitration
+- Protocol fees
+- Upgradeability
 

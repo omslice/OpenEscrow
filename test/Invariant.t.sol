@@ -36,8 +36,9 @@ contract InvariantTest is Test {
         }
     }
 
-    /// @dev The contract's actual token balance must exactly cover the sum of every
-    ///      agreement's outstanding (not-yet-withdrawn) liabilities - no more, no less.
+    /// @dev The contract's actual token balance must cover the sum of every
+    ///      agreement's outstanding liabilities. Anyone can transfer tokens directly
+    ///      to the contract, so harmless excess balance is possible.
     function invariant_contractBalanceCoversAggregateLiabilities() public view {
         uint256 n = handler.agreementCount();
         uint256 total;
@@ -46,7 +47,7 @@ contract InvariantTest is Test {
             OpenEscrow.Agreement memory a = escrow.getAgreement(id);
             total += a.tenantWithdrawable + a.landlordWithdrawable + a.locked;
         }
-        assertEq(usdc.balanceOf(address(escrow)), total, "contract balance must exactly cover aggregate liabilities");
+        assertGe(usdc.balanceOf(address(escrow)), total, "contract balance must cover aggregate liabilities");
     }
 
     /// @dev No agreement's landlord is ever credited (across acceptance + arbiter award,

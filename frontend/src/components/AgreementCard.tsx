@@ -8,6 +8,8 @@ import { DisputeResolutionSection } from "./DisputeResolutionSection";
 import { TimeoutSection } from "./TimeoutSection";
 import { WithdrawSection } from "./WithdrawSection";
 import { ArbiterReplacementSection } from "./ArbiterReplacementSection";
+import { NextAction } from "./NextAction";
+import { ProposalActions } from "./ProposalActions";
 
 export function AgreementCard({ id, onRemove }: { id: bigint; onRemove?: () => void }) {
   const { agreement, exists, isLoading, error, refetch } = useAgreement(id);
@@ -33,7 +35,9 @@ export function AgreementCard({ id, onRemove }: { id: bigint; onRemove?: () => v
   return (
     <div className="card agreement-card">
       <AgreementDashboard id={id} agreement={agreement} />
+      <NextAction agreement={agreement} />
       <ArbiterActions id={id} agreement={agreement} onRefetch={onRefetch} />
+      <ProposalActions id={id} agreement={agreement} onRefetch={onRefetch} />
       <TenantFundAction id={id} agreement={agreement} onRefetch={onRefetch} />
       <ClaimSection id={id} agreement={agreement} onRefetch={onRefetch} />
       <ResponseSection id={id} agreement={agreement} onRefetch={onRefetch} />

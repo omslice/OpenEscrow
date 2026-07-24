@@ -75,6 +75,28 @@ contract Handler is Test {
         try escrow.acceptArbiterRole(id) {} catch {}
     }
 
+    function declineArbiter(uint256 idSeed) external {
+        if (agreementIds.length == 0) return;
+        (uint256 id, OpenEscrow.Agreement memory a) = _agreementAt(idSeed);
+        vm.prank(a.arbiter);
+        try escrow.declineArbiterRole(id) {} catch {}
+    }
+
+    function renominateArbiter(uint256 idSeed, uint256 candidateSeed) external {
+        if (agreementIds.length == 0) return;
+        (uint256 id, OpenEscrow.Agreement memory a) = _agreementAt(idSeed);
+        address candidate = arbiters[candidateSeed % 3];
+        vm.prank(a.landlord);
+        try escrow.renominateArbiter(id, candidate) {} catch {}
+    }
+
+    function cancelProposal(uint256 idSeed) external {
+        if (agreementIds.length == 0) return;
+        (uint256 id, OpenEscrow.Agreement memory a) = _agreementAt(idSeed);
+        vm.prank(a.landlord);
+        try escrow.cancelProposal(id) {} catch {}
+    }
+
     function fund(uint256 idSeed) external {
         if (agreementIds.length == 0) return;
         (uint256 id, OpenEscrow.Agreement memory a) = _agreementAt(idSeed);
@@ -184,6 +206,13 @@ contract Handler is Test {
         try escrow.acceptArbiterRole(id) {} catch {}
     }
 
+    function cancelReplacement(uint256 idSeed) external {
+        if (agreementIds.length == 0) return;
+        (uint256 id, OpenEscrow.Agreement memory a) = _agreementAt(idSeed);
+        vm.prank(a.pendingArbiterProposer);
+        try escrow.cancelArbiterReplacementProposal(id) {} catch {}
+    }
+
     function resign(uint256 idSeed) external {
         if (agreementIds.length == 0) return;
         (uint256 id, OpenEscrow.Agreement memory a) = _agreementAt(idSeed);
@@ -194,5 +223,11 @@ contract Handler is Test {
     function warp(uint256 secs) external {
         secs = bound(secs, 0, 30 days);
         vm.warp(block.timestamp + secs);
+    }
+
+    function donate(uint256 amount) external {
+        amount = bound(amount, 1, MAX_DEPOSIT);
+        usdc.mint(address(this), amount);
+        require(usdc.transfer(address(escrow), amount), "donation transfer failed");
     }
 }

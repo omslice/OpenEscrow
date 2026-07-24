@@ -1,74 +1,55 @@
-# OpenEscrow – Full Protocol Flow
+# OpenEscrow protocol flow
 
-This document provides a complete overview of the OpenEscrow deposit lifecycle, as implemented in the protocol and visualized through system wireframes.  
-It outlines all state transitions — from escrow setup and lease management to deductions, disputes, and optional yield distribution.
+The Base Sepolia MVP is a single-token, shared-contract escrow with a designated arbiter fallback.
 
----
+## Agreement setup
 
-## Visual Overview
+1. The landlord proposes the tenant, deposit amount, deadlines, and arbiter.
+2. The arbiter accepts or declines the nomination.
+3. A declined nomination must be replaced or the proposal cancelled.
+4. Only after arbiter acceptance may the tenant approve the token transfer and fund.
 
-| Escrow Setup & Lease Lifecycle | Deposit Return, Claims & Yield Flow |
-|-------------------------------|--------------------------------------|
-| ![Escrow Setup](./assets/openescrow-setup.svg) | ![Deduction Flow](./assets/openescrow-deductions.svg) |
+## End-of-tenancy flow
 
----
+```mermaid
+flowchart TD
+    A["Deposit funded and locked"] --> B{"Landlord submits a timely claim?"}
+    B -->|No| C["Tenant finalizes full refund"]
+    B -->|Yes| D["Unclaimed balance credited to tenant immediately"]
+    D --> E{"Tenant response"}
+    E -->|Accept all| F["Claim credited to landlord"]
+    E -->|Accept part| G["Accepted amount credited to landlord; remainder disputed"]
+    E -->|Dispute all| H["Claimed amount disputed"]
+    E -->|No response by deadline| H
+    G --> I{"Arbiter rules by deadline?"}
+    H --> I
+    I -->|Yes| J["Disputed amount split according to ruling"]
+    I -->|No| K["Disputed amount credited to tenant"]
+    C --> L["Parties withdraw credited balances"]
+    F --> L
+    J --> L
+    K --> L
+```
 
-## Flow Summary
+## Core protections
 
-1. **Connection & Agreement Setup**  
-   Tenant and landlord complete an off-chain form specifying the deposit amount, lease end date, and notice period (e.g. 60 days for deposit return).
+- Tenant silence never approves a landlord claim.
+- The landlord cannot increase a submitted claim.
+- The arbiter cannot award more than the disputed balance.
+- Replacement cannot extend the ruling deadline.
+- No administrator can redirect funds.
+- Each agreement has independent accounting.
+- Onchain evidence is a public commitment, not private document storage.
 
-2. **Token Check (WYST, USDC, USDY...)**  
-   The app checks the tenant's balance in the selected token.  
-   If insufficient, the user is prompted to swap via DEX or CEX.  
-   Once confirmed, the `EscrowFactory` deploys a **dedicated smart contract** for the agreement.
+## What the protocol does not establish
 
-3. **Escrow Creation**  
-   The tenant deposits funds into the agreement-specific contract.  
-   The lease is now considered **in progress**.
+The contract does not prove:
 
-4. **Lease Lifecycle**  
-   - If the lease is renewed (new term or month-to-month), details are updated and the contract continues.  
-   - If not, the **notice period auto-starts**, and the protocol emits `NoticePeriodStarted`.  
-     Both parties are notified.
+- The tenancy ended.
+- The landlord's deduction is legally permitted.
+- Evidence is authentic or complete.
+- The selected deadlines comply with local law.
+- The arbiter is licensed, neutral, or legally authorized.
+- A blockchain-held deposit satisfies applicable custody requirements.
 
-5. **Deduction Flow**  
-   During the legal return window (e.g. 60 days):  
-   - If the landlord submits **no deduction**, the full deposit is refunded automatically to the tenant.  
-   - If a **deduction is submitted**, an invoice must be uploaded to IPFS and the tenant is notified.
-
-6. **Claim & Dispute Phase**  
-   The tenant has **48h** to respond (approve or dispute).  
-   The landlord may edit or cancel the claim at any time during this period.  
-   The tenant's response is recorded onchain but does **not** block execution.
-
-7. **Fund Release & Yield**  
-   After the timer:  
-   - The **claimed amount** is transferred to the landlord  
-   - The **remainder** goes to the tenant  
-   - If the yield module is active, **yield is distributed** according to the terms of the agreement
-
----
-
-## Visual Conventions
-
-To enhance readability, the diagrams use consistent **color coding and shape styles** to represent different types of actions, roles, and logic paths:
-
-| Style | Meaning | Visual Example |
-|-------|---------|----------------|
-| 🟦 **Blue box** | User roles or off-chain actions (e.g. form input, tenant move-out) | `Tenant & Landlord complete form` |
-| 🟧 **Orange box** | User inputs or contract parameters (e.g. token, lease duration) | `Enter: deposit amount...` |
-| 🟨 **Yellow box** | Notifications or prompts shown to users | `Notify tenant + landlord` |
-| 🟪 **Purple box** | Onchain contract interactions or transactions | `EscrowFactory → deploy smart contract` |
-| 🟩 **Green box** | Automatic protocol outcomes (e.g. refund, passive flow) | `Auto-refund full deposit` |
-| ⬛ **Gray box** | Process steps or internal logic | `Timer triggered: Tenant has 48h to respond` |
-| 🟫 **Brown box** | Legal durations or procedural windows | `Legal return period begins` |
-| 🟪 *Light violet box* | Onchain logs or blockchain-recorded events | `Tenant response recorded onchain` |
-| ⯁ **Dashed diamond** | Decision logic or branching condition | `Is lease renewed?` |
-
-These conventions help visually separate **who does what**, what is **onchain vs offchain**, and which parts of the process are **passive, automatic, or decision-based**.
-
----
-
-For technical details, see [`technical-overview.md`](./technical-overview.md)  
-For contributor instructions, see [`CONTRIBUTING.md`](../CONTRIBUTING.md)
+Those questions must be resolved for one selected jurisdiction before any real-money use.

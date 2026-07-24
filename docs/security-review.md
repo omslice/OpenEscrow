@@ -1,6 +1,7 @@
 # OpenEscrow — Security Review
 
-**Scope:** `contracts/OpenEscrow.sol` as deployed to Base Sepolia, plus the OpenZeppelin v5.1.0
+**Scope:** `contracts/OpenEscrow.sol` as deployed to Base Sepolia at
+`0x4365f7B9632d083F1a03D57AE56a0e6d239ef62F`, plus the OpenZeppelin v5.1.0
 library code it depends on (`SafeERC20`, `ReentrancyGuard`, `Address`).
 **Method:** manual line-by-line review (access control matrix, state-machine transition
 completeness, arithmetic/overflow analysis, external-call/reentrancy analysis, timestamp
@@ -156,6 +157,23 @@ need revisiting if the pinned token ever changes.
   no pause, no proxy, and therefore no admin-key compromise scenario to consider.
 - **Role-conflict validation:** `createAgreement`, `renominateArbiter`, and
   `proposeArbiterReplacement` all correctly reject landlord/tenant/arbiter collisions.
+
+## Independent review addendum — 2026-07-24
+
+A separate Codex review of the contract, tests, and written specification identified four
+additional state-integrity and assurance gaps. This is still an AI-assisted internal review, not
+an external audit.
+
+| Severity | Finding | Resolution |
+| --- | --- | --- |
+| Low | `declineArbiterRole` emitted an event but did not persist the decision, so the same nomination could later be accepted. | Added `arbiterDeclined`, blocked later acceptance, reset it only on explicit renomination, and added regression tests. |
+| Low | A pending replacement could be cancelled after an agreement was terminal, and pending replacement fields could remain populated after closure. | Restricted cancellation to replaceable phases and clear pending replacement state on every terminal transition. |
+| Informational | Repeat arbiter resignation produced duplicate state-change events. | Repeat resignation now reverts with `ArbiterHasResigned`. |
+| Informational | The contract-wide invariant incorrectly required exact token-balance equality, which harmless direct token donations violate; the stateful handler also omitted several public actions. | Corrected the solvency property to `balance >= liabilities` and expanded randomized coverage to decline, renomination, proposal cancellation, replacement cancellation, and direct donation. |
+
+The review also corrected a getter test that claimed to verify nonexistent-agreement behavior
+without calling the getter. `getAgreement` now explicitly reverts `AgreementDoesNotExist`, matching
+the test name, the rest of the read API, and frontend expectations.
 
 ## Disclaimer
 

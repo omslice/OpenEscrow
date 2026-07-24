@@ -1,5 +1,5 @@
 .app-shell {
-  max-width: 780px;
+  max-width: 900px;
   margin: 0 auto;
   padding: 24px 16px 64px;
   text-align: left;
@@ -7,9 +7,9 @@
 
 .app-header {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
-  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: flex-end;
   border-bottom: 1px solid var(--border);
   padding-bottom: 16px;
   margin-bottom: 24px;
@@ -17,14 +17,57 @@
 
 .app-header h1 {
   margin: 0;
-  font-size: 28px;
+  font-size: 40px;
+  letter-spacing: -1.2px;
   color: var(--text-h);
 }
 
 .tagline {
   margin: 0;
-  font-size: 13px;
+  font-size: 15px;
   color: var(--text);
+  max-width: 620px;
+}
+
+.eyebrow {
+  display: block;
+  margin: 0 0 4px;
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.demo-notice {
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  border: 1px solid var(--warning-border);
+  border-radius: 10px;
+  background: var(--warning-bg);
+  color: var(--text-h);
+  font-size: 13px;
+}
+
+.test-funds {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+  padding: 12px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.test-funds strong {
+  display: block;
+  color: var(--text-h);
+}
+
+.test-funds .tx-button {
+  margin: 0;
 }
 
 .app-footer {
@@ -176,6 +219,47 @@
   margin-bottom: 16px;
 }
 
+.agreement-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+
+.agreement-heading h2 {
+  margin: 0;
+}
+
+.amount-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.amount-tile {
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.amount-tile span,
+.amount-tile strong {
+  display: block;
+}
+
+.amount-tile span {
+  margin-bottom: 3px;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.amount-tile strong {
+  color: var(--text-h);
+  font-size: 15px;
+}
+
 .dashboard-row {
   display: flex;
   justify-content: space-between;
@@ -207,6 +291,39 @@
   border-top: 1px dashed var(--border);
   padding-top: 16px;
   margin-top: 16px;
+}
+
+.next-action {
+  margin: 16px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  background: var(--accent-bg);
+}
+
+.next-action strong,
+.next-action p {
+  display: block;
+}
+
+.next-action strong {
+  color: var(--text-h);
+}
+
+.next-action p {
+  margin-top: 3px;
+  font-size: 13px;
+}
+
+.technical-details {
+  margin-top: 10px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.technical-details summary {
+  cursor: pointer;
+  margin-bottom: 6px;
 }
 
 .action-section h3 {
@@ -263,4 +380,20 @@
 
 .agreement-card {
   border-width: 2px;
+}
+
+@media (max-width: 680px) {
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .amount-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .test-funds {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }

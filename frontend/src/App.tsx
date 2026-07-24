@@ -5,6 +5,7 @@ import { CreateAgreementForm } from "./components/CreateAgreementForm";
 import { AgreementCard } from "./components/AgreementCard";
 import { useTrackedAgreements } from "./lib/useTrackedAgreements";
 import { useDiscoverAgreements } from "./lib/useDiscoverAgreements";
+import { TestFunds } from "./components/TestFunds";
 import "./App.css";
 
 type Tab = "create" | "track";
@@ -42,6 +43,8 @@ function App() {
         </button>
       </nav>
 
+      <TestFunds />
+
       {tab === "create" && <CreateAgreementForm />}
 
       {tab === "track" && (
@@ -49,10 +52,9 @@ function App() {
           <div className="card">
             <h2>Find agreements involving you</h2>
             <p className="hint">
-              There's no backend indexer in this MVP (spec §14). This scans event logs directly from
-              your connected wallet for any agreement where you're the landlord, tenant, or arbiter
-              (including arbiters added later via replacement) - a reasonable trade-off for a
-              testnet demo, not how a production version should do this at scale.
+              Scan Base Sepolia for agreements where your connected wallet is the landlord, tenant,
+              or arbiter. The demo reads contract events directly, so no account or backend is
+              required.
             </p>
             <button
               className="btn btn-primary"

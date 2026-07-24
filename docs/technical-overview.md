@@ -1,118 +1,113 @@
-# OpenEscrow — Technical Overview
+# OpenEscrow technical overview
 
-## 1. Contract Architecture
+This document describes the implemented Base Sepolia MVP. The earlier factory, viewer, rules-module, and yield-module architecture has been retired.
 
-### ▸ `EscrowFactory.sol`
-Deploys a dedicated smart contract (vault) for each escrow agreement.  
-Each contract is fully self-contained and owns its own funds and logic.
+## Components
 
-### ▸ `OpenEscrowCore.sol`
-Core logic for each individual agreement:
-- Initialization (`initialize`)
-- Controlled fund release (`releaseFunds`)
-- Tenant-triggered refund (`refund`)
-- Optional plug-in modules: `rulesModule` and `yieldModule`
+### `OpenEscrow.sol`
 
-### ▸ `EscrowViewer.sol`
-Read-only helper contract for UI and analytics.  
-Fetches all agreement data off-chain.
+One non-upgradeable contract holds many independent agreements in a mapping keyed by monotonically increasing IDs.
 
-### ▸ `IRulesModule.sol`
-Interface for external validation logic.  
-Example: enforce that an IPFS invoice is present before release.
+The contract has:
 
-### ▸ `IYieldModule.sol`
-Interface for external yield logic.  
-Allows funds to generate and split yield while escrowed.
+- One immutable ERC-20 token address
+- No owner or administrator
+- No proxy or upgrade path
+- No protocol fee
+- No external rules or yield module
+- Per-agreement landlord, tenant, and arbiter roles
+- Pull-based tenant and landlord withdrawals
 
-### ▸ `MockRulesModule.sol` / `MockYieldModule.sol`
-Testing mocks for validation and yield simulation.
+### Frontend
 
----
+The React frontend talks directly to Base Sepolia through wagmi and viem. It stores tracked agreement IDs in the browser and can discover agreements by scanning bounded event-log ranges from the deployment block.
 
-## 2. Data Model
+This is acceptable for a small testnet demonstration. A pilot-ready version needs an indexer and notification service.
 
-### Struct: `EscrowAgreement`
-| Field           | Description |
-|-----------------|-------------|
-| `tenant`        | Sender of the funds |
-| `landlord`      | Receiver of the funds |
-| `amount`        | ETH or token deposited |
-| `releaseTime`   | Unlock timestamp (e.g. lease expiry + 60 days) |
-| `released`      | Whether the funds have been released |
-| `refunded`      | Whether a refund was triggered instead |
-| `rulesModule`   | External validation logic (optional) |
-| `yieldModule`   | Yield module address (optional) |
-| `invoiceHash`   | IPFS hash of landlord’s deduction claim (optional) |
-| `claimedAmount` | Amount the landlord is claiming (optional) |
-| `disputed`      | Whether the tenant formally disputed the claim |
-| `disputedAt`    | When the dispute was registered (for traceability)
+## State machine
 
----
+```mermaid
+stateDiagram-v2
+    [*] --> Proposed: landlord proposes
+    Proposed --> ReadyToFund: arbiter accepts
+    Proposed --> Proposed: arbiter declines / landlord renominates
+    Proposed --> Cancelled: landlord cancels
+    ReadyToFund --> Proposed: landlord renominates
+    ReadyToFund --> Cancelled: landlord cancels
+    ReadyToFund --> Active: tenant accepts and funds
+    Active --> ClaimOpen: landlord submits timely claim
+    Active --> Closed: no claim; tenant finalizes refund
+    ClaimOpen --> ClaimOpen: landlord reduces claim once
+    ClaimOpen --> Closed: claim retracted or fully accepted
+    ClaimOpen --> Disputed: partial/full dispute or tenant timeout
+    Disputed --> Closed: arbiter rules
+    Disputed --> Closed: arbiter timeout
+```
 
-## 3. Execution Flow
+`Closed` and `Cancelled` are terminal. Withdrawals remain available whenever a party has a nonzero credited balance.
 
-### `createAgreement(...)` (via `EscrowFactory`)
-- Deploys a new smart contract (vault)
-- Initializes agreement with tenant/landlord details, modules, etc.
-- Emits `AgreementCreated`
+## Funds accounting
 
-### `releaseFunds(...)`
-- Callable by anyone after `releaseTime`
-- Checks:
-  - Not refunded or already released
-  - If `rulesModule` is present → must validate (e.g. invoice present)
-- Handles claim logic:
-  - If no claim → full refund to tenant
-  - If claim → split funds (`claimedAmount → landlord`, rest → tenant)
-- If yield module active → `claimYield()` and distribute according to configured shares
+For every funded agreement:
 
-### `refund(...)`
-- Callable only by tenant
-- Only if `releaseTime` has passed and funds not yet released
-- Refunds full amount to tenant
-- TODO: auto-claim tenant’s yield as well
+```text
+depositAmount =
+    tenantWithdrawable +
+    landlordWithdrawable +
+    locked +
+    withdrawn
+```
 
----
+For the whole contract:
 
-## 4. Testing Strategy
+```text
+token.balanceOf(OpenEscrow) >=
+    sum(tenantWithdrawable + landlordWithdrawable + locked)
+```
 
-- ✅ Unit tests for mock modules
-  - `MockRulesModule.t.sol`
-  - `MockYieldModule.t.sol`
-- ✅ Full logic coverage
-  - `OpenEscrowCore.t.sol` for all paths
-- ✅ Integration / Scenario testing
-  - `ReleaseWithYield.t.sol` (end-to-end)
-  - `EscrowFactory.t.sol`, `EscrowViewer.t.sol`
+The inequality is deliberate: anyone can send the token directly to the contract, creating harmless excess balance that is not assigned to an agreement.
 
----
+## Claims and evidence
 
-## 5. Design Principles
+A claim includes:
 
-- Vault-per-agreement: one smart contract per escrow instance (via factory)
-- Pluggable logic: rules and yield modules can be swapped
-- Onchain traceability: all claims and disputes are recorded
-- Disputes don’t block release — they provide audit trail
-- UI & offchain orchestration: all interactions are front-end initiated
+- Claimed amount
+- Nonzero content hash
+- Public URI or opaque pointer
+- Caller-defined evidence type
+- Timestamp
+- Submitter address
 
----
+The landlord may amend once, downward only, before the tenant responds. An amendment never resets the response deadline.
 
-## 6. TODO / Next Steps
+The contract cannot determine whether evidence is truthful or legally sufficient. That remains the arbiter's responsibility and, ultimately, a jurisdiction-specific legal question.
 
-- [x] Move to vault-based deployment (`EscrowFactory`)
-- [x] Refactor for `initialize()` proxy pattern
-- [x] Modularize `rulesModule` and `yieldModule`
-- [x] Add IPFS invoice & claim flow
-- [x] Track disputes without blocking execution
-- [ ] Add `submitClaim`, `editClaim`, `cancelClaim`
-- [ ] Implement `claimYield()` in `refund()`
-- [ ] Add automation support (e.g. Gelato fallback)
-- [ ] Batch reading & pagination in `EscrowViewer`
-- [ ] Extend support for ERC20 (WYST, USDC)
-- [ ] Add full gas profiling & NatSpec
+## Arbitration
 
----
+- The initial arbiter must accept before funding.
+- A declined nomination cannot later be accepted unless the landlord renominates.
+- Post-funding replacement requires one party to propose, the other to confirm, and the candidate to accept.
+- Replacement never extends a live ruling deadline.
+- A resigned arbiter cannot rule.
+- If no ruling is submitted by the deadline, the disputed amount becomes tenant-withdrawable.
 
-> See [protocol-flow.md](./protocol-flow.md) for the full user-facing lifecycle.  
-> See [README.md](./README.md) for project vision, team, funding, and roadmap.
+## Security model
+
+The contract uses OpenZeppelin `SafeERC20` and `ReentrancyGuard`. Token calls occur only during funding and withdrawal.
+
+The primary residual risks are:
+
+- Wrong or malicious arbiter rulings
+- Lost role wallets
+- Inappropriate deadline configuration
+- Sensitive content exposed through public evidence URIs
+- Jurisdictional noncompliance
+- Undiscovered implementation defects
+
+See [`security-review.md`](security-review.md) and [`open-questions.md`](open-questions.md).
+
+## Deployment
+
+Deployment scripts live in [`../script`](../script). Frontend addresses and the deployment block live in [`../frontend/src/contracts/config.ts`](../frontend/src/contracts/config.ts).
+
+Any source change to the contract requires a new deployment. Existing agreements stay on the previous immutable deployment.

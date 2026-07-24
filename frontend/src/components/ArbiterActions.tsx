@@ -16,6 +16,18 @@ export function ArbiterActions({
   if (agreement.phase !== Phase.Proposed) return null;
   if (address?.toLowerCase() !== agreement.arbiter.toLowerCase()) return null;
 
+  if (agreement.arbiterDeclined) {
+    return (
+      <div className="action-section">
+        <h3>Nomination declined</h3>
+        <p className="hint">
+          You declined this role. The landlord must nominate an arbiter again before this agreement
+          can be funded.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="action-section">
       <h3>Arbiter action required</h3>
