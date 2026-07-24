@@ -5,6 +5,7 @@ import { OpenEscrowABI, OPEN_ESCROW_ADDRESS } from "../contracts/config";
 export interface Agreement {
   landlord: `0x${string}`;
   arbiterAccepted: boolean;
+  arbiterDeclined: boolean;
   arbiterResigned: boolean;
   claimAmended: boolean;
   pendingArbiterConfirmed: boolean;

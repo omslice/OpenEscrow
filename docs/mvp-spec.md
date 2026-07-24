@@ -1,6 +1,6 @@
 # OpenEscrow — MVP Specification (Base Sepolia / Test USDC)
 
-Status: draft, implementation-ready pending sign-off on open questions in [`open-questions.md`](./open-questions.md).
+Status: implemented for the Base Sepolia testnet MVP. Category A in [`open-questions.md`](./open-questions.md) remains unresolved and blocks non-testnet use.
 Related: [ADR-0001 shared escrow contract](./adr/0001-shared-escrow-contract.md), [ADR-0002 single-token USDC](./adr/0002-single-token-usdc.md).
 
 This spec supersedes the flow described in `protocol-flow.md` and `technical-overview.md` for MVP purposes. Those documents describe a longer-term vision (multi-token, notice periods, non-blocking disputes); this MVP intentionally narrows and, in one important place, **corrects** that vision: disputes here block release of the disputed amount. They do not just get logged.
@@ -51,7 +51,7 @@ Because upgradeability is out of scope, bugs found post-deploy are fixed by depl
 | `id` | uint256 | creation | immutable |
 | `landlord`, `tenant` | address | creation | immutable |
 | `arbiter` | address | creation | replaced only via mutual-consent flow (§8) |
-| `arbiterAccepted` | bool | arbiter action | flips true once, resets false on replacement until new arbiter accepts |
+| `arbiterAccepted`, `arbiterDeclined` | bool | arbiter action | acceptance and decline are explicit; renomination resets both, and a declined nominee cannot later accept |
 | `arbiterResigned` | bool | arbiter action | settable true; cleared when a replacement is accepted |
 | `depositAmount` (`D`) | uint256, USDC base units (6 decimals) | funding | immutable after funding |
 | `claimWindowStart` | timestamp | creation | immutable |
@@ -108,8 +108,8 @@ Arbiter-replacement (§8) and arbiter-resignation are **not** phase transitions 
 |---|---|---|---|---|---|
 | T1 | (none) | `createAgreement` | `Proposed` | anyone (becomes landlord) | `tenant != arbiter != landlord`; `depositAmount > 0`; `claimWindowStart >= now`; each of `claimPeriod`/`responsePeriod`/`arbiterRulingPeriod` in `[MIN_PERIOD, MAX_PERIOD]` |
 | T2 | `Proposed` | `acceptArbiterRole` | `ReadyToFund` | nominated arbiter | not already accepted |
-| T3 | `Proposed` | `declineArbiterRole` | `Proposed` (unchanged; landlord must renominate or cancel) | nominated arbiter | — |
-| T4 | `Proposed` / `ReadyToFund` | `renominateArbiter(newArbiter)` | `Proposed` | landlord | pre-funding only; resets `arbiterAccepted=false` |
+| T3 | `Proposed` | `declineArbiterRole` | `Proposed` (unchanged; landlord must renominate or cancel) | nominated arbiter | records `arbiterDeclined=true`; this nominee cannot later accept unless renominated |
+| T4 | `Proposed` / `ReadyToFund` | `renominateArbiter(newArbiter)` | `Proposed` | landlord | pre-funding only; resets `arbiterAccepted=false` and `arbiterDeclined=false` |
 | T5 | `Proposed` / `ReadyToFund` | `cancelProposal` | `Cancelled` | landlord | pre-funding only |
 | T6 | `ReadyToFund` | `tenantAcceptAndFund` | `Active` | tenant (must equal nominated tenant) | pulls `D` via `transferFrom`; requires prior `approve` |
 | T7 | `Active` | `submitClaim(C, evidenceURI)` | `ClaimOpen` | landlord | `now < claimSubmissionDeadline`; `0 < C <= D` |
@@ -122,7 +122,7 @@ Arbiter-replacement (§8) and arbiter-resignation are **not** phase transitions 
 | T14 | `ReadyToFund`/`Active`/`ClaimOpen`/`Disputed` | `proposeArbiterReplacement(newArbiter)` | same phase | landlord or tenant | `newArbiter` passes the role-disjointness check |
 | T15 | (pending replacement) | `confirmArbiterReplacement` | same phase | the *other* party from T14 | must not be same address as proposer |
 | T16 | (pending replacement) | `acceptArbiterRole` (new arbiter) | same phase | `pendingArbiter` | both parties confirmed; swaps `arbiter`, clears `arbiterResigned`; `arbiterRulingDeadline` is **never** touched, including mid-dispute — see §8 |
-| T17 | any (arbiter is set) | `cancelArbiterReplacementProposal` | same phase | original proposer of T14 | pending proposal exists and not yet accepted |
+| T17 | `ReadyToFund` / `Active` / `ClaimOpen` / `Disputed` | `cancelArbiterReplacementProposal` | same phase | original proposer of T14 | pending proposal exists and not yet accepted |
 | T18 | `ReadyToFund`/`Active`/`ClaimOpen`/`Disputed` | `resignAsArbiter` | same phase | current arbiter | sets `arbiterResigned = true`; blocks `resolveDispute` until replaced |
 | T19 | any | `withdraw` | unchanged | tenant or landlord | caller's balance (`T` or `Ld`) > 0 |
 
@@ -186,7 +186,7 @@ See §9 for the full transition-by-transition ledger. Summary of the required be
 ## 8. Arbiter appointment, acceptance, replacement, ruling limits
 
 - **Appointment:** the landlord nominates an arbiter at `createAgreement`. The nominee must explicitly `acceptArbiterRole` before the tenant is permitted to fund (T2 before T6 is enforced by the `ReadyToFund` phase gate). No funds ever enter the contract without a confirmed, consenting arbiter already attached to the agreement.
-- **Decline:** the nominee can `declineArbiterRole`; the landlord then either renominates (T4) or cancels (T5). Pre-funding, this is entirely the landlord's problem to solve — the tenant has not committed anything yet.
+- **Decline:** the nominee can `declineArbiterRole`; this decision is recorded and blocks that nomination from being accepted later. The landlord then either renominates (T4), which resets the decline state, or cancels (T5). Pre-funding, this is entirely the landlord's problem to solve — the tenant has not committed anything yet.
 - **Replacement (post-funding):** requires both parties' consent (T14 propose → T15 confirm by the other party) *and* the new arbiter's acceptance (T16). The old arbiter remains fully active and able to rule for the entire duration of this process — there is never a window with zero valid arbiter. `arbiterRulingDeadline` is **never** reset or extended by a replacement, including one that happens mid-dispute: it is fixed once, at the moment the dispute is created, and stays fixed regardless of how many times the arbiter changes afterward. This is a deliberate simplification over an earlier draft (which reset the deadline for an incoming arbiter) — a fixed, replacement-proof deadline is the simplest guarantee that neither party can use the mutual-consent replacement process to unilaterally (or even collusively) extend how long funds stay locked. The cost is that a very late replacement could leave the incoming arbiter little time to review before timeout; that's an accepted tradeoff, not an oversight — parties who want a working replacement should propose one early in the dispute window, and the permissionless `claimArbiterTimeout` remains the backstop regardless.
 - **Resignation:** the arbiter can unilaterally resign at any time (`resignAsArbiter`). This does not by itself change `phase` or move funds — it only blocks `resolveDispute` until either a replacement is accepted or the ruling deadline lapses.
 - **Ruling limits:** `resolveDispute(X)` requires `0 <= X <= disputedAmount`. The arbiter cannot award more than what is disputed, and by construction (§5, §6) `disputedAmount <= claimedAmount <= D`, so the landlord can never receive more than they claimed, and the arbiter can never award more than was locked. The arbiter has no power over the already-settled `D - C` or already-accepted `A` portions — those are gone from `locked` before the arbiter is ever invoked.
@@ -209,8 +209,12 @@ Before funding, `D = T = Ld = locked = W = 0`. `D` is fixed the instant `tenantA
 Contract-wide invariant (sum over all agreements `i`), useful for Foundry invariant tests against actual token balance:
 
 ```
-USDC.balanceOf(contract) == Σ_i ( T_i + Ld_i + locked_i )
+USDC.balanceOf(contract) >= Σ_i ( T_i + Ld_i + locked_i )
 ```
+
+The contract may hold harmless excess tokens because anyone can transfer the pinned ERC-20 directly
+to its address without creating an agreement. Such donations are not assigned to any party and do
+not weaken solvency. The required property is that the balance always covers liabilities.
 
 ### 9a. Funds-accounting table
 
@@ -284,7 +288,7 @@ Presented as name + parameters (not Solidity syntax — implementation detail fo
 
 No admin/pause events exist (decision 7 — there is nothing to pause).
 
-**Custom errors:** `NotAuthorized()` · `InvalidPhase()` · `AgreementDoesNotExist()` · `ZeroAddress()` · `InvalidRoleAssignment()` · `ZeroDeposit()` · `InvalidPeriod()` · `InvalidClaimWindowStart()` · `DepositMismatch()` · `ClaimWindowNotOpen()` · `ClaimWindowClosed()` · `ClaimWindowStillOpen()` · `InvalidClaimAmount()` · `ClaimAlreadyAmended()` · `AmendmentMustNotIncrease()` · `ResponseWindowClosed()` · `ResponseWindowStillOpen()` · `InvalidResponseAmount()` · `ArbiterRulingWindowClosed()` · `ArbiterRulingWindowStillOpen()` · `InvalidAward()` · `ArbiterHasResigned()` · `NoReplacementPending()` · `ReplacementAlreadyConfirmed()` · `CannotConfirmOwnProposal()` · `NothingToWithdraw()` · `InvalidEvidence()`
+**Custom errors:** `NotAuthorized()` · `InvalidPhase()` · `AgreementDoesNotExist()` · `ZeroAddress()` · `InvalidRoleAssignment()` · `ZeroDeposit()` · `InvalidPeriod()` · `InvalidClaimWindowStart()` · `DepositMismatch()` · `ClaimWindowNotOpen()` · `ClaimWindowClosed()` · `ClaimWindowStillOpen()` · `InvalidClaimAmount()` · `ClaimAlreadyAmended()` · `AmendmentMustNotIncrease()` · `ResponseWindowClosed()` · `ResponseWindowStillOpen()` · `InvalidResponseAmount()` · `ArbiterRulingWindowClosed()` · `ArbiterRulingWindowStillOpen()` · `InvalidAward()` · `ArbiterHasResigned()` · `ArbiterHasDeclined()` · `NoReplacementPending()` · `ReplacementAlreadyConfirmed()` · `CannotConfirmOwnProposal()` · `NothingToWithdraw()` · `InvalidEvidence()`
 
 Naming convention: "...Closed"/"...StillOpen" pairs are deliberate opposites straddling the same deadline (e.g. `ClaimWindowClosed` on `submitClaim` vs `ClaimWindowStillOpen` on `withdrawNoClaim`), matching the half-open interval convention in §4 — at any given timestamp exactly one side of each pair is true, never both, never neither. Most "double action" cases (double funding, double ruling, double no-claim-withdrawal, etc.) are caught for free by `InvalidPhase()`, since a successful transition always moves `phase` away from the state that made the action valid — no separate one-time-use guard is needed for those. The two genuine exceptions are `claimAmended` (amendment is capped independently of phase, since phase stays `ClaimOpen` across the allowed amendment) and the arbiter-replacement handshake fields (`pendingArbiter`/`pendingArbiterConfirmed`), which are orthogonal to phase by design.
 
@@ -307,11 +311,11 @@ Legend: U = unit, F = fuzz, I = invariant.
 | §6 non-response default | U | No response by `responseDeadline` + `finalizeNoResponse` produces identical ledger state to `respondToClaim(0)` |
 | §7/§9 accounting table | U + F | For every transition row, assert exact `ΔT/ΔLd/Δlocked/ΔW` for both boundary and fuzzed amounts |
 | §9 per-agreement invariant | I | `D == T + Ld + locked + W` holds after every call, across randomized call sequences (Foundry `invariant_` handler contract driving all 19 actions with randomized valid and invalid args) |
-| §9 contract-wide invariant | I | `USDC.balanceOf(contract) == Σ(T_i + Ld_i + locked_i)` across many concurrently-open agreements |
+| §9 contract-wide invariant | I | `USDC.balanceOf(contract) >= Σ(T_i + Ld_i + locked_i)` across many concurrently-open agreements, including direct token donations |
 | §11 cross-agreement isolation | F + I | Randomized interleaved actions across ≥3 concurrently open agreements; assert agreement B's state/balances never change from any action on agreement A |
 | §11 arbiter award bound | F | Fuzz `resolveDispute(X)` with `X > disputedAmount` reverts; `X` at exactly `disputedAmount` and `0` both succeed |
 | §11 landlord-receives-≤-claim | F | Across randomized amend/respond/resolve sequences, assert cumulative `Ld` never exceeds original submitted `C` |
-| §8 arbiter lifecycle | U | Accept/decline/renominate pre-funding; propose/confirm/accept replacement post-funding, including "old arbiter still valid mid-replacement" and "`arbiterRulingDeadline` is bit-for-bit unchanged by a replacement that happens while `Disputed`" |
+| §8 arbiter lifecycle | U | Accept/decline/renominate pre-funding, including persistent decline and repeat-action guards; propose/confirm/cancel/accept replacement post-funding, including terminal-state cleanup, "old arbiter still valid mid-replacement," and "`arbiterRulingDeadline` is bit-for-bit unchanged by a replacement that happens while `Disputed`" |
 | §8 arbiter timeout | U + F | Fuzz time past `arbiterRulingDeadline`; confirm full `locked` goes to tenant; confirm `resolveDispute` reverts after timeout is claimable |
 | §8 resignation blocks ruling | U | `resolveDispute` reverts `ArbiterHasResigned` after `resignAsArbiter`, until replaced |
 | §10 no admin | U | No function reverts with an authorization error for a "deployer"/"owner" concept because no such role exists; the contract has no constructor argument, storage slot, or function gated to any address other than a specific agreement's landlord/tenant/arbiter |

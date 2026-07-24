@@ -44,6 +44,7 @@ contract OpenEscrow is ReentrancyGuard {
     struct Agreement {
         address landlord;
         bool arbiterAccepted;
+        bool arbiterDeclined;
         bool arbiterResigned;
         bool claimAmended;
         bool pendingArbiterConfirmed;
@@ -156,6 +157,7 @@ contract OpenEscrow is ReentrancyGuard {
     error ArbiterRulingWindowClosed();
     error ArbiterRulingWindowStillOpen();
     error InvalidAward();
+    error ArbiterHasDeclined();
     error ArbiterHasResigned();
     error NoReplacementPending();
     error ReplacementAlreadyConfirmed();
@@ -226,7 +228,7 @@ contract OpenEscrow is ReentrancyGuard {
     function acceptArbiterRole(uint256 id) external {
         Agreement storage a = _agreement(id);
 
-        if (a.phase == Phase.Proposed && msg.sender == a.arbiter && !a.arbiterAccepted) {
+        if (a.phase == Phase.Proposed && msg.sender == a.arbiter && !a.arbiterAccepted && !a.arbiterDeclined) {
             a.arbiterAccepted = true;
             a.phase = Phase.ReadyToFund;
             emit ArbiterAccepted(id, msg.sender);
@@ -238,14 +240,14 @@ contract OpenEscrow is ReentrancyGuard {
             address old = a.arbiter;
             a.arbiter = a.pendingArbiter;
             a.arbiterAccepted = true;
+            a.arbiterDeclined = false;
             a.arbiterResigned = false;
-            a.pendingArbiter = address(0);
-            a.pendingArbiterProposer = address(0);
-            a.pendingArbiterConfirmed = false;
+            _clearPendingReplacement(a);
             emit ArbiterReplaced(id, old, msg.sender);
             return;
         }
 
+        if (a.phase == Phase.Closed || a.phase == Phase.Cancelled) revert InvalidPhase();
         revert NotAuthorized();
     }
 
@@ -253,6 +255,8 @@ contract OpenEscrow is ReentrancyGuard {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.Proposed) revert InvalidPhase();
         if (msg.sender != a.arbiter) revert NotAuthorized();
+        if (a.arbiterDeclined) revert ArbiterHasDeclined();
+        a.arbiterDeclined = true;
         emit ArbiterDeclined(id, msg.sender);
     }
 
@@ -266,15 +270,14 @@ contract OpenEscrow is ReentrancyGuard {
         address old = a.arbiter;
         a.arbiter = newArbiter;
         a.arbiterAccepted = false;
+        a.arbiterDeclined = false;
         a.arbiterResigned = false;
         a.phase = Phase.Proposed;
         // A pending replacement proposal from a prior ReadyToFund period is now moot -
         // the phase guards in confirmArbiterReplacement/acceptArbiterRole already make it
         // unusable, but clearing it here keeps a stale "pending replacement" from lingering
         // in reads (e.g. the frontend) for a proposal that can never actually complete.
-        a.pendingArbiter = address(0);
-        a.pendingArbiterProposer = address(0);
-        a.pendingArbiterConfirmed = false;
+        _clearPendingReplacement(a);
         emit ArbiterRenominated(id, old, newArbiter);
     }
 
@@ -283,6 +286,7 @@ contract OpenEscrow is ReentrancyGuard {
         if (a.phase != Phase.Proposed && a.phase != Phase.ReadyToFund) revert InvalidPhase();
         if (msg.sender != a.landlord) revert NotAuthorized();
         a.phase = Phase.Cancelled;
+        _clearPendingReplacement(a);
         emit ProposalCancelled(id);
     }
 
@@ -355,6 +359,7 @@ contract OpenEscrow is ReentrancyGuard {
         if (newAmount == 0) {
             a.phase = Phase.Closed;
             a.closeReason = CloseReason.ClaimRetracted;
+            _clearPendingReplacement(a);
             emit ClaimRetracted(id);
         } else {
             emit ClaimAmended(id, newAmount, delta);
@@ -407,6 +412,7 @@ contract OpenEscrow is ReentrancyGuard {
         if (disputed == 0) {
             a.phase = Phase.Closed;
             a.closeReason = CloseReason.Settled;
+            _clearPendingReplacement(a);
             emit ClaimResponded(id, acceptedAmount, 0);
         } else {
             a.disputeCreatedAt = uint64(block.timestamp);
@@ -428,6 +434,7 @@ contract OpenEscrow is ReentrancyGuard {
         a.locked = 0;
         a.phase = Phase.Closed;
         a.closeReason = CloseReason.NoClaim;
+        _clearPendingReplacement(a);
         emit NoClaimWithdrawal(id, amount);
     }
 
@@ -450,6 +457,7 @@ contract OpenEscrow is ReentrancyGuard {
         a.locked = 0;
         a.phase = Phase.Closed;
         a.closeReason = CloseReason.ResolvedByArbiter;
+        _clearPendingReplacement(a);
         emit DisputeResolved(id, awardToLandlord, toTenant);
     }
 
@@ -465,6 +473,7 @@ contract OpenEscrow is ReentrancyGuard {
         a.locked = 0;
         a.phase = Phase.Closed;
         a.closeReason = CloseReason.ResolvedByTimeout;
+        _clearPendingReplacement(a);
         emit ArbiterTimedOut(id, amount);
     }
 
@@ -501,12 +510,11 @@ contract OpenEscrow is ReentrancyGuard {
 
     function cancelArbiterReplacementProposal(uint256 id) external {
         Agreement storage a = _agreement(id);
+        _requireReplaceablePhase(a.phase);
         if (a.pendingArbiter == address(0)) revert NoReplacementPending();
         if (msg.sender != a.pendingArbiterProposer) revert NotAuthorized();
 
-        a.pendingArbiter = address(0);
-        a.pendingArbiterProposer = address(0);
-        a.pendingArbiterConfirmed = false;
+        _clearPendingReplacement(a);
         emit ArbiterReplacementCancelled(id);
     }
 
@@ -514,6 +522,7 @@ contract OpenEscrow is ReentrancyGuard {
         Agreement storage a = _agreement(id);
         _requireReplaceablePhase(a.phase);
         if (msg.sender != a.arbiter) revert NotAuthorized();
+        if (a.arbiterResigned) revert ArbiterHasResigned();
         a.arbiterResigned = true;
         emit ArbiterResigned(id, msg.sender);
     }
@@ -554,7 +563,7 @@ contract OpenEscrow is ReentrancyGuard {
     /// @notice Convenience accessor returning the full struct, avoiding fragile
     ///         positional tuple destructuring of the `agreements` public getter.
     function getAgreement(uint256 id) external view returns (Agreement memory) {
-        return agreements[id];
+        return _agreement(id);
     }
 
     function evidenceCount(uint256 id) external view returns (uint256) {
@@ -579,6 +588,12 @@ contract OpenEscrow is ReentrancyGuard {
         {
             revert InvalidPhase();
         }
+    }
+
+    function _clearPendingReplacement(Agreement storage a) internal {
+        a.pendingArbiter = address(0);
+        a.pendingArbiterProposer = address(0);
+        a.pendingArbiterConfirmed = false;
     }
 
     /// @dev Onchain evidence is intentionally minimal: a content hash, a pointer/URI or

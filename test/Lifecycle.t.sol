@@ -113,6 +113,44 @@ contract LifecycleTest is Base {
         vm.prank(arbiter);
         escrow.declineArbiterRole(id);
         assertEq(uint8(_phase(id)), uint8(OpenEscrow.Phase.Proposed));
+        assertTrue(escrow.getAgreement(id).arbiterDeclined);
+    }
+
+    function test_declineArbiterRole_blocksLaterAcceptance() public {
+        uint256 id = _propose();
+        vm.prank(arbiter);
+        escrow.declineArbiterRole(id);
+
+        vm.prank(arbiter);
+        vm.expectRevert(OpenEscrow.NotAuthorized.selector);
+        escrow.acceptArbiterRole(id);
+    }
+
+    function test_declineArbiterRole_revertsOnRepeatDecline() public {
+        uint256 id = _propose();
+        vm.prank(arbiter);
+        escrow.declineArbiterRole(id);
+
+        vm.prank(arbiter);
+        vm.expectRevert(OpenEscrow.ArbiterHasDeclined.selector);
+        escrow.declineArbiterRole(id);
+    }
+
+    function test_renominateArbiter_resetsDeclinedState() public {
+        uint256 id = _propose();
+        vm.prank(arbiter);
+        escrow.declineArbiterRole(id);
+
+        vm.prank(landlord);
+        escrow.renominateArbiter(id, newArbiter);
+
+        OpenEscrow.Agreement memory a = escrow.getAgreement(id);
+        assertFalse(a.arbiterDeclined);
+        assertEq(a.arbiter, newArbiter);
+
+        vm.prank(newArbiter);
+        escrow.acceptArbiterRole(id);
+        assertEq(uint8(_phase(id)), uint8(OpenEscrow.Phase.ReadyToFund));
     }
 
     function test_renominateArbiter_resetsAcceptance() public {
@@ -207,6 +245,6 @@ contract LifecycleTest is Base {
 
     function test_getAgreement_revertsForNonexistentId() public {
         vm.expectRevert(OpenEscrow.AgreementDoesNotExist.selector);
-        escrow.submitClaim(999, 1, HASH1, URI, EV_CLAIM);
+        escrow.getAgreement(999);
     }
 }

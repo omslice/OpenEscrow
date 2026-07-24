@@ -97,6 +97,11 @@
         "internalType": "bool"
       },
       {
+        "name": "arbiterDeclined",
+        "type": "bool",
+        "internalType": "bool"
+      },
+      {
         "name": "arbiterResigned",
         "type": "bool",
         "internalType": "bool"
@@ -421,6 +426,11 @@
           },
           {
             "name": "arbiterAccepted",
+            "type": "bool",
+            "internalType": "bool"
+          },
+          {
+            "name": "arbiterDeclined",
             "type": "bool",
             "internalType": "bool"
           },
@@ -1315,6 +1325,11 @@
   {
     "type": "error",
     "name": "AmendmentMustNotIncrease",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ArbiterHasDeclined",
     "inputs": []
   },
   {

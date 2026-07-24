@@ -113,7 +113,7 @@ async function main() {
     const connectBtn = page.getByRole("button", { name: "Connect Wallet" });
     if (await connectBtn.count()) {
       await connectBtn.click();
-      await page.getByText("Base Sepolia").waitFor({ timeout: 10000 });
+      await page.getByText("Base Sepolia", { exact: true }).waitFor({ timeout: 10000 });
     }
   }
 
@@ -215,6 +215,7 @@ async function main() {
   if (await tenantWithdrawBtn.count()) {
     await tenantWithdrawBtn.click();
     await page.getByText("Confirmed.").waitFor({ timeout: 30000 });
+    await tenantWithdrawBtn.waitFor({ state: "detached", timeout: 15000 });
   }
   await shot(page, "tenant-withdrawn");
 
@@ -224,6 +225,7 @@ async function main() {
   if (await landlordWithdrawBtn.count()) {
     await landlordWithdrawBtn.click();
     await page.getByText("Confirmed.").waitFor({ timeout: 30000 });
+    await landlordWithdrawBtn.waitFor({ state: "detached", timeout: 15000 });
   }
   await shot(page, "landlord-withdrawn");
 
@@ -234,7 +236,9 @@ async function main() {
   await browser.close();
 }
 
-main().catch((err) => {
-  console.error("FLOW FAILED:", err);
-  process.exit(1);
-});
+main()
+  .then(() => process.exit(0))
+  .catch((err) => {
+    console.error("FLOW FAILED:", err);
+    process.exit(1);
+  });

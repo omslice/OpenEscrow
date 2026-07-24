@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef } from "react";
 import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import type { Abi } from "viem";
 
@@ -26,12 +26,14 @@ export function TxButton({
 }: TxButtonProps) {
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isMining, isSuccess } = useWaitForTransactionReceipt({ hash });
-  const [notified, setNotified] = useState(false);
+  const notifiedHash = useRef<`0x${string}` | undefined>(undefined);
 
-  if (isSuccess && !notified) {
-    setNotified(true);
-    onSuccess?.();
-  }
+  useEffect(() => {
+    if (isSuccess && hash && notifiedHash.current !== hash) {
+      notifiedHash.current = hash;
+      onSuccess?.();
+    }
+  }, [hash, isSuccess, onSuccess]);
 
   const busy = isPending || isMining;
 
@@ -41,8 +43,8 @@ export function TxButton({
         className={className ?? "btn btn-primary"}
         disabled={disabled || busy}
         onClick={() => {
+          notifiedHash.current = undefined;
           reset();
-          setNotified(false);
           writeContract({ address, abi, functionName, args });
         }}
       >
