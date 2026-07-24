@@ -10,7 +10,7 @@
   flex-direction: column;
   gap: 8px;
   align-items: flex-start;
-  border-bottom: 1px solid #33333a;
+  border-bottom: 1px solid var(--border);
   padding-bottom: 16px;
   margin-bottom: 24px;
 }
@@ -18,19 +18,20 @@
 .app-header h1 {
   margin: 0;
   font-size: 28px;
+  color: var(--text-h);
 }
 
 .tagline {
   margin: 0;
   font-size: 13px;
-  opacity: 0.7;
+  color: var(--text);
 }
 
 .app-footer {
   margin-top: 40px;
   font-size: 12px;
-  opacity: 0.65;
-  border-top: 1px solid #33333a;
+  color: var(--text);
+  border-top: 1px solid var(--border);
   padding-top: 16px;
 }
 
@@ -43,20 +44,20 @@
 .tab {
   padding: 8px 16px;
   border-radius: 8px 8px 0 0;
-  border: 1px solid #33333a;
+  border: 1px solid var(--border);
   border-bottom: none;
   background: transparent;
+  color: var(--text);
   cursor: pointer;
-  opacity: 0.6;
 }
 
 .tab.active {
-  opacity: 1;
+  color: var(--text-h);
   font-weight: 600;
 }
 
 .card {
-  border: 1px solid #33333a;
+  border: 1px solid var(--border);
   border-radius: 12px;
   padding: 20px;
   margin-bottom: 20px;
@@ -71,7 +72,7 @@
   display: block;
   margin-bottom: 14px;
   font-size: 13px;
-  opacity: 0.85;
+  color: var(--text);
 }
 
 .card input,
@@ -81,23 +82,30 @@
   margin-top: 4px;
   padding: 8px 10px;
   border-radius: 6px;
-  border: 1px solid #4a4a52;
-  background: #1a1a1e;
-  color: inherit;
+  border: 1px solid var(--border);
+  background: var(--input-bg);
+  color: var(--text-h);
   font-size: 14px;
   box-sizing: border-box;
+  font-family: inherit;
+}
+
+.card input::placeholder,
+.card textarea::placeholder {
+  color: var(--text);
+  opacity: 0.6;
 }
 
 .hint {
   font-size: 13px;
-  opacity: 0.7;
+  color: var(--text);
   margin-top: 0;
 }
 
 .warning {
   font-size: 12px;
-  color: #e0a030;
-  border-left: 3px solid #e0a030;
+  color: var(--warning);
+  border-left: 3px solid var(--warning);
   padding-left: 8px;
 }
 
@@ -107,10 +115,11 @@
   border: 1px solid transparent;
   cursor: pointer;
   font-size: 14px;
+  font-family: inherit;
 }
 
 .btn-primary {
-  background: #4a6dff;
+  background: var(--accent);
   color: white;
 }
 
@@ -121,19 +130,19 @@
 
 .btn-ghost {
   background: transparent;
-  border-color: #4a4a52;
-  color: inherit;
+  border-color: var(--border);
+  color: var(--text-h);
 }
 
 .btn-ghost.small {
   font-size: 12px;
   padding: 4px 10px;
-  opacity: 0.6;
+  color: var(--text);
 }
 
 .btn-warning {
-  background: #e0a030;
-  color: #1a1a1e;
+  background: var(--warning);
+  color: white;
 }
 
 .connect-wallet {
@@ -146,17 +155,18 @@
   font-size: 12px;
   padding: 4px 10px;
   border-radius: 999px;
-  background: #1e3a2a;
-  color: #6adf9b;
+  background: var(--success-bg);
+  color: var(--success);
 }
 
 .address-badge {
   font-size: 13px;
-  font-family: monospace;
+  font-family: var(--mono);
   padding: 4px 10px;
   border-radius: 999px;
-  background: #1a1a1e;
-  border: 1px solid #33333a;
+  background: var(--code-bg);
+  border: 1px solid var(--border);
+  color: var(--text-h);
 }
 
 .dashboard {
@@ -171,14 +181,15 @@
   justify-content: space-between;
   font-size: 14px;
   gap: 12px;
+  color: var(--text-h);
 }
 
 .dashboard-row .label {
-  opacity: 0.6;
+  color: var(--text);
 }
 
 .dashboard-row.highlight {
-  background: #24242c;
+  background: var(--accent-bg);
   border-radius: 6px;
   padding: 8px;
   font-weight: 600;
@@ -188,11 +199,12 @@
   padding: 2px 10px;
   border-radius: 999px;
   font-size: 12px;
-  background: #2a2a33;
+  background: var(--code-bg);
+  color: var(--text-h);
 }
 
 .action-section {
-  border-top: 1px dashed #33333a;
+  border-top: 1px dashed var(--border);
   padding-top: 16px;
   margin-top: 16px;
 }
@@ -200,6 +212,7 @@
 .action-section h3 {
   margin-top: 0;
   margin-bottom: 6px;
+  color: var(--text-h);
 }
 
 .button-row {
@@ -215,6 +228,7 @@
   gap: 16px;
   margin-bottom: 12px;
   font-size: 14px;
+  color: var(--text-h);
 }
 
 .radio-row label {
@@ -228,18 +242,19 @@
 }
 
 .tx-error {
-  color: #ff6b6b;
+  color: var(--error);
   font-size: 13px;
 }
 
 .tx-success {
-  color: #6adf9b;
+  color: var(--success);
   font-size: 13px;
 }
 
 .evidence-list ul {
   padding-left: 18px;
   font-size: 12px;
+  color: var(--text-h);
 }
 
 .evidence-list code {
