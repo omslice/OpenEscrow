@@ -8,6 +8,10 @@ export const OPEN_ESCROW_ADDRESS = "0xFe0270679261cFC546822Cc453C5aD73f29a721C" 
 export const USDC_ADDRESS = "0xE129b23BD89904D363ba226eE52deC74185D7789" as const;
 export const USDC_DECIMALS = 6;
 
+// Block OpenEscrow was deployed at (broadcast/DeployOpenEscrow.s.sol/84532/run-latest.json) -
+// bounds event-log scans so "discover my agreements" doesn't have to search from genesis.
+export const DEPLOYMENT_BLOCK = 44550183n;
+
 export const chain = baseSepolia;
 
 // Mirrors OpenEscrow's MIN_PERIOD/MAX_PERIOD/MAX_CLAIM_WINDOW_OFFSET constants exactly -
