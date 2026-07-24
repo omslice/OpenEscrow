@@ -12,7 +12,8 @@ if (dirname(target) !== repository || target !== join(repository, "dist")) {
 }
 
 await rm(target, { recursive: true, force: true });
-await cp(source, target, { recursive: true });
+await mkdir(target, { recursive: true });
+await cp(source, join(target, "client"), { recursive: true });
 await mkdir(join(target, "server"), { recursive: true });
 
 const worker = `const worker = {
