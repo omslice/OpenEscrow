@@ -21,12 +21,14 @@ contract DeployBaseSepolia is Script {
 
         vm.startBroadcast();
         escrow = new OpenEscrow(token, yieldToken);
-        reserve = new OperationsReserve(token);
+        reserve = new OperationsReserve(address(escrow), token, yieldToken);
         vm.stopBroadcast();
 
         require(address(escrow.TOKEN()) == token, "escrow token mismatch");
         require(address(escrow.YIELD_TOKEN()) == yieldToken, "escrow yield token mismatch");
+        require(address(reserve.ESCROW()) == address(escrow), "reserve escrow mismatch");
         require(address(reserve.TOKEN()) == token, "reserve token mismatch");
+        require(address(reserve.YIELD_TOKEN()) == yieldToken, "reserve yield token mismatch");
 
         console.log("OpenEscrow deployed at:       ", address(escrow));
         console.log("OperationsReserve deployed at:", address(reserve));
