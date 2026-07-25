@@ -44,7 +44,14 @@ foreach ($transaction in @($escrowTransaction, $reserveTransaction)) {
 
 $plainToken = [string]$escrowTransaction.arguments[0]
 $yieldToken = [string]$escrowTransaction.arguments[1]
-if ([string]$reserveTransaction.arguments[0] -ine $plainToken) {
+$configuredReserve = [string]$escrowTransaction.arguments[2]
+if ($configuredReserve -ine [string]$reserveTransaction.contractAddress) {
+    throw "OpenEscrow was not deployed with the matching OperationsReserve address."
+}
+if (
+    [string]$reserveTransaction.arguments[0] -ine $plainToken -or
+    [string]$reserveTransaction.arguments[1] -ine $yieldToken
+) {
     throw "OpenEscrow and OperationsReserve were deployed with different plain tokens."
 }
 

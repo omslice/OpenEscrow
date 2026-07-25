@@ -5,6 +5,13 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
+interface IOperationsReserve {
+    function TOKEN() external view returns (IERC20);
+    function YIELD_TOKEN() external view returns (IERC20);
+    function requiredReserveShare(uint256 agreementId, address payer) external view returns (uint256);
+    function recordReservePayment(uint256 agreementId, address payer, uint256 amount) external;
+}
+
 /// @title OpenEscrow - shared rental security deposit escrow (Base Sepolia MVP)
 /// @notice Implements docs/mvp-spec.md. One default test token plus an explicit
 ///         per-agreement test-token path, in one shared contract holding independent
@@ -97,6 +104,7 @@ contract OpenEscrow is ReentrancyGuard {
 
     IERC20 public immutable TOKEN;
     IERC20 public immutable YIELD_TOKEN;
+    address public immutable OPERATIONS_RESERVE;
 
     uint256 public nextAgreementId;
     mapping(uint256 => Agreement) public agreements;
@@ -186,15 +194,24 @@ contract OpenEscrow is ReentrancyGuard {
     error UnsupportedToken();
     error InvalidTenantShares();
     error TenantAlreadyFunded();
+    error OperationsReserveNotConfigured();
+    error InvalidOperationsReserve();
 
     // ---------------------------------------------------------------------
     // Constructor
     // ---------------------------------------------------------------------
 
-    constructor(address token, address yieldToken) {
+    constructor(address token, address yieldToken, address operationsReserve) {
         if (token == address(0) || yieldToken == address(0)) revert ZeroAddress();
+        if (
+            operationsReserve != address(0)
+                && (operationsReserve.code.length == 0
+                    || address(IOperationsReserve(operationsReserve).TOKEN()) != token
+                    || address(IOperationsReserve(operationsReserve).YIELD_TOKEN()) != yieldToken)
+        ) revert InvalidOperationsReserve();
         TOKEN = IERC20(token);
         YIELD_TOKEN = IERC20(yieldToken);
+        OPERATIONS_RESERVE = operationsReserve;
     }
 
     // ---------------------------------------------------------------------
@@ -437,10 +454,23 @@ contract OpenEscrow is ReentrancyGuard {
     /// @notice Funds only the caller's approved portion. The agreement becomes Active
     ///         after the full agreed amount has been received across all tenant wallets.
     function fundTenantShare(uint256 id) external nonReentrant {
-        _fundTenantShare(id);
+        _fundTenantShare(id, 0);
+    }
+
+    /// @notice Atomically collects the caller's refundable deposit share and evenly
+    ///         allocated operations-reserve share. The selected token needs one
+    ///         allowance to this contract for the combined amount.
+    function fundTenantShareWithReserve(uint256 id) external nonReentrant {
+        if (OPERATIONS_RESERVE == address(0)) revert OperationsReserveNotConfigured();
+        uint256 reserveAmount = IOperationsReserve(OPERATIONS_RESERVE).requiredReserveShare(id, msg.sender);
+        _fundTenantShare(id, reserveAmount);
     }
 
     function _fundTenantShare(uint256 id) internal {
+        _fundTenantShare(id, 0);
+    }
+
+    function _fundTenantShare(uint256 id, uint256 reserveAmount) internal {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.ReadyToFund) revert InvalidPhase();
         uint256 target = requiredTenantContribution(id, msg.sender);
@@ -449,14 +479,24 @@ contract OpenEscrow is ReentrancyGuard {
 
         IERC20 token = IERC20(a.token);
         uint256 balBefore = token.balanceOf(address(this));
-        token.safeTransferFrom(msg.sender, address(this), target);
+        token.safeTransferFrom(msg.sender, address(this), target + reserveAmount);
         uint256 received = token.balanceOf(address(this)) - balBefore;
-        if (received != target) revert DepositMismatch();
+        if (received != target + reserveAmount) revert DepositMismatch();
 
-        tenantContribution[id][msg.sender] = received;
-        a.depositAmount += received;
-        a.locked += received;
-        emit TenantShareFunded(id, msg.sender, received, a.depositAmount);
+        if (reserveAmount > 0) {
+            uint256 reserveBalBefore = token.balanceOf(OPERATIONS_RESERVE);
+            token.safeTransfer(OPERATIONS_RESERVE, reserveAmount);
+            if (token.balanceOf(OPERATIONS_RESERVE) - reserveBalBefore != reserveAmount) {
+                revert DepositMismatch();
+            }
+            IOperationsReserve(OPERATIONS_RESERVE).recordReservePayment(id, msg.sender, reserveAmount);
+            if (token.balanceOf(address(this)) - balBefore != target) revert DepositMismatch();
+        }
+
+        tenantContribution[id][msg.sender] = target;
+        a.depositAmount += target;
+        a.locked += target;
+        emit TenantShareFunded(id, msg.sender, target, a.depositAmount);
         if (a.depositAmount == a.agreedAmount) {
             a.fundedAt = uint64(block.timestamp);
             a.phase = Phase.Active;

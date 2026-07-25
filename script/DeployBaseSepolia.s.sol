@@ -20,12 +20,14 @@ contract DeployBaseSepolia is Script {
         require(yieldToken != address(0) && yieldToken.code.length > 0, "invalid YIELD_TOKEN_ADDRESS");
 
         vm.startBroadcast();
-        escrow = new OpenEscrow(token, yieldToken);
-        reserve = new OperationsReserve(address(escrow), token, yieldToken);
+        reserve = new OperationsReserve(token, yieldToken);
+        escrow = new OpenEscrow(token, yieldToken, address(reserve));
+        reserve.configureEscrow(address(escrow));
         vm.stopBroadcast();
 
         require(address(escrow.TOKEN()) == token, "escrow token mismatch");
         require(address(escrow.YIELD_TOKEN()) == yieldToken, "escrow yield token mismatch");
+        require(escrow.OPERATIONS_RESERVE() == address(reserve), "escrow reserve mismatch");
         require(address(reserve.ESCROW()) == address(escrow), "reserve escrow mismatch");
         require(address(reserve.TOKEN()) == token, "reserve token mismatch");
         require(address(reserve.YIELD_TOKEN()) == yieldToken, "reserve yield token mismatch");

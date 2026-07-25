@@ -166,7 +166,10 @@ function FundingIntroduction({
         {tokenLabel === "ytUSDC"
           ? " shares. The dashboard will show their growing testUSDC value"
           : ""}
-        . Approve the token spend, then submit this tenant's share.
+        .{" "}
+        {reserveRequired && !reservePaid
+          ? "Approve your full assigned total once, then fund the deposit and reserve together in one atomic transaction."
+          : "Approve the token spend, then submit this tenant's share."}
       </p>
       <div className="funding-reserve-summary">
         <span>Agreement funding progress</span>
@@ -252,16 +255,6 @@ function StandardTenantFundAction({
       refetchInterval: 4000,
     },
   });
-  const { data: reserveAllowance, refetch: refetchReserveAllowance } = useReadContract({
-    address: agreement.token,
-    abi: MockUSDCABI,
-    functionName: "allowance",
-    args: address ? [address, OPERATIONS_RESERVE_ADDRESS] : undefined,
-    query: {
-      enabled: !!address && reserveRequired && agreement.phase === Phase.ReadyToFund,
-      refetchInterval: 4000,
-    },
-  });
   const { data: reservePaid, refetch: refetchReservePaid } = useReadContract({
     address: OPERATIONS_RESERVE_ADDRESS,
     abi: OperationsReserveABI,
@@ -286,11 +279,8 @@ function StandardTenantFundAction({
   const reserveIsPaid = !reserveRequired || reservePaid === true;
   const tokenBalanceNeeded = needed + (reserveIsPaid ? 0n : reserveAmount);
   const hasBalance = currentBalance >= tokenBalanceNeeded;
-  const hasAllowance = typeof allowance === "bigint" && allowance >= needed;
-  const hasReserveAllowance =
-    !reserveRequired ||
-    (typeof reserveAllowance === "bigint" &&
-      reserveAllowance >= reserveAmount);
+  const hasAllowance =
+    typeof allowance === "bigint" && allowance >= tokenBalanceNeeded;
 
   return (
     <div className="action-section">
@@ -324,7 +314,7 @@ function StandardTenantFundAction({
               functionName: "approve",
               account: address,
               chain,
-              args: [OPEN_ESCROW_ADDRESS, needed],
+              args: [OPEN_ESCROW_ADDRESS, tokenBalanceNeeded],
             })
           }
         >
@@ -332,29 +322,21 @@ function StandardTenantFundAction({
             ? "Confirm in wallet..."
             : approveMining
               ? "Mining..."
-              : `Approve ${formatUSDC(needed)} ${tokenLabel}`}
+              : `Approve total ${formatUSDC(tokenBalanceNeeded)} ${tokenLabel}`}
         </button>
-      ) : !hasReserveAllowance ? (
-        <TxButton
-          address={agreement.token}
-          abi={MockUSDCABI}
-          functionName="approve"
-          args={[OPERATIONS_RESERVE_ADDRESS, reserveAmount]}
-          label={`Approve ${formatUSDC(reserveAmount)} reserve share`}
-          className="btn btn-primary"
-          onSuccess={() => void refetchReserveAllowance()}
-        />
       ) : !reserveIsPaid ? (
         <TxButton
-          address={OPERATIONS_RESERVE_ADDRESS}
-          abi={OperationsReserveABI}
-          functionName="payReserveShare"
-          args={[OPEN_ESCROW_ADDRESS, id, reserveAmount]}
-          label={`Pay ${formatUSDC(reserveAmount)} reserve share`}
+          address={OPEN_ESCROW_ADDRESS}
+          abi={OpenEscrowABI}
+          functionName="fundTenantShareWithReserve"
+          args={[id]}
+          label={`Fund total ${formatUSDC(tokenBalanceNeeded)} ${tokenLabel}`}
           className="btn btn-primary"
           onSuccess={(transactionHash) => {
             void refetchReservePaid();
             void reserveRecord.record(transactionHash, reserveAmount);
+            void fundingRecord.record(transactionHash, needed);
+            onRefetch?.();
           }}
         />
       ) : (
@@ -406,8 +388,6 @@ function SponsoredTenantFundAction({
     | "idle"
     | "minting"
     | "approving"
-    | "reserveApproving"
-    | "reservePaying"
     | "funding"
   >("idle");
   const [transactionError, setTransactionError] = useState<string | null>(null);
@@ -451,16 +431,6 @@ function SponsoredTenantFundAction({
       refetchInterval: 4000,
     },
   });
-  const { data: reserveAllowance, refetch: refetchReserveAllowance } = useReadContract({
-    address: agreement.token,
-    abi: MockUSDCABI,
-    functionName: "allowance",
-    args: address ? [address, OPERATIONS_RESERVE_ADDRESS] : undefined,
-    query: {
-      enabled: !!address && reserveRequired && agreement.phase === Phase.ReadyToFund,
-      refetchInterval: 4000,
-    },
-  });
   const { data: reservePaid, refetch: refetchReservePaid } = useReadContract({
     address: OPERATIONS_RESERVE_ADDRESS,
     abi: OperationsReserveABI,
@@ -477,11 +447,8 @@ function SponsoredTenantFundAction({
   const reserveIsPaid = !reserveRequired || reservePaid === true;
   const tokenBalanceNeeded = needed + (reserveIsPaid ? 0n : reserveAmount);
   const hasBalance = currentBalance >= tokenBalanceNeeded;
-  const hasAllowance = typeof allowance === "bigint" && allowance >= needed;
-  const hasReserveAllowance =
-    !reserveRequired ||
-    (typeof reserveAllowance === "bigint" &&
-      reserveAllowance >= reserveAmount);
+  const hasAllowance =
+    typeof allowance === "bigint" && allowance >= tokenBalanceNeeded;
 
   async function sendSponsored(
     to: `0x${string}`,
@@ -506,7 +473,7 @@ function SponsoredTenantFundAction({
         encodeFunctionData({
           abi: MockUSDCABI,
           functionName: "approve",
-          args: [OPEN_ESCROW_ADDRESS, needed],
+          args: [OPEN_ESCROW_ADDRESS, tokenBalanceNeeded],
         }),
         150_000n,
       );
@@ -544,49 +511,6 @@ function SponsoredTenantFundAction({
     }
   }
 
-  async function approveReserve() {
-    setTransactionError(null);
-    setStep("reserveApproving");
-    try {
-      await sendSponsored(
-        agreement.token,
-        encodeFunctionData({
-          abi: MockUSDCABI,
-          functionName: "approve",
-          args: [OPERATIONS_RESERVE_ADDRESS, reserveAmount],
-        }),
-        150_000n,
-      );
-      await refetchReserveAllowance();
-    } catch (caught) {
-      setTransactionError(sponsoredErrorMessage(caught));
-    } finally {
-      setStep("idle");
-    }
-  }
-
-  async function payReserve() {
-    setTransactionError(null);
-    setStep("reservePaying");
-    try {
-      const transactionHash = await sendSponsored(
-        OPERATIONS_RESERVE_ADDRESS,
-        encodeFunctionData({
-          abi: OperationsReserveABI,
-          functionName: "payReserveShare",
-          args: [OPEN_ESCROW_ADDRESS, id, reserveAmount],
-        }),
-        200_000n,
-      );
-      await refetchReservePaid();
-      await reserveRecord.record(transactionHash, reserveAmount);
-    } catch (caught) {
-      setTransactionError(sponsoredErrorMessage(caught));
-    } finally {
-      setStep("idle");
-    }
-  }
-
   async function fundDeposit() {
     setTransactionError(null);
     setStep("funding");
@@ -595,25 +519,31 @@ function SponsoredTenantFundAction({
         refetchBalance(),
         refetchAllowance(),
       ]);
-      if (typeof latestBalance.data !== "bigint" || latestBalance.data < needed) {
+      if (typeof latestBalance.data !== "bigint" || latestBalance.data < tokenBalanceNeeded) {
         throw new Error(
-          `This wallet needs ${formatUSDC(needed)} ${tokenLabel} before it can fund the agreement.`,
+          `This wallet needs ${formatUSDC(tokenBalanceNeeded)} ${tokenLabel} before it can fund the agreement.`,
         );
       }
-      if (typeof latestAllowance.data !== "bigint" || latestAllowance.data < needed) {
+      if (typeof latestAllowance.data !== "bigint" || latestAllowance.data < tokenBalanceNeeded) {
         throw new Error(
-          `Approve ${formatUSDC(needed)} ${tokenLabel} before funding the agreement.`,
+          `Approve ${formatUSDC(tokenBalanceNeeded)} ${tokenLabel} before funding the agreement.`,
         );
       }
       const transactionHash = await sendSponsored(
         OPEN_ESCROW_ADDRESS,
         encodeFunctionData({
           abi: OpenEscrowABI,
-          functionName: "fundTenantShare",
+          functionName: reserveIsPaid
+            ? "fundTenantShare"
+            : "fundTenantShareWithReserve",
           args: [id],
         }),
-        750_000n,
+        reserveIsPaid ? 750_000n : 900_000n,
       );
+      if (!reserveIsPaid) {
+        await refetchReservePaid();
+        await reserveRecord.record(transactionHash, reserveAmount);
+      }
       await fundingRecord.record(transactionHash, needed);
       onRefetch?.();
     } catch (caught) {
@@ -653,27 +583,7 @@ function SponsoredTenantFundAction({
         >
           {step === "approving"
             ? "Approving with gas covered..."
-            : `Approve ${formatUSDC(needed)} ${tokenLabel}`}
-        </button>
-      ) : !hasReserveAllowance ? (
-        <button
-          className="btn btn-primary"
-          disabled={step !== "idle"}
-          onClick={() => void approveReserve()}
-        >
-          {step === "reserveApproving"
-            ? "Approving reserve with gas covered..."
-            : `Approve ${formatUSDC(reserveAmount)} reserve share`}
-        </button>
-      ) : !reserveIsPaid ? (
-        <button
-          className="btn btn-primary"
-          disabled={step !== "idle"}
-          onClick={() => void payReserve()}
-        >
-          {step === "reservePaying"
-            ? "Paying reserve with gas covered..."
-            : `Pay ${formatUSDC(reserveAmount)} reserve share`}
+            : `Approve total ${formatUSDC(tokenBalanceNeeded)} ${tokenLabel}`}
         </button>
       ) : (
         <button
@@ -683,7 +593,9 @@ function SponsoredTenantFundAction({
         >
           {step === "funding"
             ? "Funding with gas covered..."
-            : `Fund my ${formatUSDC(needed)} share`}
+            : reserveIsPaid
+              ? `Fund my ${formatUSDC(needed)} share`
+              : `Fund total ${formatUSDC(tokenBalanceNeeded)} ${tokenLabel}`}
         </button>
       )}
       {reserveRecord.recovery}

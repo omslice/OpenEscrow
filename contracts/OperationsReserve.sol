@@ -14,7 +14,7 @@ import {OpenEscrow} from "./OpenEscrow.sol";
 contract OperationsReserve is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
-    OpenEscrow public immutable ESCROW;
+    OpenEscrow public ESCROW;
     IERC20 public immutable TOKEN;
     IERC20 public immutable YIELD_TOKEN;
     address public immutable TREASURY;
@@ -25,7 +25,9 @@ contract OperationsReserve is ReentrancyGuard {
     mapping(address escrow => mapping(uint256 agreementId => mapping(address payer => uint256))) public paidAmount;
     mapping(address escrow => mapping(uint256 agreementId => uint256)) public totalPaid;
     mapping(address escrow => mapping(uint256 agreementId => address)) public paymentToken;
+    mapping(address token => uint256) public availableBalance;
 
+    event EscrowConfigured(address indexed escrow);
     event OperationsReservePaid(
         address indexed escrow, uint256 indexed agreementId, address indexed payer, address token, uint256 amount
     );
@@ -40,19 +42,30 @@ contract OperationsReserve is ReentrancyGuard {
     error UnsupportedEscrow();
     error UnsupportedToken();
     error TokenConfigurationMismatch();
+    error AlreadyConfigured();
 
-    constructor(address escrow, address token, address yieldToken) {
-        if (escrow == address(0) || token == address(0) || yieldToken == address(0)) revert ZeroAddress();
-        if (escrow.code.length == 0 || token.code.length == 0 || yieldToken.code.length == 0) {
+    constructor(address token, address yieldToken) {
+        if (token == address(0) || yieldToken == address(0)) revert ZeroAddress();
+        if (token.code.length == 0 || yieldToken.code.length == 0) {
             revert InvalidContract();
         }
-        ESCROW = OpenEscrow(escrow);
         TOKEN = IERC20(token);
         YIELD_TOKEN = IERC20(yieldToken);
         TREASURY = msg.sender;
-        if (address(ESCROW.TOKEN()) != token || address(ESCROW.YIELD_TOKEN()) != yieldToken) {
+    }
+
+    /// @notice One-time link to the matching escrow deployment.
+    function configureEscrow(address escrow) external {
+        if (msg.sender != TREASURY) revert NotTreasury();
+        if (address(ESCROW) != address(0)) revert AlreadyConfigured();
+        if (escrow == address(0)) revert ZeroAddress();
+        if (escrow.code.length == 0) revert InvalidContract();
+        OpenEscrow candidate = OpenEscrow(escrow);
+        if (address(candidate.TOKEN()) != address(TOKEN) || address(candidate.YIELD_TOKEN()) != address(YIELD_TOKEN)) {
             revert TokenConfigurationMismatch();
         }
+        ESCROW = candidate;
+        emit EscrowConfigured(escrow);
     }
 
     function payReserve(address escrow, uint256 agreementId) external nonReentrant {
@@ -66,8 +79,42 @@ contract OperationsReserve is ReentrancyGuard {
         _payReserve(escrow, agreementId, amount);
     }
 
+    /// @notice Returns the exact evenly allocated reserve share for a tenant.
+    function requiredReserveShare(uint256 agreementId, address payer) public view returns (uint256) {
+        if (address(ESCROW) == address(0)) revert UnsupportedEscrow();
+        (address[] memory tenants,,,) = ESCROW.getTenantParticipants(agreementId);
+        uint256 payerIndex = type(uint256).max;
+        for (uint256 i = 0; i < tenants.length; ++i) {
+            if (tenants[i] == payer) {
+                payerIndex = i;
+                break;
+            }
+        }
+        if (payerIndex == type(uint256).max) revert PaymentMismatch();
+        uint256 baseShare = RESERVE_AMOUNT / tenants.length;
+        return payerIndex + 1 == tenants.length ? RESERVE_AMOUNT - baseShare * (tenants.length - 1) : baseShare;
+    }
+
+    /// @notice Records reserve tokens transferred atomically by the configured escrow.
+    function recordReservePayment(uint256 agreementId, address payer, uint256 amount) external nonReentrant {
+        if (msg.sender != address(ESCROW)) revert UnsupportedEscrow();
+        if (paid[msg.sender][agreementId][payer]) revert AlreadyPaid();
+        uint256 expectedAmount = requiredReserveShare(agreementId, payer);
+        if (amount != expectedAmount) revert PaymentMismatch();
+
+        OpenEscrow.Agreement memory agreement = ESCROW.getAgreement(agreementId);
+        address selectedToken = agreement.token;
+        if (selectedToken != address(TOKEN) && selectedToken != address(YIELD_TOKEN)) revert UnsupportedToken();
+        if (IERC20(selectedToken).balanceOf(address(this)) < availableBalance[selectedToken] + amount) {
+            revert PaymentMismatch();
+        }
+
+        availableBalance[selectedToken] += amount;
+        _recordPayment(address(ESCROW), agreementId, payer, selectedToken, amount);
+    }
+
     function _payReserve(address escrow, uint256 agreementId, uint256 amount) internal {
-        if (escrow != address(ESCROW)) revert UnsupportedEscrow();
+        if (address(ESCROW) == address(0) || escrow != address(ESCROW)) revert UnsupportedEscrow();
         if (paid[escrow][agreementId][msg.sender]) revert AlreadyPaid();
         if (amount == 0 || amount > RESERVE_AMOUNT) revert ZeroAmount();
 
@@ -75,18 +122,7 @@ contract OperationsReserve is ReentrancyGuard {
         address selectedToken = agreement.token;
         if (selectedToken != address(TOKEN) && selectedToken != address(YIELD_TOKEN)) revert UnsupportedToken();
 
-        (address[] memory tenants,,,) = ESCROW.getTenantParticipants(agreementId);
-        uint256 payerIndex = type(uint256).max;
-        for (uint256 i = 0; i < tenants.length; ++i) {
-            if (tenants[i] == msg.sender) {
-                payerIndex = i;
-                break;
-            }
-        }
-        if (payerIndex == type(uint256).max) revert PaymentMismatch();
-        uint256 baseShare = RESERVE_AMOUNT / tenants.length;
-        uint256 expectedAmount =
-            payerIndex + 1 == tenants.length ? RESERVE_AMOUNT - baseShare * (tenants.length - 1) : baseShare;
+        uint256 expectedAmount = requiredReserveShare(agreementId, msg.sender);
         if (amount != expectedAmount) revert PaymentMismatch();
         if (totalPaid[escrow][agreementId] + amount > RESERVE_AMOUNT) revert PaymentMismatch();
 
@@ -97,11 +133,19 @@ contract OperationsReserve is ReentrancyGuard {
             revert PaymentMismatch();
         }
 
-        paid[escrow][agreementId][msg.sender] = true;
-        paidAmount[escrow][agreementId][msg.sender] = amount;
+        availableBalance[selectedToken] += amount;
+        _recordPayment(escrow, agreementId, msg.sender, selectedToken, amount);
+    }
+
+    function _recordPayment(address escrow, uint256 agreementId, address payer, address token, uint256 amount)
+        internal
+    {
+        if (totalPaid[escrow][agreementId] + amount > RESERVE_AMOUNT) revert PaymentMismatch();
+        paid[escrow][agreementId][payer] = true;
+        paidAmount[escrow][agreementId][payer] = amount;
         totalPaid[escrow][agreementId] += amount;
-        paymentToken[escrow][agreementId] = selectedToken;
-        emit OperationsReservePaid(escrow, agreementId, msg.sender, selectedToken, amount);
+        paymentToken[escrow][agreementId] = token;
+        emit OperationsReservePaid(escrow, agreementId, payer, token, amount);
     }
 
     function withdrawReserve(address recipient, uint256 amount) external nonReentrant {
@@ -116,6 +160,8 @@ contract OperationsReserve is ReentrancyGuard {
     function _withdrawReserve(IERC20 token, address recipient, uint256 amount) internal {
         if (msg.sender != TREASURY) revert NotTreasury();
         if (recipient == address(0)) revert ZeroAddress();
+        if (amount > availableBalance[address(token)]) revert PaymentMismatch();
+        availableBalance[address(token)] -= amount;
         token.safeTransfer(recipient, amount);
         emit ReserveWithdrawn(address(token), recipient, amount);
     }

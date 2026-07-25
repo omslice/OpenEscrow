@@ -20,8 +20,9 @@ contract OperationsReserveTest is Test {
     function setUp() public {
         usdc = new MockUSDC();
         yieldToken = new MockYieldUSDC();
-        escrow = new OpenEscrow(address(usdc), address(yieldToken));
-        reserve = new OperationsReserve(address(escrow), address(usdc), address(yieldToken));
+        reserve = new OperationsReserve(address(usdc), address(yieldToken));
+        escrow = new OpenEscrow(address(usdc), address(yieldToken), address(reserve));
+        reserve.configureEscrow(address(escrow));
 
         usdc.mint(tenant, 20e6);
         usdc.mint(cotenant, 20e6);
@@ -138,18 +139,91 @@ contract OperationsReserveTest is Test {
     }
 
     function test_reserveRejectsAnotherEscrow() public {
-        OpenEscrow anotherEscrow = new OpenEscrow(address(usdc), address(yieldToken));
+        OpenEscrow anotherEscrow = new OpenEscrow(address(usdc), address(yieldToken), address(0));
 
         vm.prank(tenant);
         vm.expectRevert(OperationsReserve.UnsupportedEscrow.selector);
         reserve.payReserve(address(anotherEscrow), 0);
     }
 
-    function test_constructorRejectsTokenConfigurationMismatch() public {
+    function test_configurationRejectsTokenMismatch() public {
         MockUSDC otherToken = new MockUSDC();
 
+        OperationsReserve mismatched = new OperationsReserve(address(otherToken), address(yieldToken));
         vm.expectRevert(OperationsReserve.TokenConfigurationMismatch.selector);
-        new OperationsReserve(address(escrow), address(otherToken), address(yieldToken));
+        mismatched.configureEscrow(address(escrow));
+
+        vm.expectRevert(OpenEscrow.InvalidOperationsReserve.selector);
+        new OpenEscrow(address(usdc), address(yieldToken), address(mismatched));
+    }
+
+    function test_escrowConfigurationIsTreasuryOnlyAndOneTime() public {
+        vm.expectRevert(OperationsReserve.AlreadyConfigured.selector);
+        reserve.configureEscrow(address(escrow));
+
+        OperationsReserve unconfigured = new OperationsReserve(address(usdc), address(yieldToken));
+        vm.prank(tenant);
+        vm.expectRevert(OperationsReserve.NotTreasury.selector);
+        unconfigured.configureEscrow(address(escrow));
+    }
+
+    function test_atomicFundingUsesOneEscrowAllowanceAndOneFundingCall() public {
+        uint256 id = _createSingleTenantAgreement(address(usdc));
+        usdc.mint(tenant, 1_000e6);
+        vm.startPrank(tenant);
+        usdc.approve(address(reserve), 0);
+        usdc.approve(address(escrow), 1_005e6);
+        escrow.fundTenantShareWithReserve(id);
+        vm.stopPrank();
+
+        OpenEscrow.Agreement memory funded = escrow.getAgreement(id);
+        assertEq(uint8(funded.phase), uint8(OpenEscrow.Phase.Active));
+        assertEq(funded.depositAmount, 1_000e6);
+        assertEq(funded.locked, 1_000e6);
+        assertEq(usdc.balanceOf(address(escrow)), 1_000e6);
+        assertEq(usdc.balanceOf(address(reserve)), 5e6);
+        assertEq(usdc.allowance(tenant, address(reserve)), 0);
+        assertEq(usdc.allowance(tenant, address(escrow)), 0);
+        assertTrue(reserve.paid(address(escrow), id, tenant));
+        assertEq(reserve.paidAmount(address(escrow), id, tenant), 5e6);
+        assertEq(reserve.availableBalance(address(usdc)), 5e6);
+    }
+
+    function test_atomicFundingRevertsWithoutAllowanceForCombinedTotal() public {
+        uint256 id = _createSingleTenantAgreement(address(usdc));
+        usdc.mint(tenant, 1_000e6);
+        vm.startPrank(tenant);
+        usdc.approve(address(escrow), 1_000e6);
+        vm.expectRevert();
+        escrow.fundTenantShareWithReserve(id);
+        vm.stopPrank();
+
+        assertEq(escrow.getAgreement(id).depositAmount, 0);
+        assertEq(usdc.balanceOf(address(escrow)), 0);
+        assertEq(usdc.balanceOf(address(reserve)), 0);
+        assertFalse(reserve.paid(address(escrow), id, tenant));
+    }
+
+    function test_multiTenantAtomicFundingSplitsReserveEvenly() public {
+        uint256 id = _createTwoTenantAgreement(address(usdc));
+        usdc.mint(tenant, 500e6);
+        usdc.mint(cotenant, 500e6);
+
+        vm.prank(tenant);
+        usdc.approve(address(escrow), 502_500_000);
+        vm.prank(cotenant);
+        usdc.approve(address(escrow), 502_500_000);
+        vm.prank(tenant);
+        escrow.fundTenantShareWithReserve(id);
+        vm.prank(cotenant);
+        escrow.fundTenantShareWithReserve(id);
+
+        assertEq(uint8(escrow.getAgreement(id).phase), uint8(OpenEscrow.Phase.Active));
+        assertEq(escrow.tenantContribution(id, tenant), 500e6);
+        assertEq(escrow.tenantContribution(id, cotenant), 500e6);
+        assertEq(reserve.paidAmount(address(escrow), id, tenant), 2_500_000);
+        assertEq(reserve.paidAmount(address(escrow), id, cotenant), 2_500_000);
+        assertEq(reserve.totalPaid(address(escrow), id), 5e6);
     }
 
     function test_onlyTreasuryCanWithdrawPlainAndYieldReserves() public {

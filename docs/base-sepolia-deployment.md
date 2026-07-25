@@ -60,8 +60,8 @@ Do not broadcast if any check fails:
   -vvvv
 ```
 
-The simulation should show exactly two contract creations: one `OpenEscrow` and one
-`OperationsReserve`.
+The simulation should show exactly two contract creations—`OperationsReserve` first,
+then `OpenEscrow`—followed by the reserve's one-time `configureEscrow` call.
 
 ## Broadcast with the encrypted keystore
 
@@ -99,14 +99,9 @@ Before releasing the site, confirm on a Base Sepolia explorer that:
 - both deployment transactions succeeded;
 - `OpenEscrow.TOKEN()` and `OperationsReserve.TOKEN()` equal `TOKEN_ADDRESS`;
 - `OpenEscrow.YIELD_TOKEN()` equals `YIELD_TOKEN_ADDRESS`;
+- `OpenEscrow.OPERATIONS_RESERVE()` equals the deployed reserve;
+- `OperationsReserve.ESCROW()` equals the deployed escrow;
 - `OperationsReserve.TREASURY()` equals the intended deployer address.
 
 Then apply the exported contract addresses, regenerate the two frontend ABIs from the
 new build artifacts, run the full frontend checks, and deploy the site.
-
-## Current blocker
-
-No `openescrow-base-sepolia` Foundry account is configured in this workspace session.
-Broadcasting therefore requires the owner to perform the one-time interactive keystore
-import and fund the resulting public Base Sepolia address. No raw private key is
-required or accepted by this runbook.

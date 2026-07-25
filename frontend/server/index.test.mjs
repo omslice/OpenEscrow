@@ -1226,6 +1226,62 @@ test("landlord revisions reset approvals and generic timing remains editable", a
   assert.equal(revised.tenantApproved, false);
 });
 
+test("deduction claim email includes every tenant", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenants: [
+          { name: "Terry Tenant", email: "tenant@example.com" },
+          { name: "Casey Tenant", email: "casey@example.com" },
+        ],
+        arbiterName: "",
+        arbiterEmail: null,
+        terms,
+      }),
+      { DB: db },
+    ),
+  );
+  const originalFetch = globalThis.fetch;
+  let sentEmail = null;
+  globalThis.fetch = async (url, init) => {
+    assert.equal(url, "https://api.resend.com/emails");
+    sentEmail = JSON.parse(init.body);
+    return Response.json({ id: "multi-tenant-claim-message" });
+  };
+  try {
+    const response = await worker.fetch(
+      request("/api/notifications/claim", "POST", {
+        proposalId: created.record.id,
+        token: created.access.landlord,
+        reviewUrl: `https://openescrow.example/?invite=tenant&proposal=${created.record.id}&token=${created.access.tenant}`,
+        agreementId: "42",
+        amount: "100",
+        items: [
+          {
+            category: "Damage beyond ordinary wear",
+            description: "Documented repair",
+            amount: "100",
+          },
+        ],
+        note: "",
+        evidenceUri: "openescrow://evidence/test",
+      }),
+      {
+        DB: db,
+        RESEND_API_KEY: "test-resend-key",
+        NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      },
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(sentEmail.to, ["tenant@example.com", "casey@example.com"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("documented claim, tenant decision, and email attempts are included in the record", async () => {
   const db = new TestD1();
   const created = await create(db);

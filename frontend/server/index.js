@@ -2985,6 +2985,13 @@ async function sendClaimNotification(request, env) {
     )
   ).slice(0, 32);
   const existingRecord = await serialize(env.DB, row);
+  const recipientEmails = [
+    ...new Set(
+      [row.tenant_email, ...existingRecord.tenants.map((tenant) => tenant.email)]
+        .map((email) => normalizeEmail(email))
+        .filter(Boolean),
+    ),
+  ];
   const existingDelivery = existingRecord.events.find(
     (event) =>
       event.action === "claim_notification_sent" &&
@@ -3018,7 +3025,7 @@ async function sendClaimNotification(request, env) {
     },
     body: JSON.stringify({
       from: env.NOTIFICATION_FROM_EMAIL,
-      to: [row.tenant_email],
+      to: recipientEmails,
       subject,
       text,
     }),
@@ -3039,7 +3046,7 @@ async function sendClaimNotification(request, env) {
       now,
       role,
       "claim_notification_sent",
-      `Sent the deduction-claim notice to ${row.tenant_email}.`,
+      `Sent the deduction-claim notice to ${recipientEmails.join(", ")}.`,
       row.revision,
       { messageId: result.id, deliveryKey },
     ),

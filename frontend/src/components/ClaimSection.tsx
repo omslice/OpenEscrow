@@ -234,10 +234,22 @@ export function ClaimSection({
       "",
       "Your decision and all related actions will be included in the timestamped agreement record.",
     ].filter(Boolean).join("\n");
+    const tenantEmails = Array.from(
+      new Set(
+        [record.tenantEmail, ...record.tenants.map((tenant) => tenant.email)]
+          .map((email) => email.trim().toLowerCase())
+          .filter(Boolean),
+      ),
+    );
+    const primaryEmail = record.tenantEmail.trim().toLowerCase() || tenantEmails[0];
+    const ccEmails = tenantEmails.filter((email) => email !== primaryEmail);
+    const ccParameter = ccEmails.length
+      ? `&cc=${encodeURIComponent(ccEmails.join(","))}`
+      : "";
     return {
       body,
       reviewUrl,
-      gmailUrl: `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(record.tenantEmail)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+      gmailUrl: `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(primaryEmail)}${ccParameter}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
     };
   }
 
@@ -468,7 +480,7 @@ export function ClaimSection({
                     }
                   }}
                 >
-                  Send tenant email
+                  Send tenant email(s)
                 </button>
               )}
               <button
@@ -479,7 +491,7 @@ export function ClaimSection({
                   recordNotice("gmail");
                 }}
               >
-                Open claim notice in Gmail
+                Email tenant(s)
               </button>
               <button
                 className="btn btn-secondary"
@@ -559,7 +571,7 @@ export function ClaimSection({
                     }
                   }}
                 >
-                  Send tenant email
+                  Send tenant email(s)
                 </button>
               )}
               <button
@@ -570,7 +582,7 @@ export function ClaimSection({
                   recordNotice("gmail");
                 }}
               >
-                Open notice in Gmail
+                Email tenant(s)
               </button>
               <button
                 className="btn btn-secondary"

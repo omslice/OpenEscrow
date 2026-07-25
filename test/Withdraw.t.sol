@@ -108,7 +108,7 @@ contract WithdrawTest is Base {
 
     function test_reentrancy_duringFunding_isBlocked() public {
         ReentrantToken rtoken = new ReentrantToken();
-        OpenEscrow rescrow = new OpenEscrow(address(rtoken), address(rtoken));
+        OpenEscrow rescrow = new OpenEscrow(address(rtoken), address(rtoken), address(0));
 
         rtoken.mint(address(rtoken), DEPOSIT * 2);
         rtoken.selfApprove(address(rescrow), type(uint256).max);
@@ -133,7 +133,7 @@ contract WithdrawTest is Base {
 
     function test_reentrancy_duringWithdraw_isBlocked() public {
         ReentrantToken rtoken = new ReentrantToken();
-        OpenEscrow rescrow = new OpenEscrow(address(rtoken), address(rtoken));
+        OpenEscrow rescrow = new OpenEscrow(address(rtoken), address(rtoken), address(0));
 
         rtoken.mint(address(rtoken), DEPOSIT * 2);
         rtoken.selfApprove(address(rescrow), type(uint256).max);

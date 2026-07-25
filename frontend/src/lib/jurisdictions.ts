@@ -42,7 +42,9 @@ export function rememberJurisdiction(id: bigint, code: JurisdictionCode): void {
 }
 
 export function readJurisdiction(id: bigint): JurisdictionCode {
-  if (typeof window === "undefined") return "us-ca";
+  if (typeof window === "undefined") return GENERIC_TEST_POLICY.jurisdiction;
   const stored = window.localStorage.getItem(`${STORAGE_PREFIX}${id.toString()}`);
-  return stored && isJurisdictionCode(stored) ? stored : "us-ca";
+  return stored && isJurisdictionCode(stored)
+    ? stored
+    : GENERIC_TEST_POLICY.jurisdiction;
 }
