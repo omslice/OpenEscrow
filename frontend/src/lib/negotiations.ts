@@ -27,6 +27,13 @@ export interface NotificationPreferences {
   updatedAt?: string | null;
 }
 
+export interface AgreementSnapshot {
+  algorithm: "SHA-256";
+  hash: `0x${string}`;
+  canonical: string;
+  snapshot: Record<string, unknown>;
+}
+
 export interface NegotiationEvent {
   id: number;
   createdAt: string;
@@ -416,6 +423,12 @@ export async function negotiationAction(
 
 export function negotiationReportUrl(access: NegotiationAccess) {
   return `/api/negotiations/${encodeURIComponent(access.proposalId)}/report?token=${encodeURIComponent(access.token)}`;
+}
+
+export function loadNegotiationSnapshot(access: NegotiationAccess) {
+  return request<AgreementSnapshot>(
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}/snapshot?token=${encodeURIComponent(access.token)}`,
+  );
 }
 
 export async function uploadEvidenceToIpfs(

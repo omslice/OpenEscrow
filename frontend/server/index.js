@@ -1162,6 +1162,75 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
+function stableJson(value) {
+  if (value === null || typeof value !== "object") return JSON.stringify(value);
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  return `{${Object.keys(value)
+    .filter((key) => value[key] !== undefined)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableJson(value[key])}`)
+    .join(",")}}`;
+}
+
+async function snapshot(db, id, token) {
+  const row = await rowFor(db, id);
+  const role = await authorize(db, row, token);
+  if (!role) return json({ error: "Invalid snapshot link." }, 403);
+  const record = await serialize(db, row);
+  const snapshotRecord = {
+    schema: "openescrow.agreement-record.v1",
+    proposalId: record.id,
+    status: record.status,
+    revision: record.revision,
+    createdAt: record.createdAt,
+    updatedAt: record.updatedAt,
+    parties: {
+      landlord: {
+        name: record.landlordName,
+        email: record.landlordEmail,
+      },
+      tenant: {
+        name: record.tenantName,
+        email: record.tenantEmail,
+        wallet: record.tenantWallet,
+      },
+      arbiter: record.arbiterEmail
+        ? {
+            name: record.arbiterName,
+            email: record.arbiterEmail,
+            wallet: record.arbiterWallet,
+          }
+        : null,
+    },
+    terms: record.terms,
+    approvals: {
+      tenant: record.tenantApproved,
+      arbiter: record.arbiterApproved,
+    },
+    onchain: {
+      agreementId: record.onchainAgreementId,
+      finalizationTransactionHash: record.onchainTxHash,
+    },
+    events: record.events.map((event) => ({
+      id: event.id,
+      createdAt: event.createdAt,
+      actorRole: event.actorRole,
+      action: event.action,
+      summary: event.summary,
+      revision: event.revision,
+      metadata: event.metadata,
+    })),
+  };
+  const canonical = stableJson(snapshotRecord);
+  const hash = `0x${await hashToken(canonical)}`;
+  return json({
+    algorithm: "SHA-256",
+    hash,
+    canonical,
+    snapshot: snapshotRecord,
+  });
+}
+
 async function report(db, id, token) {
   const row = await rowFor(db, id);
   const role = await authorize(db, row, token);
@@ -1285,7 +1354,9 @@ const worker = {
         return discoverNegotiations(request, env);
       }
 
-      const match = url.pathname.match(/^\/api\/negotiations\/([a-zA-Z0-9-]+)(?:\/(actions|report))?$/);
+      const match = url.pathname.match(
+        /^\/api\/negotiations\/([a-zA-Z0-9-]+)(?:\/(actions|report|snapshot))?$/,
+      );
       if (!match) return json({ error: "Agreement record endpoint not found." }, 404);
       const [, id, action] = match;
       if (!action && request.method === "GET") {
@@ -1296,6 +1367,9 @@ const worker = {
       }
       if (action === "report" && request.method === "GET") {
         return report(env.DB, id, url.searchParams.get("token"));
+      }
+      if (action === "snapshot" && request.method === "GET") {
+        return snapshot(env.DB, id, url.searchParams.get("token"));
       }
       return json({ error: "Method not allowed." }, 405);
     }

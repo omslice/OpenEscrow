@@ -12,6 +12,7 @@ import {
 } from "../lib/negotiations";
 import { roleLabel } from "../lib/inviteContext";
 import { AgreementCard } from "./AgreementCard";
+import { RecordSnapshotControls } from "./RecordSnapshotControls";
 
 function approvalLabel(record: NegotiationRecord, role: "tenant" | "arbiter") {
   const approved = role === "tenant" ? record.tenantApproved : record.arbiterApproved;
@@ -246,6 +247,7 @@ function AgreementNegotiationView({
           Open timestamped report
         </a>
       </div>
+      <RecordSnapshotControls access={access} />
       <ol className="activity-timeline">
         {record.events.map((event) => (
           <li key={event.id}>

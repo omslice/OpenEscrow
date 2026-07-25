@@ -192,6 +192,17 @@ test("tenant can request changes, approve, and make an arbiter-free proposal rea
   );
   assert.equal(report.status, 200);
   assert.match(await report.text(), /Timestamped activity/);
+  const snapshotPath =
+    `/api/negotiations/${id}/snapshot?token=${created.access.tenant}`;
+  const firstSnapshot = await jsonResponse(
+    await worker.fetch(request(snapshotPath), { DB: db }),
+  );
+  const repeatedSnapshot = await jsonResponse(
+    await worker.fetch(request(snapshotPath), { DB: db }),
+  );
+  assert.match(firstSnapshot.hash, /^0x[a-f0-9]{64}$/);
+  assert.equal(firstSnapshot.hash, repeatedSnapshot.hash);
+  assert.equal(firstSnapshot.canonical, repeatedSnapshot.canonical);
 });
 
 test("a verified Privy identity can discover its landlord proposals across browser sessions", async () => {
@@ -440,6 +451,15 @@ test("documented claim, tenant decision, and email attempts are included in the 
   );
   assert.equal(claimReport.status, 200);
   assert.match(await claimReport.text(), /Replacement of the tenant-damaged door/);
+  const claimSnapshot = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}/snapshot?token=${created.access.tenant}`,
+      ),
+      { DB: db },
+    ),
+  );
+  assert.match(claimSnapshot.canonical, /Replacement of the tenant-damaged door/);
 
   const responded = await jsonResponse(
     await act(db, created.record.id, created.access.tenant, {
@@ -451,6 +471,15 @@ test("documented claim, tenant decision, and email attempts are included in the 
     }),
   );
   assert.equal(responded.events.at(-1).action, "claim_response_submitted");
+  const responseSnapshot = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}/snapshot?token=${created.access.tenant}`,
+      ),
+      { DB: db },
+    ),
+  );
+  assert.notEqual(responseSnapshot.hash, claimSnapshot.hash);
 
   const email = await worker.fetch(
     request("/api/notifications/claim", "POST", {

@@ -24,8 +24,10 @@ tenant responses, and arbiter rulings are timestamped by the server.
 
 Every role-specific link can open a printable report containing the parties, current terms,
 revision snapshots, approval state, itemized deduction tables, and event timeline. The record is
-ready to be hashed and anchored onchain later; the current MVP does not claim that the off-chain
-event stream is itself immutable or independently notarized.
+also exportable as canonical JSON: object keys are deterministically ordered and the server returns
+the SHA-256 hash of the exact canonical bytes. The hash is ready for the separate onchain anchor
+registry; until a party submits that anchor transaction, the off-chain event stream is not itself
+immutable or independently notarized.
 
 ## External services
 
