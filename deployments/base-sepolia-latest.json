@@ -1,15 +1,15 @@
 ﻿{
     "network":  "base-sepolia",
     "chainId":  84532,
-    "sourceCommit":  "0fa37d994968261ada0b36bdbeec2d34b3f45118",
-    "exportedAtUtc":  "2026-07-25T20:41:45.7034959Z",
+    "sourceCommit":  "95d61eb4c556ba4c0d6df9cb6aa150dba7eb9b0f",
+    "exportedAtUtc":  "2026-07-25T21:25:58Z",
     "openEscrow":  {
                        "address":  "0x1886b3322ea37134209fa40dfd592f2aaf14c329",
                        "transactionHash":  "0x192f8d9e8c29ae5b2510a4d1c0957f34790d020956420ded00bc1bceb8993b74"
                    },
     "operationsReserve":  {
-                              "address":  "0xd0c4c2427258a444255f923e8348b015886fe45d",
-                              "transactionHash":  "0x12b4ac46c98f096447f99632e521d8e456afd4baed66edbf742620b701142334"
+                              "address":  "0xbac6ae3f3fdb9f4650e2c3166ad9b918c7e4eac7",
+                              "transactionHash":  "0x7054e786cf16cf391b146f1efc267b74ecb61e4a736980562a83f9f3f4d68f50"
                           },
     "tokens":  {
                    "plain":  "0xE129b23BD89904D363ba226eE52deC74185D7789",
