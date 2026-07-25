@@ -164,6 +164,15 @@ const DEDUCTION_CATEGORY_LABEL = {
 };
 const PRIVY_APP_ID = "cmrzdp7ss00670cju098baqsr";
 const ACCOUNT_ACCESS_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+const DEFAULT_GEOCODER_BASE_URL = "https://photon.komoot.io";
+const ADDRESS_SUGGESTION_CACHE_TTL_MS = 10 * 60 * 1000;
+const ADDRESS_SUGGESTION_CACHE_LIMIT = 200;
+const ADDRESS_GEOCODER_TIMEOUT_MS = 3_000;
+const ADDRESS_ATTRIBUTION = Object.freeze({
+  label: "© OpenStreetMap contributors",
+  url: "https://www.openstreetmap.org/copyright",
+});
+const addressSuggestionCache = new Map();
 const encoder = new TextEncoder();
 
 function json(data, status = 200) {
@@ -308,37 +317,16 @@ function validTerms(terms) {
     !Number.isNaN(new Date(terms.claimWindowStart).getTime()) &&
     validPeriodDays(terms.claimDays) &&
     validPeriodDays(terms.responseDays) &&
-    validPeriodDays(terms.arbiterDays);
+    (terms.arbiterDays === undefined ||
+      terms.arbiterDays === null ||
+      terms.arbiterDays === "" ||
+      validPeriodDays(terms.arbiterDays));
   if (!commonTermsAreValid) return false;
 
-  if (terms.jurisdiction === GENERIC_TEST_POLICY.jurisdiction) {
-    return (
-      terms.policyVersion === GENERIC_TEST_POLICY.version &&
-      terms.operationsReserve === GENERIC_TEST_POLICY.operationsReserve
-    );
-  }
-
-  const monthlyRent = tokenMicros(terms?.monthlyRent);
-  const smallLandlordException = terms?.smallLandlordException === true;
-  const tenantIsServiceMember = terms?.tenantIsServiceMember === true;
-  const maximumDeposit =
-    monthlyRent === null
-      ? null
-      : monthlyRent * BigInt(smallLandlordException && !tenantIsServiceMember ? 2 : 1);
   return (
-    terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
-    terms.policyVersion === CALIFORNIA_POLICY.version &&
-    monthlyRent !== null &&
-    monthlyRent > 0n &&
-    maximumDeposit !== null &&
-    deposit <= maximumDeposit &&
-    typeof terms.smallLandlordException === "boolean" &&
-    typeof terms.tenantIsServiceMember === "boolean" &&
-    terms.electronicDeliveryConsent === true &&
-    terms.operationsReserve === CALIFORNIA_POLICY.operationsReserve &&
-    terms.claimDays === CALIFORNIA_POLICY.claimDays &&
-    terms.responseDays === CALIFORNIA_POLICY.responseDays &&
-    terms.arbiterDays === CALIFORNIA_POLICY.arbiterDays
+    terms.jurisdiction === GENERIC_TEST_POLICY.jurisdiction &&
+    terms.policyVersion === GENERIC_TEST_POLICY.version &&
+    terms.operationsReserve === GENERIC_TEST_POLICY.operationsReserve
   );
 }
 
@@ -3286,6 +3274,139 @@ function sameOriginPost(request) {
   return !origin || origin === new URL(request.url).origin;
 }
 
+function sameOriginGet(request) {
+  const origin = request.headers.get("origin");
+  const fetchSite = request.headers.get("sec-fetch-site");
+  return (
+    (!origin || origin === new URL(request.url).origin) &&
+    fetchSite !== "cross-site"
+  );
+}
+
+function addressSuggestionResponse(suggestions, cacheStatus = "MISS") {
+  return new Response(JSON.stringify({ suggestions, attribution: ADDRESS_ATTRIBUTION }), {
+    headers: {
+      "content-type": "application/json; charset=utf-8",
+      "cache-control": "private, max-age=300",
+      "x-openescrow-cache": cacheStatus,
+    },
+  });
+}
+
+function normalizeAddressSuggestions(value) {
+  if (!Array.isArray(value?.features)) return [];
+  const suggestions = [];
+  const labels = new Set();
+  for (const candidate of value.features) {
+    const properties = candidate?.properties;
+    const coordinates = candidate?.geometry?.coordinates;
+    if (!properties || !Array.isArray(coordinates)) continue;
+    const label = [
+      [properties.housenumber, properties.street].filter(Boolean).join(" "),
+      properties.name,
+      properties.city || properties.town || properties.village,
+      properties.state,
+      properties.postcode,
+      properties.country,
+    ]
+      .map((part) => cleanText(part, 120))
+      .filter((part, index, parts) => part && parts.indexOf(part) === index)
+      .join(", ")
+      .slice(0, 300);
+    const longitude = Number(coordinates[0]);
+    const latitude = Number(coordinates[1]);
+    if (
+      !label ||
+      labels.has(label.toLowerCase()) ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      continue;
+    }
+    labels.add(label.toLowerCase());
+    const osmType = cleanText(properties.osm_type, 20);
+    const osmId = cleanText(String(properties.osm_id ?? ""), 80);
+    suggestions.push({
+      id: osmId ? `${osmType || "osm"}:${osmId}` : `${latitude},${longitude}`,
+      label,
+      latitude,
+      longitude,
+    });
+    if (suggestions.length === 5) break;
+  }
+  return suggestions;
+}
+
+async function addressSuggestions(request, env) {
+  if (!sameOriginGet(request)) {
+    return json({ error: "Cross-origin address searches are not allowed." }, 403);
+  }
+  const requestUrl = new URL(request.url);
+  const query = cleanText(requestUrl.searchParams.get("q"), 121).replace(/\s+/g, " ");
+  if (query.length < 3 || query.length > 120) {
+    return json({ error: "Enter between 3 and 120 characters to search for an address." }, 400);
+  }
+
+  let geocoderUrl;
+  try {
+    const geocoderBaseUrl = new URL(
+      cleanText(env.GEOCODER_BASE_URL, 1000) || DEFAULT_GEOCODER_BASE_URL,
+    );
+    if (geocoderBaseUrl.protocol !== "https:" && geocoderBaseUrl.protocol !== "http:") {
+      throw new Error("Unsupported geocoder protocol.");
+    }
+    const basePath = geocoderBaseUrl.pathname.replace(/\/+$/, "");
+    geocoderUrl = new URL(
+      basePath.endsWith("/api") ? `${basePath}/` : `${basePath}/api/`,
+      geocoderBaseUrl.origin,
+    );
+  } catch {
+    return addressSuggestionResponse([]);
+  }
+
+  const cacheKey = `${geocoderUrl.origin}${geocoderUrl.pathname}|${query.toLowerCase()}`;
+  const cached = addressSuggestionCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) {
+    return addressSuggestionResponse(cached.suggestions, "HIT");
+  }
+  if (cached) addressSuggestionCache.delete(cacheKey);
+
+  geocoderUrl.searchParams.set("q", query);
+  geocoderUrl.searchParams.set("limit", "5");
+  geocoderUrl.searchParams.set("lang", "en");
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ADDRESS_GEOCODER_TIMEOUT_MS);
+  try {
+    const upstream = await fetch(geocoderUrl.toString(), {
+      headers: {
+        accept: "application/json",
+        "accept-language": "en",
+        "user-agent": "OpenEscrow address lookup (open-source testnet app)",
+      },
+      signal: controller.signal,
+    });
+    if (!upstream.ok) return addressSuggestionResponse([]);
+    const suggestions = normalizeAddressSuggestions(await upstream.json());
+    if (addressSuggestionCache.size >= ADDRESS_SUGGESTION_CACHE_LIMIT) {
+      addressSuggestionCache.delete(addressSuggestionCache.keys().next().value);
+    }
+    addressSuggestionCache.set(cacheKey, {
+      expiresAt: Date.now() + ADDRESS_SUGGESTION_CACHE_TTL_MS,
+      suggestions,
+    });
+    return addressSuggestionResponse(suggestions);
+  } catch {
+    return addressSuggestionResponse([]);
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const worker = {
   async fetch(request, env, context) {
     const url = new URL(request.url);
@@ -3295,6 +3416,9 @@ const worker = {
       context?.waitUntil
     ) {
       context.waitUntil(runNotificationJob(env));
+    }
+    if (url.pathname === "/api/address-suggestions" && request.method === "GET") {
+      return addressSuggestions(request, env);
     }
     if (
       url.pathname === "/api/notifications/unsubscribe" &&

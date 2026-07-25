@@ -102,7 +102,7 @@ class TestR2 {
   }
 }
 
-const terms = {
+const legacyCaliforniaTerms = {
   jurisdiction: "us-ca",
   policyVersion: "ca-civ-1950.5-2026.1",
   propertyAddress: "123 Main Street, Los Angeles, CA 90001",
@@ -119,10 +119,15 @@ const terms = {
   arbiterDays: "7",
 };
 
-const genericTerms = {
-  ...terms,
+const terms = {
+  ...legacyCaliforniaTerms,
   jurisdiction: "testnet-generic",
   policyVersion: "generic-test-v1",
+  claimDays: "30",
+};
+
+const genericTerms = {
+  ...terms,
   claimDays: "45",
   responseDays: "10",
   arbiterDays: "14",
@@ -250,7 +255,25 @@ test("tenant can request changes, approve, and make an arbiter-free proposal rea
   assert.equal(firstSnapshot.canonical, repeatedSnapshot.canonical);
 });
 
-test("a legacy approved proposal cannot bypass the locked California policy at finalization", async () => {
+test("new proposals reject California policy terms", async () => {
+  const db = new TestD1();
+  const response = await worker.fetch(
+    request("/api/negotiations", "POST", {
+      landlordName: "Lena Landlord",
+      landlordEmail: "landlord@example.com",
+      tenantName: "Terry Tenant",
+      tenantEmail: "tenant@example.com",
+      arbiterName: "",
+      arbiterEmail: null,
+      terms: legacyCaliforniaTerms,
+    }),
+    { DB: db },
+  );
+  assert.equal(response.status, 400);
+  assert.match((await response.json()).error, /incomplete or invalid/);
+});
+
+test("legacy California records stay readable and exportable but cannot be finalized", async () => {
   const db = new TestD1();
   const created = await create(db);
   await jsonResponse(
@@ -262,14 +285,24 @@ test("a legacy approved proposal cannot bypass the locked California policy at f
   db.database
     .prepare("UPDATE agreement_negotiations SET terms_json = ? WHERE id = ?")
     .run(
-      JSON.stringify({
-        ...terms,
-        policyVersion: undefined,
-        operationsReserve: "0",
-        claimDays: "30",
-      }),
+      JSON.stringify(legacyCaliforniaTerms),
       created.record.id,
     );
+  const readable = await jsonResponse(
+    await worker.fetch(
+      request(`/api/negotiations/${created.record.id}?token=${created.access.landlord}`),
+      { DB: db },
+    ),
+  );
+  assert.equal(readable.terms.jurisdiction, "us-ca");
+  const report = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}/report?token=${created.access.landlord}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(report.status, 200);
+  assert.match(await report.text(), /California residential tenancy/);
   const response = await act(db, created.record.id, created.access.landlord, {
     type: "finalize",
     agreementId: "42",
@@ -277,6 +310,25 @@ test("a legacy approved proposal cannot bypass the locked California policy at f
   });
   assert.equal(response.status, 409);
   assert.match((await response.json()).error, /does not match a current jurisdiction policy/);
+});
+
+test("a legacy California proposal can publish a new generic test revision", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  db.database
+    .prepare("UPDATE agreement_negotiations SET terms_json = ? WHERE id = ?")
+    .run(JSON.stringify(legacyCaliforniaTerms), created.record.id);
+
+  const revised = await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "revise",
+      summary: "Replaced the legacy jurisdiction rules with generic test terms.",
+      terms: genericTerms,
+    }),
+  );
+  assert.equal(revised.revision, 2);
+  assert.equal(revised.terms.jurisdiction, "testnet-generic");
+  assert.equal(revised.terms.policyVersion, "generic-test-v1");
 });
 
 test("the non-specific test profile accepts editable lifecycle timing", async () => {
@@ -311,6 +363,103 @@ test("the non-specific test profile accepts editable lifecycle timing", async ()
     }),
   );
   assert.equal(finalized.status, "finalized");
+});
+
+test("address suggestions validate same-origin queries, normalize Photon results, and cache", async () => {
+  const originalFetch = globalThis.fetch;
+  let upstreamCalls = 0;
+  globalThis.fetch = async (input, init) => {
+    upstreamCalls += 1;
+    const url = new URL(input);
+    assert.equal(url.origin, "https://geocoder.example");
+    assert.equal(url.pathname, "/photon/api/");
+    assert.equal(url.searchParams.get("q"), "123 Main Street");
+    assert.equal(url.searchParams.get("limit"), "5");
+    assert.equal(url.searchParams.get("lang"), "en");
+    assert.equal(init.headers.accept, "application/json");
+    return Response.json({
+      features: [
+        {
+          geometry: { coordinates: [-118.2437, 34.0522] },
+          properties: {
+            osm_type: "W",
+            osm_id: 123,
+            housenumber: "123",
+            street: "Main Street",
+            city: "Los Angeles",
+            state: "California",
+            postcode: "90001",
+            country: "United States",
+          },
+        },
+        {
+          geometry: { coordinates: [999, 999] },
+          properties: { name: "Invalid coordinates" },
+        },
+      ],
+    });
+  };
+  try {
+    const env = { GEOCODER_BASE_URL: "https://geocoder.example/photon" };
+    const first = await worker.fetch(
+      request("/api/address-suggestions?q=123%20Main%20Street"),
+      env,
+    );
+    const firstBody = await jsonResponse(first);
+    assert.equal(firstBody.suggestions.length, 1);
+    assert.deepEqual(firstBody.suggestions[0], {
+      id: "W:123",
+      label: "123 Main Street, Los Angeles, California, 90001, United States",
+      latitude: 34.0522,
+      longitude: -118.2437,
+    });
+    assert.equal(firstBody.attribution.label, "© OpenStreetMap contributors");
+    assert.equal(first.headers.get("x-openescrow-cache"), "MISS");
+
+    const cached = await worker.fetch(
+      request("/api/address-suggestions?q=%20123%20%20Main%20Street%20"),
+      env,
+    );
+    assert.equal(cached.status, 200);
+    assert.equal(cached.headers.get("x-openescrow-cache"), "HIT");
+    assert.equal(upstreamCalls, 1);
+
+    const shortQuery = await worker.fetch(
+      request("/api/address-suggestions?q=12"),
+      env,
+    );
+    assert.equal(shortQuery.status, 400);
+
+    const crossOrigin = await worker.fetch(
+      new Request(
+        "https://openescrow.example/api/address-suggestions?q=123%20Main%20Street",
+        { headers: { origin: "https://attacker.example" } },
+      ),
+      env,
+    );
+    assert.equal(crossOrigin.status, 403);
+    assert.equal(upstreamCalls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("address suggestion upstream failures return an empty, attribution-safe response", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    throw new Error("geocoder unavailable");
+  };
+  try {
+    const response = await worker.fetch(
+      request("/api/address-suggestions?q=456%20Failure%20Avenue"),
+      { GEOCODER_BASE_URL: "https://offline-geocoder.example" },
+    );
+    const body = await jsonResponse(response);
+    assert.deepEqual(body.suggestions, []);
+    assert.equal(body.attribution.url, "https://www.openstreetmap.org/copyright");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("tenant names and email addresses are validated before a proposal is saved", async () => {
@@ -1033,7 +1182,7 @@ test("opted-in agreement activity email is privacy-minimal and idempotent", asyn
   }
 });
 
-test("landlord revisions reset approvals and role capabilities are enforced", async () => {
+test("landlord revisions reset approvals and generic timing remains editable", async () => {
   const db = new TestD1();
   const created = await create(db);
   const id = created.record.id;
@@ -1050,12 +1199,21 @@ test("landlord revisions reset approvals and role capabilities are enforced", as
       wallet: "0x1111111111111111111111111111111111111111",
     }),
   );
-  const lockedPolicyRevision = await act(db, id, created.access.landlord, {
+  const timingRevision = await jsonResponse(
+    await act(db, id, created.access.landlord, {
     type: "revise",
-    summary: "Attempted to change the locked tenant response period.",
+    summary: "Updated the agreed tenant response period.",
     terms: { ...terms, responseDays: "10" },
+    }),
+  );
+  assert.equal(timingRevision.revision, 2);
+  assert.equal(timingRevision.status, "draft");
+  const californiaRevision = await act(db, id, created.access.landlord, {
+    type: "revise",
+    summary: "Attempted to replace the test policy with California terms.",
+    terms: legacyCaliforniaTerms,
   });
-  assert.equal(lockedPolicyRevision.status, 400);
+  assert.equal(californiaRevision.status, 400);
   const revised = await jsonResponse(
     await act(db, id, created.access.landlord, {
       type: "revise",
@@ -1063,7 +1221,7 @@ test("landlord revisions reset approvals and role capabilities are enforced", as
       terms: { ...terms, deposit: "1100" },
     }),
   );
-  assert.equal(revised.revision, 2);
+  assert.equal(revised.revision, 3);
   assert.equal(revised.status, "draft");
   assert.equal(revised.tenantApproved, false);
 });
