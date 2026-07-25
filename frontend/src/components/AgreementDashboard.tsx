@@ -182,8 +182,8 @@ export function AgreementDashboard({
           <span className="label">Network &amp; storage reserve</span>
           <strong>
             {reservePayment.data === true
-              ? "$5 testUSDC paid separately"
-              : "$5 testUSDC due before funding"}
+              ? `$5 ${tokenLabel} reserve paid separately`
+              : `$5 ${tokenLabel} reserve due before funding`}
           </strong>
         </div>
       )}

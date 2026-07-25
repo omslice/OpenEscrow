@@ -16,7 +16,6 @@ import {
   OPERATIONS_RESERVE_AMOUNT,
   OperationsReserveABI,
   Phase,
-  USDC_ADDRESS,
   YIELD_USDC_ADDRESS,
   chain,
 } from "../contracts/config";
@@ -180,11 +179,13 @@ function FundingIntroduction({
           <span>Refundable deposit</span>
           <strong>{formatUSDC(needed)} {tokenLabel}</strong>
           <span>Network &amp; storage reserve</span>
-           <strong>{formatUSDC(reserveAmount)} testUSDC</strong>
+          <strong>{formatUSDC(reserveAmount)} {tokenLabel}</strong>
+          <span>Total assigned to you</span>
+          <strong>{formatUSDC(needed + reserveAmount)} {tokenLabel}</strong>
           <small>
             {reservePaid
-              ? "Reserve payment confirmed onchain. It is separate from the deposit."
-              : "Pay this separate, non-refundable pilot charge before funding the deposit."}
+              ? "Reserve payment confirmed onchain. It uses the agreement token and is separate from refundable principal."
+              : "Your displayed total includes this evenly split, non-refundable pilot charge in the agreement token."}
           </small>
         </div>
       )}
@@ -231,8 +232,6 @@ function StandardTenantFundAction({
   const { tokenLabel } = fundingDetails(agreement, needed);
   const reserveRequired = participantRecord?.terms.operationsReserve === "5";
   const reserveAmount = reserveShareFor(participantRecord, address);
-  const reserveUsesDepositToken =
-    agreement.token.toLowerCase() === USDC_ADDRESS.toLowerCase();
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: agreement.token,
     abi: MockUSDCABI,
@@ -253,22 +252,8 @@ function StandardTenantFundAction({
       refetchInterval: 4000,
     },
   });
-  const { data: reserveBalance, refetch: refetchReserveBalance } = useReadContract({
-    address: USDC_ADDRESS,
-    abi: MockUSDCABI,
-    functionName: "balanceOf",
-    args: address ? [address] : undefined,
-    query: {
-      enabled:
-        !!address &&
-        reserveRequired &&
-        !reserveUsesDepositToken &&
-        agreement.phase === Phase.ReadyToFund,
-      refetchInterval: 4000,
-    },
-  });
   const { data: reserveAllowance, refetch: refetchReserveAllowance } = useReadContract({
-    address: USDC_ADDRESS,
+    address: agreement.token,
     abi: MockUSDCABI,
     functionName: "allowance",
     args: address ? [address, OPERATIONS_RESERVE_ADDRESS] : undefined,
@@ -298,23 +283,14 @@ function StandardTenantFundAction({
 
   if (agreement.phase !== Phase.ReadyToFund || !isTenant) return null;
   const currentBalance = typeof balance === "bigint" ? balance : 0n;
-  const depositBalanceNeeded =
-    reserveRequired && reserveUsesDepositToken ? needed + reserveAmount : needed;
-  const hasBalance = currentBalance >= depositBalanceNeeded;
-  const currentReserveBalance =
-    reserveUsesDepositToken
-      ? currentBalance
-      : typeof reserveBalance === "bigint"
-        ? reserveBalance
-        : 0n;
-  const hasReserveBalance =
-    !reserveRequired || currentReserveBalance >= reserveAmount;
+  const reserveIsPaid = !reserveRequired || reservePaid === true;
+  const tokenBalanceNeeded = needed + (reserveIsPaid ? 0n : reserveAmount);
+  const hasBalance = currentBalance >= tokenBalanceNeeded;
   const hasAllowance = typeof allowance === "bigint" && allowance >= needed;
   const hasReserveAllowance =
     !reserveRequired ||
     (typeof reserveAllowance === "bigint" &&
       reserveAllowance >= reserveAmount);
-  const reserveIsPaid = !reserveRequired || reservePaid === true;
 
   return (
     <div className="action-section">
@@ -332,20 +308,10 @@ function StandardTenantFundAction({
           address={agreement.token}
           abi={MockUSDCABI}
           functionName="mint"
-          args={[address, depositBalanceNeeded - currentBalance]}
+          args={[address, tokenBalanceNeeded - currentBalance]}
           label={`Get required ${tokenLabel}`}
           className="btn btn-primary"
           onSuccess={() => void refetchBalance()}
-        />
-      ) : !hasReserveBalance ? (
-        <TxButton
-          address={USDC_ADDRESS}
-          abi={MockUSDCABI}
-          functionName="mint"
-          args={[address, reserveAmount - currentReserveBalance]}
-          label="Get reserve testUSDC"
-          className="btn btn-primary"
-          onSuccess={() => void refetchReserveBalance()}
         />
       ) : !hasAllowance ? (
         <button
@@ -370,7 +336,7 @@ function StandardTenantFundAction({
         </button>
       ) : !hasReserveAllowance ? (
         <TxButton
-          address={USDC_ADDRESS}
+          address={agreement.token}
           abi={MockUSDCABI}
           functionName="approve"
           args={[OPERATIONS_RESERVE_ADDRESS, reserveAmount]}
@@ -439,7 +405,6 @@ function SponsoredTenantFundAction({
   const [step, setStep] = useState<
     | "idle"
     | "minting"
-    | "reserveMinting"
     | "approving"
     | "reserveApproving"
     | "reservePaying"
@@ -466,8 +431,6 @@ function SponsoredTenantFundAction({
   const { tokenLabel } = fundingDetails(agreement, needed);
   const reserveRequired = participantRecord?.terms.operationsReserve === "5";
   const reserveAmount = reserveShareFor(participantRecord, address);
-  const reserveUsesDepositToken =
-    agreement.token.toLowerCase() === USDC_ADDRESS.toLowerCase();
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: agreement.token,
     abi: MockUSDCABI,
@@ -488,22 +451,8 @@ function SponsoredTenantFundAction({
       refetchInterval: 4000,
     },
   });
-  const { data: reserveBalance, refetch: refetchReserveBalance } = useReadContract({
-    address: USDC_ADDRESS,
-    abi: MockUSDCABI,
-    functionName: "balanceOf",
-    args: address ? [address] : undefined,
-    query: {
-      enabled:
-        !!address &&
-        reserveRequired &&
-        !reserveUsesDepositToken &&
-        agreement.phase === Phase.ReadyToFund,
-      refetchInterval: 4000,
-    },
-  });
   const { data: reserveAllowance, refetch: refetchReserveAllowance } = useReadContract({
-    address: USDC_ADDRESS,
+    address: agreement.token,
     abi: MockUSDCABI,
     functionName: "allowance",
     args: address ? [address, OPERATIONS_RESERVE_ADDRESS] : undefined,
@@ -525,23 +474,14 @@ function SponsoredTenantFundAction({
 
   if (agreement.phase !== Phase.ReadyToFund || !isTenant || !address) return null;
   const currentBalance = typeof balance === "bigint" ? balance : 0n;
-  const depositBalanceNeeded =
-    reserveRequired && reserveUsesDepositToken ? needed + reserveAmount : needed;
-  const hasBalance = currentBalance >= depositBalanceNeeded;
-  const currentReserveBalance =
-    reserveUsesDepositToken
-      ? currentBalance
-      : typeof reserveBalance === "bigint"
-        ? reserveBalance
-        : 0n;
-  const hasReserveBalance =
-    !reserveRequired || currentReserveBalance >= reserveAmount;
+  const reserveIsPaid = !reserveRequired || reservePaid === true;
+  const tokenBalanceNeeded = needed + (reserveIsPaid ? 0n : reserveAmount);
+  const hasBalance = currentBalance >= tokenBalanceNeeded;
   const hasAllowance = typeof allowance === "bigint" && allowance >= needed;
   const hasReserveAllowance =
     !reserveRequired ||
     (typeof reserveAllowance === "bigint" &&
       reserveAllowance >= reserveAmount);
-  const reserveIsPaid = !reserveRequired || reservePaid === true;
 
   async function sendSponsored(
     to: `0x${string}`,
@@ -585,7 +525,7 @@ function SponsoredTenantFundAction({
       const latest = await refetchBalance();
       const latestBalance = typeof latest.data === "bigint" ? latest.data : 0n;
       const missing =
-        depositBalanceNeeded > latestBalance ? depositBalanceNeeded - latestBalance : 0n;
+        tokenBalanceNeeded > latestBalance ? tokenBalanceNeeded - latestBalance : 0n;
       if (missing === 0n) return;
       await sendSponsored(
         agreement.token,
@@ -604,40 +544,12 @@ function SponsoredTenantFundAction({
     }
   }
 
-  async function mintMissingReserve() {
-    setTransactionError(null);
-    setStep("reserveMinting");
-    try {
-      const latest = await refetchReserveBalance();
-      const latestBalance = typeof latest.data === "bigint" ? latest.data : 0n;
-      const missing =
-        reserveAmount > latestBalance
-          ? reserveAmount - latestBalance
-          : 0n;
-      if (missing === 0n) return;
-      await sendSponsored(
-        USDC_ADDRESS,
-        encodeFunctionData({
-          abi: MockUSDCABI,
-          functionName: "mint",
-          args: [address, missing],
-        }),
-        150_000n,
-      );
-      await refetchReserveBalance();
-    } catch (caught) {
-      setTransactionError(sponsoredErrorMessage(caught));
-    } finally {
-      setStep("idle");
-    }
-  }
-
   async function approveReserve() {
     setTransactionError(null);
     setStep("reserveApproving");
     try {
       await sendSponsored(
-        USDC_ADDRESS,
+        agreement.token,
         encodeFunctionData({
           abi: MockUSDCABI,
           functionName: "approve",
@@ -732,16 +644,6 @@ function SponsoredTenantFundAction({
           {step === "minting"
             ? "Claiming required test tokens..."
             : `Get required ${tokenLabel}—gas covered`}
-        </button>
-      ) : !hasReserveBalance ? (
-        <button
-          className="btn btn-primary"
-          disabled={step !== "idle"}
-          onClick={() => void mintMissingReserve()}
-        >
-          {step === "reserveMinting"
-            ? "Claiming reserve testUSDC..."
-            : "Get reserve testUSDC—gas covered"}
         </button>
       ) : !hasAllowance ? (
         <button
