@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { keccak256, toBytes } from "viem";
 import {
-  uploadEvidenceToIpfs,
+  uploadEvidenceDocument,
   type NegotiationAccess,
 } from "../lib/negotiations";
 
@@ -14,17 +14,22 @@ export function useEvidenceInputs(access?: NegotiationAccess | null) {
   const [description, setDescription] = useState("");
   const [uri, setUri] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [uploadedFileHash, setUploadedFileHash] = useState<`0x${string}` | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  const contentHash = description ? keccak256(toBytes(description)) : ("0x" + "0".repeat(64)) as `0x${string}`;
+  const contentHash =
+    uploadedFileHash ||
+    (description
+      ? keccak256(toBytes(description))
+      : (("0x" + "0".repeat(64)) as `0x${string}`));
   const valid = description.trim().length > 0 && uri.trim().length > 0;
 
   const fields = (
     <>
       <label>
-        Evidence description (hashed locally, never sent on-chain as text)
+        Evidence description (kept private; only a verification hash is sent onchain)
         <textarea
           value={description}
           onChange={(e) => setDescription(e.target.value)}
@@ -38,8 +43,13 @@ export function useEvidenceInputs(access?: NegotiationAccess | null) {
             Invoice or supporting document
             <input
               type="file"
-              accept=".pdf,.png,.jpg,.jpeg,.webp,.txt"
-              onChange={(event) => setFile(event.target.files?.[0] || null)}
+              accept=".pdf,.png,.jpg,.jpeg,.webp"
+              onChange={(event) => {
+                setFile(event.target.files?.[0] || null);
+                setUploadedFileHash(null);
+                setUri("");
+                setUploadMessage(null);
+              }}
             />
           </label>
           <button
@@ -52,9 +62,14 @@ export function useEvidenceInputs(access?: NegotiationAccess | null) {
               setUploadError(null);
               setUploadMessage(null);
               try {
-                const uploaded = await uploadEvidenceToIpfs(access, file);
+                const uploaded = await uploadEvidenceDocument(access, file);
                 setUri(uploaded.uri);
-                setUploadMessage(`Uploaded to IPFS: ${uploaded.cid}`);
+                setUploadedFileHash(uploaded.sha256 as `0x${string}`);
+                setUploadMessage(
+                  uploaded.storageKind === "private"
+                    ? `Stored privately. SHA-256 receipt: ${uploaded.sha256.slice(0, 14)}…`
+                    : `Published to IPFS: ${uploaded.reference}`,
+                );
               } catch (error) {
                 setUploadError(error instanceof Error ? error.message : "The upload failed.");
               } finally {
@@ -62,7 +77,7 @@ export function useEvidenceInputs(access?: NegotiationAccess | null) {
               }
             }}
           >
-            {isUploading ? "Uploading..." : "Upload documentation to IPFS"}
+            {isUploading ? "Uploading..." : "Store supporting documentation"}
           </button>
           {uploadMessage && <p className="tx-success">{uploadMessage}</p>}
           {uploadError && <p className="tx-error">{uploadError}</p>}
@@ -73,8 +88,9 @@ export function useEvidenceInputs(access?: NegotiationAccess | null) {
         <input value={uri} onChange={(e) => setUri(e.target.value)} placeholder="ipfs://... or a privacy-safe document pointer" />
       </label>
       <p className="warning">
-        Public IPFS is public and permanent. Remove names, physical addresses, account details, and
-        other sensitive information before upload; use an encrypted document for anything private.
+        The default evidence vault limits retrieval to agreement-party links and records a
+        content hash for verification. A manually entered IPFS URI remains public and permanent.
+        This is still a testnet demo, so do not upload real tenancy records.
       </p>
     </>
   );

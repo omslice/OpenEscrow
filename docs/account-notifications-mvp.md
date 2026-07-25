@@ -23,8 +23,12 @@ configured; Gmail and copy-email fallbacks remain available without it. Repeated
 notices are deduplicated before provider delivery. Users who explicitly enable agreement-activity
 email also receive privacy-minimal notices for finalization, funding, claim amendments, tenant
 responses, and arbiter rulings. These messages omit evidence pointers, tenancy details, amounts,
-and private notes. Automated event indexing, deadline reminders, withdrawal notices, and
-unsubscribe-link handling are still future work.
+and private notes. The hosted worker also has idempotent reminder checks for the landlord claim
+window, tenant response window, and optional arbiter ruling window. Checks run opportunistically
+when the app is opened and through a scheduled-worker handler where that trigger is configured.
+It sends allocation-ready notices after recorded decisions or refund timeouts. Optional messages include a durable
+unsubscribe link that disables activity and deadline email. Contract activity performed outside
+the OpenEscrow UI still needs a production event indexer before it can reliably trigger an email.
 
 For transaction-backed proposal actions, the browser keeps a narrowly scoped pending receipt after
 the chain confirms but before the D1 activity record succeeds. Finalization, the operations reserve,
@@ -33,9 +37,18 @@ storage keys are scoped to the proposal, role where applicable, and active walle
 and ruling screens retain a retry during the current session. Server-side transaction actions are
 idempotent by transaction hash, preventing a retry from duplicating the event timeline.
 
-The proposal form collects landlord, tenant, and optional arbiter email identities. The landlord is
-the signed-in account. Tenant and arbiter wallet addresses are recorded when the invited parties
-approve the current proposal revision.
+The proposal form collects a landlord, one designated funding tenant, additional tenant reviewers,
+and an optional arbiter. Each tenant receives a separate role-locked invitation and every tenant
+must approve the same revision. Adding a tenant creates a new revision and resets all tenant and
+arbiter approvals. The shared escrow contract still has one tenant funding wallet; additional
+tenants are parties to the offchain record and approval process, not additional onchain deposit
+owners.
+
+Supporting PDFs and images default to a private R2 evidence vault when the hosted binding is
+available. D1 stores ownership metadata and a SHA-256 receipt; only a valid agreement-party token
+can retrieve the bytes. The private `openescrow://evidence/...` pointer and content hash can be
+recorded without publishing the file. A configured Pinata upload remains a public-IPFS fallback
+for sanitized or client-encrypted material.
 
 ## Configuration
 
@@ -62,13 +75,10 @@ in this Vite client. The minimum credible service should:
 
 1. Index OpenEscrow events from the configured deployment block and map affected wallet addresses
    to opted-in accounts.
-2. Extend the current idempotent action-triggered delivery to indexed onchain withdrawals and
-   other transitions that can happen without a D1 action request.
-3. Run scheduled deadline checks with a durable record preventing duplicate reminders.
-4. Include unsubscribe links in messages; authenticated in-app preference changes are already
-   honored immediately.
-5. Avoid putting evidence URIs, tenancy details, or unnecessary wallet data in email.
-6. Monitor failed deliveries, chain reorganizations, RPC outages, and delayed event processing.
+2. Reconcile indexed events with the current action-triggered and scheduled delivery records.
+3. Monitor failed deliveries, chain reorganizations, RPC outages, delayed event processing, and
+   evidence-bucket failures.
+4. Add retention and deletion controls approved by counsel and the pilot partner.
 
 Before real participants are invited, counsel and the pilot partner must approve consent language,
 retention, deletion, access controls, incident response, and the legal status of email notices.

@@ -217,11 +217,29 @@ export function AgreementDashboard({
         address={agreement.landlord}
       />
       <PartyIdentity
-        label="Tenant"
-        name={participantRecord?.tenantName}
-        email={participantRecord?.tenantEmail}
+        label={participantRecord?.tenants.length && participantRecord.tenants.length > 1 ? "Funding tenant" : "Tenant"}
+        name={
+          participantRecord?.tenants.find((tenant) => tenant.isFundingTenant)?.name ||
+          participantRecord?.tenantName
+        }
+        email={
+          participantRecord?.tenants.find((tenant) => tenant.isFundingTenant)?.email ||
+          participantRecord?.tenantEmail
+        }
         address={agreement.tenant}
       />
+      {participantRecord?.tenants
+        .filter((tenant) => !tenant.isFundingTenant)
+        .map((tenant) => (
+          <PartyIdentity
+            key={tenant.id}
+            label="Tenant reviewer"
+            name={tenant.name}
+            email={tenant.email}
+            address={tenant.wallet}
+            fallback="Approval wallet not recorded"
+          />
+        ))}
       <PartyIdentity
         label="Arbiter"
         name={participantRecord?.arbiterName}

@@ -1,8 +1,9 @@
 # OpenEscrow frontend (Base Sepolia demo)
 
-Minimal React + wagmi/viem frontend implementing the user journey in `docs/mvp-spec.md` §14. Talks
-directly to the deployed contracts on Base Sepolia - no backend server, no persistent indexer
-(agreement discovery is a client-side event-log scan, see below).
+React + wagmi/viem frontend implementing the user journey in `docs/mvp-spec.md` §14. Contract
+custody talks directly to Base Sepolia. A small hosted worker persists proposal negotiations,
+role-scoped account discovery, notification preferences, delivery receipts, and private evidence
+metadata; onchain agreement discovery still uses a client-side event-log scan.
 
 Public demo: https://openescrow-demo.omrigross.chatgpt.site
 
@@ -71,7 +72,8 @@ tenant respond (accept/partial/dispute) -> arbiter resolve -> permissionless tim
 pull-based withdraw, mutual-consent arbiter replacement, plus a live deadline countdown and an
 evidence trail view. The optional account layer supports Google authentication, automatically
 provisioned embedded EVM wallets, linked external EVM wallets, active-wallet selection, and
-server-persisted email notification consent. Saved proposal activity refreshes automatically, while
+server-persisted email notification consent, deadline reminders, unsubscribe links,
+party-authorized evidence uploads, and multi-tenant proposal review. Saved proposal activity refreshes automatically, while
 the notification bell includes wallet-scoped Base Sepolia registry receipts and keeps read state
 locally per wallet.
 
@@ -86,11 +88,13 @@ agreement link and is stored in the browser for display on the dashboard; it is 
 validated on-chain and does not change contract behavior. The UI labels it as off-chain research
 context because none of the listed jurisdiction profiles have completed legal review.
 
-The proposal form is email-first: the signed-in identity is the landlord, with tenant and arbiter
-emails collected as the participant identifiers. The D1 negotiation registry verifies Privy
+The proposal form is email-first: the signed-in identity is the landlord, with one funding tenant,
+optional additional tenant reviewers, and an optional arbiter collected as participant identities.
+Every tenant must approve the same revision; adding a tenant resets all approvals. The onchain
+agreement still uses the funding tenant's single wallet. The D1 negotiation registry verifies Privy
 identity tokens and restores role-scoped proposal access by verified email across browser sessions.
 Participant wallet addresses are recorded when the invited parties approve the current revision.
 
-Not implemented: automatic invitation delivery and wallet resolution, a production indexer, or a
+Not implemented: a production onchain event indexer, production evidence retention controls, or a
 fiat-to-USDC security-deposit onramp. See `../docs/open-questions.md` for the non-UI
 (legal/product) gaps.

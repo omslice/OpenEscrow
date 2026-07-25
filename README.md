@@ -15,6 +15,8 @@ The project is an open-source public-interest prototype. It is not a law firm, b
 The Base Sepolia testnet MVP implements the complete technical lifecycle:
 
 - A landlord proposes an agreement.
+- One funding tenant and optional additional tenant reviewers approve the same saved revision;
+  adding a tenant resets the approval cycle.
 - An arbiter may be nominated up front and must explicitly accept; or the parties can create the
   agreement without one and mutually appoint one later if a dispute occurs.
 - The tenant accepts and funds with either allowlisted plain testUSDC or test-only ytUSDC shares.
@@ -28,6 +30,9 @@ The Base Sepolia testnet MVP implements the complete technical lifecycle:
   deduction/dispute alerts, deadlines, and resolution status. The demo value is not real yield.
 - Agreement parties can anchor canonical record snapshots and privacy-safe activity hashes in the
   separate Base Sepolia activity registry, download private proofs, and verify them locally.
+- Supporting PDFs and images can be stored in a party-authorized private evidence vault while a
+  content hash supplies the integrity receipt.
+- Opted-in accounts receive idempotent action and deadline notices with one-click unsubscribe.
 - Tenant and landlord withdraw credited balances using pull payments.
 
 The current source includes:

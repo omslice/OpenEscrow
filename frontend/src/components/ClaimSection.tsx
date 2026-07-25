@@ -196,7 +196,11 @@ export function ClaimSection({
       ...itemSummary,
       "",
       note.trim() ? `Landlord note: ${note.trim()}` : "",
-      uri ? `Invoice / evidence: ${uri}` : "",
+      uri
+        ? uri.startsWith("openescrow://evidence/")
+          ? "Invoice / evidence: available privately after opening the agreement"
+          : `Invoice / evidence: ${uri}`
+        : "",
       "",
       `Review the documentation, add a note, and approve or dispute the claim here: ${reviewUrl}`,
       "",

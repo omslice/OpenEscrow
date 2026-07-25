@@ -44,6 +44,16 @@ export interface NegotiationEvent {
   metadata?: Record<string, unknown> | null;
 }
 
+export interface NegotiationTenant {
+  id: string;
+  name: string | null;
+  email: string;
+  approved: boolean;
+  wallet: string | null;
+  isFundingTenant: boolean;
+  acceptedAt: string | null;
+}
+
 export interface NegotiationRecord {
   id: string;
   status: NegotiationStatus;
@@ -54,6 +64,7 @@ export interface NegotiationRecord {
   landlordEmail: string;
   tenantName: string | null;
   tenantEmail: string;
+  tenants: NegotiationTenant[];
   arbiterName: string | null;
   arbiterEmail: string | null;
   terms: AgreementTerms;
@@ -63,6 +74,8 @@ export interface NegotiationRecord {
   arbiterWallet: string | null;
   onchainAgreementId: string | null;
   onchainTxHash: string | null;
+  viewerTenantId?: string;
+  viewerEmail?: string;
   events: NegotiationEvent[];
 }
 
@@ -77,6 +90,13 @@ export interface CreatedNegotiation {
   access: {
     landlord: string;
     tenant: string;
+    tenants: Array<{
+      id: string;
+      name: string | null;
+      email: string;
+      token: string;
+      isFundingTenant: boolean;
+    }>;
     arbiter: string | null;
   };
 }
@@ -305,6 +325,7 @@ export async function createNegotiation(input: {
   landlordEmail: string;
   tenantName: string;
   tenantEmail: string;
+  tenants?: Array<{ name: string; email: string }>;
   arbiterName: string;
   arbiterEmail: string | null;
   terms: AgreementTerms;
@@ -313,6 +334,28 @@ export async function createNegotiation(input: {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function addNegotiationTenant(
+  access: NegotiationAccess,
+  tenant: { name: string; email: string },
+) {
+  return request<{
+    record: NegotiationRecord;
+    invite: {
+      id: string;
+      name: string | null;
+      email: string;
+      token: string;
+      isFundingTenant: false;
+    };
+  }>(
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}/tenants`,
+    {
+      method: "POST",
+      body: JSON.stringify({ token: access.token, ...tenant }),
+    },
+  );
 }
 
 export async function loadNegotiation(access: NegotiationAccess) {
@@ -373,7 +416,12 @@ export type NegotiationAction =
           arbiterName?: string;
         };
       }
-    | { type: "invitation_prepared"; invitedRole: InviteRole; method: "gmail" | "copy" }
+    | {
+        type: "invitation_prepared";
+        invitedRole: InviteRole;
+        invitedTenantId?: string;
+        method: "gmail" | "copy";
+      }
     | { type: "finalize"; agreementId: string; transactionHash: string }
     | { type: "operations_reserve_paid"; transactionHash: string }
     | { type: "agreement_funded"; transactionHash: string }
@@ -420,6 +468,19 @@ export type NegotiationAction =
         awardToLandlord: string;
         note: string;
         transactionHash: string;
+      }
+    | {
+        type: "withdrawal_completed";
+        amount: string;
+        transactionHash: string;
+      }
+    | {
+        type: "timeout_executed";
+        timeout:
+          | "no_claim_refund"
+          | "no_response_dispute"
+          | "arbiter_timeout_refund";
+        transactionHash: string;
       };
 
 export async function negotiationAction(
@@ -445,10 +506,16 @@ export function loadNegotiationSnapshot(access: NegotiationAccess) {
   );
 }
 
-export async function uploadEvidenceToIpfs(
+export async function uploadEvidenceDocument(
   access: NegotiationAccess,
   file: File,
-): Promise<{ cid: string; uri: string; gatewayUrl: string }> {
+): Promise<{
+  reference: string;
+  uri: string;
+  gatewayUrl: string;
+  sha256: string;
+  storageKind: "private" | "public";
+}> {
   const form = new FormData();
   form.set("proposalId", access.proposalId);
   form.set("token", access.token);
@@ -458,12 +525,27 @@ export async function uploadEvidenceToIpfs(
     cid?: string;
     uri?: string;
     gatewayUrl?: string;
+    sha256?: string;
+    storageKind?: "private" | "public";
     error?: string;
   };
-  if (!response.ok || !data.cid || !data.uri || !data.gatewayUrl) {
-    throw new Error(data.error || "The file could not be uploaded to IPFS.");
+  if (
+    !response.ok ||
+    !data.cid ||
+    !data.uri ||
+    !data.gatewayUrl ||
+    !data.sha256 ||
+    !data.storageKind
+  ) {
+    throw new Error(data.error || "The evidence file could not be stored.");
   }
-  return { cid: data.cid, uri: data.uri, gatewayUrl: data.gatewayUrl };
+  return {
+    reference: data.cid,
+    uri: data.uri,
+    gatewayUrl: data.gatewayUrl,
+    sha256: data.sha256,
+    storageKind: data.storageKind,
+  };
 }
 
 export async function sendClaimNotification(

@@ -64,7 +64,7 @@ export function DisputeResolutionSection({
         amount to the landlord - the remainder goes to the tenant. You cannot award more than what's
         disputed (spec §8/§11).
       </p>
-      <EvidenceList id={id} />
+      <EvidenceList id={id} negotiationAccess={negotiationAccess} />
       <label>
         Award to landlord (ytUSDC shares, max {formatUSDC(disputed)})
         <input value={award} onChange={(e) => setAward(e.target.value)} type="number" min="0" step="0.000001" />

@@ -744,6 +744,61 @@
   flex-wrap: wrap;
 }
 
+.additional-tenant {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0 20px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--accent-bg));
+}
+
+.additional-tenant h3,
+.additional-tenant p {
+  margin: 0;
+}
+
+.participant-input-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.tenant-invite-list {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 16px;
+}
+
+.tenant-invite-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.tenant-invite-row > div:first-child {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.tenant-invite-row span,
+.tenant-invite-row small {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.tenant-invite-row .invite-actions {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
 .invitation-tab-note {
   align-self: center;
   color: var(--muted);
@@ -1704,8 +1759,18 @@ a.btn.disabled {
 
   .participant-grid,
   .approval-grid,
-  .negotiation-terms {
+  .negotiation-terms,
+  .participant-input-grid {
     grid-template-columns: 1fr;
+  }
+
+  .tenant-invite-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .tenant-invite-row .invite-actions {
+    flex: 1 1 auto;
   }
 
   .activity-timeline li {

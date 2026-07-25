@@ -104,9 +104,10 @@ export function Layout({
       <main className="app-main">{children}</main>
       <footer className="app-footer">
         <p>
-          Evidence uploaded through this app is stored via a content hash + pointer only, per{" "}
-          <code>docs/mvp-spec.md</code>. Any URI you publish (including IPFS) is public and permanent -
-          never upload real personal information, lease documents, invoices, or photographs here.
+          Evidence stored in the private demo vault is retrievable only through an authorized
+          agreement link; its content hash can be independently verified. Any IPFS URI entered
+          manually is public and permanent. This remains a testnet demo—do not upload real personal
+          information, lease documents, invoices, or photographs.
         </p>
       </footer>
     </div>

@@ -323,9 +323,9 @@ export function PrivyAccountCenter() {
           Upcoming claim, response, and arbiter deadlines
         </label>
         <p className="notification-boundary">
-          Preferences follow your verified account. Direct invitation and claim emails are
-          available when delivery is configured; automatic deadline reminders still require the
-          chain monitor.
+          Preferences follow your verified account. Reminder checks run during normal app use and
+          every optional message includes an unsubscribe link. A production chain indexer and
+          dedicated scheduler are still needed before a real-world pilot.
         </p>
         {preferenceStatus && (
           <p

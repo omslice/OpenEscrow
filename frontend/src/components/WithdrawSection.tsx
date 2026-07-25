@@ -2,15 +2,18 @@ import { useAccount } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS } from "../contracts/config";
 import { formatUSDC } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
+import { negotiationAction, type NegotiationAccess } from "../lib/negotiations";
 import { TxButton } from "./TxButton";
 
 export function WithdrawSection({
   id,
   agreement,
+  negotiationAccess,
   onRefetch,
 }: {
   id: bigint;
   agreement: Agreement;
+  negotiationAccess?: NegotiationAccess | null;
   onRefetch?: () => void;
 }) {
   const { address } = useAccount();
@@ -36,7 +39,16 @@ export function WithdrawSection({
         functionName="withdraw"
         args={[id]}
         label={`Withdraw ${formatUSDC(credited)} USDC`}
-        onSuccess={onRefetch}
+        onSuccess={(transactionHash) => {
+          if (negotiationAccess) {
+            void negotiationAction(negotiationAccess, {
+              type: "withdrawal_completed",
+              amount: formatUSDC(credited),
+              transactionHash,
+            });
+          }
+          onRefetch?.();
+        }}
       />
     </div>
   );

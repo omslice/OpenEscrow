@@ -19,6 +19,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0000_agreement_negotiations.sql",
     "0001_negotiation_account_access.sql",
     "0002_notification_preferences.sql",
+    "0003_private_evidence_and_notifications.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -31,6 +32,10 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.ok(tables.includes("negotiation_account_access"));
   assert.ok(tables.includes("negotiation_events"));
   assert.ok(tables.includes("notification_preferences"));
+  assert.ok(tables.includes("evidence_files"));
+  assert.ok(tables.includes("notification_deliveries"));
+  assert.ok(tables.includes("notification_unsubscribe_tokens"));
+  assert.ok(tables.includes("scheduled_job_runs"));
 });
 
 class Statement {
@@ -69,6 +74,30 @@ class TestD1 {
 
   async batch(statements) {
     return statements.map((statement) => statement.run());
+  }
+}
+
+class TestR2 {
+  constructor() {
+    this.objects = new Map();
+  }
+
+  async put(key, value, options = {}) {
+    this.objects.set(key, {
+      bytes: new Uint8Array(value),
+      contentType: options.httpMetadata?.contentType || "application/octet-stream",
+    });
+  }
+
+  async get(key) {
+    const object = this.objects.get(key);
+    if (!object) return null;
+    return {
+      body: object.bytes,
+      writeHttpMetadata(headers) {
+        headers.set("content-type", object.contentType);
+      },
+    };
   }
 }
 
@@ -297,6 +326,143 @@ test("a verified Privy identity can discover its landlord proposals across brows
   }
 });
 
+test("private evidence is stored in R2 and only an agreement party can retrieve it", async () => {
+  const db = new TestD1();
+  const evidence = new TestR2();
+  const created = await create(db);
+  const form = new FormData();
+  form.set("proposalId", created.record.id);
+  form.set("token", created.access.landlord);
+  form.set(
+    "file",
+    new File([new TextEncoder().encode("test invoice")], "invoice.pdf", {
+      type: "application/pdf",
+    }),
+  );
+  const uploaded = await jsonResponse(
+    await worker.fetch(
+      new Request("https://openescrow.example/api/evidence", {
+        method: "POST",
+        body: form,
+      }),
+      { DB: db, EVIDENCE: evidence },
+    ),
+  );
+  assert.equal(uploaded.storageKind, "private");
+  assert.match(uploaded.uri, /^openescrow:\/\/evidence\//);
+  assert.match(uploaded.sha256, /^0x[a-f0-9]{64}$/);
+
+  const authorized = await worker.fetch(
+    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    { DB: db, EVIDENCE: evidence },
+  );
+  assert.equal(authorized.status, 200);
+  assert.equal(await authorized.text(), "test invoice");
+  assert.equal(authorized.headers.get("x-openescrow-sha256"), uploaded.sha256);
+
+  const denied = await worker.fetch(
+    new Request(
+      `https://openescrow.example${uploaded.gatewayUrl.replace(
+        encodeURIComponent(created.access.landlord),
+        "invalid",
+      )}`,
+    ),
+    { DB: db, EVIDENCE: evidence },
+  );
+  assert.equal(denied.status, 403);
+});
+
+test("unsubscribe links turn off optional activity and deadline emails", async () => {
+  const db = new TestD1();
+  await create(db);
+  const now = new Date().toISOString();
+  await db
+    .prepare(
+      `INSERT INTO notification_preferences
+       (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+       VALUES (?, ?, 1, 1, ?, ?)`,
+    )
+    .bind("did:privy:unsubscribe", "tenant@example.com", now, now)
+    .run();
+  await db
+    .prepare(
+      "INSERT INTO notification_unsubscribe_tokens (user_id, token, created_at) VALUES (?, ?, ?)",
+    )
+    .bind("did:privy:unsubscribe", "unsubscribe-test-token", now)
+    .run();
+
+  const response = await worker.fetch(
+    request("/api/notifications/unsubscribe?token=unsubscribe-test-token"),
+    { DB: db },
+  );
+  assert.equal(response.status, 200);
+  assert.match(await response.text(), /Email notifications are off/);
+  const preferences = await db
+    .prepare(
+      "SELECT agreement_activity, deadline_reminders, consented_at FROM notification_preferences WHERE user_id = ?",
+    )
+    .bind("did:privy:unsubscribe")
+    .first();
+  assert.equal(preferences.agreement_activity, 0);
+  assert.equal(preferences.deadline_reminders, 0);
+  assert.equal(preferences.consented_at, null);
+});
+
+test("scheduled claim-window reminders are opted-in and idempotent", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const preferenceTime = new Date("2027-06-01T00:00:00.000Z").toISOString();
+  await db
+    .prepare(
+      `INSERT INTO notification_preferences
+       (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+       VALUES (?, ?, 0, 1, ?, ?)`,
+    )
+    .bind(
+      "did:privy:deadline-landlord",
+      "landlord@example.com",
+      preferenceTime,
+      preferenceTime,
+    )
+    .run();
+
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `scheduled-${deliveries.length}` });
+  };
+  try {
+    const waits = [];
+    const env = {
+      DB: db,
+      RESEND_API_KEY: "test-resend-key",
+      NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      PUBLIC_APP_URL: "https://openescrow.example/",
+    };
+    const controller = { scheduledTime: Date.parse("2027-07-02T12:00:00.000Z") };
+    const context = { waitUntil(promise) { waits.push(promise); } };
+    await worker.scheduled(controller, env, context);
+    await Promise.all(waits);
+    assert.equal(deliveries.length, 1);
+    assert.deepEqual(deliveries[0].to, ["landlord@example.com"]);
+    assert.match(deliveries[0].subject, /deduction deadline reminder/);
+    assert.match(deliveries[0].text, /Turn off optional OpenEscrow emails/);
+
+    const repeated = [];
+    await worker.scheduled(controller, env, {
+      waitUntil(promise) {
+        repeated.push(promise);
+      },
+    });
+    await Promise.all(repeated);
+    assert.equal(deliveries.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("optional arbiter approval is required only when an arbiter is appointed", async () => {
   const db = new TestD1();
   const created = await create(db, "arbiter@example.com");
@@ -318,6 +484,83 @@ test("optional arbiter approval is required only when an arbiter is appointed", 
   );
   assert.equal(arbiterApproved.status, "ready");
   assert.equal(arbiterApproved.events.at(-1).action, "proposal_ready");
+});
+
+test("every tenant reviewer must approve and adding a tenant resets the revision", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
+        tenantEmail: "tenant@example.com",
+        tenants: [
+          { name: "Terry Tenant", email: "tenant@example.com" },
+          { name: "Casey Co-tenant", email: "cotenant@example.com" },
+        ],
+        arbiterName: "",
+        arbiterEmail: null,
+        terms,
+      }),
+      { DB: db },
+    ),
+  );
+  assert.equal(created.record.tenants.length, 2);
+  assert.equal(created.access.tenants.length, 2);
+  assert.equal(created.record.tenants[0].isFundingTenant, true);
+
+  const primaryApproved = await jsonResponse(
+    await act(db, created.record.id, created.access.tenants[0].token, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+  assert.equal(primaryApproved.status, "draft");
+  assert.equal(primaryApproved.tenantApproved, false);
+
+  const coTenantView = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${created.access.tenants[1].token}`,
+      ),
+      { DB: db },
+    ),
+  );
+  assert.equal(coTenantView.viewerEmail, "cotenant@example.com");
+  const allApproved = await jsonResponse(
+    await act(db, created.record.id, created.access.tenants[1].token, {
+      type: "approve",
+      wallet: "0x2222222222222222222222222222222222222222",
+    }),
+  );
+  assert.equal(allApproved.status, "ready");
+  assert.equal(allApproved.tenantApproved, true);
+
+  const added = await jsonResponse(
+    await worker.fetch(
+      request(`/api/negotiations/${created.record.id}/tenants`, "POST", {
+        token: created.access.landlord,
+        name: "Morgan Tenant",
+        email: "morgan@example.com",
+      }),
+      { DB: db },
+    ),
+  );
+  assert.equal(added.record.revision, 2);
+  assert.equal(added.record.status, "draft");
+  assert.equal(added.record.tenants.length, 3);
+  assert.equal(added.record.tenants.every((tenant) => !tenant.approved), true);
+  assert.equal(added.invite.email, "morgan@example.com");
+
+  const report = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}/report?token=${created.access.landlord}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(report.status, 200);
+  assert.match(await report.text(), /Tenant reviewer/);
 });
 
 test("the landlord is notified when all required approvals make a proposal ready", async () => {

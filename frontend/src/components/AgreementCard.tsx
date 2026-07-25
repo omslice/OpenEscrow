@@ -67,8 +67,18 @@ export function AgreementCard({
       <ResponseSection id={id} agreement={agreement} onRefetch={onRefetch} negotiationAccess={negotiationAccess} />
       <DisputeResolutionSection id={id} agreement={agreement} onRefetch={onRefetch} negotiationAccess={negotiationAccess} />
       <ArbiterReplacementSection id={id} agreement={agreement} onRefetch={onRefetch} />
-      <TimeoutSection id={id} agreement={agreement} onRefetch={onRefetch} />
-      <WithdrawSection id={id} agreement={agreement} onRefetch={onRefetch} />
+      <TimeoutSection
+        id={id}
+        agreement={agreement}
+        negotiationAccess={negotiationAccess}
+        onRefetch={onRefetch}
+      />
+      <WithdrawSection
+        id={id}
+        agreement={agreement}
+        negotiationAccess={negotiationAccess}
+        onRefetch={onRefetch}
+      />
       {participantRecord && (
         <details className="agreement-activity">
           <summary>Recent agreement activity</summary>

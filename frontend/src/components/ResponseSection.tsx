@@ -9,6 +9,7 @@ import {
   type NegotiationAction,
   type NegotiationAccess,
 } from "../lib/negotiations";
+import { EvidenceList } from "./EvidenceList";
 
 type Mode = "accept" | "partial" | "dispute";
 
@@ -72,6 +73,7 @@ export function ResponseSection({
           ? " Because no arbiter was preselected, both parties may mutually appoint one during the fixed ruling window."
           : " The accepted arbiter can rule on the disputed portion."}
       </p>
+      <EvidenceList id={id} negotiationAccess={negotiationAccess} />
       <div className="radio-row">
         <label>
           <input type="radio" checked={mode === "accept"} onChange={() => setMode("accept")} /> Accept in full

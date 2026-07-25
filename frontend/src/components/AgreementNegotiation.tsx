@@ -100,7 +100,7 @@ function AgreementNegotiationView({
 
   const invitedEmail =
     access.role === "tenant"
-      ? record.tenantEmail
+      ? record.viewerEmail || record.tenantEmail
       : access.role === "arbiter"
         ? record.arbiterEmail
         : record.landlordEmail;
@@ -113,9 +113,17 @@ function AgreementNegotiationView({
     );
   const canRespond =
     (access.role === "tenant" || access.role === "arbiter") && invitedEmailMatches;
+  const viewingTenant =
+    access.role === "tenant"
+      ? record.tenants.find((tenant) => tenant.id === record.viewerTenantId) ||
+        record.tenants.find(
+          (tenant) =>
+            tenant.email.trim().toLowerCase() === invitedEmail?.trim().toLowerCase(),
+        )
+      : null;
   const alreadyApproved =
     access.role === "tenant"
-      ? record.tenantApproved
+      ? Boolean(viewingTenant?.approved)
       : access.role === "arbiter"
         ? record.arbiterApproved
         : false;
@@ -164,11 +172,13 @@ function AgreementNegotiationView({
           <strong>{record.landlordName || record.landlordEmail}</strong>
           {record.landlordName && <small>{record.landlordEmail}</small>}
         </div>
-        <div>
-          <span>Tenant</span>
-          <strong>{record.tenantName || record.tenantEmail}</strong>
-          {record.tenantName && <small>{record.tenantEmail}</small>}
-        </div>
+        {record.tenants.map((tenant) => (
+          <div key={tenant.id}>
+            <span>{tenant.isFundingTenant ? "Funding tenant" : "Tenant reviewer"}</span>
+            <strong>{tenant.name || tenant.email}</strong>
+            {tenant.name && <small>{tenant.email}</small>}
+          </div>
+        ))}
         <div>
           <span>Arbiter</span>
           <strong>{record.arbiterName || record.arbiterEmail || "Not appointed"}</strong>
@@ -178,10 +188,16 @@ function AgreementNegotiationView({
       <Terms record={record} />
 
       <div className="approval-grid">
-        <div className={record.tenantApproved ? "approval approved" : "approval"}>
-          <strong>Tenant</strong>
-          <span>{approvalLabel(record, "tenant")}</span>
-        </div>
+        {record.tenants.map((tenant) => (
+          <div className={tenant.approved ? "approval approved" : "approval"} key={tenant.id}>
+            <strong>{tenant.name || "Tenant"}</strong>
+            <span>
+              {tenant.approved
+                ? `Approved revision ${record.revision}`
+                : "Awaiting tenant approval"}
+            </span>
+          </div>
+        ))}
         {record.arbiterEmail && (
           <div className={record.arbiterApproved ? "approval approved" : "approval"}>
             <strong>Arbiter</strong>

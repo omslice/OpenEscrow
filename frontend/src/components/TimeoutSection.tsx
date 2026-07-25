@@ -2,6 +2,7 @@ import { useAccount } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
 import { useNow } from "../lib/useNow";
 import type { Agreement } from "../lib/useAgreement";
+import { negotiationAction, type NegotiationAccess } from "../lib/negotiations";
 import { TxButton } from "./TxButton";
 
 /**
@@ -12,15 +13,30 @@ import { TxButton } from "./TxButton";
 export function TimeoutSection({
   id,
   agreement,
+  negotiationAccess,
   onRefetch,
 }: {
   id: bigint;
   agreement: Agreement;
+  negotiationAccess?: NegotiationAccess | null;
   onRefetch?: () => void;
 }) {
   const { address } = useAccount();
   const now = useNow();
   const isTenant = address?.toLowerCase() === agreement.tenant.toLowerCase();
+  const recordTimeout = (
+    timeout: "no_claim_refund" | "no_response_dispute" | "arbiter_timeout_refund",
+    transactionHash: `0x${string}`,
+  ) => {
+    if (negotiationAccess) {
+      void negotiationAction(negotiationAccess, {
+        type: "timeout_executed",
+        timeout,
+        transactionHash,
+      });
+    }
+    onRefetch?.();
+  };
 
   if (agreement.phase === Phase.Active && isTenant && now >= Number(agreement.claimSubmissionDeadline)) {
     return (
@@ -33,7 +49,7 @@ export function TimeoutSection({
           functionName="withdrawNoClaim"
           args={[id]}
           label="Withdraw full deposit"
-          onSuccess={onRefetch}
+          onSuccess={(transactionHash) => recordTimeout("no_claim_refund", transactionHash)}
         />
       </div>
     );
@@ -54,7 +70,7 @@ export function TimeoutSection({
           functionName="finalizeNoResponse"
           args={[id]}
           label="Escalate to dispute"
-          onSuccess={onRefetch}
+          onSuccess={(transactionHash) => recordTimeout("no_response_dispute", transactionHash)}
         />
       </div>
     );
@@ -74,7 +90,9 @@ export function TimeoutSection({
           functionName="claimArbiterTimeout"
           args={[id]}
           label="Send disputed funds to tenant"
-          onSuccess={onRefetch}
+          onSuccess={(transactionHash) =>
+            recordTimeout("arbiter_timeout_refund", transactionHash)
+          }
         />
       </div>
     );

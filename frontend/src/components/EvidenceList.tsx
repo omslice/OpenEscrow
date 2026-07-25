@@ -1,6 +1,7 @@
 import { useReadContract } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS } from "../contracts/config";
 import { formatTimestamp, shortAddr } from "../lib/format";
+import type { NegotiationAccess } from "../lib/negotiations";
 
 interface EvidenceEntry {
   contentHash: `0x${string}`;
@@ -21,7 +22,20 @@ const TYPE_LABEL: Record<number, string> = {
   14: "Claim—other",
 };
 
-export function EvidenceList({ id }: { id: bigint }) {
+function privateEvidenceUrl(uri: string, access?: NegotiationAccess | null) {
+  const match = uri.match(/^openescrow:\/\/evidence\/([a-fA-F0-9-]+)$/);
+  return match && access
+    ? `/api/evidence/${encodeURIComponent(match[1])}?token=${encodeURIComponent(access.token)}`
+    : null;
+}
+
+export function EvidenceList({
+  id,
+  negotiationAccess,
+}: {
+  id: bigint;
+  negotiationAccess?: NegotiationAccess | null;
+}) {
   const { data } = useReadContract({
     address: OPEN_ESCROW_ADDRESS,
     abi: OpenEscrowABI,
@@ -41,7 +55,9 @@ export function EvidenceList({ id }: { id: bigint }) {
         underlying content.
       </p>
       <ul>
-        {entries.map((e, i) => (
+        {entries.map((e, i) => {
+          const privateUrl = privateEvidenceUrl(e.uri, negotiationAccess);
+          return (
           <li key={i}>
             <strong>{TYPE_LABEL[e.evidenceType] ?? `Type ${e.evidenceType}`}</strong> by{" "}
             {shortAddr(e.submittedBy)} at {formatTimestamp(e.timestamp)}
@@ -50,11 +66,19 @@ export function EvidenceList({ id }: { id: bigint }) {
             {e.uri && (
               <>
                 <br />
-                pointer: <code>{e.uri}</code>
+                pointer:{" "}
+                {privateUrl ? (
+                  <a href={privateUrl} target="_blank" rel="noreferrer">
+                    Open private evidence
+                  </a>
+                ) : (
+                  <code>{e.uri}</code>
+                )}
               </>
             )}
           </li>
-        ))}
+          );
+        })}
       </ul>
     </div>
   );
