@@ -1,4 +1,4 @@
-CREATE TABLE `negotiation_account_access` (
+CREATE TABLE IF NOT EXISTS `negotiation_account_access` (
 	`id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
 	`negotiation_id` text NOT NULL,
 	`user_id` text NOT NULL,
@@ -9,4 +9,4 @@ CREATE TABLE `negotiation_account_access` (
 	FOREIGN KEY (`negotiation_id`) REFERENCES `agreement_negotiations`(`id`) ON UPDATE no action ON DELETE no action
 );
 --> statement-breakpoint
-CREATE INDEX `negotiation_account_access_lookup_idx` ON `negotiation_account_access` (`negotiation_id`,`token_hash`,`expires_at`);
+CREATE INDEX IF NOT EXISTS `negotiation_account_access_lookup_idx` ON `negotiation_account_access` (`negotiation_id`,`token_hash`,`expires_at`);

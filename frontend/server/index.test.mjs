@@ -6,10 +6,7 @@ import worker from "./index.js";
 
 test("the packaged D1 migration applies cleanly", () => {
   const database = new DatabaseSync(":memory:");
-  for (const migrationName of [
-    "0000_agreement_negotiations.sql",
-    "0001_negotiation_account_access.sql",
-  ]) {
+  const applyMigration = (migrationName) => {
     const migration = readFileSync(
       new URL(`../../drizzle/${migrationName}`, import.meta.url),
       "utf8",
@@ -17,7 +14,14 @@ test("the packaged D1 migration applies cleanly", () => {
     for (const statement of migration.split("--> statement-breakpoint")) {
       if (statement.trim()) database.exec(statement);
     }
+  };
+  for (const migrationName of [
+    "0000_agreement_negotiations.sql",
+    "0001_negotiation_account_access.sql",
+  ]) {
+    applyMigration(migrationName);
   }
+  applyMigration("0001_negotiation_account_access.sql");
   const tables = database
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
     .all()
