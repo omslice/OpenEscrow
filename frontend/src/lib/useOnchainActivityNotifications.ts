@@ -71,6 +71,7 @@ export function useOnchainActivityNotifications(agreementIds: readonly bigint[])
             actor: "Onchain receipt",
             summary: `Agreement #${log.args.agreementId}: snapshot anchored by ${shortAddr(log.args.party)}`,
             href: `https://sepolia.basescan.org/tx/${log.transactionHash}`,
+            agreementId: log.args.agreementId.toString(),
           })),
           ...activities.map((log) => ({
             id: `onchain-${log.transactionHash}-${log.logIndex}`,
@@ -80,6 +81,7 @@ export function useOnchainActivityNotifications(agreementIds: readonly bigint[])
               activityLabel[Number(log.args.activityType)] || "activity proof published"
             } by ${shortAddr(log.args.party)}`,
             href: `https://sepolia.basescan.org/tx/${log.transactionHash}`,
+            agreementId: log.args.agreementId.toString(),
           })),
         ].sort(
           (left, right) =>

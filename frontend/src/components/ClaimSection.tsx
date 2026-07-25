@@ -22,6 +22,7 @@ const CATEGORY_LABEL: Record<string, string> = {
   "11": "Damage beyond ordinary wear",
   "12": "Cleaning needed to restore move-in cleanliness",
   "13": "Lease-authorized restoration or replacement of landlord property",
+  "14": "Other documented test deduction",
 };
 const CATEGORY_VALUE = Object.fromEntries(
   Object.entries(CATEGORY_LABEL).map(([value, label]) => [label, value]),
@@ -111,6 +112,7 @@ export function ClaimSection({
   if (!isLandlord) return null;
 
   const { total: amountRaw, valid: itemsValid } = itemAmounts(items);
+  const isCaliforniaPolicy = record?.terms.jurisdiction !== "testnet-generic";
   const amount = amountRaw === null ? "" : formatUSDC(amountRaw);
   const evidenceType =
     items.length === 1 ? Number(items[0].category) : Number("13");
@@ -120,7 +122,8 @@ export function ClaimSection({
   const californiaRequirementsConfirmed =
     itemizationConfirmed &&
     documentsConfirmed &&
-    (!hasConditionBasedDeduction ||
+    (!isCaliforniaPolicy ||
+      !hasConditionBasedDeduction ||
       (moveInPhotosConfirmed && preRepairPhotosConfirmed && postRepairPhotosConfirmed));
 
   function updateItem(index: number, patch: Partial<DeductionLineItem>) {
@@ -162,7 +165,7 @@ export function ClaimSection({
     const californiaConfirmations = {
       itemizedStatement: true as const,
       supportingDocuments: true as const,
-      ...(hasConditionBasedDeduction
+      ...(isCaliforniaPolicy && hasConditionBasedDeduction
         ? {
             moveInPhotos: true as const,
             preRepairPhotos: true as const,
@@ -265,7 +268,9 @@ export function ClaimSection({
               value={item.category}
               onChange={(event) => updateItem(index, { category: event.target.value })}
             >
-              {Object.entries(CATEGORY_LABEL).map(([value, label]) => (
+              {Object.entries(CATEGORY_LABEL)
+                .filter(([value]) => !isCaliforniaPolicy || value !== "14")
+                .map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
               ))}
             </select>
@@ -305,14 +310,22 @@ export function ClaimSection({
         <strong>{amountRaw === null ? "Enter valid amounts" : `${amount} shares`}</strong>
       </div>
       <fieldset className="california-claim-checklist">
-        <legend>California deduction record · required</legend>
+        <legend>
+          {isCaliforniaPolicy
+            ? "California deduction record · required"
+            : "Test deduction record · required"}
+        </legend>
         <label>
           <input
             type="checkbox"
             checked={itemizationConfirmed}
             onChange={(event) => setItemizationConfirmed(event.target.checked)}
           />
-          <span>Every deduction is itemized and limited to a reasonable, authorized purpose.</span>
+          <span>
+            {isCaliforniaPolicy
+              ? "Every deduction is itemized and limited to a reasonable, authorized purpose."
+              : "Every test deduction is separately itemized and described."}
+          </span>
         </label>
         <label>
           <input
@@ -325,7 +338,7 @@ export function ClaimSection({
             permitted good-faith estimate.
           </span>
         </label>
-        {hasConditionBasedDeduction && (
+        {isCaliforniaPolicy && hasConditionBasedDeduction && (
           <>
             <label>
               <input
@@ -354,8 +367,9 @@ export function ClaimSection({
           </>
         )}
         <p className="field-help">
-          Combine multiple pages and photographs into one PDF for this pilot. Checking these boxes
-          creates a timestamped attestation; it does not prove the deduction is lawful.
+          {isCaliforniaPolicy
+            ? "Combine multiple pages and photographs into one PDF for this pilot. Checking these boxes creates a timestamped attestation; it does not prove the deduction is lawful."
+            : "Attach one supporting test file. This non-specific profile records the test lifecycle but does not validate legal compliance."}
         </p>
       </fieldset>
     </div>
@@ -386,7 +400,7 @@ export function ClaimSection({
 
   if (agreement.phase === Phase.Active) {
     return (
-      <div className="action-section">
+    <div className="action-section" id={`agreement-${id.toString()}-claim`} tabIndex={-1}>
         <h3>Submit a documented deduction claim</h3>
         <p className="hint">
           Only the landlord can initiate a deduction. The claimed amount remains subject to the

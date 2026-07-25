@@ -1,5 +1,6 @@
 export const JURISDICTIONS = [
   { code: "us-ca", label: "California residential tenancy" },
+  { code: "testnet-generic", label: "Non-specific jurisdiction (testing only)" },
 ] as const;
 
 export type JurisdictionCode = (typeof JURISDICTIONS)[number]["code"];
@@ -14,6 +15,15 @@ export const CALIFORNIA_POLICY = {
   statuteUrl:
     "https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CIV&sectionNum=1950.5.",
   guideUrl: "https://www.dre.ca.gov/publications/ResourceGuidebook/gb10_movingout.html",
+} as const;
+
+export const GENERIC_TEST_POLICY = {
+  version: "generic-test-v1",
+  jurisdiction: "testnet-generic" as const,
+  claimDays: "30",
+  responseDays: "7",
+  arbiterDays: "7",
+  operationsReserve: "0",
 } as const;
 
 const STORAGE_PREFIX = "openescrow:jurisdiction:";

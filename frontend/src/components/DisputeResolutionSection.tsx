@@ -57,7 +57,7 @@ export function DisputeResolutionSection({
   }
 
   return (
-    <div className="action-section">
+    <div className="action-section" id={`agreement-${id.toString()}-resolution`} tabIndex={-1}>
       <h3>Resolve dispute</h3>
       <p className="hint">
         Disputed amount: {formatUSDC(disputed)} ytUSDC shares. Award any amount from 0 up to the full disputed

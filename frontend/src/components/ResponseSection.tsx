@@ -64,7 +64,7 @@ export function ResponseSection({
   }
 
   return (
-    <div className="action-section">
+    <div className="action-section" id={`agreement-${id.toString()}-response`} tabIndex={-1}>
       <h3>Respond to claim</h3>
       <p className="hint">
         Landlord claimed {formatUSDC(claimed)} ytUSDC shares. Whatever you don't accept becomes

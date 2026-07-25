@@ -15,7 +15,9 @@ import {
 import { parseUSDC } from "../lib/format";
 import {
   CALIFORNIA_POLICY,
+  GENERIC_TEST_POLICY,
   JURISDICTIONS,
+  isJurisdictionCode,
   rememberJurisdiction,
   type JurisdictionCode,
 } from "../lib/jurisdictions";
@@ -25,6 +27,8 @@ import type { InviteRole } from "../lib/inviteContext";
 import {
   buildNegotiationInviteUrl,
   addNegotiationTenant,
+  removeNegotiationTenant,
+  updateNegotiationTenant,
   clearLandlordBundle,
   createNegotiation,
   loadNegotiation,
@@ -46,6 +50,7 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
 type ProposalField =
+  | "tenantName"
   | "tenantEmail"
   | "arbiterEmail"
   | "deposit"
@@ -68,6 +73,10 @@ function validatePeriodDays(days: string, label: string): string | null {
   if (seconds < MIN_PERIOD_SECONDS) return `${label} is below the contract's minimum (5 minutes).`;
   if (seconds > MAX_PERIOD_SECONDS) return `${label} exceeds the contract's maximum (${MAX_PERIOD_DAYS} days).`;
   return null;
+}
+
+function hasFirstAndLastName(value: string): boolean {
+  return value.trim().split(/\s+/).filter(Boolean).length >= 2;
 }
 
 function inviteContent(
@@ -111,6 +120,13 @@ function AgreementForm({
   const [tenantEmail, setTenantEmail] = useState("");
   const [newTenantName, setNewTenantName] = useState("");
   const [newTenantEmail, setNewTenantEmail] = useState("");
+  const [pendingTenants, setPendingTenants] = useState<
+    Array<{ name: string; email: string }>
+  >([]);
+  const [showAdditionalTenant, setShowAdditionalTenant] = useState(false);
+  const [editingTenantId, setEditingTenantId] = useState<string | null>(null);
+  const [editingTenantName, setEditingTenantName] = useState("");
+  const [editingTenantEmail, setEditingTenantEmail] = useState("");
   const [arbiterName, setArbiterName] = useState("");
   const [arbiterEmail, setArbiterEmail] = useState("");
   const [deposit, setDeposit] = useState("100");
@@ -152,6 +168,7 @@ function AgreementForm({
         (draft.tenants.some((tenant) => tenant.approved) ||
           (draft.arbiterEmail && draft.arbiterApproved)),
     ) && !isEditingRevision;
+  const isCalifornia = jurisdiction === CALIFORNIA_POLICY.jurisdiction;
 
   const landlordAccess = useMemo<NegotiationAccess | null>(
     () =>
@@ -212,6 +229,10 @@ function AgreementForm({
   }, [landlordAccess, pendingFinalizationKey, saveFinalizationRecord]);
 
   function applyTerms(record: NegotiationRecord) {
+    const recordJurisdiction = isJurisdictionCode(record.terms.jurisdiction)
+      ? record.terms.jurisdiction
+      : CALIFORNIA_POLICY.jurisdiction;
+    const recordIsCalifornia = recordJurisdiction === CALIFORNIA_POLICY.jurisdiction;
     setTenantName(record.tenantName || "");
     setTenantEmail(record.tenantEmail);
     setArbiterName(record.arbiterName || "");
@@ -220,13 +241,23 @@ function AgreementForm({
     setMonthlyRent(record.terms.monthlyRent || record.terms.deposit);
     setSmallLandlordException(record.terms.smallLandlordException === true);
     setTenantIsServiceMember(record.terms.tenantIsServiceMember === true);
-    setOperationsReserve(CALIFORNIA_POLICY.operationsReserve);
+    setOperationsReserve(
+      recordIsCalifornia
+        ? CALIFORNIA_POLICY.operationsReserve
+        : GENERIC_TEST_POLICY.operationsReserve,
+    );
     setTokenChoice(record.terms.tokenChoice);
     setClaimWindowStart(record.terms.claimWindowStart);
-    setClaimDays(CALIFORNIA_POLICY.claimDays);
-    setResponseDays(CALIFORNIA_POLICY.responseDays);
-    setArbiterDays(CALIFORNIA_POLICY.arbiterDays);
-    setJurisdiction(CALIFORNIA_POLICY.jurisdiction);
+    setClaimDays(
+      recordIsCalifornia ? CALIFORNIA_POLICY.claimDays : record.terms.claimDays,
+    );
+    setResponseDays(
+      recordIsCalifornia ? CALIFORNIA_POLICY.responseDays : record.terms.responseDays,
+    );
+    setArbiterDays(
+      recordIsCalifornia ? CALIFORNIA_POLICY.arbiterDays : record.terms.arbiterDays,
+    );
+    setJurisdiction(recordJurisdiction);
   }
 
   useEffect(() => {
@@ -300,7 +331,9 @@ function AgreementForm({
   function currentTerms(): AgreementTerms {
     return {
       jurisdiction,
-      policyVersion: CALIFORNIA_POLICY.version,
+      policyVersion: isCalifornia
+        ? CALIFORNIA_POLICY.version
+        : GENERIC_TEST_POLICY.version,
       tokenChoice,
       deposit,
       operationsReserve,
@@ -318,6 +351,12 @@ function AgreementForm({
   function validateDraft(): ProposalValidationIssue | null {
     if (ACCOUNT_AUTH_ENABLED && !landlordEmail) {
       return { message: "The landlord must link a verified email before creating a proposal." };
+    }
+    if (!hasFirstAndLastName(tenantName)) {
+      return {
+        field: "tenantName",
+        message: "Enter the tenant’s legal first and last name.",
+      };
     }
     if (!EMAIL_PATTERN.test(tenantEmail)) {
       return { field: "tenantEmail", message: "Enter a valid tenant email." };
@@ -375,38 +414,46 @@ function AgreementForm({
     } catch {
       return { field: "deposit", message: "Invalid deposit amount." };
     }
-    let depositAmount: number;
-    let rentAmount: number;
-    try {
-      depositAmount = Number(parseUSDC(deposit));
-      rentAmount = Number(parseUSDC(monthlyRent));
-    } catch {
-      return { field: "monthlyRent", message: "Enter a valid monthly rent." };
-    }
-    if (rentAmount <= 0) {
-      return { field: "monthlyRent", message: "Monthly rent must be greater than zero." };
-    }
-    const depositMultiplier =
-      smallLandlordException && !tenantIsServiceMember ? 2 : 1;
-    if (depositAmount > rentAmount * depositMultiplier) {
-      return {
-        field: "deposit",
-        message:
-          depositMultiplier === 2
-            ? "California limits this qualifying small-landlord deposit to two months' rent."
-            : "California generally limits a residential security deposit to one month's rent.",
-      };
-    }
-    if (
-      jurisdiction !== CALIFORNIA_POLICY.jurisdiction ||
-      operationsReserve !== CALIFORNIA_POLICY.operationsReserve ||
-      claimDays !== CALIFORNIA_POLICY.claimDays ||
-      responseDays !== CALIFORNIA_POLICY.responseDays ||
-      arbiterDays !== CALIFORNIA_POLICY.arbiterDays
+    if (isCalifornia) {
+      let depositAmount: number;
+      let rentAmount: number;
+      try {
+        depositAmount = Number(parseUSDC(deposit));
+        rentAmount = Number(parseUSDC(monthlyRent));
+      } catch {
+        return { field: "monthlyRent", message: "Enter a valid monthly rent." };
+      }
+      if (rentAmount <= 0) {
+        return { field: "monthlyRent", message: "Monthly rent must be greater than zero." };
+      }
+      const depositMultiplier =
+        smallLandlordException && !tenantIsServiceMember ? 2 : 1;
+      if (depositAmount > rentAmount * depositMultiplier) {
+        return {
+          field: "deposit",
+          message:
+            depositMultiplier === 2
+              ? "California limits this qualifying small-landlord deposit to two months' rent."
+              : "California generally limits a residential security deposit to one month's rent.",
+        };
+      }
+      if (
+        operationsReserve !== CALIFORNIA_POLICY.operationsReserve ||
+        claimDays !== CALIFORNIA_POLICY.claimDays ||
+        responseDays !== CALIFORNIA_POLICY.responseDays ||
+        arbiterDays !== CALIFORNIA_POLICY.arbiterDays
+      ) {
+        return {
+          message:
+            "The California policy values changed unexpectedly. Reload before saving this proposal.",
+        };
+      }
+    } else if (
+      jurisdiction !== GENERIC_TEST_POLICY.jurisdiction ||
+      operationsReserve !== GENERIC_TEST_POLICY.operationsReserve
     ) {
       return {
-        message:
-          "The California policy values changed unexpectedly. Reload before saving this proposal.",
+        message: "The non-specific test policy is invalid. Reload before saving this proposal.",
       };
     }
     for (const [days, label, field] of [
@@ -460,7 +507,10 @@ function AgreementForm({
           landlordEmail,
           tenantName,
           tenantEmail,
-          tenants: [{ name: tenantName, email: tenantEmail }],
+          tenants: [
+            { name: tenantName, email: tenantEmail },
+            ...pendingTenants,
+          ],
           arbiterName,
           arbiterEmail: arbiterEmail.trim() || null,
           terms: currentTerms(),
@@ -474,6 +524,8 @@ function AgreementForm({
         };
         storeNegotiationAccess(access, true);
         rememberLandlordBundle(created);
+        setPendingTenants([]);
+        setShowAdditionalTenant(false);
         setFormMessage("Proposal saved. Invitations are now unlocked for this exact revision.");
       } else {
         if (!landlordAccess) throw new Error("The landlord proposal access is unavailable.");
@@ -503,6 +555,8 @@ function AgreementForm({
   function startAnotherProposal() {
     setDraft(null);
     setAccessBundle(null);
+    setPendingTenants([]);
+    setShowAdditionalTenant(false);
     setRevisionSummary("");
     setIsEditingRevision(false);
     setInvalidField(null);
@@ -517,6 +571,8 @@ function AgreementForm({
     setTenantEmail("");
     setArbiterName("");
     setArbiterEmail("");
+    setPendingTenants([]);
+    setShowAdditionalTenant(false);
     setRevisionSummary("");
     setIsEditingRevision(false);
     setInvalidField(null);
@@ -527,17 +583,39 @@ function AgreementForm({
   }
 
   async function addTenantReviewer() {
-    if (!landlordAccess || !draft || !accessBundle) return;
     setFormError(null);
     setFormMessage(null);
+    const name = newTenantName.trim();
     const email = newTenantEmail.trim().toLowerCase();
-    if (!EMAIL_PATTERN.test(email)) {
-      return setFormError("Enter a valid email for the additional tenant.");
+    if (!hasFirstAndLastName(name)) {
+      return setFormError("Enter the additional tenant’s legal first and last name.");
     }
+    if (!EMAIL_PATTERN.test(email)) {
+      return setFormError("Enter a valid email such as tenant@example.com.");
+    }
+    const reservedEmails = [
+      landlordEmail,
+      tenantEmail,
+      arbiterEmail,
+      ...pendingTenants.map((tenant) => tenant.email),
+      ...(draft?.tenants.map((tenant) => tenant.email) || []),
+    ].map((value) => value.trim().toLowerCase());
+    if (reservedEmails.includes(email)) {
+      return setFormError("Each tenant must use a different email address.");
+    }
+    if (!draft) {
+      setPendingTenants((current) => [...current, { name, email }]);
+      setNewTenantName("");
+      setNewTenantEmail("");
+      setShowAdditionalTenant(false);
+      setFormMessage(`${name} will be included when this proposal is saved.`);
+      return;
+    }
+    if (!landlordAccess || !accessBundle) return;
     setIsSavingDraft(true);
     try {
       const result = await addNegotiationTenant(landlordAccess, {
-        name: newTenantName.trim(),
+        name,
         email,
       });
       const nextBundle = {
@@ -552,6 +630,7 @@ function AgreementForm({
       rememberLandlordBundle({ record: result.record, access: nextBundle });
       setNewTenantName("");
       setNewTenantEmail("");
+      setShowAdditionalTenant(false);
       setIsEditingRevision(false);
       setFormMessage(
         `Added ${email}. Revision ${result.record.revision} now requires fresh approval from every tenant${result.record.arbiterEmail ? " and the arbiter" : ""}.`,
@@ -559,6 +638,129 @@ function AgreementForm({
     } catch (cause) {
       setFormError(
         cause instanceof Error ? cause.message : "The tenant could not be added.",
+      );
+    } finally {
+      setIsSavingDraft(false);
+    }
+  }
+
+  function beginTenantEdit(tenantId: string) {
+    const tenant = draft?.tenants.find((item) => item.id === tenantId);
+    if (!tenant) return;
+    setEditingTenantId(tenant.id);
+    setEditingTenantName(tenant.name || "");
+    setEditingTenantEmail(tenant.email);
+    setFormError(null);
+    setFormMessage(null);
+  }
+
+  async function saveTenantEdit() {
+    if (!landlordAccess || !draft || !accessBundle || !editingTenantId) return;
+    const name = editingTenantName.trim();
+    const email = editingTenantEmail.trim().toLowerCase();
+    if (!hasFirstAndLastName(name)) {
+      return setFormError("Enter the tenant’s legal first and last name.");
+    }
+    if (!EMAIL_PATTERN.test(email)) {
+      return setFormError("Enter a valid email for the tenant.");
+    }
+    setIsSavingDraft(true);
+    setFormError(null);
+    setFormMessage(null);
+    try {
+      const result = await updateNegotiationTenant(
+        landlordAccess,
+        editingTenantId,
+        { name, email },
+      );
+      const previousInvite = accessBundle.tenants.find(
+        (item) => item.id === editingTenantId,
+      );
+      const replacementInvite =
+        result.invite ||
+        (previousInvite
+          ? { ...previousInvite, name, email }
+          : null);
+      const nextTenants = accessBundle.tenants
+        .map((item) =>
+          item.id === editingTenantId && replacementInvite
+            ? replacementInvite
+            : item,
+        )
+        .map((item) => ({
+          ...item,
+          isFundingTenant:
+            result.record.tenants.find((tenant) => tenant.id === item.id)
+              ?.isFundingTenant || false,
+        }));
+      const fundingInvite = nextTenants.find((item) => item.isFundingTenant);
+      const nextBundle = {
+        ...accessBundle,
+        tenant: fundingInvite?.token || accessBundle.tenant,
+        tenants: nextTenants,
+      };
+      setDraft(result.record);
+      setTenantName(result.record.tenantName || "");
+      setTenantEmail(result.record.tenantEmail);
+      setAccessBundle(nextBundle);
+      rememberLandlordBundle({ record: result.record, access: nextBundle });
+      setEditingTenantId(null);
+      setIsEditingRevision(false);
+      setFormMessage(
+        `Updated ${email} on the active proposal. Revision ${result.record.revision} now requires fresh approval from every tenant${result.record.arbiterEmail ? " and the arbiter" : ""}.${result.invite ? " The prior email invite was invalidated; send the new invite." : ""}`,
+      );
+    } catch (cause) {
+      setFormError(
+        cause instanceof Error ? cause.message : "The tenant could not be updated.",
+      );
+    } finally {
+      setIsSavingDraft(false);
+    }
+  }
+
+  async function removeTenant(tenantId: string) {
+    if (!landlordAccess || !draft || !accessBundle) return;
+    const tenant = draft.tenants.find((item) => item.id === tenantId);
+    if (!tenant) return;
+    if (
+      !window.confirm(
+        `Remove ${tenant.name || tenant.email} from this proposal? This invalidates their access and resets every current approval.`,
+      )
+    ) {
+      return;
+    }
+    setIsSavingDraft(true);
+    setFormError(null);
+    setFormMessage(null);
+    try {
+      const result = await removeNegotiationTenant(landlordAccess, tenantId);
+      const remainingInvites = accessBundle.tenants
+        .filter((item) => item.id !== tenantId)
+        .map((item) => ({
+          ...item,
+          isFundingTenant:
+            result.record.tenants.find((recordTenant) => recordTenant.id === item.id)
+              ?.isFundingTenant || false,
+        }));
+      const fundingInvite = remainingInvites.find((item) => item.isFundingTenant);
+      const nextBundle = {
+        ...accessBundle,
+        tenant: fundingInvite?.token || "",
+        tenants: remainingInvites,
+      };
+      setDraft(result.record);
+      setTenantName(result.record.tenantName || "");
+      setTenantEmail(result.record.tenantEmail);
+      setAccessBundle(nextBundle);
+      rememberLandlordBundle({ record: result.record, access: nextBundle });
+      setEditingTenantId(null);
+      setIsEditingRevision(false);
+      setFormMessage(
+        `Removed ${tenant.email} from the active proposal. Revision ${result.record.revision} now requires fresh approval from every remaining tenant${result.record.arbiterEmail ? " and the arbiter" : ""}.`,
+      );
+    } catch (cause) {
+      setFormError(
+        cause instanceof Error ? cause.message : "The tenant could not be removed.",
       );
     } finally {
       setIsSavingDraft(false);
@@ -657,16 +859,20 @@ function AgreementForm({
       return setFormError("Every tenant and the optional arbiter must approve the current revision first.");
     }
     if (!address) return setFormError("Connect the landlord wallet before finalizing.");
-    if (
-      draft.terms.policyVersion !== CALIFORNIA_POLICY.version ||
-      draft.terms.jurisdiction !== CALIFORNIA_POLICY.jurisdiction ||
-      draft.terms.operationsReserve !== CALIFORNIA_POLICY.operationsReserve ||
-      draft.terms.claimDays !== CALIFORNIA_POLICY.claimDays ||
-      draft.terms.responseDays !== CALIFORNIA_POLICY.responseDays ||
-      draft.terms.arbiterDays !== CALIFORNIA_POLICY.arbiterDays
-    ) {
+    const approvedCaliforniaPolicy =
+      draft.terms.policyVersion === CALIFORNIA_POLICY.version &&
+      draft.terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
+      draft.terms.operationsReserve === CALIFORNIA_POLICY.operationsReserve &&
+      draft.terms.claimDays === CALIFORNIA_POLICY.claimDays &&
+      draft.terms.responseDays === CALIFORNIA_POLICY.responseDays &&
+      draft.terms.arbiterDays === CALIFORNIA_POLICY.arbiterDays;
+    const approvedGenericTestPolicy =
+      draft.terms.policyVersion === GENERIC_TEST_POLICY.version &&
+      draft.terms.jurisdiction === GENERIC_TEST_POLICY.jurisdiction &&
+      draft.terms.operationsReserve === GENERIC_TEST_POLICY.operationsReserve;
+    if (!approvedCaliforniaPolicy && !approvedGenericTestPolicy) {
       return setFormError(
-        "This approved revision predates the locked California policy. Unlock edits, publish the California-policy revision, and collect fresh approvals before finalizing.",
+        "This approved revision does not match a current jurisdiction policy. Unlock edits, publish a new revision, and collect fresh approvals before finalizing.",
       );
     }
     const tenantWallet = draft.tenantWallet || "";
@@ -734,18 +940,40 @@ function AgreementForm({
         <small>The active wallet becomes the onchain landlord after approvals.</small>
       </div>
 
-      <label>
-        Tenant name
+      <div className="primary-tenant-field">
+        <div className="field-label-heading">
+          <label htmlFor="primary-tenant-name">Tenant first and last name</label>
+          {draft?.status !== "finalized" && (
+            <button
+              className="btn btn-ghost small add-tenant-toggle"
+              type="button"
+              disabled={
+                showAdditionalTenant ||
+                (draft ? draft.tenants.length >= 5 : pendingTenants.length >= 4)
+              }
+              title="Add another tenant to this same proposal."
+              onClick={() => setShowAdditionalTenant(true)}
+            >
+              + Add tenant
+            </button>
+          )}
+        </div>
         <input
+          id="primary-tenant-name"
           value={tenantName}
-          onChange={(event) => setTenantName(event.target.value)}
-          placeholder="Tenant's full name"
+          onChange={(event) => {
+            setTenantName(event.target.value);
+            clearFieldIssue("tenantName");
+          }}
+          placeholder="First and last name"
           autoComplete="name"
           disabled={Boolean(draft)}
+          data-proposal-field="tenantName"
+          aria-invalid={invalidField === "tenantName"}
         />
-      </label>
+      </div>
       <label>
-        Tenant email
+        Tenant email address
         <input
           value={tenantEmail}
           onChange={(event) => {
@@ -754,12 +982,39 @@ function AgreementForm({
           }}
           placeholder="tenant@example.com"
           type="email"
+          pattern="[^\s@]+@[^\s@]+\.[^\s@]+"
           autoComplete="email"
           disabled={Boolean(draft)}
           data-proposal-field="tenantEmail"
           aria-invalid={invalidField === "tenantEmail"}
         />
       </label>
+      <p className="field-help">
+        Use a complete address in the format tenant@example.com. The server validates it again
+        before saving or changing an invitation.
+      </p>
+      {!draft && pendingTenants.length > 0 && (
+        <div className="pending-tenant-list" aria-label="Additional tenants in this proposal">
+          {pendingTenants.map((tenant) => (
+            <div key={tenant.email}>
+              <span>
+                <strong>{tenant.name}</strong> · {tenant.email}
+              </span>
+              <button
+                className="btn btn-ghost small"
+                type="button"
+                onClick={() =>
+                  setPendingTenants((current) =>
+                    current.filter((item) => item.email !== tenant.email),
+                  )
+                }
+              >
+                Remove
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       <label>
         Arbiter name (optional)
         <input
@@ -780,6 +1035,7 @@ function AgreementForm({
           }}
           placeholder="arbiter@example.com"
           type="email"
+          pattern="[^\s@]+@[^\s@]+\.[^\s@]+"
           autoComplete="email"
           disabled={Boolean(draft)}
           data-proposal-field="arbiterEmail"
@@ -793,47 +1049,65 @@ function AgreementForm({
           funding wallet.
         </p>
       )}
-      {draft && draft.status !== "finalized" && (
+      {showAdditionalTenant && (!draft || draft.status !== "finalized") && (
         <section className="additional-tenant" aria-labelledby="add-tenant-title">
-          <h3 id="add-tenant-title">Add another tenant reviewer</h3>
+          <h3 id="add-tenant-title">Additional tenant</h3>
           <p className="hint">
-            Adding a tenant creates a new revision and resets every existing approval. The new
-            tenant receives a separate role-locked invitation.
+            {draft
+              ? "Adding a tenant updates this active proposal, records the change, and resets every existing approval."
+              : "This tenant will be included in the same proposal and will receive a separate role-locked invitation after it is saved."}
           </p>
           <div className="participant-input-grid">
             <label>
-              Tenant name
+              Tenant first and last name
               <input
                 value={newTenantName}
                 onChange={(event) => setNewTenantName(event.target.value)}
-                placeholder="Additional tenant's full name"
+                placeholder="First and last name"
                 autoComplete="name"
               />
             </label>
             <label>
-              Tenant email
+              Tenant email address
               <input
                 value={newTenantEmail}
                 onChange={(event) => setNewTenantEmail(event.target.value)}
                 placeholder="additional.tenant@example.com"
                 type="email"
+                pattern="[^\s@]+@[^\s@]+\.[^\s@]+"
                 autoComplete="email"
               />
             </label>
           </div>
-          <button
-            className="btn btn-secondary"
-            type="button"
-            disabled={isSavingDraft || draft.tenants.length >= 5}
-            title={
-              draft.tenants.length >= 5
-                ? "This MVP supports up to five tenant reviewers."
-                : "Adding this tenant starts a new revision and requires every party to approve again."
-            }
-            onClick={() => void addTenantReviewer()}
-          >
-            Add tenant to this proposal ⓘ
-          </button>
+          <div className="button-row">
+            <button
+              className="btn btn-secondary"
+              type="button"
+              disabled={isSavingDraft || Boolean(draft && draft.tenants.length >= 5)}
+              title={
+                draft?.tenants.length === 5
+                  ? "This MVP supports up to five tenant reviewers."
+                  : draft
+                    ? "Adding this tenant updates the active proposal and requires every party to approve again."
+                    : "Adds this tenant to the one proposal being prepared."
+              }
+              onClick={() => void addTenantReviewer()}
+            >
+              Add tenant to this proposal ⓘ
+            </button>
+            <button
+              className="btn btn-ghost"
+              type="button"
+              disabled={isSavingDraft}
+              onClick={() => {
+                setShowAdditionalTenant(false);
+                setNewTenantName("");
+                setNewTenantEmail("");
+              }}
+            >
+              Cancel
+            </button>
+          </div>
         </section>
       )}
 
@@ -841,14 +1115,28 @@ function AgreementForm({
         Jurisdiction policy
         <select
           value={jurisdiction}
-          disabled
-          onChange={(event) => setJurisdiction(event.target.value as JurisdictionCode)}
+          disabled={approvedTermsLocked}
+          onChange={(event) => {
+            const next = event.target.value as JurisdictionCode;
+            setJurisdiction(next);
+            setOperationsReserve("0");
+            if (next === CALIFORNIA_POLICY.jurisdiction) {
+              setClaimDays(CALIFORNIA_POLICY.claimDays);
+              setResponseDays(CALIFORNIA_POLICY.responseDays);
+              setArbiterDays(CALIFORNIA_POLICY.arbiterDays);
+            } else {
+              setClaimDays(GENERIC_TEST_POLICY.claimDays);
+              setResponseDays(GENERIC_TEST_POLICY.responseDays);
+              setArbiterDays(GENERIC_TEST_POLICY.arbiterDays);
+            }
+          }}
         >
           {JURISDICTIONS.map((option) => (
             <option key={option.code} value={option.code}>{option.label}</option>
           ))}
         </select>
       </label>
+      {isCalifornia ? (
       <section className="jurisdiction-notice california-policy" aria-labelledby="california-policy-title">
         <div className="california-policy-heading">
           <div>
@@ -880,6 +1168,25 @@ function AgreementForm({
           </a>
         </p>
       </section>
+      ) : (
+        <section className="jurisdiction-notice generic-test-policy" aria-labelledby="generic-policy-title">
+          <div className="california-policy-heading">
+            <div>
+              <strong id="generic-policy-title">Non-specific test policy</strong>
+              <small>{GENERIC_TEST_POLICY.version}</small>
+            </div>
+            <span className="policy-test">Test only</span>
+          </div>
+          <p>
+            This profile is for contract and lifecycle testing where no real jurisdiction is
+            being represented. It does not encode state law or validate legal compliance.
+          </p>
+          <p className="field-help">
+            Timing fields remain editable and become part of the parties&apos; approved record.
+            Do not use this profile with real funds or a real tenancy.
+          </p>
+        </section>
+      )}
 
       <fieldset className="token-choice">
         <legend>Deposit test token</legend>
@@ -892,6 +1199,8 @@ function AgreementForm({
           <span><strong>ytUSDC ⓘ</strong><small>Yield-test shares · 20%/day accelerated demo</small></span>
         </label>
       </fieldset>
+      {isCalifornia && (
+      <>
       <label>
         Monthly rent (used for California deposit limit)
         <input
@@ -936,6 +1245,8 @@ function AgreementForm({
           except for a service member. These facts become part of the approved record.
         </p>
       </fieldset>
+      </>
+      )}
       <label>
         Deposit amount ({tokenChoice === "yield" ? "ytUSDC shares" : "testUSDC"})
         <input
@@ -959,7 +1270,9 @@ function AgreementForm({
         </div>
         <div>
           <span>Tenant-paid platform or operations fee</span>
-          <strong>$0 · prohibited by this profile</strong>
+          <strong>
+            {isCalifornia ? "$0 · prohibited by this profile" : "$0 · not charged in test mode"}
+          </strong>
         </div>
         <div className="cost-total">
           <span>Tenant provides at funding</span>
@@ -970,9 +1283,9 @@ function AgreementForm({
           </strong>
         </div>
         <p>
-          This standalone California profile does not charge the tenant a non-refundable network
-          or storage fee. Whoever deploys the software must fund its own gas sponsorship and
-          storage, or require parties to pay their own network costs.
+          This standalone profile does not charge the tenant a non-refundable network or storage
+          fee. Whoever deploys the software must fund its own gas sponsorship and storage, or
+          require parties to pay their own network costs.
         </p>
       </section>
       <label>
@@ -990,9 +1303,9 @@ function AgreementForm({
         />
       </label>
       <p className="field-help">
-        California’s 21-day period runs after the tenant vacates, not merely when a fixed lease
-        date passes. Confirm this expected date before onchain finalization; an early or late
-        move-out requires a new approved proposal in this version.
+        {isCalifornia
+          ? "California’s 21-day period runs after the tenant vacates, not merely when a fixed lease date passes. Confirm this expected date before onchain finalization; an early or late move-out requires a new approved proposal in this version."
+          : "This is the test lifecycle start date. It is not calculated from or validated against any jurisdiction’s law."}
       </p>
       {claimWindowHasPassed && (
         <p className="field-validation-error" role="alert">
@@ -1001,7 +1314,7 @@ function AgreementForm({
         </p>
       )}
       <label>
-        California accounting and refund period
+        {isCalifornia ? "California accounting and refund period" : "Test deduction window"}
         <input
           value={claimDays}
           onChange={(event) => {
@@ -1010,12 +1323,16 @@ function AgreementForm({
           }}
           type="number"
           min="1"
-          disabled
+          disabled={isCalifornia || approvedTermsLocked}
           data-proposal-field="claimDays"
           aria-invalid={invalidField === "claimDays"}
         />
       </label>
-      <p className="field-help">Locked at 21 calendar days under Civil Code § 1950.5(h).</p>
+      <p className="field-help">
+        {isCalifornia
+          ? "Locked at 21 calendar days under Civil Code § 1950.5(h)."
+          : "Editable test timing. This value does not represent a legal deadline."}
+      </p>
       <label>
         OpenEscrow tenant response period
         <input
@@ -1026,13 +1343,15 @@ function AgreementForm({
           }}
           type="number"
           min="1"
-          disabled
+          disabled={isCalifornia || approvedTermsLocked}
           data-proposal-field="responseDays"
           aria-invalid={invalidField === "responseDays"}
         />
       </label>
       <p className="field-help">
-        Locked at 7 days as a California pilot workflow rule; this is not a statutory deadline.
+        {isCalifornia
+          ? "Locked at 7 days as a California pilot workflow rule; this is not a statutory deadline."
+          : "Editable test timing for the tenant’s approve-or-dispute step."}
       </p>
       <label>
         OpenEscrow arbiter ruling period
@@ -1044,13 +1363,15 @@ function AgreementForm({
           }}
           type="number"
           min="1"
-          disabled
+          disabled={isCalifornia || approvedTermsLocked}
           data-proposal-field="arbiterDays"
           aria-invalid={invalidField === "arbiterDays"}
         />
       </label>
       <p className="field-help">
-        Locked at 7 days as a California pilot workflow rule; this is not a statutory deadline.
+        {isCalifornia
+          ? "Locked at 7 days as a California pilot workflow rule; this is not a statutory deadline."
+          : "Editable test timing for the optional arbiter’s ruling step."}
       </p>
 
       {draft && draft.status !== "finalized" ? (
@@ -1206,16 +1527,64 @@ function AgreementForm({
           <div className="tenant-invite-list">
             {draft.tenants.map((tenant) => (
               <div className="tenant-invite-row" key={tenant.id}>
-                <div>
-                  <strong>{tenant.name || "Tenant"}</strong>
-                  <span>{tenant.email}</span>
-                  <small>
-                    {tenant.isFundingTenant
-                      ? "Designated funding tenant"
-                      : "Tenant reviewer"}
-                  </small>
-                </div>
-                <div className="invite-actions">
+                {editingTenantId === tenant.id ? (
+                  <div className="tenant-edit-fields">
+                    <label>
+                      Tenant first and last name
+                      <input
+                        value={editingTenantName}
+                        onChange={(event) => setEditingTenantName(event.target.value)}
+                        autoComplete="name"
+                      />
+                    </label>
+                    <label>
+                      Tenant email
+                      <input
+                        value={editingTenantEmail}
+                        onChange={(event) => setEditingTenantEmail(event.target.value)}
+                        type="email"
+                        pattern="[^\s@]+@[^\s@]+\.[^\s@]+"
+                        autoComplete="email"
+                      />
+                    </label>
+                    <small>
+                      Saving updates the one active proposal, records the change, and resets all
+                      approvals. Changing the email also invalidates the prior invite.
+                    </small>
+                  </div>
+                ) : (
+                  <div>
+                    <strong>{tenant.name || "Tenant"}</strong>
+                    <span>{tenant.email}</span>
+                    <small>
+                      {tenant.isFundingTenant
+                        ? "Designated funding tenant"
+                        : "Tenant reviewer"}
+                    </small>
+                  </div>
+                )}
+                <div className="invite-actions tenant-management-actions">
+                  {editingTenantId === tenant.id ? (
+                    <>
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        disabled={isSavingDraft}
+                        onClick={() => void saveTenantEdit()}
+                      >
+                        Save tenant
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        type="button"
+                        disabled={isSavingDraft}
+                        onClick={() => setEditingTenantId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    <>
                   <button
                     className="btn btn-secondary"
                     type="button"
@@ -1244,6 +1613,34 @@ function AgreementForm({
                   >
                     {copiedInvite === tenant.id ? "Invite copied" : "Copy invite"}
                   </button>
+                      {draft.status !== "finalized" && (
+                        <>
+                          <button
+                            className="btn btn-ghost"
+                            type="button"
+                            disabled={isSavingDraft}
+                            title="Editing keeps one active proposal, writes an audit event, and requires every party to approve the new revision."
+                            onClick={() => beginTenantEdit(tenant.id)}
+                          >
+                            Edit tenant ⓘ
+                          </button>
+                          <button
+                            className="btn btn-ghost danger"
+                            type="button"
+                            disabled={isSavingDraft || draft.tenants.length === 1}
+                            title={
+                              draft.tenants.length === 1
+                                ? "Add a replacement tenant before removing the only tenant."
+                                : "Removing a tenant invalidates their access, records the action, and resets every approval."
+                            }
+                            onClick={() => void removeTenant(tenant.id)}
+                          >
+                            Remove
+                          </button>
+                        </>
+                      )}
+                    </>
+                  )}
                 </div>
               </div>
             ))}

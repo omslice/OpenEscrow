@@ -159,6 +159,7 @@ const DEDUCTION_CATEGORY_LABEL = {
   "11": "Damage beyond ordinary wear",
   "12": "Cleaning needed to restore move-in cleanliness",
   "13": "Lease-authorized restoration or replacement of landlord property",
+  "14": "Other documented test deduction",
 };
 const PRIVY_APP_ID = "cmrzdp7ss00670cju098baqsr";
 const ACCOUNT_ACCESS_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
@@ -220,6 +221,9 @@ function deductionItemsMatchAmount(items, amount) {
 }
 
 const CALIFORNIA_DEDUCTION_CATEGORIES = new Set(
+  ["10", "11", "12", "13"].map((category) => DEDUCTION_CATEGORY_LABEL[category]),
+);
+const GENERIC_TEST_DEDUCTION_CATEGORIES = new Set(
   Object.values(DEDUCTION_CATEGORY_LABEL),
 );
 
@@ -245,8 +249,28 @@ function validCaliforniaClaim(items, confirmations, evidenceUri, evidenceHash) {
   );
 }
 
+function validGenericTestClaim(items, confirmations, evidenceUri, evidenceHash) {
+  return (
+    items.every((item) => GENERIC_TEST_DEDUCTION_CATEGORIES.has(item.category)) &&
+    confirmations?.itemizedStatement === true &&
+    confirmations?.supportingDocuments === true &&
+    Boolean(evidenceUri) &&
+    /^0x[a-fA-F0-9]{64}$/.test(evidenceHash)
+  );
+}
+
+function validClaimForTerms(items, confirmations, evidenceUri, evidenceHash, terms) {
+  return terms?.jurisdiction === GENERIC_TEST_POLICY.jurisdiction
+    ? validGenericTestClaim(items, confirmations, evidenceUri, evidenceHash)
+    : validCaliforniaClaim(items, confirmations, evidenceUri, evidenceHash);
+}
+
 function normalizeEmail(value) {
   return cleanText(value, 254).toLowerCase();
+}
+
+function hasFirstAndLastName(value) {
+  return cleanText(value, 120).split(/\s+/).filter(Boolean).length >= 2;
 }
 
 const CALIFORNIA_POLICY = Object.freeze({
@@ -258,8 +282,40 @@ const CALIFORNIA_POLICY = Object.freeze({
   operationsReserve: "0",
 });
 
+const GENERIC_TEST_POLICY = Object.freeze({
+  version: "generic-test-v1",
+  jurisdiction: "testnet-generic",
+  operationsReserve: "0",
+});
+
+function validPeriodDays(value) {
+  const days = Number(value);
+  return Number.isInteger(days) && days >= 1 && days <= 365;
+}
+
 function validTerms(terms) {
   const deposit = tokenMicros(terms?.deposit);
+  const commonTermsAreValid =
+    terms &&
+    typeof terms === "object" &&
+    (terms.tokenChoice === "plain" || terms.tokenChoice === "yield") &&
+    deposit !== null &&
+    deposit > 0n &&
+    terms.operationsReserve === "0" &&
+    typeof terms.claimWindowStart === "string" &&
+    !Number.isNaN(new Date(terms.claimWindowStart).getTime()) &&
+    validPeriodDays(terms.claimDays) &&
+    validPeriodDays(terms.responseDays) &&
+    validPeriodDays(terms.arbiterDays);
+  if (!commonTermsAreValid) return false;
+
+  if (terms.jurisdiction === GENERIC_TEST_POLICY.jurisdiction) {
+    return (
+      terms.policyVersion === GENERIC_TEST_POLICY.version &&
+      terms.operationsReserve === GENERIC_TEST_POLICY.operationsReserve
+    );
+  }
+
   const monthlyRent = tokenMicros(terms?.monthlyRent);
   const smallLandlordException = terms?.smallLandlordException === true;
   const tenantIsServiceMember = terms?.tenantIsServiceMember === true;
@@ -268,13 +324,8 @@ function validTerms(terms) {
       ? null
       : monthlyRent * BigInt(smallLandlordException && !tenantIsServiceMember ? 2 : 1);
   return (
-    terms &&
-    typeof terms === "object" &&
     terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
     terms.policyVersion === CALIFORNIA_POLICY.version &&
-    (terms.tokenChoice === "plain" || terms.tokenChoice === "yield") &&
-    deposit !== null &&
-    deposit > 0n &&
     monthlyRent !== null &&
     monthlyRent > 0n &&
     maximumDeposit !== null &&
@@ -283,8 +334,6 @@ function validTerms(terms) {
     typeof terms.tenantIsServiceMember === "boolean" &&
     terms.electronicDeliveryConsent === true &&
     terms.operationsReserve === CALIFORNIA_POLICY.operationsReserve &&
-    typeof terms.claimWindowStart === "string" &&
-    !Number.isNaN(new Date(terms.claimWindowStart).getTime()) &&
     terms.claimDays === CALIFORNIA_POLICY.claimDays &&
     terms.responseDays === CALIFORNIA_POLICY.responseDays &&
     terms.arbiterDays === CALIFORNIA_POLICY.arbiterDays
@@ -809,6 +858,12 @@ async function createNegotiation(request, db) {
   ) {
     return json({ error: "A valid landlord and tenant email are required." }, 400);
   }
+  if (tenants.some((tenant) => !hasFirstAndLastName(tenant.name))) {
+    return json(
+      { error: "Enter each tenant’s legal first and last name." },
+      400,
+    );
+  }
   if (arbiterEmail && !EMAIL_PATTERN.test(arbiterEmail)) {
     return json({ error: "The optional arbiter email is invalid." }, 400);
   }
@@ -948,6 +1003,9 @@ async function addTenant(request, env, id) {
   if (!EMAIL_PATTERN.test(email)) {
     return json({ error: "Enter a valid tenant email." }, 400);
   }
+  if (!hasFirstAndLastName(name)) {
+    return json({ error: "Enter the tenant’s legal first and last name." }, 400);
+  }
   const reservedEmails = new Set([
     row.landlord_email,
     row.arbiter_email,
@@ -1006,6 +1064,258 @@ async function addTenant(request, env, id) {
       token: tenantToken,
       isFundingTenant: false,
     },
+  });
+}
+
+async function updateTenant(request, env, id, tenantId) {
+  const body = await request.json();
+  const row = await rowFor(env.DB, id);
+  const role = await authorize(env.DB, row, body.token);
+  if (role !== "landlord") {
+    return json({ error: "Only the landlord may edit a tenant." }, 403);
+  }
+  if (row.status === "finalized") {
+    return json(
+      { error: "Tenant parties cannot be changed after onchain finalization." },
+      409,
+    );
+  }
+
+  const target = await env.DB
+    .prepare("SELECT * FROM negotiation_tenants WHERE negotiation_id = ? AND id = ?")
+    .bind(id, tenantId)
+    .first();
+  if (!target) return json({ error: "That tenant is not part of this proposal." }, 404);
+
+  const name = cleanText(body.name, 120);
+  const email = normalizeEmail(body.email);
+  if (!EMAIL_PATTERN.test(email)) {
+    return json({ error: "Enter a valid tenant email." }, 400);
+  }
+  if (!hasFirstAndLastName(name)) {
+    return json({ error: "Enter the tenant’s legal first and last name." }, 400);
+  }
+  const existingTenants = await tenantsFor(env.DB, id);
+  const reservedEmails = new Set(
+    [
+      row.landlord_email,
+      row.arbiter_email,
+      ...existingTenants
+        .filter((tenant) => tenant.id !== tenantId)
+        .map((tenant) => tenant.email),
+    ].filter(Boolean),
+  );
+  if (reservedEmails.has(email)) {
+    return json({ error: "Each agreement party must use a different email." }, 400);
+  }
+  if ((target.name || "") === name && target.email === email) {
+    return json({ error: "Change the tenant name or email before saving." }, 400);
+  }
+
+  const emailChanged = target.email !== email;
+  const replacementToken = emailChanged ? randomToken() : null;
+  const replacementHash = replacementToken
+    ? await hashToken(replacementToken)
+    : target.token_hash;
+  const nextRevision = Number(row.revision) + 1;
+  const now = new Date().toISOString();
+  const statements = [];
+  if (emailChanged) {
+    statements.push(
+      env.DB
+        .prepare(
+          `DELETE FROM negotiation_account_access
+           WHERE token_hash IN (
+             SELECT token_hash FROM negotiation_account_access_context WHERE tenant_id = ?
+           )`,
+        )
+        .bind(tenantId),
+    );
+  }
+  statements.push(
+    env.DB
+      .prepare(
+        `UPDATE negotiation_tenants
+         SET name = ?, email = ?, token_hash = ?, approved_revision = NULL,
+             wallet = CASE WHEN ? THEN NULL ELSE wallet END, accepted_at = NULL
+         WHERE negotiation_id = ? AND id = ?`,
+      )
+      .bind(name || null, email, replacementHash, emailChanged ? 1 : 0, id, tenantId),
+    env.DB
+      .prepare(
+        `UPDATE negotiation_tenants
+         SET approved_revision = NULL, accepted_at = NULL
+         WHERE negotiation_id = ?`,
+      )
+      .bind(id),
+    env.DB
+      .prepare(
+        `UPDATE agreement_negotiations
+         SET revision = ?, status = 'draft', tenant_approved_revision = NULL,
+             arbiter_approved_revision = NULL, updated_at = ?,
+             tenant_email = CASE WHEN ? THEN ? ELSE tenant_email END,
+             tenant_token_hash = CASE WHEN ? THEN ? ELSE tenant_token_hash END,
+             tenant_wallet = CASE WHEN ? THEN NULL ELSE tenant_wallet END
+         WHERE id = ?`,
+      )
+      .bind(
+        nextRevision,
+        now,
+        target.is_funding_tenant === 1 ? 1 : 0,
+        email,
+        target.is_funding_tenant === 1 ? 1 : 0,
+        replacementHash,
+        target.is_funding_tenant === 1 && emailChanged ? 1 : 0,
+        id,
+      ),
+    eventStatement(
+      env.DB,
+      id,
+      now,
+      "landlord",
+      "tenant_updated",
+      `Updated tenant ${target.email} to ${name ? `${name} · ` : ""}${email}. Revision ${nextRevision} now requires fresh approval from every tenant and the optional arbiter.`,
+      nextRevision,
+      {
+        tenantId,
+        previousName: target.name || null,
+        previousEmail: target.email,
+        name: name || null,
+        email,
+        emailChanged,
+        isFundingTenant: target.is_funding_tenant === 1,
+      },
+    ),
+  );
+  await env.DB.batch(statements);
+
+  return json({
+    record: await serialize(env.DB, await rowFor(env.DB, id)),
+    invite: replacementToken
+      ? {
+          id: tenantId,
+          name: name || null,
+          email,
+          token: replacementToken,
+          isFundingTenant: target.is_funding_tenant === 1,
+        }
+      : null,
+  });
+}
+
+async function removeTenant(request, env, id, tenantId) {
+  const body = await request.json();
+  const row = await rowFor(env.DB, id);
+  const role = await authorize(env.DB, row, body.token);
+  if (role !== "landlord") {
+    return json({ error: "Only the landlord may remove a tenant." }, 403);
+  }
+  if (row.status === "finalized") {
+    return json(
+      { error: "Tenant parties cannot be changed after onchain finalization." },
+      409,
+    );
+  }
+
+  const tenantRows = await env.DB
+    .prepare(
+      `SELECT * FROM negotiation_tenants
+       WHERE negotiation_id = ?
+       ORDER BY is_funding_tenant DESC, created_at ASC`,
+    )
+    .bind(id)
+    .all();
+  const tenants = tenantRows.results || [];
+  const target = tenants.find((tenant) => tenant.id === tenantId);
+  if (!target) return json({ error: "That tenant is not part of this proposal." }, 404);
+  if (tenants.length === 1) {
+    return json(
+      { error: "Add a replacement tenant before removing the only tenant." },
+      409,
+    );
+  }
+
+  const promoted =
+    target.is_funding_tenant === 1
+      ? tenants.find((tenant) => tenant.id !== tenantId) || null
+      : null;
+  const nextRevision = Number(row.revision) + 1;
+  const now = new Date().toISOString();
+  const statements = [
+    env.DB
+      .prepare(
+        `DELETE FROM negotiation_account_access
+         WHERE token_hash IN (
+           SELECT token_hash FROM negotiation_account_access_context WHERE tenant_id = ?
+         )`,
+      )
+      .bind(tenantId),
+  ];
+  if (promoted) {
+    statements.push(
+      env.DB
+        .prepare(
+          "UPDATE negotiation_tenants SET is_funding_tenant = 1 WHERE negotiation_id = ? AND id = ?",
+        )
+        .bind(id, promoted.id),
+    );
+  }
+  statements.push(
+    env.DB
+      .prepare("DELETE FROM negotiation_tenants WHERE negotiation_id = ? AND id = ?")
+      .bind(id, tenantId),
+    env.DB
+      .prepare(
+        `UPDATE negotiation_tenants
+         SET approved_revision = NULL, accepted_at = NULL
+         WHERE negotiation_id = ?`,
+      )
+      .bind(id),
+    env.DB
+      .prepare(
+        `UPDATE agreement_negotiations
+         SET revision = ?, status = 'draft', tenant_approved_revision = NULL,
+             arbiter_approved_revision = NULL, updated_at = ?,
+             tenant_email = CASE WHEN ? THEN ? ELSE tenant_email END,
+             tenant_token_hash = CASE WHEN ? THEN ? ELSE tenant_token_hash END,
+             tenant_wallet = CASE WHEN ? THEN ? ELSE tenant_wallet END
+         WHERE id = ?`,
+      )
+      .bind(
+        nextRevision,
+        now,
+        promoted ? 1 : 0,
+        promoted?.email || row.tenant_email,
+        promoted ? 1 : 0,
+        promoted?.token_hash || row.tenant_token_hash,
+        promoted ? 1 : 0,
+        promoted?.wallet || null,
+        id,
+      ),
+    eventStatement(
+      env.DB,
+      id,
+      now,
+      "landlord",
+      "tenant_removed",
+      `Removed ${target.email} from the proposal.${promoted ? ` ${promoted.email} is now the designated funding tenant.` : ""} Revision ${nextRevision} now requires fresh approval from every remaining tenant and the optional arbiter.`,
+      nextRevision,
+      {
+        tenantId,
+        name: target.name || null,
+        email: target.email,
+        wasFundingTenant: target.is_funding_tenant === 1,
+        promotedTenantId: promoted?.id || null,
+        promotedTenantEmail: promoted?.email || null,
+      },
+    ),
+  );
+  await env.DB.batch(statements);
+
+  return json({
+    record: await serialize(env.DB, await rowFor(env.DB, id)),
+    removedTenantId: tenantId,
+    promotedTenantId: promoted?.id || null,
   });
 }
 
@@ -1630,7 +1940,7 @@ async function applyAction(request, env, id) {
       return json(
         {
           error:
-            "This approved revision predates the locked California policy. Publish a California-policy revision and collect fresh approvals before finalizing.",
+            "This approved revision does not match a current jurisdiction policy. Publish a new revision and collect fresh approvals before finalizing.",
         },
         409,
       );
@@ -1786,13 +2096,20 @@ async function applyAction(request, env, id) {
     const evidenceHash = cleanText(body.evidenceHash, 100);
     const californiaConfirmations = body.californiaConfirmations;
     const transactionHash = cleanText(body.transactionHash, 100);
+    const agreementTerms = JSON.parse(row.terms_json);
     if (
       !amount ||
       !category ||
       !items ||
       !deductionItemsMatchAmount(items, amount) ||
       items.some((item) => tokenMicros(item.amount) === 0n) ||
-      !validCaliforniaClaim(items, californiaConfirmations, evidenceUri, evidenceHash) ||
+      !validClaimForTerms(
+        items,
+        californiaConfirmations,
+        evidenceUri,
+        evidenceHash,
+        agreementTerms,
+      ) ||
       !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)
     ) {
       return json({ error: "The recorded deduction claim is incomplete." }, 400);
@@ -1816,7 +2133,7 @@ async function applyAction(request, env, id) {
           evidenceHash,
           californiaConfirmations,
           transactionHash,
-          policyVersion: CALIFORNIA_POLICY.version,
+          policyVersion: agreementTerms.policyVersion,
         },
       ),
     );
@@ -1848,11 +2165,18 @@ async function applyAction(request, env, id) {
     const evidenceHash = cleanText(body.evidenceHash, 100);
     const californiaConfirmations = body.californiaConfirmations;
     const transactionHash = cleanText(body.transactionHash, 100);
+    const agreementTerms = JSON.parse(row.terms_json);
     if (
       !amount ||
       !items ||
       !deductionItemsMatchAmount(items, amount) ||
-      !validCaliforniaClaim(items, californiaConfirmations, evidenceUri, evidenceHash) ||
+      !validClaimForTerms(
+        items,
+        californiaConfirmations,
+        evidenceUri,
+        evidenceHash,
+        agreementTerms,
+      ) ||
       !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)
     ) {
       return json({ error: "The recorded claim amendment is incomplete." }, 400);
@@ -1875,7 +2199,7 @@ async function applyAction(request, env, id) {
           evidenceHash,
           californiaConfirmations,
           transactionHash,
-          policyVersion: CALIFORNIA_POLICY.version,
+          policyVersion: agreementTerms.policyVersion,
         },
       ),
     );
@@ -2504,6 +2828,17 @@ async function report(db, id, token) {
   if (!role) return new Response("Invalid report link.", { status: 403 });
   const record = await serialize(db, row);
   const terms = record.terms;
+  const policyRows = (candidate) => {
+    const isCalifornia = candidate.jurisdiction === CALIFORNIA_POLICY.jurisdiction;
+    return `
+${isCalifornia ? `<tr><th>Monthly rent used for cap</th><td>${escapeHtml(candidate.monthlyRent || "Not recorded")}</td></tr>` : ""}
+<tr><th>${isCalifornia ? "California accounting/refund period" : "Test deduction window"}</th><td>${escapeHtml(candidate.claimDays)} calendar days (${isCalifornia ? "locked" : "agreed test value"})</td></tr>
+<tr><th>OpenEscrow response period</th><td>${escapeHtml(candidate.responseDays)} days (${isCalifornia ? "locked pilot rule" : "agreed test value"})</td></tr>
+<tr><th>OpenEscrow arbiter period</th><td>${escapeHtml(candidate.arbiterDays)} days (${isCalifornia ? "locked pilot rule" : "agreed test value"})</td></tr>
+<tr><th>Jurisdiction</th><td>${isCalifornia ? "California residential tenancy" : "Non-specific jurisdiction (testing only)"}</td></tr>
+<tr><th>Policy profile</th><td>${escapeHtml(candidate.policyVersion || "Legacy proposal")}</td></tr>
+${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordException ? "Qualifying small-landlord exception asserted" : "Standard one-month cap"}${candidate.tenantIsServiceMember ? " · tenant is a service member" : ""}</td></tr>` : ""}`;
+  };
   const timeline = record.events
     .map(
       (event) => `<tr><td>${escapeHtml(event.createdAt)}</td><td>${escapeHtml(event.actorRole)}</td><td>${escapeHtml(event.summary)}</td></tr>`,
@@ -2535,14 +2870,9 @@ async function report(db, id, token) {
       const snapshot = event.metadata.terms;
       return `<h3>Revision ${event.revision}</h3><p class="meta">${escapeHtml(event.createdAt)}</p><table>
 <tr><th>Refundable deposit</th><td>${escapeHtml(snapshot.deposit)} ${snapshot.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</td></tr>
-<tr><th>Monthly rent used for cap</th><td>${escapeHtml(snapshot.monthlyRent || "Not recorded")}</td></tr>
 <tr><th>Tenant-paid platform fee</th><td>$0</td></tr>
 <tr><th>Expected possession returned</th><td>${escapeHtml(snapshot.claimWindowStart)}</td></tr>
-<tr><th>California accounting/refund period</th><td>${escapeHtml(snapshot.claimDays)} calendar days (locked)</td></tr>
-<tr><th>OpenEscrow response period</th><td>${escapeHtml(snapshot.responseDays)} days (locked pilot rule)</td></tr>
-<tr><th>OpenEscrow arbiter period</th><td>${escapeHtml(snapshot.arbiterDays)} days (locked pilot rule)</td></tr>
-<tr><th>Jurisdiction</th><td>California residential tenancy</td></tr>
-<tr><th>Policy profile</th><td>${escapeHtml(snapshot.policyVersion || "Legacy proposal")}</td></tr>
+${policyRows(snapshot)}
 </table>`;
     })
     .join("");
@@ -2608,15 +2938,9 @@ ${tenantPartyRows}
 </tbody></table>
 <h2>Current terms</h2><table>
 <tr><th>Refundable deposit</th><td>${escapeHtml(terms.deposit)} ${terms.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</td></tr>
-<tr><th>Monthly rent used for cap</th><td>${escapeHtml(terms.monthlyRent || "Not recorded")}</td></tr>
 <tr><th>Tenant-paid platform fee</th><td>$0</td></tr>
 <tr><th>Expected possession returned</th><td>${escapeHtml(terms.claimWindowStart)}</td></tr>
-<tr><th>California accounting/refund period</th><td>${escapeHtml(terms.claimDays)} calendar days (locked)</td></tr>
-<tr><th>OpenEscrow response period</th><td>${escapeHtml(terms.responseDays)} days (locked pilot rule)</td></tr>
-<tr><th>OpenEscrow arbiter period</th><td>${escapeHtml(terms.arbiterDays)} days (locked pilot rule)</td></tr>
-<tr><th>Jurisdiction</th><td>California residential tenancy</td></tr>
-<tr><th>Policy profile</th><td>${escapeHtml(terms.policyVersion || "Legacy proposal")}</td></tr>
-<tr><th>Deposit-cap facts</th><td>${terms.smallLandlordException ? "Qualifying small-landlord exception asserted" : "Standard one-month cap"}${terms.tenantIsServiceMember ? " · tenant is a service member" : ""}</td></tr>
+${policyRows(terms)}
 <tr><th>Electronic record and return consent</th><td>${terms.electronicDeliveryConsent ? "Included in the approved proposal" : "Not recorded"}</td></tr>
 </table>
 <h2>Approval state</h2>
@@ -2697,18 +3021,24 @@ const worker = {
       }
 
       const match = url.pathname.match(
-        /^\/api\/negotiations\/([a-zA-Z0-9-]+)(?:\/(actions|report|snapshot|tenants))?$/,
+        /^\/api\/negotiations\/([a-zA-Z0-9-]+)(?:\/(actions|report|snapshot|tenants)(?:\/([a-zA-Z0-9-]+))?)?$/,
       );
       if (!match) return json({ error: "Agreement record endpoint not found." }, 404);
-      const [, id, action] = match;
+      const [, id, action, resourceId] = match;
       if (!action && request.method === "GET") {
         return getNegotiation(env.DB, id, url.searchParams.get("token"));
       }
       if (action === "actions" && request.method === "POST") {
         return applyAction(request, env, id);
       }
-      if (action === "tenants" && request.method === "POST") {
+      if (action === "tenants" && !resourceId && request.method === "POST") {
         return addTenant(request, env, id);
+      }
+      if (action === "tenants" && resourceId && request.method === "PATCH") {
+        return updateTenant(request, env, id, resourceId);
+      }
+      if (action === "tenants" && resourceId && request.method === "DELETE") {
+        return removeTenant(request, env, id, resourceId);
       }
       if (action === "report" && request.method === "GET") {
         return report(env.DB, id, url.searchParams.get("token"));

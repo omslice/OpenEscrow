@@ -27,18 +27,18 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
       <ol className="how-it-works" id="how-it-works">
         <li>
           <span>01</span>
-          <strong>Agree</strong>
-          <p>Landlord, tenant, and a neutral arbiter explicitly accept their roles.</p>
+          <strong>Agree &amp; fund</strong>
+          <p>The parties approve one proposal, then the tenant funds the protected deposit.</p>
         </li>
         <li>
           <span>02</span>
-          <strong>Protect</strong>
-          <p>Test USDC remains in escrow while the agreement is active.</p>
+          <strong>Hold &amp; track</strong>
+          <p>The deposit stays in escrow, with its status and activity visible to each party.</p>
         </li>
         <li>
           <span>03</span>
-          <strong>Resolve</strong>
-          <p>No claim means a refund. Disputed deductions require an arbiter ruling.</p>
+          <strong>Deduct, resolve &amp; refund</strong>
+          <p>The landlord documents deductions; accepted amounts are paid and the rest is refunded or resolved.</p>
         </li>
       </ol>
 

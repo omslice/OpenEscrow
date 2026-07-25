@@ -21,17 +21,19 @@ function approvalLabel(record: NegotiationRecord, role: "tenant" | "arbiter") {
 
 function Terms({ record }: { record: NegotiationRecord }) {
   const { terms } = record;
+  const isCalifornia = terms.jurisdiction === "us-ca";
   return (
     <dl className="negotiation-terms">
       <div><dt>Deposit</dt><dd>{terms.deposit} {terms.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</dd></div>
-      <div><dt>Monthly rent used for cap</dt><dd>{terms.monthlyRent || "Legacy proposal: not recorded"}</dd></div>
+      {isCalifornia && <div><dt>Monthly rent used for cap</dt><dd>{terms.monthlyRent || "Legacy proposal: not recorded"}</dd></div>}
       <div><dt>Tenant-paid platform fee</dt><dd>$0</dd></div>
       <div><dt>Expected possession returned</dt><dd>{new Date(terms.claimWindowStart).toLocaleString()}</dd></div>
-      <div><dt>California accounting/refund period</dt><dd>{terms.claimDays} calendar days · locked</dd></div>
-      <div><dt>Tenant response</dt><dd>{terms.responseDays} days · OpenEscrow policy</dd></div>
-      <div><dt>Arbiter ruling</dt><dd>{terms.arbiterDays} days · OpenEscrow policy</dd></div>
+      <div><dt>{isCalifornia ? "California accounting/refund period" : "Test deduction window"}</dt><dd>{terms.claimDays} calendar days · {isCalifornia ? "locked" : "agreed test value"}</dd></div>
+      <div><dt>Tenant response</dt><dd>{terms.responseDays} days · {isCalifornia ? "locked pilot rule" : "agreed test value"}</dd></div>
+      <div><dt>Arbiter ruling</dt><dd>{terms.arbiterDays} days · {isCalifornia ? "locked pilot rule" : "agreed test value"}</dd></div>
       <div><dt>Jurisdiction</dt><dd>{jurisdictionLabel(terms.jurisdiction as JurisdictionCode)}</dd></div>
       <div><dt>Policy profile</dt><dd>{terms.policyVersion || "Legacy proposal"}</dd></div>
+      {isCalifornia && (
       <div>
         <dt>California deposit-cap facts</dt>
         <dd>
@@ -39,6 +41,7 @@ function Terms({ record }: { record: NegotiationRecord }) {
           {terms.tenantIsServiceMember ? " · tenant is a service member" : ""}
         </dd>
       </div>
+      )}
       <div><dt>Electronic record and return consent</dt><dd>{terms.electronicDeliveryConsent ? "Included in this approval" : "Not recorded"}</dd></div>
     </dl>
   );

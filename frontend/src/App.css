@@ -145,6 +145,28 @@
   font-size: 11px;
 }
 
+.notification-item {
+  display: grid;
+  gap: 3px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  color: inherit;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.notification-item:hover span,
+.notification-item:focus-visible span {
+  color: var(--text-h);
+}
+
+.notification-item small {
+  color: var(--accent);
+  font-weight: 700;
+}
+
 .notification-menu li a {
   color: var(--accent);
   font-size: 12px;
@@ -152,8 +174,9 @@
 }
 
 .tagline {
-  margin: 0;
+  margin: 8px 0 0;
   font-size: 15px;
+  line-height: 1.55;
   color: var(--text);
   max-width: 620px;
 }
@@ -740,11 +763,32 @@
   margin: 0;
 }
 
+.generic-test-policy {
+  display: grid;
+  gap: 10px;
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+}
+
+.generic-test-policy p {
+  margin: 0;
+}
+
 .policy-lock {
   padding: 3px 8px;
   border: 1px solid var(--accent-border);
   border-radius: 999px;
   color: var(--accent);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.policy-test {
+  padding: 3px 8px;
+  border: 1px solid var(--warning-border);
+  border-radius: 999px;
+  color: var(--warning);
   font-size: 11px;
   font-weight: 700;
   text-transform: uppercase;
@@ -835,6 +879,43 @@
   gap: 12px;
 }
 
+.primary-tenant-field {
+  margin-bottom: 14px;
+}
+
+.field-label-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.field-label-heading label {
+  margin: 0;
+}
+
+.add-tenant-toggle {
+  flex: 0 0 auto;
+}
+
+.pending-tenant-list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 16px;
+}
+
+.pending-tenant-list > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+
 .tenant-invite-list {
   display: grid;
   gap: 10px;
@@ -869,6 +950,21 @@
   margin: 0;
 }
 
+.tenant-edit-fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  flex: 1 1 480px;
+}
+
+.tenant-edit-fields small {
+  grid-column: 1 / -1;
+}
+
+.tenant-management-actions .danger {
+  color: var(--danger);
+}
+
 .invitation-tab-note {
   align-self: center;
   color: var(--muted);
@@ -885,7 +981,7 @@
 .role-choice-grid {
   display: grid;
   gap: 0.75rem;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .role-choice {
@@ -1830,8 +1926,18 @@ a.btn.disabled {
   .participant-grid,
   .approval-grid,
   .negotiation-terms,
-  .participant-input-grid {
+  .participant-input-grid,
+  .tenant-edit-fields {
     grid-template-columns: 1fr;
+  }
+
+  .field-label-heading {
+    align-items: flex-start;
+  }
+
+  .pending-tenant-list > div {
+    align-items: flex-start;
+    flex-direction: column;
   }
 
   .tenant-invite-row {

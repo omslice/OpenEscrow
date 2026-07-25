@@ -371,6 +371,40 @@ export function addNegotiationTenant(
   );
 }
 
+export function updateNegotiationTenant(
+  access: NegotiationAccess,
+  tenantId: string,
+  tenant: { name: string; email: string },
+) {
+  return request<{
+    record: NegotiationRecord;
+    invite: CreatedNegotiation["access"]["tenants"][number] | null;
+  }>(
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}/tenants/${encodeURIComponent(tenantId)}`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ token: access.token, ...tenant }),
+    },
+  );
+}
+
+export function removeNegotiationTenant(
+  access: NegotiationAccess,
+  tenantId: string,
+) {
+  return request<{
+    record: NegotiationRecord;
+    removedTenantId: string;
+    promotedTenantId: string | null;
+  }>(
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}/tenants/${encodeURIComponent(tenantId)}`,
+    {
+      method: "DELETE",
+      body: JSON.stringify({ token: access.token }),
+    },
+  );
+}
+
 export async function loadNegotiation(access: NegotiationAccess) {
   return request<NegotiationRecord>(
     `/api/negotiations/${encodeURIComponent(access.proposalId)}?token=${encodeURIComponent(access.token)}`,

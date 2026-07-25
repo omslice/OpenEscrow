@@ -117,6 +117,15 @@ const terms = {
   arbiterDays: "7",
 };
 
+const genericTerms = {
+  ...terms,
+  jurisdiction: "testnet-generic",
+  policyVersion: "generic-test-v1",
+  claimDays: "45",
+  responseDays: "10",
+  arbiterDays: "14",
+};
+
 function request(path, method = "GET", body) {
   return new Request(`https://openescrow.example${path}`, {
     method,
@@ -265,7 +274,74 @@ test("a legacy approved proposal cannot bypass the locked California policy at f
     transactionHash: `0x${"a".repeat(64)}`,
   });
   assert.equal(response.status, 409);
-  assert.match((await response.json()).error, /predates the locked California policy/);
+  assert.match((await response.json()).error, /does not match a current jurisdiction policy/);
+});
+
+test("the non-specific test profile accepts editable lifecycle timing", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
+        tenantEmail: "tenant@example.com",
+        arbiterName: "",
+        arbiterEmail: null,
+        terms: genericTerms,
+      }),
+      { DB: db },
+    ),
+  );
+  assert.equal(created.record.terms.jurisdiction, "testnet-generic");
+  assert.equal(created.record.terms.claimDays, "45");
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+  const finalized = await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "finalize",
+      agreementId: "84",
+      transactionHash: `0x${"b".repeat(64)}`,
+    }),
+  );
+  assert.equal(finalized.status, "finalized");
+});
+
+test("tenant names and email addresses are validated before a proposal is saved", async () => {
+  const db = new TestD1();
+  const invalidEmail = await worker.fetch(
+    request("/api/negotiations", "POST", {
+      landlordName: "Lena Landlord",
+      landlordEmail: "landlord@example.com",
+      tenantName: "Terry Tenant",
+      tenantEmail: "tenant-at-example",
+      arbiterName: "",
+      arbiterEmail: null,
+      terms,
+    }),
+    { DB: db },
+  );
+  assert.equal(invalidEmail.status, 400);
+  assert.match((await invalidEmail.json()).error, /valid landlord and tenant email/);
+
+  const incompleteName = await worker.fetch(
+    request("/api/negotiations", "POST", {
+      landlordName: "Lena Landlord",
+      landlordEmail: "landlord@example.com",
+      tenantName: "Terry",
+      tenantEmail: "tenant@example.com",
+      arbiterName: "",
+      arbiterEmail: null,
+      terms,
+    }),
+    { DB: db },
+  );
+  assert.equal(incompleteName.status, 400);
+  assert.match((await incompleteName.json()).error, /first and last name/);
 });
 
 test("a verified Privy identity can discover its landlord proposals across browser sessions", async () => {
@@ -595,6 +671,100 @@ test("every tenant reviewer must approve and adding a tenant resets the revision
   );
   assert.equal(report.status, 200);
   assert.match(await report.text(), /Tenant reviewer/);
+});
+
+test("the landlord can edit and remove tenants without creating duplicate proposals", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
+        tenantEmail: "tenant@example.com",
+        tenants: [
+          { name: "Terry Tenant", email: "tenant@example.com" },
+          { name: "Casey Co-tenant", email: "cotenant@example.com" },
+        ],
+        arbiterName: "",
+        arbiterEmail: null,
+        terms,
+      }),
+      { DB: db },
+    ),
+  );
+  const [fundingTenant, coTenant] = created.record.tenants;
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenants[0].token, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+
+  const edited = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}/tenants/${coTenant.id}`,
+        "PATCH",
+        {
+          token: created.access.landlord,
+          name: "Casey Updated",
+          email: "casey.updated@example.com",
+        },
+      ),
+      { DB: db },
+    ),
+  );
+  assert.equal(edited.record.id, created.record.id);
+  assert.equal(edited.record.revision, 2);
+  assert.equal(edited.record.tenants.every((tenant) => !tenant.approved), true);
+  assert.equal(edited.invite.email, "casey.updated@example.com");
+  const oldInvite = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${created.access.tenants[1].token}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(oldInvite.status, 403);
+  const newInvite = await worker.fetch(
+    request(`/api/negotiations/${created.record.id}?token=${edited.invite.token}`),
+    { DB: db },
+  );
+  assert.equal(newInvite.status, 200);
+
+  const removed = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}/tenants/${fundingTenant.id}`,
+        "DELETE",
+        { token: created.access.landlord },
+      ),
+      { DB: db },
+    ),
+  );
+  assert.equal(removed.record.id, created.record.id);
+  assert.equal(removed.record.revision, 3);
+  assert.equal(removed.record.tenants.length, 1);
+  assert.equal(removed.record.tenants[0].isFundingTenant, true);
+  assert.equal(removed.record.tenantEmail, "casey.updated@example.com");
+  const removedInvite = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${created.access.tenants[0].token}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(removedInvite.status, 403);
+
+  const lastTenantRemoval = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}/tenants/${coTenant.id}`,
+      "DELETE",
+      { token: created.access.landlord },
+    ),
+    { DB: db },
+  );
+  assert.equal(lastTenantRemoval.status, 409);
+  assert.match((await lastTenantRemoval.json()).error, /replacement tenant/);
 });
 
 test("the landlord is notified when all required approvals make a proposal ready", async () => {

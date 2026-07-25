@@ -36,8 +36,8 @@ export function clearInviteRole() {
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
-function isSelectableWorkspaceRole(value: string | null): value is "landlord" | "tenant" {
-  return value === "landlord" || value === "tenant";
+function isSelectableWorkspaceRole(value: string | null): value is WorkspaceRole {
+  return value === "landlord" || value === "tenant" || value === "arbiter";
 }
 
 export function readWorkspaceRole(): WorkspaceRole | null {
@@ -52,7 +52,7 @@ export function readWorkspaceRole(): WorkspaceRole | null {
   }
 }
 
-export function selectWorkspaceRole(role: "landlord" | "tenant") {
+export function selectWorkspaceRole(role: WorkspaceRole) {
   if (readInviteRole()) return;
   try {
     window.sessionStorage.setItem(WORKSPACE_ROLE_STORAGE_KEY, role);

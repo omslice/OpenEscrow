@@ -8,6 +8,8 @@ export type AppNotification = {
   actor: string;
   summary: string;
   href?: string;
+  onOpen?: () => void;
+  agreementId?: string;
 };
 
 export function Layout({
@@ -41,6 +43,13 @@ export function Layout({
     ).slice(0, 250);
     setReadIds(next);
     window.localStorage.setItem(readStateKey, JSON.stringify(next));
+  }
+
+  function openNotification(notification: AppNotification) {
+    const next = Array.from(new Set([notification.id, ...readIds])).slice(0, 250);
+    setReadIds(next);
+    window.localStorage.setItem(readStateKey, JSON.stringify(next));
+    notification.onOpen?.();
   }
 
   return (
@@ -78,14 +87,24 @@ export function Layout({
                       className={readIds.includes(notification.id) ? "" : "unread"}
                       key={notification.id}
                     >
-                      <strong>{notification.actor}</strong>
-                      <span>{notification.summary}</span>
-                      <time dateTime={notification.createdAt}>
-                        {new Date(notification.createdAt).toLocaleString()}
-                      </time>
+                      <button
+                        className="notification-item"
+                        type="button"
+                        onClick={(event) => {
+                          openNotification(notification);
+                          event.currentTarget.closest("details")?.removeAttribute("open");
+                        }}
+                      >
+                        <strong>{notification.actor}</strong>
+                        <span>{notification.summary}</span>
+                        <time dateTime={notification.createdAt}>
+                          {new Date(notification.createdAt).toLocaleString()}
+                        </time>
+                        <small>Open relevant workspace →</small>
+                      </button>
                       {notification.href && (
                         <a href={notification.href} target="_blank" rel="noreferrer">
-                          Receipt
+                          View onchain receipt
                         </a>
                       )}
                     </li>

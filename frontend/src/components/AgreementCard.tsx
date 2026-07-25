@@ -45,7 +45,7 @@ export function AgreementCard({
   const onRefetch = () => void refetch();
 
   return (
-    <div className="card agreement-card">
+    <div className="card agreement-card" id={`agreement-${id.toString()}`} tabIndex={-1}>
       <AgreementDashboard
         id={id}
         agreement={agreement}

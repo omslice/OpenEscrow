@@ -253,6 +253,43 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     setProposalAccess(item.access);
   }
 
+  function scrollToNotificationTarget(targetId: string, fallbackId: string) {
+    window.setTimeout(() => {
+      const target =
+        document.getElementById(targetId) || document.getElementById(fallbackId);
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+      target?.focus({ preventScroll: true });
+    }, 80);
+  }
+
+  function openProposalNotification(item: SavedProposal, action: string) {
+    openSavedProposal(item);
+    const agreementId = item.record.onchainAgreementId;
+    const actionTarget =
+      agreementId &&
+      (action === "deduction_claim_submitted" ||
+      action === "deduction_claim_amended" ||
+      action === "claim_notification_prepared"
+        ? `agreement-${agreementId}-claim`
+        : action === "claim_response_submitted"
+          ? `agreement-${agreementId}-response`
+          : action === "arbiter_ruling_submitted"
+            ? `agreement-${agreementId}-resolution`
+            : `agreement-${agreementId}`);
+    scrollToNotificationTarget(
+      actionTarget || (item.access.role === "landlord" ? "proposal-builder" : "proposal-review-title"),
+      item.access.role === "landlord" ? "proposal-builder" : "proposal-review-title",
+    );
+  }
+
+  function openOnchainNotification(agreementId?: string) {
+    if (!agreementId) return;
+    addId(BigInt(agreementId));
+    setProposalAccess(null);
+    setTab("track");
+    scrollToNotificationTarget(`agreement-${agreementId}`, "demo-workspace");
+  }
+
   function closeProposalReview() {
     setProposalAccess(null);
     const url = new URL(window.location.href);
@@ -262,17 +299,21 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   }
 
   const notifications: AppNotification[] = [
-    ...savedProposals.flatMap(({ record }) =>
-      record.events
+    ...savedProposals.flatMap((item) =>
+      item.record.events
         .filter((event) => event.action !== "record_snapshot_anchored")
         .map((event) => ({
-          id: `${record.id}-${event.id}`,
+          id: `${item.record.id}-${event.id}`,
           createdAt: event.createdAt,
           actor: roleLabel[event.actorRole as keyof typeof roleLabel] || "System",
           summary: event.summary,
+          onOpen: () => openProposalNotification(item, event.action),
         })),
     ),
-    ...onchainNotifications,
+    ...onchainNotifications.map((notification) => ({
+      ...notification,
+      onOpen: () => openOnchainNotification(notification.agreementId),
+    })),
   ]
     .sort(
       (left, right) =>
@@ -329,6 +370,17 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
               <strong>I am a tenant</strong>
               <span>Find, fund, monitor, and respond within your deposit agreements.</span>
             </button>
+            <button
+              className={`role-choice${workspaceRole === "arbiter" ? " selected" : ""}`}
+              aria-pressed={workspaceRole === "arbiter"}
+              onClick={() => {
+                selectWorkspaceRole("arbiter");
+                setTab("track");
+              }}
+            >
+              <strong>I am an arbiter</strong>
+              <span>Find invitations, review evidence, and rule when mutually appointed.</span>
+            </button>
           </div>
         </section>
       )}
@@ -357,6 +409,9 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           )}
           {!inviteRole && workspaceRole === "tenant" && (
             <span className="invitation-tab-note">Tenant workspace</span>
+          )}
+          {!inviteRole && workspaceRole === "arbiter" && (
+            <span className="invitation-tab-note">Arbiter workspace</span>
           )}
         </nav>
       )}
