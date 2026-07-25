@@ -77,7 +77,13 @@ function inviteContent(
   };
 }
 
-function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
+function AgreementForm({
+  landlordEmail,
+  initialAccess,
+}: {
+  landlordEmail: string;
+  initialAccess?: NegotiationAccess | null;
+}) {
   const { address, isConnected } = useAccount();
   const { addId } = useTrackedAgreements();
 
@@ -127,23 +133,34 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
   }
 
   useEffect(() => {
-    const saved = readLandlordBundle();
-    if (!saved) return;
-    const access: NegotiationAccess = {
-      proposalId: saved.proposalId,
-      role: "landlord",
-      token: saved.access.landlord,
-    };
+    const saved = readLandlordBundle(initialAccess?.proposalId);
+    const access: NegotiationAccess | null =
+      initialAccess?.role === "landlord"
+        ? initialAccess
+        : saved
+          ? {
+              proposalId: saved.proposalId,
+              role: "landlord",
+              token: saved.access.landlord,
+            }
+          : null;
+    if (!access) return;
     loadNegotiation(access)
       .then((record) => {
         setDraft(record);
-        setAccessBundle(saved.access);
+        setAccessBundle(
+          saved?.access || {
+            landlord: access.token,
+            tenant: "",
+            arbiter: null,
+          },
+        );
         applyTerms(record);
       })
       .catch(() => {
-        clearLandlordBundle();
+        clearLandlordBundle(access.proposalId);
       });
-  }, []);
+  }, [initialAccess]);
 
   useEffect(() => {
     if (!receipt || handledReceipt.current === receipt.transactionHash) return;
@@ -356,7 +373,7 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
   }
 
   return (
-    <section className="card proposal-builder">
+    <section className="card proposal-builder" id="proposal-builder">
       <div className="proposal-builder-heading">
         <div>
           <span className="eyebrow">Landlord-initiated workflow</span>
@@ -468,7 +485,6 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
             className="btn btn-ghost"
             type="button"
             onClick={() => {
-              clearLandlordBundle();
               setDraft(null);
               setAccessBundle(null);
               setRevisionSummary("");
@@ -581,12 +597,24 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
   );
 }
 
-function PrivyCreateAgreementForm() {
+function PrivyCreateAgreementForm({
+  initialAccess,
+}: {
+  initialAccess?: NegotiationAccess | null;
+}) {
   const { user } = usePrivy();
   const landlordEmail = user?.google?.email ?? user?.email?.address ?? "";
-  return <AgreementForm landlordEmail={landlordEmail} />;
+  return <AgreementForm landlordEmail={landlordEmail} initialAccess={initialAccess} />;
 }
 
-export function CreateAgreementForm() {
-  return ACCOUNT_AUTH_ENABLED ? <PrivyCreateAgreementForm /> : <AgreementForm landlordEmail="" />;
+export function CreateAgreementForm({
+  initialAccess,
+}: {
+  initialAccess?: NegotiationAccess | null;
+}) {
+  return ACCOUNT_AUTH_ENABLED ? (
+    <PrivyCreateAgreementForm initialAccess={initialAccess} />
+  ) : (
+    <AgreementForm landlordEmail="" initialAccess={initialAccess} />
+  );
 }

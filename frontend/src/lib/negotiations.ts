@@ -59,31 +59,112 @@ export interface CreatedNegotiation {
 
 const LATEST_LANDLORD_ACCESS = "openescrow.latestLandlordProposal";
 const LATEST_LANDLORD_BUNDLE = "openescrow.latestLandlordProposalBundle";
+const ACCESS_INDEX = "openescrow.negotiationAccessIndex";
+const LANDLORD_BUNDLE_PREFIX = "openescrow.landlordProposalBundle.";
 
-function accessKey(proposalId: string) {
+interface NegotiationAccessReference {
+  proposalId: string;
+  role: NegotiationRole;
+}
+
+function accessKey(proposalId: string, role: NegotiationRole) {
+  return `openescrow.negotiationAccess.${proposalId}.${role}`;
+}
+
+function legacyAccessKey(proposalId: string) {
   return `openescrow.negotiationAccess.${proposalId}`;
+}
+
+function landlordBundleKey(proposalId: string) {
+  return `${LANDLORD_BUNDLE_PREFIX}${proposalId}`;
+}
+
+function readAccessIndex(): NegotiationAccessReference[] {
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(ACCESS_INDEX) || "[]") as NegotiationAccessReference[];
+    return parsed.filter(
+      (item) =>
+        item?.proposalId &&
+        (item.role === "landlord" || item.role === "tenant" || item.role === "arbiter"),
+    );
+  } catch {
+    return [];
+  }
+}
+
+function rememberAccessReference(access: NegotiationAccess) {
+  const references = readAccessIndex();
+  if (
+    !references.some(
+      (item) => item.proposalId === access.proposalId && item.role === access.role,
+    )
+  ) {
+    references.push({ proposalId: access.proposalId, role: access.role });
+    window.localStorage.setItem(ACCESS_INDEX, JSON.stringify(references));
+  }
 }
 
 export function storeNegotiationAccess(access: NegotiationAccess, persistent = false) {
   const storage = persistent ? window.localStorage : window.sessionStorage;
-  storage.setItem(accessKey(access.proposalId), JSON.stringify(access));
+  storage.setItem(accessKey(access.proposalId, access.role), JSON.stringify(access));
   if (persistent && access.role === "landlord") {
     window.localStorage.setItem(LATEST_LANDLORD_ACCESS, JSON.stringify(access));
   }
+  if (persistent) rememberAccessReference(access);
 }
 
-export function readNegotiationAccess(proposalId: string): NegotiationAccess | null {
+export function readNegotiationAccess(
+  proposalId: string,
+  role?: NegotiationRole,
+): NegotiationAccess | null {
   for (const storage of [window.sessionStorage, window.localStorage]) {
     try {
-      const raw = storage.getItem(accessKey(proposalId));
-      if (!raw) continue;
-      const parsed = JSON.parse(raw) as NegotiationAccess;
-      if (parsed.proposalId === proposalId && parsed.token && parsed.role) return parsed;
+      const keys = role
+        ? [accessKey(proposalId, role), legacyAccessKey(proposalId)]
+        : [
+            accessKey(proposalId, "landlord"),
+            accessKey(proposalId, "tenant"),
+            accessKey(proposalId, "arbiter"),
+            legacyAccessKey(proposalId),
+          ];
+      for (const key of keys) {
+        const raw = storage.getItem(key);
+        if (!raw) continue;
+        const parsed = JSON.parse(raw) as NegotiationAccess;
+        if (
+          parsed.proposalId === proposalId &&
+          parsed.token &&
+          parsed.role &&
+          (!role || parsed.role === role)
+        ) {
+          return parsed;
+        }
+      }
     } catch {
       // Ignore unavailable or malformed browser storage.
     }
   }
   return null;
+}
+
+export function listNegotiationAccesses(role?: NegotiationRole): NegotiationAccess[] {
+  const accesses = readAccessIndex()
+    .filter((item) => !role || item.role === role)
+    .map((item) => readNegotiationAccess(item.proposalId, item.role))
+    .filter((item): item is NegotiationAccess => Boolean(item));
+
+  const latestLandlord = readLatestLandlordAccess();
+  if (
+    latestLandlord &&
+    (!role || role === "landlord") &&
+    !accesses.some(
+      (item) =>
+        item.proposalId === latestLandlord.proposalId && item.role === latestLandlord.role,
+    )
+  ) {
+    accesses.push(latestLandlord);
+  }
+  return accesses;
 }
 
 export function readLatestLandlordAccess(): NegotiationAccess | null {
@@ -98,35 +179,52 @@ export function readLatestLandlordAccess(): NegotiationAccess | null {
 }
 
 export function rememberLandlordBundle(created: CreatedNegotiation) {
-  window.localStorage.setItem(
-    LATEST_LANDLORD_BUNDLE,
-    JSON.stringify({ proposalId: created.record.id, access: created.access }),
-  );
+  const serialized = JSON.stringify({ proposalId: created.record.id, access: created.access });
+  window.localStorage.setItem(LATEST_LANDLORD_BUNDLE, serialized);
+  window.localStorage.setItem(landlordBundleKey(created.record.id), serialized);
 }
 
-export function readLandlordBundle(): {
+export function readLandlordBundle(proposalId?: string): {
   proposalId: string;
   access: CreatedNegotiation["access"];
 } | null {
   try {
-    const raw = window.localStorage.getItem(LATEST_LANDLORD_BUNDLE);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as {
+    const raw = window.localStorage.getItem(
+      proposalId ? landlordBundleKey(proposalId) : LATEST_LANDLORD_BUNDLE,
+    );
+    const fallback =
+      proposalId && !raw ? window.localStorage.getItem(LATEST_LANDLORD_BUNDLE) : null;
+    const candidate = raw || fallback;
+    if (!candidate) return null;
+    const parsed = JSON.parse(candidate) as {
       proposalId: string;
       access: CreatedNegotiation["access"];
     };
+    if (proposalId && parsed.proposalId !== proposalId) return null;
     return parsed.proposalId && parsed.access?.landlord && parsed.access?.tenant ? parsed : null;
   } catch {
     return null;
   }
 }
 
-export function clearLandlordBundle() {
+export function clearLandlordBundle(proposalId?: string) {
   try {
-    const bundle = readLandlordBundle();
-    if (bundle) window.localStorage.removeItem(accessKey(bundle.proposalId));
-    window.localStorage.removeItem(LATEST_LANDLORD_ACCESS);
-    window.localStorage.removeItem(LATEST_LANDLORD_BUNDLE);
+    const bundle = readLandlordBundle(proposalId);
+    const targetId = proposalId || bundle?.proposalId;
+    if (targetId) {
+      window.localStorage.removeItem(accessKey(targetId, "landlord"));
+      window.localStorage.removeItem(legacyAccessKey(targetId));
+      window.localStorage.removeItem(landlordBundleKey(targetId));
+      const references = readAccessIndex().filter(
+        (item) => !(item.proposalId === targetId && item.role === "landlord"),
+      );
+      window.localStorage.setItem(ACCESS_INDEX, JSON.stringify(references));
+    }
+    const latest = readLatestLandlordAccess();
+    if (!targetId || latest?.proposalId === targetId) {
+      window.localStorage.removeItem(LATEST_LANDLORD_ACCESS);
+      window.localStorage.removeItem(LATEST_LANDLORD_BUNDLE);
+    }
   } catch {
     // The in-memory proposal can still be cleared.
   }
@@ -140,7 +238,7 @@ export function captureNegotiationAccessFromUrl(): NegotiationAccess | null {
   if (!proposalId || !token || (role !== "tenant" && role !== "arbiter")) return null;
 
   const access: NegotiationAccess = { proposalId, token, role };
-  storeNegotiationAccess(access);
+  storeNegotiationAccess(access, true);
   url.searchParams.delete("token");
   window.history.replaceState(null, "", url.toString());
   return access;

@@ -243,7 +243,37 @@ async function getNegotiation(db, id, token) {
   return json(await serialize(db, row));
 }
 
-async function applyAction(request, db, id) {
+async function sendLandlordReadyNotification(request, env, row) {
+  if (!env.RESEND_API_KEY || !env.NOTIFICATION_FROM_EMAIL) return null;
+  const workspaceUrl = new URL(request.url).origin;
+  const subject = `OpenEscrow proposal ${row.id} is approved and ready to finalize`;
+  const text = [
+    `The tenant${row.arbiter_email ? " and optional arbiter have" : " has"} approved revision ${row.revision} of OpenEscrow proposal ${row.id}.`,
+    "The proposal is still saved offchain and has not been finalized.",
+    `Sign in as the landlord, choose Agreements & deductions, and select Find my proposals & agreements: ${workspaceUrl}`,
+    "Open the approval-ready proposal and submit the finalized terms onchain.",
+  ].join("\n\n");
+  const sent = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "content-type": "application/json",
+      "idempotency-key": `proposal-ready-${row.id}-${row.revision}`,
+      "user-agent": "OpenEscrow/1.0",
+    },
+    body: JSON.stringify({
+      from: env.NOTIFICATION_FROM_EMAIL,
+      to: [row.landlord_email],
+      subject,
+      text,
+    }),
+  });
+  const result = await sent.json().catch(() => ({}));
+  return sent.ok && result.id ? result.id : null;
+}
+
+async function applyAction(request, env, id) {
+  const db = env.DB;
   const body = await request.json();
   const row = await rowFor(db, id);
   const role = await authorize(row, body.token);
@@ -526,6 +556,30 @@ async function applyAction(request, db, id) {
         ),
       ]);
       updated = await rowFor(db, id);
+      try {
+        const messageId = await sendLandlordReadyNotification(request, env, updated);
+        if (messageId) {
+          const notifiedAt = new Date().toISOString();
+          await db.batch([
+            db
+              .prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?")
+              .bind(notifiedAt, id),
+            eventStatement(
+              db,
+              id,
+              notifiedAt,
+              "system",
+              "landlord_ready_notification_sent",
+              `Notified ${updated.landlord_email} that revision ${updated.revision} is approved and ready for onchain finalization.`,
+              updated.revision,
+              { messageId },
+            ),
+          ]);
+          updated = await rowFor(db, id);
+        }
+      } catch {
+        // Approval must still succeed if the optional email provider is unavailable.
+      }
     }
   }
   return json(await serialize(db, updated));
@@ -786,7 +840,7 @@ const worker = {
         return getNegotiation(env.DB, id, url.searchParams.get("token"));
       }
       if (action === "actions" && request.method === "POST") {
-        return applyAction(request, env.DB, id);
+        return applyAction(request, env, id);
       }
       if (action === "report" && request.method === "GET") {
         return report(env.DB, id, url.searchParams.get("token"));

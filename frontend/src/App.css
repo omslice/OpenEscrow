@@ -956,6 +956,38 @@ a.btn.disabled {
   border-width: 2px;
 }
 
+.review-back {
+  margin-bottom: 12px;
+}
+
+.saved-proposal-card {
+  border-width: 2px;
+}
+
+.saved-proposal-card.ready-to-finalize {
+  border-color: color-mix(in srgb, var(--success) 55%, var(--border));
+  box-shadow: inset 5px 0 0 var(--success);
+}
+
+.finalization-notice {
+  display: grid;
+  gap: 4px;
+  margin: 14px 0;
+  padding: 12px 14px;
+  border: 1px solid color-mix(in srgb, var(--success) 45%, var(--border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--success) 9%, var(--surface));
+}
+
+.finalization-notice strong {
+  color: var(--text-h);
+}
+
+.finalization-notice span {
+  color: var(--text);
+  font-size: 13px;
+}
+
 .proposal-builder-heading,
 .negotiation-heading,
 .record-header {

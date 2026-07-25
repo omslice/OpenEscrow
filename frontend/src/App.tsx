@@ -19,11 +19,16 @@ import {
 } from "./lib/inviteContext";
 import {
   captureNegotiationAccessFromUrl,
+  listNegotiationAccesses,
+  loadNegotiation,
   readNegotiationAccess,
+  type NegotiationAccess,
+  type NegotiationRecord,
 } from "./lib/negotiations";
 import "./App.css";
 
 type Tab = "create" | "track";
+type SavedProposal = { access: NegotiationAccess; record: NegotiationRecord };
 
 function App() {
   const [tab, setTab] = useState<Tab>("track");
@@ -32,13 +37,23 @@ function App() {
   const { discover, isScanning, scanError } = useDiscoverAgreements();
   const [manualId, setManualId] = useState("");
   const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [savedProposals, setSavedProposals] = useState<SavedProposal[]>([]);
+  const [activeLandlordAccess, setActiveLandlordAccess] =
+    useState<NegotiationAccess | null>(null);
   const inviteRole = useInviteRole();
   const workspaceRole = useWorkspaceRole();
-  const [proposalAccess] = useState(() => {
+  const [proposalAccess, setProposalAccess] = useState<NegotiationAccess | null>(() => {
     const captured = captureNegotiationAccessFromUrl();
     if (captured) return captured;
-    const proposalId = new URLSearchParams(window.location.search).get("proposal");
-    return proposalId ? readNegotiationAccess(proposalId) : null;
+    const params = new URLSearchParams(window.location.search);
+    const proposalId = params.get("proposal");
+    const role = params.get("invite");
+    return proposalId
+      ? readNegotiationAccess(
+          proposalId,
+          role === "tenant" || role === "arbiter" ? role : undefined,
+        )
+      : null;
   });
   const startDemo = () => {
     setTab(workspaceRole === "landlord" ? "create" : "track");
@@ -67,8 +82,72 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (inviteRole) setTab("track");
-  }, [inviteRole]);
+    setSavedProposals([]);
+    setScanMessage(null);
+    if (inviteRole) {
+      setTab("track");
+    } else if (
+      workspaceRole === "landlord" &&
+      !new URLSearchParams(window.location.search).has("id")
+    ) {
+      setTab("create");
+    }
+  }, [inviteRole, workspaceRole]);
+
+  async function findProposalsAndAgreements() {
+    setScanMessage(null);
+    const accesses = listNegotiationAccesses(workspaceRole || undefined);
+    const loaded = await Promise.allSettled(
+      accesses.map(async (access) => ({
+        access,
+        record: await loadNegotiation(access),
+      })),
+    );
+    const proposals = loaded
+      .filter(
+        (result): result is PromiseFulfilledResult<SavedProposal> =>
+          result.status === "fulfilled",
+      )
+      .map((result) => result.value)
+      .sort(
+        (a, b) =>
+          new Date(b.record.updatedAt).getTime() - new Date(a.record.updatedAt).getTime(),
+      );
+    setSavedProposals(proposals);
+
+    let onchainCount = 0;
+    if (address) {
+      const found = await discover(address);
+      found.forEach(addId);
+      onchainCount = found.length;
+    }
+    const skipped = loaded.length - proposals.length;
+    setScanMessage(
+      `Found ${proposals.length} saved proposal(s) and ${onchainCount} onchain agreement(s).${
+        skipped ? ` ${skipped} unavailable saved link(s) were skipped.` : ""
+      }`,
+    );
+  }
+
+  function openSavedProposal(item: SavedProposal) {
+    if (item.access.role === "landlord") {
+      setActiveLandlordAccess(item.access);
+      setTab("create");
+      window.requestAnimationFrame(() => {
+        document.getElementById("proposal-builder")?.scrollIntoView({ behavior: "smooth" });
+      });
+      return;
+    }
+    setProposalAccess(item.access);
+  }
+
+  function closeProposalReview() {
+    setProposalAccess(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete("proposal");
+    url.searchParams.delete("token");
+    window.history.replaceState(null, "", url.toString());
+  }
 
   return (
     <Layout>
@@ -101,6 +180,7 @@ function App() {
               aria-pressed={workspaceRole === "landlord"}
               onClick={() => {
                 selectWorkspaceRole("landlord");
+                setActiveLandlordAccess(null);
                 setTab("create");
               }}
             >
@@ -125,14 +205,20 @@ function App() {
 
       {workspaceRole && (
         <nav className="tabs" id="demo-workspace">
-          <button className={tab === "track" ? "tab active" : "tab"} onClick={() => setTab("track")}>
-            {proposalAccess ? "Agreement review" : "Deposit dashboard"}
-          </button>
           {workspaceRole === "landlord" && !inviteRole && (
             <button className={tab === "create" ? "tab active" : "tab"} onClick={() => setTab("create")}>
-              Propose new agreement
+              Set up agreement proposal
             </button>
           )}
+          <button className={tab === "track" ? "tab active" : "tab"} onClick={() => setTab("track")}>
+            {proposalAccess
+              ? "Agreement review"
+              : workspaceRole === "landlord"
+                ? "Agreements & deductions"
+                : workspaceRole === "arbiter"
+                  ? "Reviews & rulings"
+                  : "Deposits & responses"}
+          </button>
           {inviteRole && (
             <span className="invitation-tab-note">
               {roleLabel[inviteRole]} invitation · role locked
@@ -144,48 +230,109 @@ function App() {
         </nav>
       )}
 
-      {workspaceRole && !proposalAccess && <TestFunds />}
-
-      {workspaceRole === "landlord" && !inviteRole && tab === "create" && <CreateAgreementForm />}
+      {workspaceRole === "landlord" && !inviteRole && tab === "create" && (
+        <CreateAgreementForm
+          key={activeLandlordAccess?.proposalId || "latest-landlord-proposal"}
+          initialAccess={activeLandlordAccess}
+        />
+      )}
 
       {workspaceRole && tab === "track" && (
         <div>
           {proposalAccess ? (
-            <AgreementNegotiation access={proposalAccess} />
+            <>
+              <button className="btn btn-ghost review-back" onClick={closeProposalReview}>
+                Back to proposals and agreements
+              </button>
+              <AgreementNegotiation access={proposalAccess} />
+            </>
           ) : (
             <>
           <div className="card">
-            <h2>Find agreements involving you</h2>
+            <h2>
+              {workspaceRole === "landlord"
+                ? "Find proposals, agreements, and deduction work"
+                : workspaceRole === "arbiter"
+                  ? "Find proposals and agreements assigned to you"
+                  : "Find proposals and deposit agreements associated with you"}
+            </h2>
             <p className="hint">
-              Scan Base Sepolia for agreements where your connected wallet is the landlord, tenant,
-              or arbiter. Track custody, test yield, deduction claims, disputes, deadlines, and
-              resolution from one place.
+              {workspaceRole === "landlord"
+                ? "Open saved proposals awaiting review or finalization, then scan Base Sepolia for agreements where you can submit documented deductions, resolve claims, and withdraw available funds."
+                : "Open saved proposals you were invited to review, then scan Base Sepolia for finalized agreements involving your connected wallet."}
             </p>
             <button
               className="btn btn-primary"
-              disabled={!address || isScanning}
-              onClick={async () => {
-                if (!address) return;
-                setScanMessage(null);
-                const found = await discover(address);
-                found.forEach(addId);
-                setScanMessage(
-                  found.length > 0
-                    ? `Found ${found.length} agreement(s) involving your address.`
-                    : "No agreements found involving your address on this contract.",
-                );
-              }}
+              disabled={isScanning}
+              onClick={() => void findProposalsAndAgreements()}
             >
-              {isScanning ? "Scanning..." : "Scan for my agreements"}
+              {isScanning ? "Searching..." : "Find my proposals & agreements"}
             </button>
+            {!address && (
+              <p className="field-help">
+                Saved proposals can be found now. Connect your wallet to scan for finalized onchain agreements too.
+              </p>
+            )}
             {scanMessage && <p className="tx-success">{scanMessage}</p>}
             {scanError && <p className="tx-error">{scanError}</p>}
           </div>
 
+          {savedProposals.map((item) => {
+            const counterpart =
+              item.access.role === "landlord"
+                ? item.record.tenantEmail
+                : item.record.landlordEmail;
+            const isReadyForLandlord =
+              item.access.role === "landlord" && item.record.status === "ready";
+            return (
+              <article
+                className={`card saved-proposal-card${isReadyForLandlord ? " ready-to-finalize" : ""}`}
+                key={`${item.access.proposalId}-${item.access.role}`}
+              >
+                <div className="proposal-builder-heading">
+                  <div>
+                    <span className="eyebrow">
+                      Saved offchain proposal · {roleLabel[item.access.role]} access
+                    </span>
+                    <h2>Proposal {item.record.id}</h2>
+                  </div>
+                  <span className={`negotiation-status status-${item.record.status}`}>
+                    {item.record.status} · revision {item.record.revision}
+                  </span>
+                </div>
+                <p className="hint">
+                  {item.access.role === "landlord" ? "Tenant" : "Landlord"}: {counterpart}
+                  {item.record.arbiterEmail ? ` · Arbiter: ${item.record.arbiterEmail}` : " · No arbiter"}
+                </p>
+                {isReadyForLandlord && (
+                  <div className="finalization-notice" role="status">
+                    <strong>All required approvals are complete.</strong>
+                    <span>
+                      Open this proposal to submit the approved terms onchain. It remains a saved
+                      proposal until you complete that transaction.
+                    </span>
+                  </div>
+                )}
+                <div className="button-row">
+                  <button
+                    className={isReadyForLandlord ? "btn btn-primary" : "btn btn-secondary"}
+                    onClick={() => openSavedProposal(item)}
+                  >
+                    {isReadyForLandlord
+                      ? "Finalize approved proposal onchain"
+                      : item.record.status === "finalized"
+                        ? "Open agreement workspace"
+                        : "Open proposal"}
+                  </button>
+                </div>
+              </article>
+            );
+          })}
+
           <div className="card">
             <h2>Track an agreement by id</h2>
             <p className="hint">
-              Or add one manually - useful if someone shared an id with you directly instead of a link.
+              Add a finalized onchain agreement manually if someone shared its id directly.
             </p>
             <div className="button-row">
               <input
@@ -214,6 +361,7 @@ function App() {
           {ids.map((id) => (
             <AgreementCard key={id.toString()} id={id} onRemove={() => removeId(id)} />
           ))}
+          {workspaceRole === "tenant" && <TestFunds />}
             </>
           )}
         </div>

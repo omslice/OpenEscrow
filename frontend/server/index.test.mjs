@@ -95,10 +95,10 @@ async function create(db, arbiterEmail = null) {
   );
 }
 
-async function act(db, id, token, action) {
+async function act(db, id, token, action, env = {}) {
   return worker.fetch(
     request(`/api/negotiations/${id}/actions`, "POST", { token, ...action }),
-    { DB: db },
+    { DB: db, ...env },
   );
 }
 
@@ -170,6 +170,42 @@ test("optional arbiter approval is required only when an arbiter is appointed", 
   );
   assert.equal(arbiterApproved.status, "ready");
   assert.equal(arbiterApproved.events.at(-1).action, "proposal_ready");
+});
+
+test("the landlord is notified when all required approvals make a proposal ready", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const originalFetch = globalThis.fetch;
+  let sentEmail = null;
+  globalThis.fetch = async (url, init) => {
+    assert.equal(url, "https://api.resend.com/emails");
+    sentEmail = JSON.parse(init.body);
+    return Response.json({ id: "ready-message-1" });
+  };
+  try {
+    const approved = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.tenant,
+        {
+          type: "approve",
+          wallet: "0x1111111111111111111111111111111111111111",
+        },
+        {
+          RESEND_API_KEY: "test-resend-key",
+          NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+        },
+      ),
+    );
+    assert.equal(approved.status, "ready");
+    assert.equal(approved.events.at(-1).action, "landlord_ready_notification_sent");
+    assert.deepEqual(sentEmail.to, ["landlord@example.com"]);
+    assert.match(sentEmail.subject, /ready to finalize/);
+    assert.match(sentEmail.text, /submit the finalized terms onchain/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("landlord revisions reset approvals and role capabilities are enforced", async () => {
