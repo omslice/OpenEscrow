@@ -403,6 +403,23 @@ function AgreementForm({
     );
   }
 
+  function editFinalizedAsReplacement() {
+    const finalizedAgreementId = draft?.onchainAgreementId;
+    setDraft(null);
+    setAccessBundle(null);
+    setRevisionSummary("");
+    setIsEditingRevision(false);
+    setInvalidField(null);
+    setFormError(null);
+    setFormMessage(
+      `The fields are open for editing. Saving will create a replacement proposal and require fresh tenant${
+        arbiterEmail ? " and arbiter" : ""
+      } approval. The existing onchain agreement${
+        finalizedAgreementId ? ` #${finalizedAgreementId}` : ""
+      } remains unchanged; cancel it from its Manage proposal section before it is funded.`,
+    );
+  }
+
   function inviteFor(role: InviteRole) {
     if (!draft || !accessBundle) return null;
     const token = role === "tenant" ? accessBundle.tenant : accessBundle.arbiter;
@@ -705,7 +722,7 @@ function AgreementForm({
                   title="Any published edit creates a new revision, cancels the current approval, and requires the tenant and optional arbiter to approve again."
                   onClick={() => setIsEditingRevision(true)}
                 >
-                  Edit approved proposal ⓘ
+                  Edit terms ⓘ
                 </button>
                 <button
                   className="btn btn-ghost"
@@ -786,6 +803,14 @@ function AgreementForm({
         </div>
       ) : (
         <div className="button-row">
+          <button
+            className="btn btn-secondary"
+            type="button"
+            title="Onchain terms cannot be overwritten. This reopens the existing values in a replacement proposal that requires fresh approval."
+            onClick={editFinalizedAsReplacement}
+          >
+            Edit terms ⓘ
+          </button>
           <button className="btn btn-ghost" type="button" onClick={startAnotherProposal}>
             Start another proposal
           </button>
