@@ -9,8 +9,9 @@
    revision resets every approval.
 4. Once the tenant and, when appointed, the arbiter approve, their approval wallets are mapped to
    the proposal and onchain finalization unlocks.
-5. The landlord remains the only party that can initiate or amend a deduction claim. The claim UI
-   requires an evidence description and document URI.
+5. The landlord remains the only party that can initiate or amend a deduction claim. Each claim is
+   itemized by category, description, and amount, with the line-item total required to match the
+   onchain claim. The claim UI also requires an evidence description and document URI.
 6. The tenant may approve, partially approve, or dispute the claim and add a note. An appointed
    arbiter may review the onchain evidence pointers, rule on a dispute, and add a ruling note.
 
@@ -22,9 +23,9 @@ approvals, invitations, onchain finalization, evidence uploads, deduction claims
 tenant responses, and arbiter rulings are timestamped by the server.
 
 Every role-specific link can open a printable report containing the parties, current terms,
-revision snapshots, approval state, and event timeline. The record is ready to be hashed and
-anchored onchain later; the current MVP does not claim that the off-chain event stream is itself
-immutable or independently notarized.
+revision snapshots, approval state, itemized deduction tables, and event timeline. The record is
+ready to be hashed and anchored onchain later; the current MVP does not claim that the off-chain
+event stream is itself immutable or independently notarized.
 
 ## External services
 

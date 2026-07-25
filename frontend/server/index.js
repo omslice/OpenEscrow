@@ -55,6 +55,13 @@ ON negotiation_account_access (negotiation_id, token_hash, expires_at)`;
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const WALLET_PATTERN = /^0x[a-fA-F0-9]{40}$/;
+const DEDUCTION_CATEGORY_LABEL = {
+  "10": "Unpaid rent",
+  "11": "Damage beyond ordinary wear",
+  "12": "Cleaning",
+  "13": "Utilities or other unpaid charges",
+  "14": "Other documented deduction",
+};
 const PRIVY_APP_ID = "cmrzdp7ss00670cju098baqsr";
 const ACCOUNT_ACCESS_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const encoder = new TextEncoder();
@@ -71,6 +78,47 @@ function json(data, status = 200) {
 
 function cleanText(value, max = 500) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function tokenMicros(value) {
+  const normalized = cleanText(value, 80);
+  if (!/^\d+(?:\.\d{1,6})?$/.test(normalized)) return null;
+  const [whole, fraction = ""] = normalized.split(".");
+  try {
+    return BigInt(whole) * 1_000_000n + BigInt(fraction.padEnd(6, "0"));
+  } catch {
+    return null;
+  }
+}
+
+function cleanDeductionItems(value) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > 20) return null;
+  const items = value.map((item) => ({
+    category:
+      DEDUCTION_CATEGORY_LABEL[cleanText(item?.category, 120)] ||
+      cleanText(item?.category, 120),
+    description: cleanText(item?.description, 500),
+    amount: cleanText(item?.amount, 80),
+  }));
+  if (
+    items.some(
+      (item) =>
+        !item.category ||
+        !item.description ||
+        tokenMicros(item.amount) === null,
+    )
+  ) {
+    return null;
+  }
+  return items;
+}
+
+function deductionItemsMatchAmount(items, amount) {
+  const expected = tokenMicros(amount);
+  if (expected === null) return false;
+  return (
+    items.reduce((sum, item) => sum + (tokenMicros(item.amount) ?? 0n), 0n) === expected
+  );
 }
 
 function normalizeEmail(value) {
@@ -655,11 +703,19 @@ async function applyAction(request, env, id) {
     }
     const amount = cleanText(body.amount, 80);
     const category = cleanText(body.category, 120);
+    const items = cleanDeductionItems(body.items);
     const note = cleanText(body.note, 1000);
     const evidenceUri = cleanText(body.evidenceUri, 500);
     const evidenceHash = cleanText(body.evidenceHash, 100);
     const transactionHash = cleanText(body.transactionHash, 100);
-    if (!amount || !category || !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+    if (
+      !amount ||
+      !category ||
+      !items ||
+      !deductionItemsMatchAmount(items, amount) ||
+      items.some((item) => tokenMicros(item.amount) === 0n) ||
+      !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)
+    ) {
       return json({ error: "The recorded deduction claim is incomplete." }, 400);
     }
     statements.push(
@@ -670,9 +726,9 @@ async function applyAction(request, env, id) {
         now,
         role,
         "deduction_claim_submitted",
-        `Submitted a ${amount}-share deduction claim (${category})${note ? `: ${note}` : "."}${evidenceUri ? ` Evidence: ${evidenceUri}.` : ""}`,
+        `Submitted an itemized ${amount}-share deduction claim with ${items.length} line item${items.length === 1 ? "" : "s"} (${category})${note ? `: ${note}` : "."}${evidenceUri ? ` Evidence: ${evidenceUri}.` : ""}`,
         revision,
-        { amount, category, note, evidenceUri, evidenceHash, transactionHash },
+        { amount, category, items, note, evidenceUri, evidenceHash, transactionHash },
       ),
     );
   } else if (body.type === "claim_notification_prepared") {
@@ -697,11 +753,17 @@ async function applyAction(request, env, id) {
       return json({ error: "Only the landlord may amend a deduction claim." }, 403);
     }
     const amount = cleanText(body.amount, 80);
+    const items = cleanDeductionItems(body.items);
     const note = cleanText(body.note, 1000);
     const evidenceUri = cleanText(body.evidenceUri, 500);
     const evidenceHash = cleanText(body.evidenceHash, 100);
     const transactionHash = cleanText(body.transactionHash, 100);
-    if (!amount || !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+    if (
+      !amount ||
+      !items ||
+      !deductionItemsMatchAmount(items, amount) ||
+      !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)
+    ) {
       return json({ error: "The recorded claim amendment is incomplete." }, 400);
     }
     statements.push(
@@ -712,9 +774,9 @@ async function applyAction(request, env, id) {
         now,
         role,
         "deduction_claim_amended",
-        `Amended the deduction claim to ${amount} shares${note ? `: ${note}` : "."}${evidenceUri ? ` Evidence: ${evidenceUri}.` : ""}`,
+        `Amended the itemized deduction claim to ${amount} shares across ${items.length} line item${items.length === 1 ? "" : "s"}${note ? `: ${note}` : "."}${evidenceUri ? ` Evidence: ${evidenceUri}.` : ""}`,
         revision,
-        { amount, note, evidenceUri, evidenceHash, transactionHash },
+        { amount, items, note, evidenceUri, evidenceHash, transactionHash },
       ),
     );
   } else if (body.type === "claim_response") {
@@ -929,13 +991,23 @@ async function sendClaimNotification(request, env) {
   }
   const agreementId = cleanText(body.agreementId, 80);
   const amount = cleanText(body.amount, 80);
+  const items = cleanDeductionItems(body.items);
   const note = cleanText(body.note, 1000);
   const evidenceUri = cleanText(body.evidenceUri, 500);
-  if (!agreementId || !amount) return json({ error: "The claim notice is incomplete." }, 400);
+  if (!agreementId || !amount || !items || !deductionItemsMatchAmount(items, amount)) {
+    return json({ error: "The claim notice is incomplete." }, 400);
+  }
 
   const subject = `OpenEscrow deduction claim for agreement #${agreementId}`;
+  const itemSummary = items
+    .map(
+      (item, index) =>
+        `${index + 1}. ${item.category}: ${item.description} (${item.amount} shares)`,
+    )
+    .join("\n");
   const text = [
     `A deduction claim of ${amount} shares has been submitted for OpenEscrow agreement #${agreementId}.`,
+    `Itemized deductions:\n${itemSummary}`,
     note ? `Landlord note: ${note}` : "",
     evidenceUri ? `Invoice / evidence: ${evidenceUri}` : "",
     `Review the documentation and approve or dispute the claim: ${reviewUrl.toString()}`,
@@ -1000,6 +1072,26 @@ async function report(db, id, token) {
       (event) => `<tr><td>${escapeHtml(event.createdAt)}</td><td>${escapeHtml(event.actorRole)}</td><td>${escapeHtml(event.summary)}</td></tr>`,
     )
     .join("");
+  const claimBreakdowns = record.events
+    .filter(
+      (event) =>
+        (event.action === "deduction_claim_submitted" ||
+          event.action === "deduction_claim_amended") &&
+        Array.isArray(event.metadata?.items),
+    )
+    .map((event) => {
+      const rows = event.metadata.items
+        .map(
+          (item) =>
+            `<tr><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.description)}</td><td>${escapeHtml(item.amount)} shares</td></tr>`,
+        )
+        .join("");
+      return `<h3>${event.action === "deduction_claim_amended" ? "Amended claim" : "Original claim"} · ${escapeHtml(event.createdAt)}</h3>
+<table><thead><tr><th>Category</th><th>Description</th><th>Amount</th></tr></thead><tbody>${rows}</tbody>
+<tfoot><tr><th colspan="2">Total</th><th>${escapeHtml(event.metadata.amount)} shares</th></tr></tfoot></table>
+<p class="meta">Evidence: ${escapeHtml(event.metadata.evidenceUri || "No pointer recorded")} · Transaction: ${escapeHtml(event.metadata.transactionHash || "Not recorded")}</p>`;
+    })
+    .join("");
   const revisionSnapshots = record.events
     .filter((event) => event.metadata?.terms)
     .map((event) => {
@@ -1040,6 +1132,7 @@ async function report(db, id, token) {
 <h2>Approval state</h2>
 <p>Tenant: ${record.tenantApproved ? "approved" : "not approved"} · Arbiter: ${record.arbiterEmail ? (record.arbiterApproved ? "approved" : "not approved") : "not appointed"}</p>
 <h2>Revision snapshots</h2>${revisionSnapshots}
+${claimBreakdowns ? `<h2>Itemized deduction claims</h2>${claimBreakdowns}` : ""}
 <h2>Timestamped activity</h2><table><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th></tr></thead><tbody>${timeline}</tbody></table>
 <p class="meta">This MVP record is platform-stored and has not yet been cryptographically anchored onchain.</p>
 </body></html>`;

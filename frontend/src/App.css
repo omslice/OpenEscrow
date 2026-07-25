@@ -1403,6 +1403,54 @@ a.btn.disabled {
   margin: 0;
 }
 
+.claim-line-items {
+  display: grid;
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.claim-line-items-heading,
+.claim-total {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.claim-line-items-heading p {
+  margin: 4px 0 0;
+}
+
+.claim-line-item {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  background: var(--surface);
+}
+
+.claim-line-item legend {
+  padding: 0 6px;
+  color: var(--text-h);
+  font-weight: 700;
+}
+
+.claim-line-item label {
+  margin: 0;
+}
+
+.claim-line-item .btn {
+  justify-self: start;
+}
+
+.claim-total {
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+  color: var(--text-h);
+}
+
 .finalized-agreement-workspace {
   margin-top: 24px;
   border-top: 1px solid var(--border);

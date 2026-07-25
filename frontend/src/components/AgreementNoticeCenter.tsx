@@ -62,8 +62,8 @@ export function AgreementNoticeCenter({ agreement }: { agreement: Agreement }) {
         </div>
       ))}
       <small>
-        Live in-app status comes from the contract. Transactional email delivery requires the
-        upcoming server-side notification service.
+        Live status comes from the contract. Invitation and claim emails use the server-side
+        provider when configured, with Gmail and copy-email fallbacks available.
       </small>
     </section>
   );

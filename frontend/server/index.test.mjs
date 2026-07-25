@@ -352,11 +352,41 @@ test("documented claim, tenant decision, and email attempts are included in the 
   assert.equal(reservePaid.events.at(-1).action, "operations_reserve_paid");
   assert.match(reservePaid.events.at(-1).summary, /separate \$5 testUSDC/);
 
+  const mismatchedClaim = await act(db, created.record.id, created.access.landlord, {
+    type: "claim_submitted",
+    amount: "300",
+    category: "Itemized deductions",
+    items: [
+      {
+        category: "Damage beyond ordinary wear",
+        description: "Replacement of the tenant-damaged door",
+        amount: "299",
+      },
+    ],
+    note: "",
+    evidenceUri: "ipfs://bafy-test-invoice",
+    evidenceHash: `0x${"b".repeat(64)}`,
+    transactionHash: `0x${"c".repeat(64)}`,
+  });
+  assert.equal(mismatchedClaim.status, 400);
+
   const claimed = await jsonResponse(
     await act(db, created.record.id, created.access.landlord, {
       type: "claim_submitted",
       amount: "300",
       category: "Damage beyond ordinary wear",
+      items: [
+        {
+          category: "Damage beyond ordinary wear",
+          description: "Replacement of the tenant-damaged door",
+          amount: "225",
+        },
+        {
+          category: "Utilities or other unpaid charges",
+          description: "Final water bill",
+          amount: "75",
+        },
+      ],
       note: "Invoice covers replacement of the damaged fixture.",
       evidenceUri: "ipfs://bafy-test-invoice",
       evidenceHash: `0x${"b".repeat(64)}`,
@@ -365,6 +395,15 @@ test("documented claim, tenant decision, and email attempts are included in the 
   );
   assert.equal(claimed.events.at(-1).action, "deduction_claim_submitted");
   assert.match(claimed.events.at(-1).summary, /ipfs:\/\/bafy-test-invoice/);
+  assert.equal(claimed.events.at(-1).metadata.items.length, 2);
+  const claimReport = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}/report?token=${created.access.tenant}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(claimReport.status, 200);
+  assert.match(await claimReport.text(), /Replacement of the tenant-damaged door/);
 
   const responded = await jsonResponse(
     await act(db, created.record.id, created.access.tenant, {
@@ -384,6 +423,18 @@ test("documented claim, tenant decision, and email attempts are included in the 
       reviewUrl: `https://openescrow.example/?invite=tenant&proposal=${created.record.id}&token=${created.access.tenant}`,
       agreementId: "42",
       amount: "300",
+      items: [
+        {
+          category: "Damage beyond ordinary wear",
+          description: "Replacement of the tenant-damaged door",
+          amount: "225",
+        },
+        {
+          category: "Utilities or other unpaid charges",
+          description: "Final water bill",
+          amount: "75",
+        },
+      ],
       note: "",
       evidenceUri: "ipfs://bafy-test-invoice",
     }),

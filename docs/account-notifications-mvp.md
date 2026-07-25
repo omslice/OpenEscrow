@@ -16,8 +16,10 @@ production identity, custody, privacy, or communications design.
   by landlord, tenant, or arbiter email across browser sessions.
 - Agreement-activity and deadline-reminder preferences are collected per authenticated user.
 
-The preference values are currently device-local. No email is sent yet, and the interface says so
-explicitly.
+The preference values are currently device-local. Invitation and deduction-claim email delivery is
+available when the server-side email provider is configured; Gmail and copy-email fallbacks remain
+available without it. Automated event indexing, deadline reminders, and unsubscribe handling are
+still future work.
 
 The proposal form collects landlord, tenant, and optional arbiter email identities. The landlord is
 the signed-in account. Tenant and arbiter wallet addresses are recorded when the invited parties

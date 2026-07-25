@@ -14,6 +14,12 @@ export interface AgreementTerms {
   arbiterDays: string;
 }
 
+export interface DeductionLineItem {
+  category: string;
+  description: string;
+  amount: string;
+}
+
 export interface NegotiationEvent {
   id: number;
   createdAt: string;
@@ -339,6 +345,7 @@ export async function negotiationAction(
         type: "claim_submitted";
         amount: string;
         category: string;
+        items: DeductionLineItem[];
         note: string;
         evidenceUri: string;
         evidenceHash: string;
@@ -347,6 +354,7 @@ export async function negotiationAction(
     | {
         type: "claim_amended";
         amount: string;
+        items: DeductionLineItem[];
         note: string;
         evidenceUri: string;
         evidenceHash: string;
@@ -407,6 +415,7 @@ export async function sendClaimNotification(
     reviewUrl: string;
     agreementId: string;
     amount: string;
+    items: DeductionLineItem[];
     note: string;
     evidenceUri: string;
   },
