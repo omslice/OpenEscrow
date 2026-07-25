@@ -2,11 +2,15 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useSwitchChain } from "wagmi";
 import { chain } from "../contracts/config";
 import { shortAddr } from "../lib/format";
+import { useInviteRole, useWorkspaceRole } from "../lib/inviteContext";
 
 export function PrivyConnectWallet() {
   const { ready, authenticated, user, login, logout } = usePrivy();
   const { address, chainId } = useAccount();
   const { switchChain } = useSwitchChain();
+  const inviteRole = useInviteRole();
+  const workspaceRole = useWorkspaceRole();
+  const activeRole = inviteRole ?? workspaceRole;
 
   if (!ready) {
     return <button className="btn btn-primary" disabled>Loading account...</button>;
@@ -16,10 +20,10 @@ export function PrivyConnectWallet() {
     return (
       <div className="account-entry">
         <button className="btn btn-primary" onClick={() => login({ loginMethods: ["google"] })}>
-          Continue with Google
+          {activeRole ? `Continue as ${activeRole} with Google` : "Continue with Google"}
         </button>
         <button className="btn btn-ghost" onClick={() => login({ loginMethods: ["wallet"] })}>
-          Use your own wallet
+          {activeRole ? `Use a ${activeRole} wallet` : "Use your own wallet"}
         </button>
       </div>
     );

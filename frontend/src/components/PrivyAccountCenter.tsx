@@ -5,7 +5,7 @@ import { useAccount } from "wagmi";
 import { shortAddr } from "../lib/format";
 import {
   clearInviteRole,
-  inviteRoleLabel,
+  roleLabel,
   useInviteRole,
 } from "../lib/inviteContext";
 
@@ -123,7 +123,7 @@ export function PrivyAccountCenter() {
       {inviteRole && (
         <div className="invite-role-notice">
           <div>
-            <span className="eyebrow">{inviteRoleLabel[inviteRole]} invitation</span>
+            <span className="eyebrow">{roleLabel[inviteRole]} invitation · role locked</span>
             <h3>You are joining this deposit as the {inviteRole}.</h3>
             <p>
               Sign in with the Google account that received the invitation. This onboarding role
@@ -150,7 +150,7 @@ export function PrivyAccountCenter() {
               Use a different Google account
             </button>
             <button className="btn btn-ghost" onClick={clearInviteRole}>
-              Exit invitation mode
+              This invitation is for someone else
             </button>
           </div>
         </div>

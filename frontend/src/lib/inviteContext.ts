@@ -1,11 +1,14 @@
 import { useEffect, useState } from "react";
 
 export type InviteRole = "tenant" | "arbiter";
+export type WorkspaceRole = "landlord" | InviteRole;
 
-const STORAGE_KEY = "openescrow.pendingInviteRole";
+const INVITE_STORAGE_KEY = "openescrow.pendingInviteRole";
+const WORKSPACE_ROLE_STORAGE_KEY = "openescrow.workspaceRole";
 const CHANGE_EVENT = "openescrow:invite-context-changed";
 
-export const inviteRoleLabel: Record<InviteRole, string> = {
+export const roleLabel: Record<WorkspaceRole, string> = {
+  landlord: "Landlord",
   tenant: "Tenant",
   arbiter: "Arbiter",
 };
@@ -18,7 +21,7 @@ export function readInviteRole(): InviteRole | null {
   const fromUrl = new URLSearchParams(window.location.search).get("invite");
   if (isInviteRole(fromUrl)) {
     try {
-      window.sessionStorage.setItem(STORAGE_KEY, fromUrl);
+      window.sessionStorage.setItem(INVITE_STORAGE_KEY, fromUrl);
     } catch {
       // The URL remains the source of truth when session storage is unavailable.
     }
@@ -26,7 +29,7 @@ export function readInviteRole(): InviteRole | null {
   }
 
   try {
-    const stored = window.sessionStorage.getItem(STORAGE_KEY);
+    const stored = window.sessionStorage.getItem(INVITE_STORAGE_KEY);
     return isInviteRole(stored) ? stored : null;
   } catch {
     return null;
@@ -35,7 +38,8 @@ export function readInviteRole(): InviteRole | null {
 
 export function clearInviteRole() {
   try {
-    window.sessionStorage.removeItem(STORAGE_KEY);
+    window.sessionStorage.removeItem(INVITE_STORAGE_KEY);
+    window.sessionStorage.removeItem(WORKSPACE_ROLE_STORAGE_KEY);
   } catch {
     // Clearing the URL still exits invitation mode for this page.
   }
@@ -46,11 +50,53 @@ export function clearInviteRole() {
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }
 
+function isSelectableWorkspaceRole(value: string | null): value is "landlord" | "tenant" {
+  return value === "landlord" || value === "tenant";
+}
+
+export function readWorkspaceRole(): WorkspaceRole | null {
+  const inviteRole = readInviteRole();
+  if (inviteRole) return inviteRole;
+
+  try {
+    const stored = window.sessionStorage.getItem(WORKSPACE_ROLE_STORAGE_KEY);
+    return isSelectableWorkspaceRole(stored) ? stored : null;
+  } catch {
+    return null;
+  }
+}
+
+export function selectWorkspaceRole(role: "landlord" | "tenant") {
+  if (readInviteRole()) return;
+  try {
+    window.sessionStorage.setItem(WORKSPACE_ROLE_STORAGE_KEY, role);
+  } catch {
+    // The current React state still reflects the selection for this page.
+  }
+  window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
 export function useInviteRole() {
   const [role, setRole] = useState<InviteRole | null>(() => readInviteRole());
 
   useEffect(() => {
     const refresh = () => setRole(readInviteRole());
+    window.addEventListener("popstate", refresh);
+    window.addEventListener(CHANGE_EVENT, refresh);
+    return () => {
+      window.removeEventListener("popstate", refresh);
+      window.removeEventListener(CHANGE_EVENT, refresh);
+    };
+  }, []);
+
+  return role;
+}
+
+export function useWorkspaceRole() {
+  const [role, setRole] = useState<WorkspaceRole | null>(() => readWorkspaceRole());
+
+  useEffect(() => {
+    const refresh = () => setRole(readWorkspaceRole());
     window.addEventListener("popstate", refresh);
     window.addEventListener(CHANGE_EVENT, refresh);
     return () => {

@@ -9,7 +9,13 @@ import { TestFunds } from "./components/TestFunds";
 import { PublicIntro } from "./components/PublicIntro";
 import { AccountCenter } from "./components/AccountCenter";
 import { isJurisdictionCode, rememberJurisdiction } from "./lib/jurisdictions";
-import { clearInviteRole, inviteRoleLabel, useInviteRole } from "./lib/inviteContext";
+import {
+  clearInviteRole,
+  roleLabel,
+  selectWorkspaceRole,
+  useInviteRole,
+  useWorkspaceRole,
+} from "./lib/inviteContext";
 import "./App.css";
 
 type Tab = "create" | "track";
@@ -22,10 +28,11 @@ function App() {
   const [manualId, setManualId] = useState("");
   const [scanMessage, setScanMessage] = useState<string | null>(null);
   const inviteRole = useInviteRole();
+  const workspaceRole = useWorkspaceRole();
   const startDemo = () => {
-    setTab("create");
+    setTab(workspaceRole === "landlord" ? "create" : "track");
     window.requestAnimationFrame(() => {
-      document.getElementById("demo-workspace")?.scrollIntoView({ behavior: "smooth" });
+      document.getElementById("role-workspace")?.scrollIntoView({ behavior: "smooth" });
     });
   };
 
@@ -57,7 +64,7 @@ function App() {
       <PublicIntro onStart={startDemo} />
       {inviteRole && (
         <section className="card invite-landing-notice" aria-labelledby="invite-landing-title">
-          <span className="eyebrow">{inviteRoleLabel[inviteRole]} invitation</span>
+          <span className="eyebrow">{roleLabel[inviteRole]} invitation · role locked</span>
           <h2 id="invite-landing-title">You are joining as the {inviteRole}.</h2>
           <p>
             Continue with the Google account that received this invitation, or connect the wallet
@@ -65,32 +72,72 @@ function App() {
             against the connected wallet onchain.
           </p>
           <button className="btn btn-ghost" onClick={clearInviteRole}>
-            Exit invitation mode
+            This invitation is for someone else
           </button>
+        </section>
+      )}
+      {!inviteRole && (
+        <section className="card role-selector" id="role-workspace" aria-labelledby="role-selector-title">
+          <span className="eyebrow">Choose your workspace</span>
+          <h2 id="role-selector-title">How are you using OpenEscrow today?</h2>
+          <p>
+            This controls the tools shown in this session. Your legal role for each agreement is
+            determined separately by its on-chain wallet assignments.
+          </p>
+          <div className="role-choice-grid">
+            <button
+              className={`role-choice${workspaceRole === "landlord" ? " selected" : ""}`}
+              aria-pressed={workspaceRole === "landlord"}
+              onClick={() => {
+                selectWorkspaceRole("landlord");
+                setTab("create");
+              }}
+            >
+              <strong>I am a landlord</strong>
+              <span>Propose an agreement, invite a tenant, and manage deduction claims.</span>
+            </button>
+            <button
+              className={`role-choice${workspaceRole === "tenant" ? " selected" : ""}`}
+              aria-pressed={workspaceRole === "tenant"}
+              onClick={() => {
+                selectWorkspaceRole("tenant");
+                setTab("track");
+              }}
+            >
+              <strong>I am a tenant</strong>
+              <span>Find, fund, monitor, and respond within your deposit agreements.</span>
+            </button>
+          </div>
         </section>
       )}
       <AccountCenter />
 
-      <nav className="tabs" id="demo-workspace">
-        <button className={tab === "track" ? "tab active" : "tab"} onClick={() => setTab("track")}>
-          Deposit dashboard
-        </button>
-        {inviteRole ? (
-          <span className="invitation-tab-note">
-            {inviteRoleLabel[inviteRole]} invitation mode
-          </span>
-        ) : (
-          <button className={tab === "create" ? "tab active" : "tab"} onClick={() => setTab("create")}>
-            Propose new agreement
+      {workspaceRole && (
+        <nav className="tabs" id="demo-workspace">
+          <button className={tab === "track" ? "tab active" : "tab"} onClick={() => setTab("track")}>
+            Deposit dashboard
           </button>
-        )}
-      </nav>
+          {workspaceRole === "landlord" && !inviteRole && (
+            <button className={tab === "create" ? "tab active" : "tab"} onClick={() => setTab("create")}>
+              Propose new agreement
+            </button>
+          )}
+          {inviteRole && (
+            <span className="invitation-tab-note">
+              {roleLabel[inviteRole]} invitation · role locked
+            </span>
+          )}
+          {!inviteRole && workspaceRole === "tenant" && (
+            <span className="invitation-tab-note">Tenant workspace</span>
+          )}
+        </nav>
+      )}
 
-      <TestFunds />
+      {workspaceRole && <TestFunds />}
 
-      {tab === "create" && <CreateAgreementForm />}
+      {workspaceRole === "landlord" && !inviteRole && tab === "create" && <CreateAgreementForm />}
 
-      {tab === "track" && (
+      {workspaceRole && tab === "track" && (
         <div>
           <div className="card">
             <h2>Find agreements involving you</h2>
@@ -153,6 +200,9 @@ function App() {
             <AgreementCard key={id.toString()} id={id} onRemove={() => removeId(id)} />
           ))}
         </div>
+      )}
+      {!workspaceRole && (
+        <p className="role-selection-prompt">Choose landlord or tenant above to open the demo workspace.</p>
       )}
     </Layout>
   );

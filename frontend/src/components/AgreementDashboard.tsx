@@ -11,7 +11,7 @@ import { useNow } from "../lib/useNow";
 import type { Agreement } from "../lib/useAgreement";
 import { useAccount, useReadContract } from "wagmi";
 import { jurisdictionLabel, readJurisdiction } from "../lib/jurisdictions";
-import { inviteRoleLabel, useInviteRole } from "../lib/inviteContext";
+import { roleLabel, useInviteRole } from "../lib/inviteContext";
 
 function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | null {
   switch (agreement.phase) {
@@ -126,7 +126,7 @@ export function AgreementDashboard({ id, agreement }: { id: bigint; agreement: A
       </div>
       <div className="dashboard-row">
         <span className="label">Your role for this agreement</span>
-        <strong>{actualRole ? inviteRoleLabel[actualRole] : "Not a party with this wallet"}</strong>
+        <strong>{actualRole ? roleLabel[actualRole] : "Not a party with this wallet"}</strong>
       </div>
       {inviteRole && actualRole && inviteRole !== actualRole && (
         <p className="tx-error role-mismatch">
@@ -136,7 +136,7 @@ export function AgreementDashboard({ id, agreement }: { id: bigint; agreement: A
       )}
       {inviteRole && !actualRole && (
         <p className="role-pending">
-          This is a {inviteRoleLabel[inviteRole].toLowerCase()} invite, but the connected wallet is
+          This is a {roleLabel[inviteRole].toLowerCase()} invite, but the connected wallet is
           not assigned to this agreement. Send the wallet shown in your account panel to the
           landlord, or ask the landlord for the agreement link created after your wallet was added.
         </p>
