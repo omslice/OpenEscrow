@@ -22,6 +22,7 @@ import {
   type JurisdictionCode,
 } from "../lib/jurisdictions";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
+import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
 import { useTrackedAgreements } from "../lib/useTrackedAgreements";
 import type { InviteRole } from "../lib/inviteContext";
 import {
@@ -53,6 +54,7 @@ type ProposalField =
   | "tenantName"
   | "tenantEmail"
   | "arbiterEmail"
+  | "propertyAddress"
   | "deposit"
   | "monthlyRent"
   | "claimWindowStart"
@@ -66,6 +68,8 @@ type ProposalValidationIssue = {
   message: string;
 };
 
+type ProposalStep = "participants" | "terms" | "review";
+
 function validatePeriodDays(days: string, label: string): string | null {
   const n = Number(days);
   if (!Number.isFinite(n) || n <= 0) return `${label} must be a positive number of days.`;
@@ -77,6 +81,36 @@ function validatePeriodDays(days: string, label: string): string | null {
 
 function hasFirstAndLastName(value: string): boolean {
   return value.trim().split(/\s+/).filter(Boolean).length >= 2;
+}
+
+function defaultClaimWindowStart(): string {
+  const date = new Date();
+  date.setFullYear(date.getFullYear() + 1);
+  const offsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function equalSplitBps(count: number): number[] {
+  if (count <= 0) return [];
+  const base = Math.floor(10000 / count);
+  const remainder = 10000 - base * count;
+  return Array.from({ length: count }, (_, index) => base + (index < remainder ? 1 : 0));
+}
+
+function sharePercent(bps: number): string {
+  return (bps / 100).toFixed(2).replace(/\.?0+$/, "");
+}
+
+function percentToBps(value: string): number {
+  return Math.round(Number(value) * 100);
+}
+
+function tenantDepositAmount(total: string, bps: number): string {
+  const amount = Number(total);
+  if (!Number.isFinite(amount)) return "0";
+  return (amount * bps / 10000).toLocaleString(undefined, {
+    maximumFractionDigits: 6,
+  });
 }
 
 function inviteContent(
@@ -121,21 +155,25 @@ function AgreementForm({
   const [newTenantName, setNewTenantName] = useState("");
   const [newTenantEmail, setNewTenantEmail] = useState("");
   const [pendingTenants, setPendingTenants] = useState<
-    Array<{ name: string; email: string }>
+    Array<{ name: string; email: string; depositShareBps: number }>
   >([]);
   const [showAdditionalTenant, setShowAdditionalTenant] = useState(false);
+  const [showArbiter, setShowArbiter] = useState(false);
   const [editingTenantId, setEditingTenantId] = useState<string | null>(null);
   const [editingTenantName, setEditingTenantName] = useState("");
   const [editingTenantEmail, setEditingTenantEmail] = useState("");
   const [arbiterName, setArbiterName] = useState("");
   const [arbiterEmail, setArbiterEmail] = useState("");
+  const [propertyAddress, setPropertyAddress] = useState("");
+  const [primaryTenantShareBps, setPrimaryTenantShareBps] = useState(10000);
+  const [tenantShareDraft, setTenantShareDraft] = useState<Record<string, number>>({});
   const [deposit, setDeposit] = useState("100");
   const [monthlyRent, setMonthlyRent] = useState("100");
   const [smallLandlordException, setSmallLandlordException] = useState(false);
   const [tenantIsServiceMember, setTenantIsServiceMember] = useState(false);
   const [operationsReserve, setOperationsReserve] = useState<string>(CALIFORNIA_POLICY.operationsReserve);
   const [tokenChoice, setTokenChoice] = useState<"plain" | "yield">("plain");
-  const [claimWindowStart, setClaimWindowStart] = useState("");
+  const [claimWindowStart, setClaimWindowStart] = useState(defaultClaimWindowStart);
   const [claimDays, setClaimDays] = useState<string>(CALIFORNIA_POLICY.claimDays);
   const [responseDays, setResponseDays] = useState<string>(CALIFORNIA_POLICY.responseDays);
   const [arbiterDays, setArbiterDays] = useState<string>(CALIFORNIA_POLICY.arbiterDays);
@@ -155,6 +193,7 @@ function AgreementForm({
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isEditingRevision, setIsEditingRevision] = useState(false);
+  const [proposalStep, setProposalStep] = useState<ProposalStep>("participants");
   const submittedJurisdiction = useRef<JurisdictionCode>(CALIFORNIA_POLICY.jurisdiction);
   const handledReceipt = useRef<`0x${string}` | null>(null);
 
@@ -237,6 +276,13 @@ function AgreementForm({
     setTenantEmail(record.tenantEmail);
     setArbiterName(record.arbiterName || "");
     setArbiterEmail(record.arbiterEmail || "");
+    setShowArbiter(Boolean(record.arbiterEmail));
+    setPropertyAddress(record.terms.propertyAddress || "");
+    setTenantShareDraft(
+      Object.fromEntries(
+        record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
+      ),
+    );
     setDeposit(record.terms.deposit);
     setMonthlyRent(record.terms.monthlyRent || record.terms.deposit);
     setSmallLandlordException(record.terms.smallLandlordException === true);
@@ -258,20 +304,21 @@ function AgreementForm({
       recordIsCalifornia ? CALIFORNIA_POLICY.arbiterDays : record.terms.arbiterDays,
     );
     setJurisdiction(recordJurisdiction);
+    setProposalStep(
+      record.status === "ready" || record.status === "finalized"
+        ? "review"
+        : "participants",
+    );
   }
 
   useEffect(() => {
-    const saved = readLandlordBundle(initialAccess?.proposalId);
+    const saved = initialAccess?.proposalId
+      ? readLandlordBundle(initialAccess.proposalId)
+      : null;
     const access: NegotiationAccess | null =
       initialAccess?.role === "landlord"
         ? initialAccess
-        : saved
-          ? {
-              proposalId: saved.proposalId,
-              role: "landlord",
-              token: saved.access.landlord,
-            }
-          : null;
+        : null;
     if (!access) return;
     loadNegotiation(access)
       .then((record) => {
@@ -335,6 +382,7 @@ function AgreementForm({
         ? CALIFORNIA_POLICY.version
         : GENERIC_TEST_POLICY.version,
       tokenChoice,
+      propertyAddress: propertyAddress.trim(),
       deposit,
       operationsReserve,
       monthlyRent,
@@ -360,6 +408,12 @@ function AgreementForm({
     }
     if (!EMAIL_PATTERN.test(tenantEmail)) {
       return { field: "tenantEmail", message: "Enter a valid tenant email." };
+    }
+    if (propertyAddress.trim().length < 5) {
+      return {
+        field: "propertyAddress",
+        message: "Enter the rental property address for this agreement.",
+      };
     }
     const hasArbiter = arbiterEmail.trim() !== "";
     if (hasArbiter && !EMAIL_PATTERN.test(arbiterEmail)) {
@@ -391,6 +445,15 @@ function AgreementForm({
         field: "claimWindowStart",
         message: "Expected possession-return date is required.",
       };
+    }
+    if (!draft) {
+      const shares = [primaryTenantShareBps, ...pendingTenants.map((tenant) => tenant.depositShareBps)];
+      if (
+        shares.some((share) => !Number.isInteger(share) || share <= 0) ||
+        shares.reduce((total, share) => total + share, 0) !== 10000
+      ) {
+        return { message: "Tenant deposit shares must be positive and total exactly 100%." };
+      }
     }
     const nowSec = Math.floor(Date.now() / 1000);
     const startSec = Math.floor(new Date(claimWindowStart).getTime() / 1000);
@@ -508,7 +571,7 @@ function AgreementForm({
           tenantName,
           tenantEmail,
           tenants: [
-            { name: tenantName, email: tenantEmail },
+            { name: tenantName, email: tenantEmail, depositShareBps: primaryTenantShareBps },
             ...pendingTenants,
           ],
           arbiterName,
@@ -526,7 +589,13 @@ function AgreementForm({
         rememberLandlordBundle(created);
         setPendingTenants([]);
         setShowAdditionalTenant(false);
+        setTenantShareDraft(
+          Object.fromEntries(
+            created.record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
+          ),
+        );
         setFormMessage("Proposal saved. Invitations are now unlocked for this exact revision.");
+        setProposalStep("review");
       } else {
         if (!landlordAccess) throw new Error("The landlord proposal access is unavailable.");
         const updated = await negotiationAction(landlordAccess, {
@@ -541,6 +610,7 @@ function AgreementForm({
         setFormMessage(
           `Revision ${updated.revision} published. Prior approvals were reset; resend the review invitations so every tenant${updated.arbiterEmail ? " and the arbiter" : ""} can approve the new revision.`,
         );
+        setProposalStep("review");
       }
     } catch (saveError) {
       reportIssue({
@@ -557,11 +627,17 @@ function AgreementForm({
     setAccessBundle(null);
     setPendingTenants([]);
     setShowAdditionalTenant(false);
+    setShowArbiter(false);
+    setPropertyAddress("");
+    setPrimaryTenantShareBps(10000);
+    setTenantShareDraft({});
+    setClaimWindowStart(defaultClaimWindowStart());
     setRevisionSummary("");
     setIsEditingRevision(false);
     setInvalidField(null);
     setFormError(null);
     setFormMessage("Ready to create a separate proposal.");
+    setProposalStep("participants");
   }
 
   function addOrReplaceTenant() {
@@ -573,6 +649,11 @@ function AgreementForm({
     setArbiterEmail("");
     setPendingTenants([]);
     setShowAdditionalTenant(false);
+    setShowArbiter(false);
+    setPropertyAddress("");
+    setPrimaryTenantShareBps(10000);
+    setTenantShareDraft({});
+    setClaimWindowStart(defaultClaimWindowStart());
     setRevisionSummary("");
     setIsEditingRevision(false);
     setInvalidField(null);
@@ -580,6 +661,7 @@ function AgreementForm({
     setFormMessage(
       "Started a separate proposal for a new tenant. The existing approved record remains unchanged.",
     );
+    setProposalStep("participants");
   }
 
   async function addTenantReviewer() {
@@ -604,7 +686,16 @@ function AgreementForm({
       return setFormError("Each tenant must use a different email address.");
     }
     if (!draft) {
-      setPendingTenants((current) => [...current, { name, email }]);
+      const nextCount = pendingTenants.length + 2;
+      const split = equalSplitBps(nextCount);
+      setPrimaryTenantShareBps(split[0]);
+      setPendingTenants((current) => [
+        ...current.map((tenant, index) => ({
+          ...tenant,
+          depositShareBps: split[index + 1],
+        })),
+        { name, email, depositShareBps: split[nextCount - 1] },
+      ]);
       setNewTenantName("");
       setNewTenantEmail("");
       setShowAdditionalTenant(false);
@@ -626,6 +717,11 @@ function AgreementForm({
         ],
       };
       setDraft(result.record);
+      setTenantShareDraft(
+        Object.fromEntries(
+          result.record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
+        ),
+      );
       setAccessBundle(nextBundle);
       rememberLandlordBundle({ record: result.record, access: nextBundle });
       setNewTenantName("");
@@ -703,6 +799,11 @@ function AgreementForm({
       setTenantName(result.record.tenantName || "");
       setTenantEmail(result.record.tenantEmail);
       setAccessBundle(nextBundle);
+      setTenantShareDraft(
+        Object.fromEntries(
+          result.record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
+        ),
+      );
       rememberLandlordBundle({ record: result.record, access: nextBundle });
       setEditingTenantId(null);
       setIsEditingRevision(false);
@@ -752,6 +853,14 @@ function AgreementForm({
       setTenantName(result.record.tenantName || "");
       setTenantEmail(result.record.tenantEmail);
       setAccessBundle(nextBundle);
+      setTenantShareDraft(
+        Object.fromEntries(
+          result.record.tenants.map((recordTenant) => [
+            recordTenant.id,
+            recordTenant.depositShareBps,
+          ]),
+        ),
+      );
       rememberLandlordBundle({ record: result.record, access: nextBundle });
       setEditingTenantId(null);
       setIsEditingRevision(false);
@@ -782,6 +891,85 @@ function AgreementForm({
         finalizedAgreementId ? ` #${finalizedAgreementId}` : ""
       } remains unchanged; cancel it from its Manage proposal section before it is funded.`,
     );
+  }
+
+  async function saveTenantShares() {
+    if (!landlordAccess || !draft) return;
+    const shares = draft.tenants.map((tenant) => ({
+      tenantId: tenant.id,
+      depositShareBps: tenantShareDraft[tenant.id] ?? tenant.depositShareBps,
+    }));
+    if (
+      shares.some(
+        (item) =>
+          !Number.isInteger(item.depositShareBps) ||
+          item.depositShareBps <= 0 ||
+          item.depositShareBps > 10000,
+      ) ||
+      shares.reduce((total, item) => total + item.depositShareBps, 0) !== 10000
+    ) {
+      return setFormError("Tenant deposit shares must be positive and total exactly 100%.");
+    }
+    setIsSavingDraft(true);
+    setFormError(null);
+    setFormMessage(null);
+    try {
+      const updated = await negotiationAction(landlordAccess, {
+        type: "update_tenant_shares",
+        shares,
+      });
+      setDraft(updated);
+      setTenantShareDraft(
+        Object.fromEntries(
+          updated.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
+        ),
+      );
+      setIsEditingRevision(false);
+      setFormMessage(
+        `Updated the tenant deposit split. Revision ${updated.revision} now requires fresh approval from every tenant${updated.arbiterEmail ? " and the arbiter" : ""}.`,
+      );
+    } catch (cause) {
+      setFormError(
+        cause instanceof Error ? cause.message : "The tenant split could not be saved.",
+      );
+    } finally {
+      setIsSavingDraft(false);
+    }
+  }
+
+  async function cancelProposal() {
+    if (!landlordAccess || !draft || draft.status === "finalized") return;
+    if (
+      !window.confirm(
+        "Cancel and remove this proposal from every party's active workspace? Its timestamped audit record will be preserved.",
+      )
+    ) {
+      return;
+    }
+    setIsSavingDraft(true);
+    setFormError(null);
+    try {
+      await negotiationAction(landlordAccess, { type: "cancel_proposal" });
+      clearLandlordBundle(draft.id);
+      setDraft(null);
+      setAccessBundle(null);
+      setPendingTenants([]);
+      setShowAdditionalTenant(false);
+      setShowArbiter(false);
+      setPropertyAddress("");
+      setPrimaryTenantShareBps(10000);
+      setTenantShareDraft({});
+      setClaimWindowStart(defaultClaimWindowStart());
+      setFormMessage(
+        "Proposal cancelled and removed from active workspaces. Its audit record was preserved.",
+      );
+    } catch (cause) {
+      setFormError(
+        cause instanceof Error ? cause.message : "The proposal could not be cancelled.",
+      );
+    } finally {
+      setIsSavingDraft(false);
+    }
   }
 
   function arbiterInvite() {
@@ -875,21 +1063,29 @@ function AgreementForm({
         "This approved revision does not match a current jurisdiction policy. Unlock edits, publish a new revision, and collect fresh approvals before finalizing.",
       );
     }
-    const tenantWallet = draft.tenantWallet || "";
+    const tenantWallets = draft.tenants.map((tenant) => tenant.wallet || "");
     const arbiterWallet = draft.arbiterWallet || "";
     const hasArbiter = Boolean(draft.arbiterEmail);
-    if (!isAddress(tenantWallet)) return setFormError("The tenant must approve with a valid wallet.");
+    if (tenantWallets.some((wallet) => !isAddress(wallet))) {
+      return setFormError("Every tenant must approve with a valid wallet.");
+    }
+    if (new Set(tenantWallets.map((wallet) => wallet.toLowerCase())).size !== tenantWallets.length) {
+      return setFormError("Each tenant must approve with a different wallet.");
+    }
     if (hasArbiter && !isAddress(arbiterWallet)) {
       return setFormError("The arbiter must approve with a valid wallet.");
     }
-    if (tenantWallet.toLowerCase() === address.toLowerCase()) {
+    if (tenantWallets.some((wallet) => wallet.toLowerCase() === address.toLowerCase())) {
       return setFormError("The landlord and tenant wallets must be different.");
     }
     if (hasArbiter && arbiterWallet.toLowerCase() === address.toLowerCase()) {
       return setFormError("The landlord and arbiter wallets must be different.");
     }
-    if (hasArbiter && tenantWallet.toLowerCase() === arbiterWallet.toLowerCase()) {
-      return setFormError("The tenant and arbiter wallets must be different.");
+    if (
+      hasArbiter &&
+      tenantWallets.some((wallet) => wallet.toLowerCase() === arbiterWallet.toLowerCase())
+    ) {
+      return setFormError("Every tenant and the arbiter must use different wallets.");
     }
 
     const nowSec = Math.floor(Date.now() / 1000);
@@ -903,11 +1099,12 @@ function AgreementForm({
     writeContract({
       address: OPEN_ESCROW_ADDRESS,
       abi: OpenEscrowABI,
-      functionName: "createAgreementWithToken",
+      functionName: "createMultiTenantAgreementWithToken",
       account: address,
       chain,
       args: [
-        tenantWallet,
+        tenantWallets,
+        draft.tenants.map((tenant) => tenant.depositShareBps),
         hasArbiter ? arbiterWallet : ZERO_ADDRESS,
         tokenChoice === "yield" ? YIELD_USDC_ADDRESS : USDC_ADDRESS,
         parseUSDC(deposit),
@@ -916,6 +1113,19 @@ function AgreementForm({
         BigInt(Number(responseDays) * DAY),
         BigInt(Number(arbiterDays) * DAY),
       ],
+    });
+  }
+
+  function goToProposalStep(step: ProposalStep) {
+    setProposalStep(step);
+    const targetId =
+      step === "participants"
+        ? "proposal-participants"
+        : step === "terms"
+          ? "proposal-terms"
+          : "proposal-review";
+    window.requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
 
@@ -929,11 +1139,52 @@ function AgreementForm({
         {draft && <span className={`negotiation-status status-${draft.status}`}>Revision {draft.revision}</span>}
       </div>
       <p className="hint">
-        Set the complete proposal first. Tenant and optional arbiter invitations stay locked until
-        it is saved, so invitees always receive terms they can review, change, and approve.
+        Set the complete proposal first. Tenant invitations stay locked until it is saved, so
+        invitees always receive terms they can review, change, and approve.
       </p>
+      <nav className="proposal-workflow-tabs" aria-label="Proposal sections">
+        {([
+          ["participants", "1. Parties"],
+          ["terms", "2. Property & terms"],
+          ["review", "3. Review & finalize"],
+        ] as const).map(([step, label]) => (
+          <button
+            className={proposalStep === step ? "active" : ""}
+            type="button"
+            key={step}
+            onClick={() => goToProposalStep(step)}
+          >
+            {label}
+          </button>
+        ))}
+      </nav>
+      {draft?.status === "ready" && (
+        <section className="onchain-ready primary-finalization" id="proposal-finalize">
+          <span className="eyebrow">All required approvals recorded</span>
+          <h3>Finalize this approved proposal onchain</h3>
+          <p>
+            This is the only finalization action. It creates the Base Sepolia agreement using the
+            exact participant, property, deposit-split, timing, and token terms everyone approved.
+          </p>
+          <button
+            className="btn btn-primary"
+            type="button"
+            disabled={!isConnected || isPending || isMining}
+            onClick={finalizeOnchain}
+          >
+            {isPending
+              ? "Confirm in wallet..."
+              : isMining
+                ? "Finalizing onchain..."
+                : "Finalize approved proposal onchain"}
+          </button>
+          {!isConnected && (
+            <p className="field-help">Connect the landlord wallet to enable finalization.</p>
+          )}
+        </section>
+      )}
 
-      <div className="participant-summary">
+      <div className="participant-summary" id="proposal-participants">
         <span>Landlord</span>
         <strong>{landlordName || "Name from linked account"}</strong>
         <small>{landlordEmail || "Link Google in your account settings first"}</small>
@@ -943,20 +1194,32 @@ function AgreementForm({
       <div className="primary-tenant-field">
         <div className="field-label-heading">
           <label htmlFor="primary-tenant-name">Tenant first and last name</label>
-          {draft?.status !== "finalized" && (
-            <button
-              className="btn btn-ghost small add-tenant-toggle"
-              type="button"
-              disabled={
-                showAdditionalTenant ||
-                (draft ? draft.tenants.length >= 5 : pendingTenants.length >= 4)
-              }
-              title="Add another tenant to this same proposal."
-              onClick={() => setShowAdditionalTenant(true)}
-            >
-              + Add tenant
-            </button>
-          )}
+          <div className="participant-add-actions">
+            {draft?.status !== "finalized" && (
+              <button
+                className="btn btn-ghost small add-tenant-toggle"
+                type="button"
+                disabled={
+                  showAdditionalTenant ||
+                  (draft ? draft.tenants.length >= 5 : pendingTenants.length >= 4)
+                }
+                title="Add another tenant to this same proposal."
+                onClick={() => setShowAdditionalTenant(true)}
+              >
+                + Add tenant
+              </button>
+            )}
+            {draft?.status !== "finalized" && (
+              <button
+                className="btn btn-ghost small add-tenant-toggle"
+                type="button"
+                disabled
+                title="Arbiter participation is saved for a later release."
+              >
+                + Add arbiter
+              </button>
+            )}
+          </div>
         </div>
         <input
           id="primary-tenant-name"
@@ -1003,11 +1266,19 @@ function AgreementForm({
               <button
                 className="btn btn-ghost small"
                 type="button"
-                onClick={() =>
-                  setPendingTenants((current) =>
-                    current.filter((item) => item.email !== tenant.email),
-                  )
-                }
+                onClick={() => {
+                  const remaining = pendingTenants.filter(
+                    (item) => item.email !== tenant.email,
+                  );
+                  const split = equalSplitBps(remaining.length + 1);
+                  setPrimaryTenantShareBps(split[0]);
+                  setPendingTenants(
+                    remaining.map((item, index) => ({
+                      ...item,
+                      depositShareBps: split[index + 1],
+                    })),
+                  );
+                }}
               >
                 Remove
               </button>
@@ -1015,38 +1286,64 @@ function AgreementForm({
           ))}
         </div>
       )}
-      <label>
-        Arbiter name (optional)
-        <input
-          value={arbiterName}
-          onChange={(event) => setArbiterName(event.target.value)}
-          placeholder="Arbiter's full name"
-          autoComplete="name"
-          disabled={Boolean(draft)}
-        />
-      </label>
-      <label>
-        Arbiter email (optional)
-        <input
-          value={arbiterEmail}
-          onChange={(event) => {
-            setArbiterEmail(event.target.value);
-            clearFieldIssue("arbiterEmail");
-          }}
-          placeholder="arbiter@example.com"
-          type="email"
-          pattern="[^\s@]+@[^\s@]+\.[^\s@]+"
-          autoComplete="email"
-          disabled={Boolean(draft)}
-          data-proposal-field="arbiterEmail"
-          aria-invalid={invalidField === "arbiterEmail"}
-        />
-      </label>
+      {ARBITER_UI_ENABLED && showArbiter && (
+        <section className="optional-arbiter" aria-labelledby="optional-arbiter-title">
+          <div className="record-header">
+            <div>
+              <h3 id="optional-arbiter-title">Optional arbiter</h3>
+              <p className="hint">
+                The arbiter receives a role-locked invitation and must approve this proposal.
+              </p>
+            </div>
+            {!draft && (
+              <button
+                className="btn btn-ghost small"
+                type="button"
+                onClick={() => {
+                  setShowArbiter(false);
+                  setArbiterName("");
+                  setArbiterEmail("");
+                }}
+              >
+                Remove arbiter
+              </button>
+            )}
+          </div>
+          <div className="participant-input-grid">
+            <label>
+              Arbiter first and last name
+              <input
+                value={arbiterName}
+                onChange={(event) => setArbiterName(event.target.value)}
+                placeholder="First and last name"
+                autoComplete="name"
+                disabled={Boolean(draft)}
+              />
+            </label>
+            <label>
+              Arbiter email
+              <input
+                value={arbiterEmail}
+                onChange={(event) => {
+                  setArbiterEmail(event.target.value);
+                  clearFieldIssue("arbiterEmail");
+                }}
+                placeholder="arbiter@example.com"
+                type="email"
+                pattern="[^\s@]+@[^\s@]+\.[^\s@]+"
+                autoComplete="email"
+                disabled={Boolean(draft)}
+                data-proposal-field="arbiterEmail"
+                aria-invalid={invalidField === "arbiterEmail"}
+              />
+            </label>
+          </div>
+        </section>
+      )}
       {draft && (
         <p className="field-help">
-          The first tenant is the designated funding tenant for the single onchain deposit.
-          Additional tenants can review and approve the record, but they do not control the
-          funding wallet.
+          Each approved tenant wallet funds only its recorded percentage. The agreement remains
+          partially funded until every tenant contribution has been received.
         </p>
       )}
       {showAdditionalTenant && (!draft || draft.status !== "finalized") && (
@@ -1110,6 +1407,162 @@ function AgreementForm({
           </div>
         </section>
       )}
+
+      <section className="deposit-split" aria-labelledby="deposit-split-title">
+        <div className="record-header">
+          <div>
+            <h3 id="deposit-split-title">Tenant deposit ownership split</h3>
+            <p className="hint">
+              Shares start equally divided. Every tenant approves this split as part of the
+              proposal, and the percentages must total 100%.
+            </p>
+          </div>
+          <strong>
+            {draft
+              ? sharePercent(
+                  draft.tenants.reduce(
+                    (total, tenant) =>
+                      total +
+                      (tenantShareDraft[tenant.id] ?? tenant.depositShareBps),
+                    0,
+                  ),
+                )
+              : sharePercent(
+                  primaryTenantShareBps +
+                    pendingTenants.reduce(
+                      (total, tenant) => total + tenant.depositShareBps,
+                      0,
+                    ),
+                )}
+            % total
+          </strong>
+        </div>
+        <div className="deposit-split-list">
+          {!draft ? (
+            <>
+              <label>
+                <span>
+                  <strong>{tenantName || tenantEmail || "Primary tenant"}</strong>
+                  <small>
+                    Owes {tenantDepositAmount(deposit, primaryTenantShareBps)}{" "}
+                    {tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}
+                  </small>
+                </span>
+                <span className="percentage-input">
+                  <input
+                    type="number"
+                    min="0.01"
+                    max="100"
+                    step="0.01"
+                    value={sharePercent(primaryTenantShareBps)}
+                    onChange={(event) =>
+                      setPrimaryTenantShareBps(percentToBps(event.target.value))
+                    }
+                  />
+                  %
+                </span>
+              </label>
+              {pendingTenants.map((tenant, index) => (
+                <label key={tenant.email}>
+                  <span>
+                    <strong>{tenant.name}</strong>
+                    <small>
+                      Owes {tenantDepositAmount(deposit, tenant.depositShareBps)}{" "}
+                      {tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}
+                    </small>
+                  </span>
+                  <span className="percentage-input">
+                    <input
+                      type="number"
+                      min="0.01"
+                      max="100"
+                      step="0.01"
+                      value={sharePercent(tenant.depositShareBps)}
+                      onChange={(event) => {
+                        const nextBps = percentToBps(event.target.value);
+                        setPendingTenants((current) =>
+                          current.map((item, itemIndex) =>
+                            itemIndex === index
+                              ? { ...item, depositShareBps: nextBps }
+                              : item,
+                          ),
+                        );
+                      }}
+                    />
+                    %
+                  </span>
+                </label>
+              ))}
+            </>
+          ) : (
+            draft.tenants.map((tenant) => (
+              <label key={tenant.id}>
+                <span>
+                  <strong>{tenant.name || tenant.email}</strong>
+                  <small>
+                    Owes{" "}
+                    {tenantDepositAmount(
+                      deposit,
+                      tenantShareDraft[tenant.id] ?? tenant.depositShareBps,
+                    )}{" "}
+                    {tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}
+                  </small>
+                </span>
+                <span className="percentage-input">
+                  <input
+                    type="number"
+                    min="0.01"
+                    max="100"
+                    step="0.01"
+                    disabled={draft.status === "finalized"}
+                    value={sharePercent(
+                      tenantShareDraft[tenant.id] ?? tenant.depositShareBps,
+                    )}
+                    onChange={(event) =>
+                      setTenantShareDraft((current) => ({
+                        ...current,
+                        [tenant.id]: percentToBps(event.target.value),
+                      }))
+                    }
+                  />
+                  %
+                </span>
+              </label>
+            ))
+          )}
+        </div>
+        {draft && draft.status !== "finalized" && (
+          <button
+            className="btn btn-secondary"
+            type="button"
+            disabled={isSavingDraft}
+            title="Saving a changed split creates a new revision and requires every party to approve again."
+            onClick={() => void saveTenantShares()}
+          >
+            Save deposit split
+          </button>
+        )}
+      </section>
+
+      <label id="proposal-terms">
+        Rental property address
+        <input
+          value={propertyAddress}
+          onChange={(event) => {
+            setPropertyAddress(event.target.value);
+            clearFieldIssue("propertyAddress");
+          }}
+          placeholder="123 Main Street, City, CA 90000"
+          autoComplete="street-address"
+          disabled={approvedTermsLocked}
+          data-proposal-field="propertyAddress"
+          aria-invalid={invalidField === "propertyAddress"}
+        />
+      </label>
+      <p className="field-help">
+        This identifies which rental and security deposit the proposal covers. It remains in the
+        private agreement record and is not written directly to the public blockchain.
+      </p>
 
       <label>
         Jurisdiction policy
@@ -1269,23 +1722,22 @@ function AgreementForm({
           <strong>{deposit || "0"} {tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</strong>
         </div>
         <div>
-          <span>Tenant-paid platform or operations fee</span>
-          <strong>
-            {isCalifornia ? "$0 · prohibited by this profile" : "$0 · not charged in test mode"}
-          </strong>
+          <span>Testnet network &amp; storage reserve</span>
+          <strong>$5 testUSDC total · split evenly between tenants</strong>
         </div>
         <div className="cost-total">
-          <span>Tenant provides at funding</span>
+          <span>Tenants provide in total</span>
           <strong>
             {tokenChoice === "yield"
-              ? `${deposit || "0"} ytUSDC`
-              : `${Number(deposit || 0).toLocaleString(undefined, { maximumFractionDigits: 6 })} testUSDC`}
+              ? `${deposit || "0"} ytUSDC + $5 testUSDC reserve`
+              : `${(Number(deposit || 0) + 5).toLocaleString(undefined, { maximumFractionDigits: 6 })} testUSDC`}
           </strong>
         </div>
         <p>
-          This standalone profile does not charge the tenant a non-refundable network or storage
-          fee. Whoever deploys the software must fund its own gas sponsorship and storage, or
-          require parties to pay their own network costs.
+          Each tenant pays the approved deposit percentage shown above plus an equal share of the
+          separate $5 testnet reserve. The reserve is not refundable deposit principal. California
+          treatment of any real tenant-paid operations charge requires legal review before a
+          production deployment.
         </p>
       </section>
       <label>
@@ -1353,26 +1805,30 @@ function AgreementForm({
           ? "Locked at 7 days as a California pilot workflow rule; this is not a statutory deadline."
           : "Editable test timing for the tenant’s approve-or-dispute step."}
       </p>
-      <label>
-        OpenEscrow arbiter ruling period
-        <input
-          value={arbiterDays}
-          onChange={(event) => {
-            setArbiterDays(event.target.value);
-            clearFieldIssue("arbiterDays");
-          }}
-          type="number"
-          min="1"
-          disabled={isCalifornia || approvedTermsLocked}
-          data-proposal-field="arbiterDays"
-          aria-invalid={invalidField === "arbiterDays"}
-        />
-      </label>
-      <p className="field-help">
-        {isCalifornia
-          ? "Locked at 7 days as a California pilot workflow rule; this is not a statutory deadline."
-          : "Editable test timing for the optional arbiter’s ruling step."}
-      </p>
+      {ARBITER_UI_ENABLED && (showArbiter || Boolean(draft?.arbiterEmail)) && (
+        <>
+          <label>
+            OpenEscrow arbiter ruling period
+            <input
+              value={arbiterDays}
+              onChange={(event) => {
+                setArbiterDays(event.target.value);
+                clearFieldIssue("arbiterDays");
+              }}
+              type="number"
+              min="1"
+              disabled={isCalifornia || approvedTermsLocked}
+              data-proposal-field="arbiterDays"
+              aria-invalid={invalidField === "arbiterDays"}
+            />
+          </label>
+          <p className="field-help">
+            {isCalifornia
+              ? "Locked at 7 days as a California pilot workflow rule; this is not a statutory deadline."
+              : "Editable test timing for the optional arbiter’s ruling step."}
+          </p>
+        </>
+      )}
 
       {draft && draft.status !== "finalized" ? (
         <section className="revision-publisher" aria-labelledby="revision-publisher-title">
@@ -1503,16 +1959,35 @@ function AgreementForm({
         {formMessage && <p className="tx-success">{formMessage}</p>}
         {formError && <p className="tx-error">{formError}</p>}
       </div>
+      {draft && draft.status !== "finalized" && (
+        <div className="proposal-danger-zone">
+          <div>
+            <strong>Cancel this proposal</strong>
+            <span>
+              Remove it from every party’s active workspace while preserving its timestamped
+              audit record.
+            </span>
+          </div>
+          <button
+            className="btn btn-ghost danger"
+            type="button"
+            disabled={isSavingDraft}
+            onClick={() => void cancelProposal()}
+          >
+            Cancel and remove proposal
+          </button>
+        </div>
+      )}
 
       {!draft && (
         <div className="invite-gate">
           <strong>Invitations unlock after the proposal is saved.</strong>
-          <span>Every tenant and the optional arbiter will receive this exact revision for review.</span>
+          <span>Every tenant will receive this exact revision for review.</span>
         </div>
       )}
 
       {draft && (
-        <section className="proposal-review-controls">
+        <section className="proposal-review-controls" id="proposal-review">
           <div className="record-header">
             <div>
               <h3>Invite parties to review revision {draft.revision}</h3>
@@ -1557,9 +2032,7 @@ function AgreementForm({
                     <strong>{tenant.name || "Tenant"}</strong>
                     <span>{tenant.email}</span>
                     <small>
-                      {tenant.isFundingTenant
-                        ? "Designated funding tenant"
-                        : "Tenant reviewer"}
+                      {`${sharePercent(tenant.depositShareBps)}% of deposit · equal share of $5 reserve`}
                     </small>
                   </div>
                 )}
@@ -1646,7 +2119,7 @@ function AgreementForm({
             ))}
           </div>
           <div className="invite-actions">
-            {draft.arbiterEmail && (
+            {ARBITER_UI_ENABLED && draft.arbiterEmail && (
               <>
                 <button
                   className="btn btn-secondary"
@@ -1688,7 +2161,7 @@ function AgreementForm({
                 </span>
               </div>
             ))}
-            {draft.arbiterEmail && (
+            {ARBITER_UI_ENABLED && draft.arbiterEmail && (
               <div className={draft.arbiterApproved ? "approval approved" : "approval"}>
                 <strong>{draft.arbiterName || "Arbiter"}</strong>
                 <span>{draft.arbiterEmail}</span>
@@ -1717,23 +2190,8 @@ function AgreementForm({
         </section>
       )}
 
-      {draft?.status === "ready" && (
-        <section className="onchain-ready">
-          <span className="eyebrow">All required approvals recorded</span>
-          <h3>Ready for onchain finalization</h3>
-          <p>
-            Every tenant reviewer approved. The designated funding tenant's wallet
-            {draft.arbiterEmail ? " and the arbiter wallet are" : " is"} mapped automatically from
-            the approval actions. This transaction creates the testnet agreement.
-          </p>
-          <button className="btn btn-primary" type="button" disabled={!isConnected || isPending || isMining} onClick={finalizeOnchain}>
-            {isPending ? "Confirm in wallet..." : isMining ? "Mining..." : "Finalize approved agreement onchain"}
-          </button>
-        </section>
-      )}
-
       {draft && draft.status === "draft" && (
-        <p className="role-pending">Onchain finalization stays locked until every tenant and the optional arbiter approve the current revision.</p>
+        <p className="role-pending">Onchain finalization stays locked until every tenant approves the current revision.</p>
       )}
       {draft?.status === "finalized" && (
         <>

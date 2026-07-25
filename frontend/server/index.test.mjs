@@ -20,6 +20,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0001_negotiation_account_access.sql",
     "0002_notification_preferences.sql",
     "0003_private_evidence_and_notifications.sql",
+    "0004_tenant_deposit_shares.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -104,9 +105,10 @@ class TestR2 {
 const terms = {
   jurisdiction: "us-ca",
   policyVersion: "ca-civ-1950.5-2026.1",
+  propertyAddress: "123 Main Street, Los Angeles, CA 90001",
   tokenChoice: "plain",
   deposit: "1200",
-  operationsReserve: "0",
+  operationsReserve: "5",
   monthlyRent: "1200",
   smallLandlordException: false,
   tenantIsServiceMember: false,
@@ -227,7 +229,7 @@ test("tenant can request changes, approve, and make an arbiter-free proposal rea
   assert.equal(approved.status, "ready");
   assert.equal(approved.tenantApproved, true);
   assert.equal(approved.arbiterApproved, true);
-  assert.equal(approved.tenantName, "Terrence Tenant");
+  assert.equal(approved.tenantName, "Terry Tenant");
 
   const report = await worker.fetch(
     request(`/api/negotiations/${id}/report?token=${created.access.tenant}`),
@@ -263,7 +265,7 @@ test("a legacy approved proposal cannot bypass the locked California policy at f
       JSON.stringify({
         ...terms,
         policyVersion: undefined,
-        operationsReserve: "5",
+        operationsReserve: "0",
         claimDays: "30",
       }),
       created.record.id,
@@ -557,7 +559,7 @@ test("scheduled claim-window reminders are opted-in and idempotent", async () =>
     await Promise.all(waits);
     assert.equal(deliveries.length, 1);
     assert.deepEqual(deliveries[0].to, ["landlord@example.com"]);
-    assert.match(deliveries[0].subject, /deduction deadline reminder/);
+    assert.match(deliveries[0].subject, /claim period started/);
     assert.match(deliveries[0].text, /Turn off optional OpenEscrow emails/);
 
     const repeated = [];
@@ -670,7 +672,7 @@ test("every tenant reviewer must approve and adding a tenant resets the revision
     { DB: db },
   );
   assert.equal(report.status, 200);
-  assert.match(await report.text(), /Tenant reviewer/);
+  assert.match(await report.text(), /Tenant \(33\.3/);
 });
 
 test("the landlord can edit and remove tenants without creating duplicate proposals", async () => {
@@ -765,6 +767,165 @@ test("the landlord can edit and remove tenants without creating duplicate propos
   );
   assert.equal(lastTenantRemoval.status, 409);
   assert.match((await lastTenantRemoval.json()).error, /replacement tenant/);
+});
+
+test("tenant deposit shares default equally and remain editable before finalization", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenants: [
+          { name: "Terry Tenant", email: "tenant@example.com" },
+          { name: "Casey Tenant", email: "casey@example.com" },
+        ],
+        arbiterName: "",
+        arbiterEmail: null,
+        terms,
+      }),
+      { DB: db },
+    ),
+  );
+  assert.deepEqual(
+    created.record.tenants.map((tenant) => tenant.depositShareBps),
+    [5000, 5000],
+  );
+
+  const updated = await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "update_tenant_shares",
+      shares: [
+        {
+          tenantId: created.record.tenants[0].id,
+          depositShareBps: 6000,
+        },
+        {
+          tenantId: created.record.tenants[1].id,
+          depositShareBps: 4000,
+        },
+      ],
+    }),
+  );
+  assert.equal(updated.revision, 2);
+  assert.equal(updated.status, "draft");
+  assert.deepEqual(
+    updated.tenants.map((tenant) => tenant.depositShareBps),
+    [6000, 4000],
+  );
+  assert.equal(updated.events.at(-1).action, "tenant_deposit_shares_updated");
+
+  const invalid = await act(db, created.record.id, created.access.landlord, {
+    type: "update_tenant_shares",
+    shares: updated.tenants.map((tenant) => ({
+      tenantId: tenant.id,
+      depositShareBps: 4000,
+    })),
+  });
+  assert.equal(invalid.status, 400);
+  assert.match((await invalid.json()).error, /total exactly 100%/);
+});
+
+test("every tenant records only their approved deposit and equal reserve share", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenants: [
+          {
+            name: "Terry Tenant",
+            email: "tenant@example.com",
+            depositShareBps: 6000,
+          },
+          {
+            name: "Casey Tenant",
+            email: "casey@example.com",
+            depositShareBps: 4000,
+          },
+        ],
+        arbiterName: "",
+        arbiterEmail: null,
+        terms,
+      }),
+      { DB: db },
+    ),
+  );
+
+  for (const [index, tenant] of created.access.tenants.entries()) {
+    await jsonResponse(
+      await act(db, created.record.id, tenant.token, {
+        type: "approve",
+        wallet:
+          index === 0
+            ? "0x1111111111111111111111111111111111111111"
+            : "0x2222222222222222222222222222222222222222",
+      }),
+    );
+  }
+  await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "finalize",
+      agreementId: "71",
+      transactionHash: `0x${"a".repeat(64)}`,
+    }),
+  );
+
+  for (const [index, tenant] of created.access.tenants.entries()) {
+    const reserve = await jsonResponse(
+      await act(db, created.record.id, tenant.token, {
+        type: "operations_reserve_paid",
+        amount: "2.5",
+        transactionHash: `0x${String(index + 1).repeat(64)}`,
+      }),
+    );
+    assert.equal(reserve.events.at(-1).metadata.amount, "2.5");
+
+    const contribution = await jsonResponse(
+      await act(db, created.record.id, tenant.token, {
+        type: "tenant_share_funded",
+        amount: index === 0 ? "720" : "480",
+        transactionHash: `0x${String(index + 3).repeat(64)}`,
+      }),
+    );
+    assert.equal(contribution.events.at(-1).action, "tenant_share_funded");
+  }
+
+  const invalid = await act(db, created.record.id, created.access.tenants[1].token, {
+    type: "tenant_share_funded",
+    amount: "600",
+    transactionHash: `0x${"f".repeat(64)}`,
+  });
+  assert.equal(invalid.status, 400);
+  assert.match((await invalid.json()).error, /approved share/);
+});
+
+test("cancelling a proposal removes it from active work while preserving its record", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const cancelled = await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "cancel_proposal",
+    }),
+  );
+  assert.equal(cancelled.status, "cancelled");
+  assert.equal(cancelled.events.at(-1).action, "proposal_cancelled");
+
+  const tenantAction = await act(db, created.record.id, created.access.tenant, {
+    type: "approve",
+    wallet: "0x1111111111111111111111111111111111111111",
+  });
+  assert.equal(tenantAction.status, 409);
+
+  const report = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}/report?token=${created.access.landlord}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(report.status, 200);
+  assert.match(await report.text(), /status cancelled/);
 });
 
 test("the landlord is notified when all required approvals make a proposal ready", async () => {

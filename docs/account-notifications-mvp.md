@@ -37,12 +37,15 @@ storage keys are scoped to the proposal, role where applicable, and active walle
 and ruling screens retain a retry during the current session. Server-side transaction actions are
 idempotent by transaction hash, preventing a retry from duplicating the event timeline.
 
-The proposal form collects a landlord, one designated funding tenant, additional tenant reviewers,
-and an optional arbiter. Each tenant receives a separate role-locked invitation and every tenant
-must approve the same revision. Adding a tenant creates a new revision and resets all tenant and
-arbiter approvals. The shared escrow contract still has one tenant funding wallet; additional
-tenants are parties to the offchain record and approval process, not additional onchain deposit
-owners.
+The proposal form collects a landlord and one or more tenants. Each tenant receives a separate
+role-locked invitation, approves the same revision, and owns an explicit percentage of the deposit.
+Shares default evenly, must total exactly 100%, and any tenant or share change creates a new
+revision that resets approvals. After finalization, each approved tenant wallet funds only its
+onchain share. The agreement remains in a partially funded state until the complete refundable
+deposit is received. The separate 5 testUSDC pilot operations reserve is divided equally among
+tenant wallets and is never counted as refundable deposit principal. The optional arbiter
+implementation remains in the codebase but its normal proposal UI is feature-flagged off for the
+tenant/landlord-only pilot.
 
 Supporting PDFs and images default to a private R2 evidence vault when the hosted binding is
 available. D1 stores ownership metadata and a SHA-256 receipt; only a valid agreement-party token

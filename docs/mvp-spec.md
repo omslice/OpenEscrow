@@ -122,12 +122,12 @@ Arbiter-replacement (§8) and arbiter-resignation are **not** phase transitions 
 
 | # | From | Action | To | Caller | Key guards |
 |---|---|---|---|---|---|
-| T1 | (none) | `createAgreement` | `Proposed` | anyone (becomes landlord) | `tenant != arbiter != landlord`; `depositAmount > 0`; `claimWindowStart >= now`; each of `claimPeriod`/`responsePeriod`/`arbiterRulingPeriod` in `[MIN_PERIOD, MAX_PERIOD]` |
+| T1 | (none) | `createAgreement` / `createMultiTenantAgreementWithToken` | `Proposed` | anyone (becomes landlord) | one to ten unique tenants; positive shares total 10,000 bps; tenant/arbiter/landlord roles are disjoint; `depositAmount > 0`; valid timing |
 | T2 | `Proposed` | `acceptArbiterRole` | `ReadyToFund` | nominated arbiter | not already accepted |
 | T3 | `Proposed` | `declineArbiterRole` | `Proposed` (unchanged; landlord must renominate or cancel) | nominated arbiter | records `arbiterDeclined=true`; this nominee cannot later accept unless renominated |
 | T4 | `Proposed` / `ReadyToFund` | `renominateArbiter(newArbiter)` | `Proposed` | landlord | pre-funding only; resets `arbiterAccepted=false` and `arbiterDeclined=false` |
 | T5 | `Proposed` / `ReadyToFund` | `cancelProposal` | `Cancelled` | landlord | pre-funding only |
-| T6 | `ReadyToFund` | `tenantAcceptAndFund` | `Active` | tenant (must equal nominated tenant) | pulls `D` via `transferFrom`; requires prior `approve` |
+| T6 | `ReadyToFund` | `fundTenantShare` (`tenantAcceptAndFund` is the single-tenant-compatible alias) | `ReadyToFund` or `Active` | any recorded tenant | pulls exactly that tenant's approved portion; remains `ReadyToFund` until all portions total the agreed deposit |
 | T7 | `Active` | `submitClaim(C, evidenceURI)` | `ClaimOpen` | landlord | `now < claimSubmissionDeadline`; `0 < C <= D` |
 | T8 | `Active` | `withdrawNoClaim` | `Closed(NoClaim)` | tenant | `now >= claimSubmissionDeadline`; no claim ever submitted |
 | T9 | `ClaimOpen` | `amendClaim(newC, newEvidence)` | `ClaimOpen` (or `Closed(ClaimRetracted)` if `newC == 0`) | landlord | tenant has not yet responded; `!claimAmended` (at most one amendment, ever); `now < responseDeadline`; `newC <= currentC` (never increases, see §5); `responseDeadline` is **not** touched |
@@ -220,7 +220,10 @@ Per-agreement invariant, must hold in every phase after funding:
 depositAmount (D) == tenantWithdrawable (T) + landlordWithdrawable (Ld) + locked + withdrawn (W)
 ```
 
-Before funding, `D = T = Ld = locked = W = 0`. `D` is fixed the instant `tenantAcceptAndFund` succeeds and never changes again.
+Before the first contribution, `D = T = Ld = locked = W = 0`. During partial funding,
+`depositAmount` and `locked` increase by the exact contribution received while the agreement
+remains `ReadyToFund`. Once contributions equal `agreedAmount`, the agreement becomes `Active`;
+no later action can increase `depositAmount`.
 
 Contract-wide invariant (sum over all agreements `i`), useful for Foundry invariant tests against actual token balance:
 
@@ -236,7 +239,7 @@ not weaken solvency. The required property is that the balance always covers lia
 
 | Transition | Precondition | ΔT | ΔLd | Δlocked | ΔW | Resulting phase |
 |---|---|---|---|---|---|---|
-| `tenantAcceptAndFund` | — | 0 | 0 | `+D` | 0 | `Active` |
+| `fundTenantShare` | tenant has not funded | 0 | 0 | `+tenant portion` | 0 | `ReadyToFund`, or `Active` when the agreed total is reached |
 | `submitClaim(C)` | `locked == D` (no prior claim) | `+(D-C)` | 0 | `= C` (i.e. `-(D-C)`) | 0 | `ClaimOpen` |
 | `amendClaim(newC)`, `newC > 0` | tenant hasn't responded; `!claimAmended`; `now < responseDeadline` (unchanged by this call) | `-(newC-C)`* | 0 | `+(newC-C)`* | 0 | `ClaimOpen` |
 | `amendClaim(0)` | tenant hasn't responded; `!claimAmended`; `now < responseDeadline` (unchanged by this call) | `+C` | 0 | `-C` | 0 | `Closed(ClaimRetracted)` |
@@ -344,9 +347,14 @@ Legend: U = unit, F = fuzz, I = invariant.
 ## 14. Minimal frontend journey
 
 1. **Connect wallet.** Detect/prompt switch to Base Sepolia.
-2. **Landlord: create agreement.** Form for tenant address, arbiter address, deposit amount (USDC, human-readable input converted to base units), claim window start date, claim/response/arbiter-ruling periods (sensible presets + custom), and optional jurisdiction context. Submits `createAgreement`. Jurisdiction context is explicitly off-chain: the frontend stores it in the shared URL and local browser storage, while the contract neither validates nor enforces it.
-3. **Arbiter: accept/decline.** A link/notification surface (off-chain, e.g. shared URL) showing pending arbiter invitations; one button each for accept/decline.
-4. **Tenant: review and fund.** Read-only summary of proposed terms (this is the tenant's only chance to review before committing — no on-chain negotiation, §1). Two transactions: `approve` then `tenantAcceptAndFund`, or a single UI step that queues both.
+2. **Landlord: create agreement.** Form for tenant names/emails, deposit ownership percentages
+   (even by default), property, deposit amount, token, and jurisdiction timing. Every tenant must
+   approve the saved offchain revision before the landlord finalizes it onchain.
+3. **Optional arbiter (shelved in the pilot UI).** The underlying accept/decline and replacement
+   flow remains implemented, but new tenant/landlord-only pilot proposals omit an arbiter.
+4. **Each tenant: review and fund.** Every tenant approves only their exact onchain deposit portion,
+   pays an equal share of the separately disclosed operations reserve, and calls
+   `fundTenantShare`. The dashboard shows partial progress until the agreed total is received.
 5. **Agreement dashboard** (all parties). Current phase, countdown to the next relevant deadline, deposit amount, claimed amount if any, evidence link, withdrawable balance for the connected address with a withdraw button.
 6. **Landlord: submit/amend claim.** Amount + a content hash and a privacy-safe pointer/URI (evidence content itself is uploaded off-chain, e.g. to IPFS via a pinning service, with a clear warning that public IPFS is not private). Once amended, the amendment control disappears — only one is ever allowed, and the response deadline shown to the landlord does not move when they use it.
 7. **Tenant: respond to claim.** Accept in full, accept a partial amount with the rest disputed, or dispute in full — one slider/input driving `respondToClaim(A)`.

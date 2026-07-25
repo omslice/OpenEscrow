@@ -217,7 +217,7 @@ export function AgreementDashboard({
         address={agreement.landlord}
       />
       <PartyIdentity
-        label={participantRecord?.tenants.length && participantRecord.tenants.length > 1 ? "Funding tenant" : "Tenant"}
+        label="Tenant"
         name={
           participantRecord?.tenants.find((tenant) => tenant.isFundingTenant)?.name ||
           participantRecord?.tenantName
@@ -227,37 +227,58 @@ export function AgreementDashboard({
           participantRecord?.tenantEmail
         }
         address={agreement.tenant}
+        suffix={
+          participantRecord?.tenants.find((tenant) => tenant.isFundingTenant)
+            ? ` (${(
+                participantRecord.tenants.find((tenant) => tenant.isFundingTenant)!
+                  .depositShareBps / 100
+              )
+                .toFixed(2)
+                .replace(/\.?0+$/, "")}% share)`
+            : ""
+        }
       />
       {participantRecord?.tenants
         .filter((tenant) => !tenant.isFundingTenant)
         .map((tenant) => (
           <PartyIdentity
             key={tenant.id}
-            label="Tenant reviewer"
+            label="Tenant"
             name={tenant.name}
             email={tenant.email}
             address={tenant.wallet}
             fallback="Approval wallet not recorded"
+            suffix={` (${(tenant.depositShareBps / 100)
+              .toFixed(2)
+              .replace(/\.?0+$/, "")}% share)`}
           />
         ))}
-      <PartyIdentity
-        label="Arbiter"
-        name={participantRecord?.arbiterName}
-        email={participantRecord?.arbiterEmail}
-        address={agreement.arbiter === ZERO_ADDRESS ? null : agreement.arbiter}
-        fallback="No arbiter selected"
-        suffix={
-          agreement.arbiter === ZERO_ADDRESS
-            ? ""
-            : agreement.arbiterAccepted
-              ? " (accepted)"
-              : agreement.arbiterDeclined
-                ? " (declined)"
-                : agreement.arbiterResigned
-                  ? " (resigned)"
-                  : " (pending acceptance)"
-        }
-      />
+      {(agreement.arbiter !== ZERO_ADDRESS || participantRecord?.arbiterEmail) && (
+        <PartyIdentity
+          label="Arbiter"
+          name={participantRecord?.arbiterName}
+          email={participantRecord?.arbiterEmail}
+          address={agreement.arbiter === ZERO_ADDRESS ? null : agreement.arbiter}
+          fallback="Arbiter wallet not recorded"
+          suffix={
+            agreement.arbiter === ZERO_ADDRESS
+              ? ""
+              : agreement.arbiterAccepted
+                ? " (accepted)"
+                : agreement.arbiterDeclined
+                  ? " (declined)"
+                  : agreement.arbiterResigned
+                    ? " (resigned)"
+                    : " (pending acceptance)"
+          }
+        />
+      )}
+      {participantRecord?.terms.propertyAddress && (
+        <div className="dashboard-row">
+          <span className="label">Rental property</span>
+          <span>{participantRecord.terms.propertyAddress}</span>
+        </div>
+      )}
       <div className="dashboard-row">
         <span className="label">Jurisdiction policy</span>
         <span>

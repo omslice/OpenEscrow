@@ -15,11 +15,12 @@ The project is an open-source public-interest prototype. It is not a law firm, b
 The Base Sepolia testnet MVP implements the complete technical lifecycle:
 
 - A landlord proposes an agreement.
-- One funding tenant and optional additional tenant reviewers approve the same saved revision;
-  adding a tenant resets the approval cycle.
+- Every tenant approves the same saved revision and owns an explicit deposit percentage; shares
+  default evenly and any change resets the approval cycle.
 - An arbiter may be nominated up front and must explicitly accept; or the parties can create the
   agreement without one and mutually appoint one later if a dispute occurs.
-- The tenant accepts and funds with either allowlisted plain testUSDC or test-only ytUSDC shares.
+- Each tenant funds only their approved portion with allowlisted plain testUSDC or test-only
+  ytUSDC shares. The agreement activates only after the full deposit has been received.
 - The landlord may submit one timely claim with evidence commitments.
 - The tenant may accept all, accept part, or dispute the claim.
 - Tenant silence becomes a dispute; it never pays the landlord automatically.
@@ -48,7 +49,7 @@ The current source includes:
 
 ### Verification snapshot
 
-- 151 Foundry tests
+- 159 Foundry tests
 - 512 runs per fuzz test
 - 256 stateful invariant runs at depth 128
 - Frontend lint, TypeScript compilation, and production build
@@ -70,7 +71,7 @@ The testnet MVP deliberately excludes the earlier factory/module design.
 | Evidence | Public hash, opaque URI, type, timestamp, submitter |
 | Administration | No owner, pause key, upgrade proxy, or privileged resolver |
 | Yield | Test-only accelerated ytUSDC accounting; no production strategy |
-| Fees | No escrow fee; separate fixed 5 testUSDC pilot operations reserve |
+| Fees | No escrow fee; separate fixed 5 testUSDC pilot operations reserve split evenly among tenants |
 
 See [`docs/technical-overview.md`](docs/technical-overview.md) and [`docs/protocol-flow.md`](docs/protocol-flow.md).
 

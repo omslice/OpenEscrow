@@ -119,6 +119,7 @@ CREATE TABLE IF NOT EXISTS negotiation_tenants (
   approved_revision INTEGER,
   wallet TEXT,
   is_funding_tenant INTEGER NOT NULL DEFAULT 0,
+  deposit_share_bps INTEGER NOT NULL DEFAULT 10000,
   created_at TEXT NOT NULL,
   accepted_at TEXT,
   FOREIGN KEY (negotiation_id) REFERENCES agreement_negotiations(id) ON DELETE CASCADE
@@ -139,10 +140,10 @@ CREATE TABLE IF NOT EXISTS negotiation_account_access_context (
 const BACKFILL_PRIMARY_TENANTS = `
 INSERT OR IGNORE INTO negotiation_tenants
   (id, negotiation_id, name, email, token_hash, approved_revision, wallet,
-   is_funding_tenant, created_at, accepted_at)
+   is_funding_tenant, deposit_share_bps, created_at, accepted_at)
 SELECT
   id || ':primary', id, NULL, tenant_email, tenant_token_hash,
-  tenant_approved_revision, tenant_wallet, 1, created_at,
+  tenant_approved_revision, tenant_wallet, 1, 10000, created_at,
   CASE WHEN tenant_approved_revision IS NOT NULL THEN updated_at ELSE NULL END
 FROM agreement_negotiations`;
 
@@ -279,13 +280,13 @@ const CALIFORNIA_POLICY = Object.freeze({
   claimDays: "21",
   responseDays: "7",
   arbiterDays: "7",
-  operationsReserve: "0",
+  operationsReserve: "5",
 });
 
 const GENERIC_TEST_POLICY = Object.freeze({
   version: "generic-test-v1",
   jurisdiction: "testnet-generic",
-  operationsReserve: "0",
+  operationsReserve: "5",
 });
 
 function validPeriodDays(value) {
@@ -298,10 +299,11 @@ function validTerms(terms) {
   const commonTermsAreValid =
     terms &&
     typeof terms === "object" &&
+    cleanText(terms.propertyAddress, 300).length >= 5 &&
     (terms.tokenChoice === "plain" || terms.tokenChoice === "yield") &&
     deposit !== null &&
     deposit > 0n &&
-    terms.operationsReserve === "0" &&
+    terms.operationsReserve === "5" &&
     typeof terms.claimWindowStart === "string" &&
     !Number.isNaN(new Date(terms.claimWindowStart).getTime()) &&
     validPeriodDays(terms.claimDays) &&
@@ -618,6 +620,7 @@ async function discoverNegotiations(request, env) {
          FROM agreement_negotiations negotiation
          JOIN negotiation_tenants tenant ON tenant.negotiation_id = negotiation.id
          WHERE lower(tenant.email) IN (${placeholders})
+           AND negotiation.status NOT IN ('cancelled', 'superseded')
          ORDER BY negotiation.updated_at DESC`,
       )
       .bind(...identity.emails)
@@ -636,6 +639,7 @@ async function discoverNegotiations(request, env) {
       .prepare(
         `SELECT * FROM agreement_negotiations
          WHERE lower(${emailColumn}) IN (${placeholders})
+           AND status NOT IN ('cancelled', 'superseded')
          ORDER BY updated_at DESC`,
       )
       .bind(...identity.emails)
@@ -732,7 +736,8 @@ async function tenantForToken(db, negotiationId, token) {
 async function tenantsFor(db, negotiationId) {
   const result = await db
     .prepare(
-      `SELECT id, name, email, approved_revision, wallet, is_funding_tenant, created_at, accepted_at
+      `SELECT id, name, email, approved_revision, wallet, is_funding_tenant,
+              deposit_share_bps, created_at, accepted_at
        FROM negotiation_tenants
        WHERE negotiation_id = ?
        ORDER BY is_funding_tenant DESC, created_at ASC`,
@@ -764,7 +769,13 @@ async function serialize(db, row) {
   const arbiterRequired = Boolean(row.arbiter_email);
   const events = await eventsFor(db, row.id);
   const tenantRows = await tenantsFor(db, row.id);
-  const tenants = tenantRows.map((tenant) => ({
+  const storedShareTotal = tenantRows.reduce(
+    (total, tenant) => total + Number(tenant.deposit_share_bps || 0),
+    0,
+  );
+  const equalBase = tenantRows.length ? Math.floor(10000 / tenantRows.length) : 0;
+  const equalRemainder = tenantRows.length ? 10000 - equalBase * tenantRows.length : 0;
+  const tenants = tenantRows.map((tenant, index) => ({
     id: tenant.id,
     name: tenant.name || null,
     email: tenant.email,
@@ -772,6 +783,10 @@ async function serialize(db, row) {
     wallet: tenant.wallet || null,
     isFundingTenant: tenant.is_funding_tenant === 1,
     acceptedAt: tenant.accepted_at || null,
+    depositShareBps:
+      storedShareTotal === 10000
+        ? Number(tenant.deposit_share_bps)
+        : equalBase + (index < equalRemainder ? 1 : 0),
   }));
   const fundingTenant = tenants.find((tenant) => tenant.isFundingTenant) || tenants[0] || null;
   const participantNames = {
@@ -783,7 +798,11 @@ async function serialize(db, row) {
     const participants = event.metadata?.participants;
     if (participants && typeof participants === "object") {
       for (const key of Object.keys(participantNames)) {
-        if (typeof participants[key] === "string" && participants[key].trim()) {
+        if (
+          !participantNames[key] &&
+          typeof participants[key] === "string" &&
+          participants[key].trim()
+        ) {
           participantNames[key] = participants[key].trim();
         }
       }
@@ -795,7 +814,10 @@ async function serialize(db, row) {
       (event.actorRole === "arbiter" ||
         (event.actorRole === "tenant" && event.metadata?.isFundingTenant !== false))
     ) {
-      participantNames[`${event.actorRole}Name`] = event.metadata.name.trim();
+      const nameKey = `${event.actorRole}Name`;
+      if (!participantNames[nameKey]) {
+        participantNames[nameKey] = event.metadata.name.trim();
+      }
     }
   }
   return {
@@ -839,11 +861,18 @@ async function createNegotiation(request, db) {
     Array.isArray(body.tenants) && body.tenants.length
       ? body.tenants
       : [{ name: body.tenantName, email: body.tenantEmail }];
-  const tenants = requestedTenants.slice(0, 5).map((tenant, index) => ({
+  const limitedTenants = requestedTenants.slice(0, 5);
+  const defaultShareBase = Math.floor(10000 / limitedTenants.length);
+  const defaultShareRemainder = 10000 - defaultShareBase * limitedTenants.length;
+  const tenants = limitedTenants.map((tenant, index) => ({
     id: crypto.randomUUID(),
     name: cleanText(tenant?.name, 120),
     email: normalizeEmail(tenant?.email),
     isFundingTenant: index === 0,
+    depositShareBps:
+      tenant?.depositShareBps === undefined
+        ? defaultShareBase + (index < defaultShareRemainder ? 1 : 0)
+        : Number(tenant.depositShareBps),
   }));
   const tenantName = tenants[0]?.name || "";
   const tenantEmail = tenants[0]?.email || "";
@@ -863,6 +892,17 @@ async function createNegotiation(request, db) {
       { error: "Enter each tenant’s legal first and last name." },
       400,
     );
+  }
+  if (
+    tenants.some(
+      (tenant) =>
+        !Number.isInteger(tenant.depositShareBps) ||
+        tenant.depositShareBps <= 0 ||
+        tenant.depositShareBps > 10000,
+    ) ||
+    tenants.reduce((total, tenant) => total + tenant.depositShareBps, 0) !== 10000
+  ) {
+    return json({ error: "Tenant deposit shares must be positive and total exactly 100%." }, 400);
   }
   if (arbiterEmail && !EMAIL_PATTERN.test(arbiterEmail)) {
     return json({ error: "The optional arbiter email is invalid." }, 400);
@@ -917,8 +957,8 @@ async function createNegotiation(request, db) {
         .prepare(
           `INSERT INTO negotiation_tenants
            (id, negotiation_id, name, email, token_hash, approved_revision, wallet,
-            is_funding_tenant, created_at, accepted_at)
-           VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, NULL)`,
+            is_funding_tenant, deposit_share_bps, created_at, accepted_at)
+           VALUES (?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, NULL)`,
         )
         .bind(
           tenant.id,
@@ -927,6 +967,7 @@ async function createNegotiation(request, db) {
           tenant.email,
           tenantHashes[index],
           tenant.isFundingTenant ? 1 : 0,
+          tenant.depositShareBps,
           now,
         ),
     ),
@@ -957,6 +998,7 @@ async function createNegotiation(request, db) {
         email: tenant.email,
         token: tenantTokens[index],
         isFundingTenant: tenant.isFundingTenant,
+        depositShareBps: tenant.depositShareBps,
       })),
       arbiter: arbiterToken,
     },
@@ -985,7 +1027,7 @@ async function addTenant(request, env, id) {
   if (role !== "landlord") {
     return json({ error: "Only the landlord may add a tenant reviewer." }, 403);
   }
-  if (row.status === "finalized") {
+  if (row.status === "finalized" || row.status === "cancelled" || row.status === "superseded") {
     return json(
       {
         error:
@@ -1020,15 +1062,33 @@ async function addTenant(request, env, id) {
   const tenantHash = await hashToken(tenantToken);
   const nextRevision = Number(row.revision) + 1;
   const now = new Date().toISOString();
+  const nextTenantCount = existingTenants.length + 1;
+  const equalBase = Math.floor(10000 / nextTenantCount);
+  const equalRemainder = 10000 - equalBase * nextTenantCount;
   await env.DB.batch([
+    ...existingTenants.map((tenant, index) =>
+      env.DB
+        .prepare(
+          "UPDATE negotiation_tenants SET deposit_share_bps = ? WHERE negotiation_id = ? AND id = ?",
+        )
+        .bind(equalBase + (index < equalRemainder ? 1 : 0), id, tenant.id),
+    ),
     env.DB
       .prepare(
         `INSERT INTO negotiation_tenants
          (id, negotiation_id, name, email, token_hash, approved_revision, wallet,
-          is_funding_tenant, created_at, accepted_at)
-         VALUES (?, ?, ?, ?, ?, NULL, NULL, 0, ?, NULL)`,
+          is_funding_tenant, deposit_share_bps, created_at, accepted_at)
+         VALUES (?, ?, ?, ?, ?, NULL, NULL, 0, ?, ?, NULL)`,
       )
-      .bind(tenantId, id, name || null, email, tenantHash, now),
+      .bind(
+        tenantId,
+        id,
+        name || null,
+        email,
+        tenantHash,
+        equalBase + (existingTenants.length < equalRemainder ? 1 : 0),
+        now,
+      ),
     env.DB
       .prepare(
         `UPDATE negotiation_tenants
@@ -1052,7 +1112,7 @@ async function addTenant(request, env, id) {
       "tenant_added",
       `Added ${email} as a tenant reviewer. Revision ${nextRevision} now requires fresh approval from every tenant and the optional arbiter.`,
       nextRevision,
-      { tenantId, name, email, isFundingTenant: false },
+      { tenantId, name, email, isFundingTenant: false, splitResetEqually: true },
     ),
   ]);
   return json({
@@ -1063,6 +1123,8 @@ async function addTenant(request, env, id) {
       email,
       token: tenantToken,
       isFundingTenant: false,
+      depositShareBps:
+        equalBase + (existingTenants.length < equalRemainder ? 1 : 0),
     },
   });
 }
@@ -1074,7 +1136,7 @@ async function updateTenant(request, env, id, tenantId) {
   if (role !== "landlord") {
     return json({ error: "Only the landlord may edit a tenant." }, 403);
   }
-  if (row.status === "finalized") {
+  if (row.status === "finalized" || row.status === "cancelled" || row.status === "superseded") {
     return json(
       { error: "Tenant parties cannot be changed after onchain finalization." },
       409,
@@ -1198,6 +1260,7 @@ async function updateTenant(request, env, id, tenantId) {
           email,
           token: replacementToken,
           isFundingTenant: target.is_funding_tenant === 1,
+          depositShareBps: Number(target.deposit_share_bps),
         }
       : null,
   });
@@ -1210,7 +1273,7 @@ async function removeTenant(request, env, id, tenantId) {
   if (role !== "landlord") {
     return json({ error: "Only the landlord may remove a tenant." }, 403);
   }
-  if (row.status === "finalized") {
+  if (row.status === "finalized" || row.status === "cancelled" || row.status === "superseded") {
     return json(
       { error: "Tenant parties cannot be changed after onchain finalization." },
       409,
@@ -1241,6 +1304,9 @@ async function removeTenant(request, env, id, tenantId) {
       : null;
   const nextRevision = Number(row.revision) + 1;
   const now = new Date().toISOString();
+  const remaining = tenants.filter((tenant) => tenant.id !== tenantId);
+  const equalBase = Math.floor(10000 / remaining.length);
+  const equalRemainder = 10000 - equalBase * remaining.length;
   const statements = [
     env.DB
       .prepare(
@@ -1264,6 +1330,13 @@ async function removeTenant(request, env, id, tenantId) {
     env.DB
       .prepare("DELETE FROM negotiation_tenants WHERE negotiation_id = ? AND id = ?")
       .bind(id, tenantId),
+    ...remaining.map((tenant, index) =>
+      env.DB
+        .prepare(
+          "UPDATE negotiation_tenants SET deposit_share_bps = ? WHERE negotiation_id = ? AND id = ?",
+        )
+        .bind(equalBase + (index < equalRemainder ? 1 : 0), id, tenant.id),
+    ),
     env.DB
       .prepare(
         `UPDATE negotiation_tenants
@@ -1368,14 +1441,34 @@ async function sendOptedInAgreementActivityEmails(request, env, row, eventType) 
       subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} funded`,
       text: "The tenant accepted the finalized terms and funded the refundable deposit.",
     },
+    tenant_share_funded: {
+      recipients: [
+        ["landlord", row.landlord_email],
+        ...tenantRecipients,
+      ],
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} received a tenant contribution`,
+      text: "A tenant funded their approved portion of the refundable deposit. The agreement becomes active only after every tenant contribution is received.",
+    },
+    claim_submitted: {
+      recipients: [
+        ["landlord", row.landlord_email],
+        ...tenantRecipients,
+      ],
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} deduction claim submitted`,
+      text: "A documented deduction claim was recorded. Review the private agreement workspace for the itemization and next action.",
+    },
     claim_amended: {
-      recipients: [["tenant", row.tenant_email]],
+      recipients: [
+        ["landlord", row.landlord_email],
+        ...tenantRecipients,
+      ],
       subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} claim amended`,
       text: "The landlord amended the deduction claim. Review the updated line items and documentation in OpenEscrow.",
     },
     claim_response: {
       recipients: [
         ["landlord", row.landlord_email],
+        ...tenantRecipients,
         ["arbiter", row.arbiter_email],
       ],
       subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} claim response`,
@@ -1539,21 +1632,44 @@ async function sendScheduledNotification(env, row, notification, appUrl) {
   return true;
 }
 
-function deadlineCandidates(row, events, now) {
+function deadlineCandidates(row, events, now, tenantRows = []) {
   const terms = JSON.parse(row.terms_json);
   const candidates = [];
-  const claimSubmitted = events.find(
+  const claimWindowStart = new Date(terms.claimWindowStart);
+  const claimDeadline = addDays(claimWindowStart, terms.claimDays);
+  const lifecycleRecipients = [
+    ["landlord", row.landlord_email],
+    ...tenantRows.map((tenant) => [`tenant-${tenant.id}`, tenant.email]),
+  ];
+  for (const [role, email] of lifecycleRecipients) {
+    if (claimWindowStart <= now) {
+      candidates.push({
+        type: "claim_period_started",
+        role,
+        email,
+        preference: "deadline",
+        scheduledFor: claimWindowStart,
+        subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""}: claim period started`,
+        text: "The deduction claim period has started. Open the signed-in agreement workspace to review the current status and any required action.",
+      });
+    }
+    if (claimDeadline <= now) {
+      candidates.push({
+        type: "claim_period_ended",
+        role,
+        email,
+        preference: "deadline",
+        scheduledFor: claimDeadline,
+        subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""}: claim period ended`,
+        text: "The deduction claim period has ended. Open the signed-in agreement workspace to see whether a claim was recorded and what happens next.",
+      });
+    }
+  }
+    const claimSubmitted = events.find(
     (event) => event.action === "deduction_claim_submitted",
   );
   if (!claimSubmitted) {
-    const claimWindowStart = new Date(terms.claimWindowStart);
-    const claimDeadline = addDays(claimWindowStart, terms.claimDays);
     for (const [type, scheduledFor, text] of [
-      [
-        "claim_window_open",
-        claimWindowStart,
-        "The lease-expiration claim window is open. Submit any documented deduction before the deadline; otherwise the tenant can recover the full deposit.",
-      ],
       [
         "claim_deadline_3_days",
         addDays(claimDeadline, -3),
@@ -1650,6 +1766,54 @@ function deadlineCandidates(row, events, now) {
   return candidates;
 }
 
+async function recordClaimPeriodTransitions(env, row, events, now) {
+  const terms = JSON.parse(row.terms_json);
+  const claimWindowStart = new Date(terms.claimWindowStart);
+  const claimDeadline = addDays(claimWindowStart, terms.claimDays);
+  const revision = Number(row.revision);
+  const statements = [];
+  if (
+    claimWindowStart <= now &&
+    !events.some((event) => event.action === "claim_period_started")
+  ) {
+    statements.push(
+      eventStatement(
+        env.DB,
+        row.id,
+        now.toISOString(),
+        "system",
+        "claim_period_started",
+        "The deduction claim period started. The landlord may submit an itemized claim with supporting documentation.",
+        revision,
+        { scheduledFor: claimWindowStart.toISOString() },
+      ),
+    );
+  }
+  if (
+    claimDeadline <= now &&
+    !events.some((event) => event.action === "claim_period_ended")
+  ) {
+    const claimMade = events.some(
+      (event) => event.action === "deduction_claim_submitted",
+    );
+    statements.push(
+      eventStatement(
+        env.DB,
+        row.id,
+        now.toISOString(),
+        "system",
+        "claim_period_ended",
+        claimMade
+          ? "The deduction claim period ended. A claim was submitted and remains subject to the recorded response and resolution process."
+          : "The deduction claim period ended without a claim. The tenant may proceed with the applicable full-refund action.",
+        revision,
+        { scheduledFor: claimDeadline.toISOString(), claimMade },
+      ),
+    );
+  }
+  if (statements.length) await env.DB.batch(statements);
+}
+
 function withdrawalCandidates(row, events, now) {
   const timeout = latestEvent(events, "timeout_executed");
   const resolution =
@@ -1676,7 +1840,7 @@ function withdrawalCandidates(row, events, now) {
 }
 
 async function runScheduledNotifications(env, now = new Date()) {
-  if (!env.DB || !env.RESEND_API_KEY || !env.NOTIFICATION_FROM_EMAIL) return;
+  if (!env.DB) return;
   await initialize(env.DB);
   const result = await env.DB
     .prepare(
@@ -1687,19 +1851,23 @@ async function runScheduledNotifications(env, now = new Date()) {
     cleanText(env.PUBLIC_APP_URL, 500) ||
     "https://openescrow-demo.omrigross.chatgpt.site/";
   for (const row of result.results || []) {
-    const events = await eventsFor(env.DB, row.id);
+    let events = await eventsFor(env.DB, row.id);
+    await recordClaimPeriodTransitions(env, row, events, now);
+    events = await eventsFor(env.DB, row.id);
+    const tenantRows = await tenantsFor(env.DB, row.id);
     const candidates = [
-      ...deadlineCandidates(row, events, now),
+      ...deadlineCandidates(row, events, now, tenantRows),
       ...withdrawalCandidates(row, events, now),
     ];
     for (const candidate of candidates) {
+      if (!env.RESEND_API_KEY || !env.NOTIFICATION_FROM_EMAIL) continue;
       await sendScheduledNotification(env, row, candidate, appUrl);
     }
   }
 }
 
 async function runNotificationJob(env, now = new Date()) {
-  if (!env.DB || !env.RESEND_API_KEY || !env.NOTIFICATION_FROM_EMAIL) return;
+  if (!env.DB) return;
   await initialize(env.DB);
   const prior = await env.DB
     .prepare("SELECT last_started_at FROM scheduled_job_runs WHERE name = ?")
@@ -1726,10 +1894,17 @@ async function applyAction(request, env, id) {
   const row = await rowFor(db, id);
   const role = await authorize(db, row, body.token);
   if (!role) return json({ error: "This proposal link is invalid or no longer available." }, 403);
+  if (
+    (row.status === "cancelled" || row.status === "superseded") &&
+    body.type !== "cancel_proposal"
+  ) {
+    return json({ error: "This proposal is no longer active." }, 409);
+  }
 
   const transactionEventByAction = {
     finalize: "posted_onchain",
     operations_reserve_paid: "operations_reserve_paid",
+    tenant_share_funded: "tenant_share_funded",
     agreement_funded: "agreement_funded",
     record_snapshot_anchored: "record_snapshot_anchored",
     activity_hash_published: "activity_hash_published",
@@ -1758,7 +1933,112 @@ async function applyAction(request, env, id) {
   const revision = Number(row.revision);
   const statements = [];
 
-  if (body.type === "propose_change") {
+  if (body.type === "cancel_proposal") {
+    if (role !== "landlord") {
+      return json({ error: "Only the landlord may cancel a proposal." }, 403);
+    }
+    if (row.status === "finalized") {
+      return json(
+        { error: "A finalized onchain agreement cannot be cancelled from the saved-proposal record." },
+        409,
+      );
+    }
+    if (row.status === "cancelled" || row.status === "superseded") {
+      return json(await serialize(db, row));
+    }
+    statements.push(
+      db
+        .prepare(
+          `UPDATE agreement_negotiations
+           SET status = 'cancelled', updated_at = ?
+           WHERE id = ?`,
+        )
+        .bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "proposal_cancelled",
+        "Cancelled and removed this proposal from every party's active workspace. The timestamped record remains available for audit.",
+        revision,
+      ),
+    );
+  } else if (body.type === "update_tenant_shares") {
+    if (role !== "landlord") {
+      return json({ error: "Only the landlord may update tenant deposit shares." }, 403);
+    }
+    if (row.status === "finalized") {
+      return json({ error: "Tenant deposit shares cannot change after onchain finalization." }, 409);
+    }
+    const tenantRows = await tenantsFor(db, id);
+    const requestedShares = Array.isArray(body.shares) ? body.shares : [];
+    const shareMap = new Map(
+      requestedShares.map((item) => [
+        cleanText(item?.tenantId, 80),
+        Number(item?.depositShareBps),
+      ]),
+    );
+    const sharesAreValid =
+      requestedShares.length === tenantRows.length &&
+      shareMap.size === tenantRows.length &&
+      tenantRows.every(
+        (tenant) =>
+          shareMap.has(tenant.id) &&
+          Number.isInteger(shareMap.get(tenant.id)) &&
+          shareMap.get(tenant.id) > 0 &&
+          shareMap.get(tenant.id) <= 10000,
+      ) &&
+      [...shareMap.values()].reduce((total, value) => total + value, 0) === 10000;
+    if (!sharesAreValid) {
+      return json(
+        { error: "Every tenant needs a positive deposit share and the shares must total exactly 100%." },
+        400,
+      );
+    }
+    const unchanged = tenantRows.every(
+      (tenant) => Number(tenant.deposit_share_bps) === shareMap.get(tenant.id),
+    );
+    if (unchanged) {
+      return json({ error: "Change at least one tenant share before saving." }, 400);
+    }
+    const nextRevision = revision + 1;
+    statements.push(
+      ...tenantRows.map((tenant) =>
+        db
+          .prepare(
+            `UPDATE negotiation_tenants
+             SET deposit_share_bps = ?, approved_revision = NULL, accepted_at = NULL
+             WHERE negotiation_id = ? AND id = ?`,
+          )
+          .bind(shareMap.get(tenant.id), id, tenant.id),
+      ),
+      db
+        .prepare(
+          `UPDATE agreement_negotiations
+           SET revision = ?, status = 'draft', tenant_approved_revision = NULL,
+               arbiter_approved_revision = NULL, updated_at = ?
+           WHERE id = ?`,
+        )
+        .bind(nextRevision, now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "tenant_deposit_shares_updated",
+        `Updated the tenant deposit ownership split. Revision ${nextRevision} now requires fresh approval from every tenant and the optional arbiter.`,
+        nextRevision,
+        {
+          shares: tenantRows.map((tenant) => ({
+            tenantId: tenant.id,
+            email: tenant.email,
+            depositShareBps: shareMap.get(tenant.id),
+          })),
+        },
+      ),
+    );
+  } else if (body.type === "propose_change") {
     if (row.status === "finalized") {
       return json({ error: "Agreement terms can no longer be changed after onchain finalization." }, 409);
     }
@@ -1791,11 +2071,10 @@ async function applyAction(request, env, id) {
         db
           .prepare(
             `UPDATE negotiation_tenants
-             SET approved_revision = ?, wallet = ?, name = COALESCE(NULLIF(?, ''), name),
-                 accepted_at = ?
+             SET approved_revision = ?, wallet = ?, accepted_at = ?
              WHERE id = ?`,
           )
-          .bind(revision, body.wallet, participantName, now, tenant.id),
+          .bind(revision, body.wallet, now, tenant.id),
       );
       if (tenant.is_funding_tenant === 1) {
         statements.push(
@@ -1972,8 +2251,8 @@ async function applyAction(request, env, id) {
       return json({ error: "Only the tenant may record the operations reserve payment." }, 403);
     }
     const tenant = await tenantForToken(db, id, body.token);
-    if (!tenant || tenant.is_funding_tenant !== 1) {
-      return json({ error: "Only the designated funding tenant may pay the reserve." }, 403);
+    if (!tenant) {
+      return json({ error: "Only an approved tenant may pay a reserve share." }, 403);
     }
     if (row.status !== "finalized") {
       return json({ error: "The agreement must be finalized before the reserve is paid." }, 409);
@@ -1982,6 +2261,19 @@ async function applyAction(request, env, id) {
     if (!/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
       return json({ error: "The operations reserve transaction is invalid." }, 400);
     }
+    const tenantRows = await tenantsFor(db, id);
+    const tenantIndex = tenantRows.findIndex((candidate) => candidate.id === tenant.id);
+    const baseReserveMicros = 5_000_000n / BigInt(tenantRows.length);
+    const expectedReserveMicros =
+      tenantIndex === tenantRows.length - 1
+        ? 5_000_000n - baseReserveMicros * BigInt(tenantRows.length - 1)
+        : baseReserveMicros;
+    const incomingReserveMicros =
+      body.amount === undefined ? expectedReserveMicros : tokenMicros(body.amount);
+    if (incomingReserveMicros !== expectedReserveMicros) {
+      return json({ error: "This reserve payment does not match the tenant's equal share." }, 400);
+    }
+    const reserveAmount = Number(expectedReserveMicros) / 1_000_000;
     statements.push(
       db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
       eventStatement(
@@ -1990,18 +2282,18 @@ async function applyAction(request, env, id) {
         now,
         role,
         "operations_reserve_paid",
-        `Paid the separate $5 testUSDC network and document-storage reserve in transaction ${transactionHash}.`,
+        `${tenant.email} paid ${reserveAmount} testUSDC toward the separate $5 testUSDC network and document-storage reserve in transaction ${transactionHash}.`,
         revision,
-        { amount: "5", token: "testUSDC", transactionHash },
+        { amount: String(reserveAmount), tenantId: tenant.id, token: "testUSDC", transactionHash },
       ),
     );
-  } else if (body.type === "agreement_funded") {
+  } else if (body.type === "tenant_share_funded" || body.type === "agreement_funded") {
     if (role !== "tenant") {
       return json({ error: "Only the tenant may record the deposit funding transaction." }, 403);
     }
     const tenant = await tenantForToken(db, id, body.token);
-    if (!tenant || tenant.is_funding_tenant !== 1) {
-      return json({ error: "Only the designated funding tenant may fund the deposit." }, 403);
+    if (!tenant) {
+      return json({ error: "Only an approved tenant may fund a deposit share." }, 403);
     }
     if (row.status !== "finalized") {
       return json({ error: "The agreement must be finalized before its deposit is funded." }, 409);
@@ -2010,6 +2302,29 @@ async function applyAction(request, env, id) {
     if (!/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
       return json({ error: "The deposit funding transaction is invalid." }, 400);
     }
+    const tenantRows = await tenantsFor(db, id);
+    const tenantIndex = tenantRows.findIndex((candidate) => candidate.id === tenant.id);
+    const depositMicros = tokenMicros(JSON.parse(row.terms_json).deposit);
+    if (depositMicros === null) {
+      return json({ error: "The approved deposit amount is invalid." }, 409);
+    }
+    let allocatedMicros = 0n;
+    for (let index = 0; index < tenantRows.length - 1; index += 1) {
+      allocatedMicros +=
+        (depositMicros * BigInt(tenantRows[index].deposit_share_bps)) / 10_000n;
+    }
+    const expectedContributionMicros =
+      tenantIndex === tenantRows.length - 1
+        ? depositMicros - allocatedMicros
+        : (depositMicros * BigInt(tenant.deposit_share_bps)) / 10_000n;
+    const incomingContributionMicros =
+      body.amount === undefined ? expectedContributionMicros : tokenMicros(body.amount);
+    if (incomingContributionMicros !== expectedContributionMicros) {
+      return json({ error: "This funding receipt does not match the tenant's approved share." }, 400);
+    }
+    const contributionAmount = Number(expectedContributionMicros) / 1_000_000;
+    const eventAction =
+      body.type === "tenant_share_funded" ? "tenant_share_funded" : "agreement_funded";
     statements.push(
       db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
       eventStatement(
@@ -2017,10 +2332,15 @@ async function applyAction(request, env, id) {
         id,
         now,
         role,
-        "agreement_funded",
-        `Accepted the finalized agreement and funded the refundable security deposit in transaction ${transactionHash}.`,
+        eventAction,
+        `${tenant.email} accepted the finalized agreement and funded ${contributionAmount} of the refundable security deposit in transaction ${transactionHash}.`,
         revision,
-        { transactionHash },
+        {
+          amount: String(contributionAmount),
+          depositShareBps: tenant.deposit_share_bps,
+          tenantId: tenant.id,
+          transactionHash,
+        },
       ),
     );
   } else if (body.type === "record_snapshot_anchored") {
@@ -2370,7 +2690,9 @@ async function applyAction(request, env, id) {
   }
   if (
     body.type === "finalize" ||
+    body.type === "tenant_share_funded" ||
     body.type === "agreement_funded" ||
+    body.type === "claim_submitted" ||
     body.type === "claim_amended" ||
     body.type === "claim_response" ||
     body.type === "arbiter_ruling"
@@ -2834,7 +3156,7 @@ async function report(db, id, token) {
 ${isCalifornia ? `<tr><th>Monthly rent used for cap</th><td>${escapeHtml(candidate.monthlyRent || "Not recorded")}</td></tr>` : ""}
 <tr><th>${isCalifornia ? "California accounting/refund period" : "Test deduction window"}</th><td>${escapeHtml(candidate.claimDays)} calendar days (${isCalifornia ? "locked" : "agreed test value"})</td></tr>
 <tr><th>OpenEscrow response period</th><td>${escapeHtml(candidate.responseDays)} days (${isCalifornia ? "locked pilot rule" : "agreed test value"})</td></tr>
-<tr><th>OpenEscrow arbiter period</th><td>${escapeHtml(candidate.arbiterDays)} days (${isCalifornia ? "locked pilot rule" : "agreed test value"})</td></tr>
+${record.arbiterEmail ? `<tr><th>OpenEscrow arbiter period</th><td>${escapeHtml(candidate.arbiterDays)} days (${isCalifornia ? "locked pilot rule" : "agreed test value"})</td></tr>` : ""}
 <tr><th>Jurisdiction</th><td>${isCalifornia ? "California residential tenancy" : "Non-specific jurisdiction (testing only)"}</td></tr>
 <tr><th>Policy profile</th><td>${escapeHtml(candidate.policyVersion || "Legacy proposal")}</td></tr>
 ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordException ? "Qualifying small-landlord exception asserted" : "Standard one-month cap"}${candidate.tenantIsServiceMember ? " · tenant is a service member" : ""}</td></tr>` : ""}`;
@@ -2869,6 +3191,7 @@ ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordExc
     .map((event) => {
       const snapshot = event.metadata.terms;
       return `<h3>Revision ${event.revision}</h3><p class="meta">${escapeHtml(event.createdAt)}</p><table>
+<tr><th>Rental property</th><td>${escapeHtml(snapshot.propertyAddress || "Legacy proposal: not recorded")}</td></tr>
 <tr><th>Refundable deposit</th><td>${escapeHtml(snapshot.deposit)} ${snapshot.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</td></tr>
 <tr><th>Tenant-paid platform fee</th><td>$0</td></tr>
 <tr><th>Expected possession returned</th><td>${escapeHtml(snapshot.claimWindowStart)}</td></tr>
@@ -2913,7 +3236,7 @@ ${policyRows(snapshot)}
   const tenantPartyRows = record.tenants
     .map(
       (tenant) =>
-        `<tr><th>${tenant.isFundingTenant ? "Funding tenant" : "Tenant reviewer"}</th><td>${escapeHtml(tenant.name || "Not provided")}</td><td>${escapeHtml(tenant.email)}</td><td class="hash">${escapeHtml(tenant.wallet || "Not yet approved")}</td></tr>`,
+        `<tr><th>Tenant (${escapeHtml((tenant.depositShareBps / 100).toFixed(2).replace(/\.?0+$/, ""))}% share)</th><td>${escapeHtml(tenant.name || "Not provided")}</td><td>${escapeHtml(tenant.email)}</td><td class="hash">${escapeHtml(tenant.wallet || "Not yet approved")}</td></tr>`,
     )
     .join("");
   const tenantApprovalState = record.tenants
@@ -2937,6 +3260,7 @@ ${tenantPartyRows}
 <tr><th>Arbiter</th><td>${escapeHtml(record.arbiterName || (record.arbiterEmail ? "Not provided" : "Not appointed"))}</td><td>${escapeHtml(record.arbiterEmail || "Not appointed")}</td><td class="hash">${escapeHtml(record.arbiterWallet || (record.arbiterEmail ? "Not yet approved" : "Not appointed"))}</td></tr>
 </tbody></table>
 <h2>Current terms</h2><table>
+<tr><th>Rental property</th><td>${escapeHtml(terms.propertyAddress || "Legacy proposal: not recorded")}</td></tr>
 <tr><th>Refundable deposit</th><td>${escapeHtml(terms.deposit)} ${terms.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</td></tr>
 <tr><th>Tenant-paid platform fee</th><td>$0</td></tr>
 <tr><th>Expected possession returned</th><td>${escapeHtml(terms.claimWindowStart)}</td></tr>

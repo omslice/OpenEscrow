@@ -1,11 +1,17 @@
 import type { InviteRole } from "./inviteContext";
 
 export type NegotiationRole = "landlord" | InviteRole;
-export type NegotiationStatus = "draft" | "ready" | "finalized";
+export type NegotiationStatus =
+  | "draft"
+  | "ready"
+  | "finalized"
+  | "cancelled"
+  | "superseded";
 
 export interface AgreementTerms {
   jurisdiction: string;
   policyVersion?: string;
+  propertyAddress: string;
   tokenChoice: "plain" | "yield";
   deposit: string;
   operationsReserve: string;
@@ -65,6 +71,7 @@ export interface NegotiationTenant {
   wallet: string | null;
   isFundingTenant: boolean;
   acceptedAt: string | null;
+  depositShareBps: number;
 }
 
 export interface NegotiationRecord {
@@ -109,6 +116,7 @@ export interface CreatedNegotiation {
       email: string;
       token: string;
       isFundingTenant: boolean;
+      depositShareBps: number;
     }>;
     arbiter: string | null;
   };
@@ -338,7 +346,7 @@ export async function createNegotiation(input: {
   landlordEmail: string;
   tenantName: string;
   tenantEmail: string;
-  tenants?: Array<{ name: string; email: string }>;
+  tenants?: Array<{ name: string; email: string; depositShareBps: number }>;
   arbiterName: string;
   arbiterEmail: string | null;
   terms: AgreementTerms;
@@ -361,6 +369,7 @@ export function addNegotiationTenant(
       email: string;
       token: string;
       isFundingTenant: false;
+      depositShareBps: number;
     };
   }>(
     `/api/negotiations/${encodeURIComponent(access.proposalId)}/tenants`,
@@ -464,13 +473,19 @@ export type NegotiationAction =
         };
       }
     | {
+        type: "update_tenant_shares";
+        shares: Array<{ tenantId: string; depositShareBps: number }>;
+      }
+    | { type: "cancel_proposal" }
+    | {
         type: "invitation_prepared";
         invitedRole: InviteRole;
         invitedTenantId?: string;
         method: "gmail" | "copy";
       }
     | { type: "finalize"; agreementId: string; transactionHash: string }
-    | { type: "operations_reserve_paid"; transactionHash: string }
+    | { type: "operations_reserve_paid"; amount?: string; transactionHash: string }
+    | { type: "tenant_share_funded"; amount?: string; transactionHash: string }
     | { type: "agreement_funded"; transactionHash: string }
     | {
         type: "record_snapshot_anchored";

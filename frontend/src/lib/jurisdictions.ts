@@ -11,7 +11,7 @@ export const CALIFORNIA_POLICY = {
   claimDays: "21",
   responseDays: "7",
   arbiterDays: "7",
-  operationsReserve: "0",
+  operationsReserve: "5",
   statuteUrl:
     "https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CIV&sectionNum=1950.5.",
   guideUrl: "https://www.dre.ca.gov/publications/ResourceGuidebook/gb10_movingout.html",
@@ -23,7 +23,7 @@ export const GENERIC_TEST_POLICY = {
   claimDays: "30",
   responseDays: "7",
   arbiterDays: "7",
-  operationsReserve: "0",
+  operationsReserve: "5",
 } as const;
 
 const STORAGE_PREFIX = "openescrow:jurisdiction:";

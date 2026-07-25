@@ -65,8 +65,9 @@ npm run e2e:live
 
 ## What's here vs. what isn't
 
-Implemented: choose plain or yield-test token -> propose with optional arbiter ->
-arbiter accept/decline/renominate -> tenant pays the separate operations reserve and funds ->
+Implemented: choose plain or yield-test token -> create a multi-tenant proposal with explicit
+deposit shares -> every tenant approves -> each tenant pays an equal portion of the separate
+operations reserve and funds only their deposit share ->
 claim submit/amend ->
 tenant respond (accept/partial/dispute) -> arbiter resolve -> permissionless timeout triggers ->
 pull-based withdraw, mutual-consent arbiter replacement, plus a live deadline countdown and an
@@ -88,11 +89,13 @@ agreement link and is stored in the browser for display on the dashboard; it is 
 validated on-chain and does not change contract behavior. The UI labels it as off-chain research
 context because none of the listed jurisdiction profiles have completed legal review.
 
-The proposal form is email-first: the signed-in identity is the landlord, with one funding tenant,
-optional additional tenant reviewers, and an optional arbiter collected as participant identities.
-Every tenant must approve the same revision; adding a tenant resets all approvals. The onchain
-agreement still uses the funding tenant's single wallet. The D1 negotiation registry verifies Privy
-identity tokens and restores role-scoped proposal access by verified email across browser sessions.
+The proposal form is email-first: the signed-in identity is the landlord, with one or more tenants.
+Every tenant must approve the same revision. Deposit percentages default evenly, must total 100%,
+and remain editable before finalization; adding, removing, editing, or reallocating tenants resets
+all approvals. Each approved wallet funds its exact onchain share and the agreement activates only
+after the full amount is received. The optional arbiter workflow remains implemented but is
+feature-flagged out of the normal pilot UI. The D1 negotiation registry verifies Privy identity
+tokens and restores role-scoped proposal access by verified email across browser sessions.
 Participant wallet addresses are recorded when the invited parties approve the current revision.
 
 Not implemented: a production onchain event indexer, production evidence retention controls, or a

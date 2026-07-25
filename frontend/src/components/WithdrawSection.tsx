@@ -1,4 +1,4 @@
-import { useAccount } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS } from "../contracts/config";
 import { formatUSDC } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
@@ -17,11 +17,33 @@ export function WithdrawSection({
   onRefetch?: () => void;
 }) {
   const { address } = useAccount();
+  const { data: tenantShare } = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "tenantShareBps",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address },
+  });
+  const { data: tenantCredit } = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "tenantWithdrawableByAddress",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address },
+  });
   if (!address) return null;
 
-  const isTenant = address.toLowerCase() === agreement.tenant.toLowerCase();
+  const isTenant =
+    (typeof tenantShare === "bigint" && tenantShare > 0n) ||
+    (typeof tenantShare === "number" && tenantShare > 0);
   const isLandlord = address.toLowerCase() === agreement.landlord.toLowerCase();
-  const credited = isTenant ? agreement.tenantWithdrawable : isLandlord ? agreement.landlordWithdrawable : 0n;
+  const credited = isTenant
+    ? typeof tenantCredit === "bigint"
+      ? tenantCredit
+      : 0n
+    : isLandlord
+      ? agreement.landlordWithdrawable
+      : 0n;
 
   if (!isTenant && !isLandlord) return null;
   if (credited === 0n) return null;

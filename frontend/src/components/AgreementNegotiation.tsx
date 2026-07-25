@@ -24,13 +24,19 @@ function Terms({ record }: { record: NegotiationRecord }) {
   const isCalifornia = terms.jurisdiction === "us-ca";
   return (
     <dl className="negotiation-terms">
+      <div><dt>Rental property</dt><dd>{terms.propertyAddress || "Legacy proposal: not recorded"}</dd></div>
       <div><dt>Deposit</dt><dd>{terms.deposit} {terms.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</dd></div>
       {isCalifornia && <div><dt>Monthly rent used for cap</dt><dd>{terms.monthlyRent || "Legacy proposal: not recorded"}</dd></div>}
-      <div><dt>Tenant-paid platform fee</dt><dd>$0</dd></div>
+      <div>
+        <dt>Testnet operations reserve</dt>
+        <dd>$5 testUSDC total · split evenly between tenants · not refundable principal</dd>
+      </div>
       <div><dt>Expected possession returned</dt><dd>{new Date(terms.claimWindowStart).toLocaleString()}</dd></div>
       <div><dt>{isCalifornia ? "California accounting/refund period" : "Test deduction window"}</dt><dd>{terms.claimDays} calendar days · {isCalifornia ? "locked" : "agreed test value"}</dd></div>
       <div><dt>Tenant response</dt><dd>{terms.responseDays} days · {isCalifornia ? "locked pilot rule" : "agreed test value"}</dd></div>
-      <div><dt>Arbiter ruling</dt><dd>{terms.arbiterDays} days · {isCalifornia ? "locked pilot rule" : "agreed test value"}</dd></div>
+      {record.arbiterEmail && (
+        <div><dt>Arbiter ruling</dt><dd>{terms.arbiterDays} days · {isCalifornia ? "locked pilot rule" : "agreed test value"}</dd></div>
+      )}
       <div><dt>Jurisdiction</dt><dd>{jurisdictionLabel(terms.jurisdiction as JurisdictionCode)}</dd></div>
       <div><dt>Policy profile</dt><dd>{terms.policyVersion || "Legacy proposal"}</dd></div>
       {isCalifornia && (
@@ -149,7 +155,13 @@ function AgreementNegotiationView({
           <h2 id="proposal-review-title">Review the landlord’s agreement</h2>
         </div>
         <span className={`negotiation-status status-${record.status}`}>
-          {record.status === "draft" ? "Under review" : record.status === "ready" ? "Approved" : "Onchain"}
+          {record.status === "draft"
+            ? "Under review"
+            : record.status === "ready"
+              ? "Approved"
+              : record.status === "finalized"
+                ? "Onchain"
+                : "Cancelled"}
         </span>
       </div>
       <p className="hint">
@@ -187,16 +199,20 @@ function AgreementNegotiationView({
         </div>
         {record.tenants.map((tenant) => (
           <div key={tenant.id}>
-            <span>{tenant.isFundingTenant ? "Funding tenant" : "Tenant reviewer"}</span>
+            <span>
+              Tenant · {(tenant.depositShareBps / 100).toFixed(2).replace(/\.?0+$/, "")}% share
+            </span>
             <strong>{tenant.name || tenant.email}</strong>
             {tenant.name && <small>{tenant.email}</small>}
           </div>
         ))}
-        <div>
-          <span>Arbiter</span>
-          <strong>{record.arbiterName || record.arbiterEmail || "Not appointed"}</strong>
-          {record.arbiterName && record.arbiterEmail && <small>{record.arbiterEmail}</small>}
-        </div>
+        {record.arbiterEmail && (
+          <div>
+            <span>Arbiter</span>
+            <strong>{record.arbiterName || record.arbiterEmail}</strong>
+            {record.arbiterName && <small>{record.arbiterEmail}</small>}
+          </div>
+        )}
       </div>
       <Terms record={record} />
 
@@ -219,7 +235,7 @@ function AgreementNegotiationView({
         )}
       </div>
 
-      {canRespond && record.status !== "finalized" && (
+      {canRespond && record.status !== "finalized" && record.status !== "cancelled" && (
         <div className="negotiation-response">
           <h3>Respond to revision {record.revision}</h3>
           <label>

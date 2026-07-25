@@ -1,4 +1,6 @@
 import { useAgreement } from "../lib/useAgreement";
+import { ZERO_ADDRESS } from "../contracts/config";
+import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
 import { AgreementDashboard } from "./AgreementDashboard";
 import { ArbiterActions } from "./ArbiterActions";
 import { TenantFundAction } from "./TenantFundAction";
@@ -54,7 +56,9 @@ export function AgreementCard({
       />
       <AgreementNoticeCenter agreement={agreement} />
       <NextAction agreement={agreement} />
-      <ArbiterActions id={id} agreement={agreement} onRefetch={onRefetch} />
+      {(ARBITER_UI_ENABLED || agreement.arbiter !== ZERO_ADDRESS) && (
+        <ArbiterActions id={id} agreement={agreement} onRefetch={onRefetch} />
+      )}
       <ProposalActions id={id} agreement={agreement} onRefetch={onRefetch} />
       <TenantFundAction
         id={id}
@@ -66,7 +70,9 @@ export function AgreementCard({
       <ClaimSection id={id} agreement={agreement} onRefetch={onRefetch} negotiationAccess={negotiationAccess} />
       <ResponseSection id={id} agreement={agreement} onRefetch={onRefetch} negotiationAccess={negotiationAccess} />
       <DisputeResolutionSection id={id} agreement={agreement} onRefetch={onRefetch} negotiationAccess={negotiationAccess} />
-      <ArbiterReplacementSection id={id} agreement={agreement} onRefetch={onRefetch} />
+      {(ARBITER_UI_ENABLED || agreement.arbiter !== ZERO_ADDRESS) && (
+        <ArbiterReplacementSection id={id} agreement={agreement} onRefetch={onRefetch} />
+      )}
       <TimeoutSection
         id={id}
         agreement={agreement}

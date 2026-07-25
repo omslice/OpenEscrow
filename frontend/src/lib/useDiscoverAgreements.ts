@@ -7,7 +7,7 @@ import { DEPLOYMENT_BLOCK, OpenEscrowABI, OPEN_ESCROW_ADDRESS } from "../contrac
 // far wider than that - every query here must be chunked, not issued as one call.
 const MAX_BLOCK_RANGE = 1900n;
 
-type EventName = "AgreementProposed" | "ArbiterReplaced";
+type EventName = "AgreementProposed" | "TenantParticipantAdded" | "ArbiterReplaced";
 type PublicClient = NonNullable<ReturnType<typeof usePublicClient>>;
 
 /**
@@ -15,7 +15,7 @@ type PublicClient = NonNullable<ReturnType<typeof usePublicClient>>;
  * isn't a query the contract can answer directly. This scans event logs client-side
  * instead of requiring the user to already know an agreement id:
  *  - AgreementProposed, filtered by landlord == me
- *  - AgreementProposed, filtered by tenant == me
+ *  - TenantParticipantAdded, filtered by tenant == me (covers every co-tenant)
  *  - AgreementProposed, unfiltered, then matched against arbiter == me client-side
  *    (arbiter isn't an indexed topic, so it can't be filtered server-side)
  *  - ArbiterReplaced, filtered by newArbiter == me (covers arbiters who joined later
@@ -62,7 +62,7 @@ export function useDiscoverAgreements() {
       try {
         const [asLandlord, asTenant, allProposed, asNewArbiter] = await Promise.all([
           getChunkedEvents(publicClient, "AgreementProposed", { landlord: address }),
-          getChunkedEvents(publicClient, "AgreementProposed", { tenant: address }),
+          getChunkedEvents(publicClient, "TenantParticipantAdded", { tenant: address }),
           getChunkedEvents(publicClient, "AgreementProposed", undefined),
           getChunkedEvents(publicClient, "ArbiterReplaced", { newArbiter: address }),
         ]);

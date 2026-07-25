@@ -63,7 +63,7 @@ function useTenantReceiptRecovery(
     );
   }, [storageKey]);
 
-  async function record(transactionHash: `0x${string}`) {
+  async function record(transactionHash: `0x${string}`, amount?: bigint) {
     if (!access) return;
     setPendingTransaction(transactionHash);
     setRecordError(null);
@@ -72,8 +72,16 @@ function useTenantReceiptRecovery(
       await negotiationAction(
         access,
         kind === "reserve"
-          ? { type: "operations_reserve_paid", transactionHash }
-          : { type: "agreement_funded", transactionHash },
+          ? {
+              type: "operations_reserve_paid",
+              ...(amount === undefined ? {} : { amount: microsToDecimal(amount) }),
+              transactionHash,
+            }
+          : {
+              type: "tenant_share_funded",
+              ...(amount === undefined ? {} : { amount: microsToDecimal(amount) }),
+              transactionHash,
+            },
       );
       setPendingTransaction(null);
       if (storageKey) window.localStorage.removeItem(storageKey);
@@ -102,8 +110,29 @@ function useTenantReceiptRecovery(
   return { record, recovery };
 }
 
-function fundingDetails(agreement: Agreement) {
-  const needed = agreement.agreedAmount;
+function microsToDecimal(value: bigint) {
+  const whole = value / 1_000_000n;
+  const fraction = (value % 1_000_000n).toString().padStart(6, "0").replace(/0+$/, "");
+  return fraction ? `${whole}.${fraction}` : whole.toString();
+}
+
+function reserveShareFor(
+  participantRecord: NegotiationRecord | null | undefined,
+  address: string | undefined,
+) {
+  const tenants = participantRecord?.tenants ?? [];
+  if (!tenants.length || !address) return OPERATIONS_RESERVE_AMOUNT;
+  const index = tenants.findIndex(
+    (tenant) => tenant.wallet?.toLowerCase() === address.toLowerCase(),
+  );
+  if (index < 0) return OPERATIONS_RESERVE_AMOUNT;
+  const base = OPERATIONS_RESERVE_AMOUNT / BigInt(tenants.length);
+  return index === tenants.length - 1
+    ? OPERATIONS_RESERVE_AMOUNT - base * BigInt(tenants.length - 1)
+    : base;
+}
+
+function fundingDetails(agreement: Agreement, needed: bigint) {
   const tokenLabel =
     agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase()
       ? "ytUSDC"
@@ -116,14 +145,18 @@ function FundingIntroduction({
   needed,
   tokenLabel,
   reserveRequired,
+  reserveAmount,
   reservePaid,
+  shareFunded,
   sponsored = false,
 }: {
   agreement: Agreement;
   needed: bigint;
   tokenLabel: string;
   reserveRequired: boolean;
+  reserveAmount: bigint;
   reservePaid: boolean;
+  shareFunded: boolean;
   sponsored?: boolean;
 }) {
   return (
@@ -134,21 +167,32 @@ function FundingIntroduction({
         {tokenLabel === "ytUSDC"
           ? " shares. The dashboard will show their growing testUSDC value"
           : ""}
-        . Approve the token spend, then fund; acceptance and funding happen in the same
-        transaction.
+        . Approve the token spend, then submit this tenant's share.
       </p>
+      <div className="funding-reserve-summary">
+        <span>Agreement funding progress</span>
+        <strong>
+          {formatUSDC(agreement.depositAmount)} / {formatUSDC(agreement.agreedAmount)} {tokenLabel}
+        </strong>
+      </div>
       {reserveRequired && (
         <div className="funding-reserve-summary">
           <span>Refundable deposit</span>
           <strong>{formatUSDC(needed)} {tokenLabel}</strong>
           <span>Network &amp; storage reserve</span>
-          <strong>{formatUSDC(OPERATIONS_RESERVE_AMOUNT)} testUSDC</strong>
+           <strong>{formatUSDC(reserveAmount)} testUSDC</strong>
           <small>
             {reservePaid
               ? "Reserve payment confirmed onchain. It is separate from the deposit."
               : "Pay this separate, non-refundable pilot charge before funding the deposit."}
           </small>
         </div>
+      )}
+      {shareFunded && (
+        <p className="success">
+          Your deposit share is confirmed onchain. The agreement will activate after every
+          tenant's approved share is funded.
+        </p>
       )}
       {sponsored && agreement.phase === Phase.ReadyToFund && (
         <p className="field-help">Network fees for the embedded test wallet are sponsored.</p>
@@ -167,9 +211,26 @@ function StandardTenantFundAction({
   const { address } = useAccount();
   const reserveRecord = useTenantReceiptRecovery(negotiationAccess, "reserve");
   const fundingRecord = useTenantReceiptRecovery(negotiationAccess, "funding");
-  const isTenant = address?.toLowerCase() === agreement.tenant.toLowerCase();
-  const { needed, tokenLabel } = fundingDetails(agreement);
+  const { data: requiredContribution } = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "requiredTenantContribution",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address && agreement.phase === Phase.ReadyToFund },
+  });
+  const { data: existingContribution } = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "tenantContribution",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address && agreement.phase === Phase.ReadyToFund },
+  });
+  const needed = typeof requiredContribution === "bigint" ? requiredContribution : 0n;
+  const shareFunded = typeof existingContribution === "bigint" && existingContribution > 0n;
+  const isTenant = needed > 0n;
+  const { tokenLabel } = fundingDetails(agreement, needed);
   const reserveRequired = participantRecord?.terms.operationsReserve === "5";
+  const reserveAmount = reserveShareFor(participantRecord, address);
   const reserveUsesDepositToken =
     agreement.token.toLowerCase() === USDC_ADDRESS.toLowerCase();
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
@@ -238,7 +299,7 @@ function StandardTenantFundAction({
   if (agreement.phase !== Phase.ReadyToFund || !isTenant) return null;
   const currentBalance = typeof balance === "bigint" ? balance : 0n;
   const depositBalanceNeeded =
-    reserveRequired && reserveUsesDepositToken ? needed + OPERATIONS_RESERVE_AMOUNT : needed;
+    reserveRequired && reserveUsesDepositToken ? needed + reserveAmount : needed;
   const hasBalance = currentBalance >= depositBalanceNeeded;
   const currentReserveBalance =
     reserveUsesDepositToken
@@ -247,12 +308,12 @@ function StandardTenantFundAction({
         ? reserveBalance
         : 0n;
   const hasReserveBalance =
-    !reserveRequired || currentReserveBalance >= OPERATIONS_RESERVE_AMOUNT;
+    !reserveRequired || currentReserveBalance >= reserveAmount;
   const hasAllowance = typeof allowance === "bigint" && allowance >= needed;
   const hasReserveAllowance =
     !reserveRequired ||
     (typeof reserveAllowance === "bigint" &&
-      reserveAllowance >= OPERATIONS_RESERVE_AMOUNT);
+      reserveAllowance >= reserveAmount);
   const reserveIsPaid = !reserveRequired || reservePaid === true;
 
   return (
@@ -262,9 +323,11 @@ function StandardTenantFundAction({
         needed={needed}
         tokenLabel={tokenLabel}
         reserveRequired={reserveRequired}
+        reserveAmount={reserveAmount}
         reservePaid={reserveIsPaid}
+        shareFunded={shareFunded}
       />
-      {!hasBalance ? (
+      {shareFunded ? null : !hasBalance ? (
         <TxButton
           address={agreement.token}
           abi={MockUSDCABI}
@@ -279,7 +342,7 @@ function StandardTenantFundAction({
           address={USDC_ADDRESS}
           abi={MockUSDCABI}
           functionName="mint"
-          args={[address, OPERATIONS_RESERVE_AMOUNT - currentReserveBalance]}
+          args={[address, reserveAmount - currentReserveBalance]}
           label="Get reserve testUSDC"
           className="btn btn-primary"
           onSuccess={() => void refetchReserveBalance()}
@@ -310,8 +373,8 @@ function StandardTenantFundAction({
           address={USDC_ADDRESS}
           abi={MockUSDCABI}
           functionName="approve"
-          args={[OPERATIONS_RESERVE_ADDRESS, OPERATIONS_RESERVE_AMOUNT]}
-          label="Approve $5 operations reserve"
+          args={[OPERATIONS_RESERVE_ADDRESS, reserveAmount]}
+          label={`Approve ${formatUSDC(reserveAmount)} reserve share`}
           className="btn btn-primary"
           onSuccess={() => void refetchReserveAllowance()}
         />
@@ -319,24 +382,24 @@ function StandardTenantFundAction({
         <TxButton
           address={OPERATIONS_RESERVE_ADDRESS}
           abi={OperationsReserveABI}
-          functionName="payReserve"
-          args={[OPEN_ESCROW_ADDRESS, id]}
-          label="Pay $5 operations reserve"
+          functionName="payReserveShare"
+          args={[OPEN_ESCROW_ADDRESS, id, reserveAmount]}
+          label={`Pay ${formatUSDC(reserveAmount)} reserve share`}
           className="btn btn-primary"
           onSuccess={(transactionHash) => {
             void refetchReservePaid();
-            void reserveRecord.record(transactionHash);
+            void reserveRecord.record(transactionHash, reserveAmount);
           }}
         />
       ) : (
         <TxButton
           address={OPEN_ESCROW_ADDRESS}
           abi={OpenEscrowABI}
-          functionName="tenantAcceptAndFund"
+          functionName="fundTenantShare"
           args={[id]}
-          label="Accept and fund"
+          label={`Fund my ${formatUSDC(needed)} share`}
           onSuccess={(transactionHash) => {
-            void fundingRecord.record(transactionHash);
+            void fundingRecord.record(transactionHash, needed);
             onRefetch?.();
           }}
         />
@@ -383,9 +446,26 @@ function SponsoredTenantFundAction({
     | "funding"
   >("idle");
   const [transactionError, setTransactionError] = useState<string | null>(null);
-  const isTenant = address?.toLowerCase() === agreement.tenant.toLowerCase();
-  const { needed, tokenLabel } = fundingDetails(agreement);
+  const { data: requiredContribution } = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "requiredTenantContribution",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address && agreement.phase === Phase.ReadyToFund },
+  });
+  const { data: existingContribution } = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "tenantContribution",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address && agreement.phase === Phase.ReadyToFund },
+  });
+  const needed = typeof requiredContribution === "bigint" ? requiredContribution : 0n;
+  const shareFunded = typeof existingContribution === "bigint" && existingContribution > 0n;
+  const isTenant = needed > 0n;
+  const { tokenLabel } = fundingDetails(agreement, needed);
   const reserveRequired = participantRecord?.terms.operationsReserve === "5";
+  const reserveAmount = reserveShareFor(participantRecord, address);
   const reserveUsesDepositToken =
     agreement.token.toLowerCase() === USDC_ADDRESS.toLowerCase();
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
@@ -446,7 +526,7 @@ function SponsoredTenantFundAction({
   if (agreement.phase !== Phase.ReadyToFund || !isTenant || !address) return null;
   const currentBalance = typeof balance === "bigint" ? balance : 0n;
   const depositBalanceNeeded =
-    reserveRequired && reserveUsesDepositToken ? needed + OPERATIONS_RESERVE_AMOUNT : needed;
+    reserveRequired && reserveUsesDepositToken ? needed + reserveAmount : needed;
   const hasBalance = currentBalance >= depositBalanceNeeded;
   const currentReserveBalance =
     reserveUsesDepositToken
@@ -455,12 +535,12 @@ function SponsoredTenantFundAction({
         ? reserveBalance
         : 0n;
   const hasReserveBalance =
-    !reserveRequired || currentReserveBalance >= OPERATIONS_RESERVE_AMOUNT;
+    !reserveRequired || currentReserveBalance >= reserveAmount;
   const hasAllowance = typeof allowance === "bigint" && allowance >= needed;
   const hasReserveAllowance =
     !reserveRequired ||
     (typeof reserveAllowance === "bigint" &&
-      reserveAllowance >= OPERATIONS_RESERVE_AMOUNT);
+      reserveAllowance >= reserveAmount);
   const reserveIsPaid = !reserveRequired || reservePaid === true;
 
   async function sendSponsored(
@@ -531,8 +611,8 @@ function SponsoredTenantFundAction({
       const latest = await refetchReserveBalance();
       const latestBalance = typeof latest.data === "bigint" ? latest.data : 0n;
       const missing =
-        OPERATIONS_RESERVE_AMOUNT > latestBalance
-          ? OPERATIONS_RESERVE_AMOUNT - latestBalance
+        reserveAmount > latestBalance
+          ? reserveAmount - latestBalance
           : 0n;
       if (missing === 0n) return;
       await sendSponsored(
@@ -561,7 +641,7 @@ function SponsoredTenantFundAction({
         encodeFunctionData({
           abi: MockUSDCABI,
           functionName: "approve",
-          args: [OPERATIONS_RESERVE_ADDRESS, OPERATIONS_RESERVE_AMOUNT],
+          args: [OPERATIONS_RESERVE_ADDRESS, reserveAmount],
         }),
         150_000n,
       );
@@ -581,13 +661,13 @@ function SponsoredTenantFundAction({
         OPERATIONS_RESERVE_ADDRESS,
         encodeFunctionData({
           abi: OperationsReserveABI,
-          functionName: "payReserve",
-          args: [OPEN_ESCROW_ADDRESS, id],
+          functionName: "payReserveShare",
+          args: [OPEN_ESCROW_ADDRESS, id, reserveAmount],
         }),
         200_000n,
       );
       await refetchReservePaid();
-      await reserveRecord.record(transactionHash);
+      await reserveRecord.record(transactionHash, reserveAmount);
     } catch (caught) {
       setTransactionError(sponsoredErrorMessage(caught));
     } finally {
@@ -617,12 +697,12 @@ function SponsoredTenantFundAction({
         OPEN_ESCROW_ADDRESS,
         encodeFunctionData({
           abi: OpenEscrowABI,
-          functionName: "tenantAcceptAndFund",
+          functionName: "fundTenantShare",
           args: [id],
         }),
         750_000n,
       );
-      await fundingRecord.record(transactionHash);
+      await fundingRecord.record(transactionHash, needed);
       onRefetch?.();
     } catch (caught) {
       setTransactionError(sponsoredErrorMessage(caught));
@@ -638,10 +718,12 @@ function SponsoredTenantFundAction({
         needed={needed}
         tokenLabel={tokenLabel}
         reserveRequired={reserveRequired}
+        reserveAmount={reserveAmount}
         reservePaid={reserveIsPaid}
+        shareFunded={shareFunded}
         sponsored
       />
-      {!hasBalance ? (
+      {shareFunded ? null : !hasBalance ? (
         <button
           className="btn btn-primary"
           disabled={step !== "idle"}
@@ -679,7 +761,7 @@ function SponsoredTenantFundAction({
         >
           {step === "reserveApproving"
             ? "Approving reserve with gas covered..."
-            : "Approve $5 operations reserve"}
+            : `Approve ${formatUSDC(reserveAmount)} reserve share`}
         </button>
       ) : !reserveIsPaid ? (
         <button
@@ -689,7 +771,7 @@ function SponsoredTenantFundAction({
         >
           {step === "reservePaying"
             ? "Paying reserve with gas covered..."
-            : "Pay $5 operations reserve"}
+            : `Pay ${formatUSDC(reserveAmount)} reserve share`}
         </button>
       ) : (
         <button
@@ -697,7 +779,9 @@ function SponsoredTenantFundAction({
           disabled={step !== "idle"}
           onClick={() => void fundDeposit()}
         >
-          {step === "funding" ? "Funding with gas covered..." : "Accept and fund"}
+          {step === "funding"
+            ? "Funding with gas covered..."
+            : `Fund my ${formatUSDC(needed)} share`}
         </button>
       )}
       {reserveRecord.recovery}
