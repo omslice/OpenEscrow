@@ -28,17 +28,23 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
         <li>
           <span>01</span>
           <strong>Agree &amp; fund</strong>
-          <p>The parties approve one proposal, then the tenant funds the protected deposit.</p>
+          <p>Both parties agree to the deposit terms, and the deposit is funded.</p>
         </li>
         <li>
           <span>02</span>
-          <strong>Hold &amp; track</strong>
-          <p>The deposit stays in escrow, with its status and activity visible to each party.</p>
+          <strong>Claim &amp; review</strong>
+          <p>
+            At move-out, the landlord can submit deductions with supporting documents. The
+            tenant is notified to approve or dispute them.
+          </p>
         </li>
         <li>
           <span>03</span>
-          <strong>Deduct, resolve &amp; refund</strong>
-          <p>The landlord documents deductions; accepted amounts are paid and the rest is refunded or resolved.</p>
+          <strong>Release or resolve</strong>
+          <p>
+            Unclaimed funds are returned to the tenant. Disputes follow the applicable local
+            resolution process.
+          </p>
         </li>
       </ol>
 
