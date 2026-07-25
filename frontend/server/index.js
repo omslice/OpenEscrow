@@ -615,6 +615,30 @@ async function applyAction(request, env, id) {
   const role = await authorize(db, row, body.token);
   if (!role) return json({ error: "This proposal link is invalid or no longer available." }, 403);
 
+  const transactionEventByAction = {
+    finalize: "posted_onchain",
+    operations_reserve_paid: "operations_reserve_paid",
+    record_snapshot_anchored: "record_snapshot_anchored",
+    activity_hash_published: "activity_hash_published",
+    claim_submitted: "deduction_claim_submitted",
+    claim_amended: "deduction_claim_amended",
+    claim_response: "claim_response_submitted",
+    arbiter_ruling: "arbiter_ruling_submitted",
+  };
+  const expectedEvent = transactionEventByAction[body.type];
+  const incomingTransactionHash = cleanText(body.transactionHash, 100);
+  if (expectedEvent && /^0x[a-fA-F0-9]{64}$/.test(incomingTransactionHash)) {
+    const currentRecord = await serialize(db, row);
+    const alreadyRecorded =
+      (body.type === "finalize" && row.onchain_tx_hash === incomingTransactionHash) ||
+      currentRecord.events.some(
+        (event) =>
+          event.action === expectedEvent &&
+          event.metadata?.transactionHash === incomingTransactionHash,
+      );
+    if (alreadyRecorded) return json(currentRecord);
+  }
+
   const now = new Date().toISOString();
   const revision = Number(row.revision);
   const statements = [];
@@ -745,6 +769,7 @@ async function applyAction(request, env, id) {
         "posted_onchain",
         `Finalized as onchain agreement #${agreementId} in transaction ${transactionHash}.`,
         revision,
+        { agreementId, transactionHash },
       ),
     );
   } else if (body.type === "operations_reserve_paid") {
@@ -794,6 +819,39 @@ async function applyAction(request, env, id) {
         `Anchored agreement record snapshot ${snapshotHash} onchain in transaction ${transactionHash}.`,
         revision,
         { snapshotHash, transactionHash },
+      ),
+    );
+  } else if (body.type === "activity_hash_published") {
+    if (row.status !== "finalized") {
+      return json({ error: "Finalize the agreement before publishing activity receipts." }, 409);
+    }
+    const activityType = Number(body.activityType);
+    const contentHash = cleanText(body.contentHash, 100);
+    const transactionHash = cleanText(body.transactionHash, 100);
+    if (
+      ![1, 2, 3, 4].includes(activityType) ||
+      !/^0x[a-fA-F0-9]{64}$/.test(contentHash) ||
+      !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)
+    ) {
+      return json({ error: "The activity receipt is incomplete." }, 400);
+    }
+    const labels = {
+      1: "private note",
+      2: "document",
+      3: "formal notice",
+      4: "decision",
+    };
+    statements.push(
+      db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "activity_hash_published",
+        `Published a privacy-safe ${labels[activityType]} hash onchain in transaction ${transactionHash}.`,
+        revision,
+        { activityType, contentHash, transactionHash },
       ),
     );
   } else if (body.type === "claim_submitted") {

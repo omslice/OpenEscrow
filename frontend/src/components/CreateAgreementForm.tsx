@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { decodeEventLog, isAddress } from "viem";
 import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
@@ -120,6 +120,11 @@ function AgreementForm({
   const [accessBundle, setAccessBundle] = useState<CreatedNegotiation["access"] | null>(null);
   const [revisionSummary, setRevisionSummary] = useState("");
   const [createdId, setCreatedId] = useState<bigint | null>(null);
+  const [pendingFinalization, setPendingFinalization] = useState<{
+    agreementId: string;
+    transactionHash: `0x${string}`;
+  } | null>(null);
+  const [finalizationRecordError, setFinalizationRecordError] = useState<string | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [invalidField, setInvalidField] = useState<ProposalField | null>(null);
@@ -142,6 +147,56 @@ function AgreementForm({
         : null,
     [draft, accessBundle],
   );
+  const pendingFinalizationKey = landlordAccess
+    ? `openescrow:pending-finalization:${landlordAccess.proposalId}`
+    : null;
+
+  const saveFinalizationRecord = useCallback(
+    async (agreementId: string, transactionHash: `0x${string}`) => {
+      if (!landlordAccess) return;
+      setFinalizationRecordError(null);
+      try {
+        const updated = await negotiationAction(landlordAccess, {
+          type: "finalize",
+          agreementId,
+          transactionHash,
+        });
+        setDraft(updated);
+        setPendingFinalization(null);
+        if (pendingFinalizationKey) {
+          window.localStorage.removeItem(pendingFinalizationKey);
+        }
+      } catch (cause) {
+        setFinalizationRecordError(
+          cause instanceof Error
+            ? `Agreement #${agreementId} was created onchain, but the saved proposal still needs its receipt: ${cause.message}`
+            : `Agreement #${agreementId} was created onchain, but the saved proposal still needs its receipt.`,
+        );
+      }
+    },
+    [landlordAccess, pendingFinalizationKey],
+  );
+
+  useEffect(() => {
+    if (!landlordAccess || !pendingFinalizationKey) return;
+    try {
+      const stored = JSON.parse(window.localStorage.getItem(pendingFinalizationKey) || "null");
+      if (
+        stored &&
+        typeof stored.agreementId === "string" &&
+        /^0x[a-fA-F0-9]{64}$/.test(stored.transactionHash || "")
+      ) {
+        const pending = {
+          agreementId: stored.agreementId,
+          transactionHash: stored.transactionHash as `0x${string}`,
+        };
+        setPendingFinalization(pending);
+        void saveFinalizationRecord(pending.agreementId, pending.transactionHash);
+      }
+    } catch {
+      window.localStorage.removeItem(pendingFinalizationKey);
+    }
+  }, [landlordAccess, pendingFinalizationKey, saveFinalizationRecord]);
 
   function applyTerms(record: NegotiationRecord) {
     setTenantName(record.tenantName || "");
@@ -203,11 +258,15 @@ function AgreementForm({
           rememberJurisdiction(id, submittedJurisdiction.current);
           addId(id);
           if (landlordAccess) {
-            void negotiationAction(landlordAccess, {
-              type: "finalize",
+            const pending = {
               agreementId: id.toString(),
               transactionHash: receipt.transactionHash,
-            }).then(setDraft);
+            };
+            setPendingFinalization(pending);
+            if (pendingFinalizationKey) {
+              window.localStorage.setItem(pendingFinalizationKey, JSON.stringify(pending));
+            }
+            void saveFinalizationRecord(pending.agreementId, pending.transactionHash);
           }
           break;
         }
@@ -215,7 +274,13 @@ function AgreementForm({
         // Ignore logs emitted by other contracts in the transaction.
       }
     }
-  }, [receipt, addId, landlordAccess]);
+  }, [
+    receipt,
+    addId,
+    landlordAccess,
+    pendingFinalizationKey,
+    saveFinalizationRecord,
+  ]);
 
   function currentTerms(): AgreementTerms {
     return {
@@ -995,7 +1060,26 @@ function AgreementForm({
         </>
       )}
       {error && <p className="tx-error">{error.message.split("\n")[0]}</p>}
-      {createdId !== null && <p className="tx-success">Created and recorded onchain agreement #{createdId.toString()}.</p>}
+      {pendingFinalization && finalizationRecordError && (
+        <div className="receipt-recovery">
+          <p className="tx-error">{finalizationRecordError}</p>
+          <button
+            className="btn btn-ghost small"
+            type="button"
+            onClick={() =>
+              void saveFinalizationRecord(
+                pendingFinalization.agreementId,
+                pendingFinalization.transactionHash,
+              )
+            }
+          >
+            Retry saving finalization receipt
+          </button>
+        </div>
+      )}
+      {createdId !== null && (
+        <p className="tx-success">Created onchain agreement #{createdId.toString()}.</p>
+      )}
     </section>
   );
 }

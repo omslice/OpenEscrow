@@ -46,7 +46,12 @@ export function AgreementCard({
 
   return (
     <div className="card agreement-card">
-      <AgreementDashboard id={id} agreement={agreement} participantRecord={participantRecord} />
+      <AgreementDashboard
+        id={id}
+        agreement={agreement}
+        negotiationAccess={negotiationAccess}
+        participantRecord={participantRecord}
+      />
       <AgreementNoticeCenter agreement={agreement} />
       <NextAction agreement={agreement} />
       <ArbiterActions id={id} agreement={agreement} onRefetch={onRefetch} />

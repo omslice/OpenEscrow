@@ -38,6 +38,63 @@ type TenantFundActionProps = {
   onRefetch?: () => void;
 };
 
+function useReserveRecordRecovery(negotiationAccess?: NegotiationAccess | null) {
+  const access =
+    negotiationAccess?.role === "tenant" ? negotiationAccess : null;
+  const storageKey = access
+    ? `openescrow:pending-reserve-receipt:${access.proposalId}`
+    : null;
+  const [pendingTransaction, setPendingTransaction] = useState<`0x${string}` | null>(null);
+  const [recordError, setRecordError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!storageKey) {
+      setPendingTransaction(null);
+      return;
+    }
+    const stored = window.localStorage.getItem(storageKey);
+    setPendingTransaction(
+      stored && /^0x[a-fA-F0-9]{64}$/.test(stored) ? (stored as `0x${string}`) : null,
+    );
+  }, [storageKey]);
+
+  async function record(transactionHash: `0x${string}`) {
+    if (!access) return;
+    setPendingTransaction(transactionHash);
+    setRecordError(null);
+    if (storageKey) window.localStorage.setItem(storageKey, transactionHash);
+    try {
+      await negotiationAction(access, {
+        type: "operations_reserve_paid",
+        transactionHash,
+      });
+      setPendingTransaction(null);
+      if (storageKey) window.localStorage.removeItem(storageKey);
+    } catch (cause) {
+      setRecordError(
+        cause instanceof Error
+          ? `The reserve payment succeeded, but its activity record still needs to be saved: ${cause.message}`
+          : "The reserve payment succeeded, but its activity record still needs to be saved.",
+      );
+    }
+  }
+
+  const recovery = pendingTransaction && (
+    <div className="receipt-recovery">
+      {recordError && <p className="tx-error">{recordError}</p>}
+      <button
+        className="btn btn-ghost small"
+        type="button"
+        onClick={() => void record(pendingTransaction)}
+      >
+        Retry saving reserve receipt
+      </button>
+    </div>
+  );
+
+  return { record, recovery };
+}
+
 function fundingDetails(agreement: Agreement) {
   const needed = agreement.agreedAmount;
   const tokenLabel =
@@ -101,6 +158,7 @@ function StandardTenantFundAction({
   onRefetch,
 }: TenantFundActionProps) {
   const { address } = useAccount();
+  const reserveRecord = useReserveRecordRecovery(negotiationAccess);
   const isTenant = address?.toLowerCase() === agreement.tenant.toLowerCase();
   const { needed, tokenLabel } = fundingDetails(agreement);
   const reserveRequired = participantRecord?.terms.operationsReserve === "5";
@@ -189,14 +247,6 @@ function StandardTenantFundAction({
       reserveAllowance >= OPERATIONS_RESERVE_AMOUNT);
   const reserveIsPaid = !reserveRequired || reservePaid === true;
 
-  async function recordReservePayment(transactionHash: `0x${string}`) {
-    if (negotiationAccess?.role !== "tenant") return;
-    await negotiationAction(negotiationAccess, {
-      type: "operations_reserve_paid",
-      transactionHash,
-    });
-  }
-
   return (
     <div className="action-section">
       <FundingIntroduction
@@ -267,7 +317,7 @@ function StandardTenantFundAction({
           className="btn btn-primary"
           onSuccess={(transactionHash) => {
             void refetchReservePaid();
-            void recordReservePayment(transactionHash);
+            void reserveRecord.record(transactionHash);
           }}
         />
       ) : (
@@ -280,6 +330,7 @@ function StandardTenantFundAction({
           onSuccess={onRefetch}
         />
       )}
+      {reserveRecord.recovery}
     </div>
   );
 }
@@ -306,6 +357,7 @@ function SponsoredTenantFundAction({
   onRefetch,
 }: TenantFundActionProps) {
   const { address } = useAccount();
+  const reserveRecord = useReserveRecordRecovery(negotiationAccess);
   const publicClient = usePublicClient();
   const { sendTransaction } = useSendTransaction();
   const [step, setStep] = useState<
@@ -397,14 +449,6 @@ function SponsoredTenantFundAction({
     (typeof reserveAllowance === "bigint" &&
       reserveAllowance >= OPERATIONS_RESERVE_AMOUNT);
   const reserveIsPaid = !reserveRequired || reservePaid === true;
-
-  async function recordReservePayment(transactionHash: `0x${string}`) {
-    if (negotiationAccess?.role !== "tenant") return;
-    await negotiationAction(negotiationAccess, {
-      type: "operations_reserve_paid",
-      transactionHash,
-    });
-  }
 
   async function sendSponsored(
     to: `0x${string}`,
@@ -530,7 +574,7 @@ function SponsoredTenantFundAction({
         200_000n,
       );
       await refetchReservePaid();
-      await recordReservePayment(transactionHash);
+      await reserveRecord.record(transactionHash);
     } catch (caught) {
       setTransactionError(sponsoredErrorMessage(caught));
     } finally {
@@ -642,6 +686,7 @@ function SponsoredTenantFundAction({
           {step === "funding" ? "Funding with gas covered..." : "Accept and fund"}
         </button>
       )}
+      {reserveRecord.recovery}
       {transactionError && <p className="tx-error">{transactionError}</p>}
     </div>
   );

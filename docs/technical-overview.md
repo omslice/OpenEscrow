@@ -35,9 +35,17 @@ evidence content, and it cannot move escrowed funds. An anchor proves that a par
 to exact bytes at a particular block time; it does not prove the underlying content is true or
 legally sufficient.
 
+The finalized-agreement dashboard can also build a versioned activity envelope in the browser,
+hash it with `keccak256`, and publish only that hash as a note, document receipt, formal notice, or
+decision receipt. The readable content is never sent to the server; the user can download a private
+JSON proof that can later reproduce the public hash. Registry receipts are polled into both the
+agreement dashboard and the wallet-scoped notification bell. The D1 record stores only the
+activity type, content hash, and transaction receipt so the printable timeline can reference the
+onchain action without retaining the private plaintext.
+
 ### Frontend
 
-The React frontend talks directly to Base Sepolia through wagmi and viem. It stores tracked agreement IDs in the browser and can discover agreements by scanning bounded event-log ranges from the deployment block.
+The React frontend talks directly to Base Sepolia through wagmi and viem. It stores tracked agreement IDs in the browser and can discover agreements by scanning bounded event-log ranges from the deployment block. Saved proposal activity refreshes automatically, and notification read state is kept locally per connected wallet.
 
 This is acceptable for a small testnet demonstration. A pilot-ready version needs an indexer and notification service.
 

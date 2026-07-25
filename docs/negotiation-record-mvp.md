@@ -30,6 +30,14 @@ current arbiter can submit that hash to the separate `AgreementActivityRegistry`
 party address, timestamp, and Base Sepolia transaction receipt. Until a party submits that anchor,
 the off-chain event stream is not itself immutable or independently notarized.
 
+The finalized agreement dashboard also supports privacy-safe activity receipts. A landlord, tenant,
+or current arbiter may type a note or description locally, select note/document/notice/decision,
+and publish the resulting `keccak256` hash. Only the type, hash, agreement ID, party wallet, and
+block timestamp are public. The downloaded private proof JSON is required to reproduce the hash;
+OpenEscrow does not retain the readable content. When role-scoped proposal access is available, the
+hash, type, and transaction receipt are also appended to the server report; repeated recovery
+submissions are idempotent.
+
 ## External services
 
 - `PINATA_JWT` enables server-side public-IPFS uploads through Pinata. Manual privacy-safe IPFS

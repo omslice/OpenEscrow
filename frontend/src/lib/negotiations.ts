@@ -360,9 +360,7 @@ export function saveNotificationPreferences(
   });
 }
 
-export async function negotiationAction(
-  access: NegotiationAccess,
-  action:
+export type NegotiationAction =
     | { type: "approve"; wallet: string; name?: string }
     | { type: "propose_change"; summary: string }
     | {
@@ -381,6 +379,12 @@ export async function negotiationAction(
     | {
         type: "record_snapshot_anchored";
         snapshotHash: string;
+        transactionHash: string;
+      }
+    | {
+        type: "activity_hash_published";
+        activityType: 1 | 2 | 3 | 4;
+        contentHash: string;
         transactionHash: string;
       }
     | {
@@ -415,7 +419,11 @@ export async function negotiationAction(
         awardToLandlord: string;
         note: string;
         transactionHash: string;
-      },
+      };
+
+export async function negotiationAction(
+  access: NegotiationAccess,
+  action: NegotiationAction,
 ) {
   return request<NegotiationRecord>(
     `/api/negotiations/${encodeURIComponent(access.proposalId)}/actions`,

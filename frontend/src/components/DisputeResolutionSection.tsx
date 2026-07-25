@@ -7,6 +7,7 @@ import { TxButton } from "./TxButton";
 import { EvidenceList } from "./EvidenceList";
 import {
   negotiationAction,
+  type NegotiationAction,
   type NegotiationAccess,
 } from "../lib/negotiations";
 
@@ -24,6 +25,8 @@ export function DisputeResolutionSection({
   const { address } = useAccount();
   const [award, setAward] = useState("");
   const [note, setNote] = useState("");
+  const [pendingRecord, setPendingRecord] = useState<NegotiationAction | null>(null);
+  const [recordError, setRecordError] = useState<string | null>(null);
 
   const isArbiter = address?.toLowerCase() === agreement.arbiter.toLowerCase();
   if (!isArbiter || agreement.phase !== Phase.Disputed) return null;
@@ -36,6 +39,22 @@ export function DisputeResolutionSection({
     awardRaw = null;
   }
   const valid = awardRaw !== null && awardRaw >= 0n && awardRaw <= disputed;
+
+  async function saveRuling(action: NegotiationAction) {
+    if (!negotiationAccess || negotiationAccess.role !== "arbiter") return;
+    setRecordError(null);
+    try {
+      await negotiationAction(negotiationAccess, action);
+      setPendingRecord(null);
+      onRefetch?.();
+    } catch (cause) {
+      setRecordError(
+        cause instanceof Error
+          ? `The onchain ruling succeeded, but its activity record still needs to be saved: ${cause.message}`
+          : "The onchain ruling succeeded, but its activity record still needs to be saved.",
+      );
+    }
+  }
 
   return (
     <div className="action-section">
@@ -75,16 +94,27 @@ export function DisputeResolutionSection({
         label="Submit ruling"
         disabled={!valid}
         onSuccess={(transactionHash) => {
-          onRefetch?.();
           if (!negotiationAccess || negotiationAccess.role !== "arbiter" || awardRaw === null) return;
-          void negotiationAction(negotiationAccess, {
+          const action: NegotiationAction = {
             type: "arbiter_ruling",
             awardToLandlord: formatUSDC(awardRaw),
             note: note.trim(),
             transactionHash,
-          });
+          };
+          setPendingRecord(action);
+          void saveRuling(action);
         }}
       />
+      {pendingRecord && recordError && (
+        <button
+          className="btn btn-ghost small"
+          type="button"
+          onClick={() => void saveRuling(pendingRecord)}
+        >
+          Retry saving ruling receipt
+        </button>
+      )}
+      {recordError && <p className="tx-error">{recordError}</p>}
     </div>
   );
 }

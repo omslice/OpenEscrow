@@ -9,6 +9,7 @@ import {
   readLandlordBundle,
   sendClaimNotification,
   type DeductionLineItem,
+  type NegotiationAction,
   type NegotiationAccess,
   type NegotiationRecord,
 } from "../lib/negotiations";
@@ -62,6 +63,8 @@ export function ClaimSection({
   const [note, setNote] = useState("");
   const [record, setRecord] = useState<NegotiationRecord | null>(null);
   const [claimRecorded, setClaimRecorded] = useState(false);
+  const [pendingRecord, setPendingRecord] = useState<NegotiationAction | null>(null);
+  const [recordError, setRecordError] = useState<string | null>(null);
   const [noticeCopied, setNoticeCopied] = useState(false);
   const [noticeStatus, setNoticeStatus] = useState<string | null>(null);
   const restoredClaim = useRef(false);
@@ -124,10 +127,27 @@ export function ClaimSection({
     setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
+  async function saveClaimRecord(action: NegotiationAction) {
+    if (!negotiationAccess || negotiationAccess.role !== "landlord") return;
+    setRecordError(null);
+    try {
+      const updated = await negotiationAction(negotiationAccess, action);
+      setRecord(updated);
+      setClaimRecorded(true);
+      setPendingRecord(null);
+      onRefetch?.();
+    } catch (cause) {
+      setRecordError(
+        cause instanceof Error
+          ? `The onchain claim succeeded, but its activity record still needs to be saved: ${cause.message}`
+          : "The onchain claim succeeded, but its activity record still needs to be saved.",
+      );
+    }
+  }
+
   function recordClaim(transactionHash: `0x${string}`, amended = false) {
-    onRefetch?.();
     if (!negotiationAccess || negotiationAccess.role !== "landlord" || amountRaw === null) return;
-    const action = amended
+    const action: NegotiationAction = amended
       ? {
           type: "claim_amended" as const,
           amount,
@@ -150,10 +170,8 @@ export function ClaimSection({
           evidenceHash: contentHash,
           transactionHash,
         };
-    void negotiationAction(negotiationAccess, action).then((updated) => {
-      setRecord(updated);
-      setClaimRecorded(true);
-    });
+    setPendingRecord(action);
+    void saveClaimRecord(action);
   }
 
   function tenantNotice() {
@@ -270,6 +288,18 @@ export function ClaimSection({
 
   const notice = tenantNotice();
   const showNotice = agreement.phase === Phase.ClaimOpen || claimRecorded;
+  const recordRecovery = pendingRecord && recordError && (
+    <div className="receipt-recovery">
+      <p className="tx-error">{recordError}</p>
+      <button
+        className="btn btn-ghost small"
+        type="button"
+        onClick={() => void saveClaimRecord(pendingRecord)}
+      >
+        Retry saving claim receipt
+      </button>
+    </div>
+  );
 
   if (agreement.phase === Phase.Active) {
     return (
@@ -309,6 +339,7 @@ export function ClaimSection({
           }
           onSuccess={(transactionHash) => recordClaim(transactionHash)}
         />
+        {recordRecovery}
         {showNotice && notice && (
           <div className="claim-notice-actions">
             <strong>Notify the tenant</strong>
@@ -399,6 +430,7 @@ export function ClaimSection({
           }
           onSuccess={(transactionHash) => recordClaim(transactionHash, true)}
         />
+        {recordRecovery}
         {notice && (
           <div className="claim-notice-actions">
             <strong>Notify the tenant about the current claim</strong>

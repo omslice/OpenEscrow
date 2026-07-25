@@ -6,6 +6,7 @@ import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
 import {
   negotiationAction,
+  type NegotiationAction,
   type NegotiationAccess,
 } from "../lib/negotiations";
 
@@ -26,6 +27,8 @@ export function ResponseSection({
   const [mode, setMode] = useState<Mode>("accept");
   const [partialAmount, setPartialAmount] = useState("");
   const [note, setNote] = useState("");
+  const [pendingRecord, setPendingRecord] = useState<NegotiationAction | null>(null);
+  const [recordError, setRecordError] = useState<string | null>(null);
 
   const isTenant = address?.toLowerCase() === agreement.tenant.toLowerCase();
   if (!isTenant || agreement.phase !== Phase.ClaimOpen) return null;
@@ -42,6 +45,22 @@ export function ResponseSection({
     }
   }
   const validAmount = accepted >= 0n && accepted <= claimed;
+
+  async function saveResponse(action: NegotiationAction) {
+    if (!negotiationAccess || negotiationAccess.role !== "tenant") return;
+    setRecordError(null);
+    try {
+      await negotiationAction(negotiationAccess, action);
+      setPendingRecord(null);
+      onRefetch?.();
+    } catch (cause) {
+      setRecordError(
+        cause instanceof Error
+          ? `The onchain response succeeded, but its activity record still needs to be saved: ${cause.message}`
+          : "The onchain response succeeded, but its activity record still needs to be saved.",
+      );
+    }
+  }
 
   return (
     <div className="action-section">
@@ -99,17 +118,28 @@ export function ResponseSection({
         }
         disabled={!validAmount}
         onSuccess={(transactionHash) => {
-          onRefetch?.();
           if (!negotiationAccess || negotiationAccess.role !== "tenant") return;
-          void negotiationAction(negotiationAccess, {
+          const action: NegotiationAction = {
             type: "claim_response",
             decision: mode === "accept" ? "approve" : mode,
             acceptedAmount: formatUSDC(accepted),
             note: note.trim(),
             transactionHash,
-          });
+          };
+          setPendingRecord(action);
+          void saveResponse(action);
         }}
       />
+      {pendingRecord && recordError && (
+        <button
+          className="btn btn-ghost small"
+          type="button"
+          onClick={() => void saveResponse(pendingRecord)}
+        >
+          Retry saving response receipt
+        </button>
+      )}
+      {recordError && <p className="tx-error">{recordError}</p>}
     </div>
   );
 }

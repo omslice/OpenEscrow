@@ -6,6 +6,8 @@ import {
   AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
 } from "../contracts/config";
 import { formatTimestamp, shortAddr } from "../lib/format";
+import type { NegotiationAccess } from "../lib/negotiations";
+import { PrivateActivityPublisher } from "./PrivateActivityPublisher";
 
 type ActivityItem = {
   key: string;
@@ -31,7 +33,15 @@ const activityLabel: Record<number, string> = {
   4: "Decision hash published",
 };
 
-export function AgreementOnchainActivity({ agreementId }: { agreementId: bigint }) {
+export function AgreementOnchainActivity({
+  agreementId,
+  isParty,
+  negotiationAccess,
+}: {
+  agreementId: bigint;
+  isParty: boolean;
+  negotiationAccess?: NegotiationAccess | null;
+}) {
   const publicClient = usePublicClient();
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -92,34 +102,43 @@ export function AgreementOnchainActivity({ agreementId }: { agreementId: bigint 
     return () => window.clearInterval(timer);
   }, [refresh]);
 
-  if (!items.length && !error) return null;
-
   return (
-    <details className="technical-details onchain-activity">
-      <summary>Onchain record receipts ({items.length})</summary>
-      {items.map((item) => (
-        <div className="onchain-activity-item" key={item.key}>
-          <div>
-            <strong>
-              {item.type === "snapshot"
-                ? "Agreement snapshot anchored"
-                : activityLabel[item.activityType || 0] || "Activity hash published"}
-            </strong>
-            <span>
-              {formatTimestamp(item.timestamp)} · {shortAddr(item.actor)}
-            </span>
-          </div>
-          <code title={item.contentHash}>{shortAddr(item.contentHash)}</code>
-          <a
-            href={`https://sepolia.basescan.org/tx/${item.transactionHash}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Receipt
-          </a>
-        </div>
-      ))}
-      {error && <p className="tx-error">{error}</p>}
-    </details>
+    <section className="onchain-record-tools" aria-label="Onchain record tools">
+      {isParty && (
+        <PrivateActivityPublisher
+          agreementId={agreementId}
+          negotiationAccess={negotiationAccess}
+          onPublished={() => void refresh()}
+        />
+      )}
+      {(items.length > 0 || error) && (
+        <details className="technical-details onchain-activity">
+          <summary>Onchain record receipts ({items.length})</summary>
+          {items.map((item) => (
+            <div className="onchain-activity-item" key={item.key}>
+              <div>
+                <strong>
+                  {item.type === "snapshot"
+                    ? "Agreement snapshot anchored"
+                    : activityLabel[item.activityType || 0] || "Activity hash published"}
+                </strong>
+                <span>
+                  {formatTimestamp(item.timestamp)} · {shortAddr(item.actor)}
+                </span>
+              </div>
+              <code title={item.contentHash}>{shortAddr(item.contentHash)}</code>
+              <a
+                href={`https://sepolia.basescan.org/tx/${item.transactionHash}`}
+                target="_blank"
+                rel="noreferrer"
+              >
+                Receipt
+              </a>
+            </div>
+          ))}
+          {error && <p className="tx-error">{error}</p>}
+        </details>
+      )}
+    </section>
   );
 }

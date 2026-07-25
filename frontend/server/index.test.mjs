@@ -389,6 +389,17 @@ test("documented claim, tenant decision, and email attempts are included in the 
   const db = new TestD1();
   const created = await create(db);
   await finalizeWithoutArbiter(db, created);
+  const finalizedRetry = await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "finalize",
+      agreementId: "42",
+      transactionHash: `0x${"a".repeat(64)}`,
+    }),
+  );
+  assert.equal(
+    finalizedRetry.events.filter((event) => event.action === "posted_onchain").length,
+    1,
+  );
 
   const reservePaid = await jsonResponse(
     await act(db, created.record.id, created.access.tenant, {
@@ -471,6 +482,19 @@ test("documented claim, tenant decision, and email attempts are included in the 
     }),
   );
   assert.equal(responded.events.at(-1).action, "claim_response_submitted");
+  const respondedRetry = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "claim_response",
+      decision: "dispute",
+      acceptedAmount: "0",
+      note: "The invoice does not show tenant-caused damage.",
+      transactionHash: `0x${"d".repeat(64)}`,
+    }),
+  );
+  assert.equal(
+    respondedRetry.events.filter((event) => event.action === "claim_response_submitted").length,
+    1,
+  );
   const responseSnapshot = await jsonResponse(
     await worker.fetch(
       request(
@@ -488,6 +512,17 @@ test("documented claim, tenant decision, and email attempts are included in the 
     }),
   );
   assert.equal(anchored.events.at(-1).action, "record_snapshot_anchored");
+  const anchoredRetry = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "record_snapshot_anchored",
+      snapshotHash: responseSnapshot.hash,
+      transactionHash: `0x${"f".repeat(64)}`,
+    }),
+  );
+  assert.equal(
+    anchoredRetry.events.filter((event) => event.action === "record_snapshot_anchored").length,
+    1,
+  );
   const snapshotAfterAnchor = await jsonResponse(
     await worker.fetch(
       request(
@@ -497,6 +532,39 @@ test("documented claim, tenant decision, and email attempts are included in the 
     ),
   );
   assert.equal(snapshotAfterAnchor.hash, responseSnapshot.hash);
+  const activityReceipt = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "activity_hash_published",
+      activityType: 3,
+      contentHash: `0x${"1".repeat(64)}`,
+      transactionHash: `0x${"2".repeat(64)}`,
+    }),
+  );
+  assert.equal(activityReceipt.events.at(-1).action, "activity_hash_published");
+  assert.equal(activityReceipt.events.at(-1).metadata.activityType, 3);
+  const activityReceiptRetry = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "activity_hash_published",
+      activityType: 3,
+      contentHash: `0x${"1".repeat(64)}`,
+      transactionHash: `0x${"2".repeat(64)}`,
+    }),
+  );
+  assert.equal(
+    activityReceiptRetry.events.filter(
+      (event) => event.action === "activity_hash_published",
+    ).length,
+    1,
+  );
+  const snapshotAfterActivity = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}/snapshot?token=${created.access.tenant}`,
+      ),
+      { DB: db },
+    ),
+  );
+  assert.notEqual(snapshotAfterActivity.hash, snapshotAfterAnchor.hash);
 
   const email = await worker.fetch(
     request("/api/notifications/claim", "POST", {

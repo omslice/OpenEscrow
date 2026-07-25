@@ -28,6 +28,7 @@ import {
   type NegotiationRecord,
 } from "./lib/negotiations";
 import { ACCOUNT_AUTH_ENABLED } from "./lib/accountConfig";
+import { useOnchainActivityNotifications } from "./lib/useOnchainActivityNotifications";
 import "./App.css";
 
 type Tab = "create" | "track";
@@ -44,6 +45,14 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   const [findError, setFindError] = useState<string | null>(null);
   const [isFinding, setIsFinding] = useState(false);
   const [savedProposals, setSavedProposals] = useState<SavedProposal[]>([]);
+  const notificationAgreementIds = [
+    ...ids,
+    ...savedProposals.flatMap(({ record }) =>
+      record.onchainAgreementId ? [BigInt(record.onchainAgreementId)] : [],
+    ),
+  ];
+  const onchainNotifications =
+    useOnchainActivityNotifications(notificationAgreementIds);
   const [activeLandlordAccess, setActiveLandlordAccess] =
     useState<NegotiationAccess | null>(
       initialCapturedAccess?.role === "landlord" ? initialCapturedAccess : null,
@@ -120,6 +129,59 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
       setProposalAccess(null);
     }
   }, [inviteRole, proposalAccess]);
+
+  useEffect(() => {
+    if (!workspaceRole) return;
+    let active = true;
+
+    async function refreshSavedProposals() {
+      try {
+        const localAccesses = listNegotiationAccesses(workspaceRole || undefined);
+        const accountAccesses =
+          identityToken && workspaceRole
+            ? await discoverNegotiationsForAccount(workspaceRole, identityToken)
+            : [];
+        const accesses = [...localAccesses, ...accountAccesses].filter(
+          (access, index, all) =>
+            all.findIndex(
+              (candidate) =>
+                candidate.proposalId === access.proposalId &&
+                candidate.role === access.role,
+            ) === index,
+        );
+        const loaded = await Promise.allSettled(
+          accesses.map(async (access) => ({
+            access,
+            record: await loadNegotiation(access),
+          })),
+        );
+        if (!active) return;
+        setSavedProposals(
+          loaded
+            .filter(
+              (result): result is PromiseFulfilledResult<SavedProposal> =>
+                result.status === "fulfilled",
+            )
+            .map((result) => result.value)
+            .sort(
+              (a, b) =>
+                new Date(b.record.updatedAt).getTime() -
+                new Date(a.record.updatedAt).getTime(),
+            ),
+        );
+      } catch {
+        // Manual search below presents discovery errors. Background refresh preserves the last
+        // known records instead of turning a transient identity failure into persistent UI noise.
+      }
+    }
+
+    void refreshSavedProposals();
+    const timer = window.setInterval(() => void refreshSavedProposals(), 15_000);
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [identityToken, workspaceRole]);
 
   async function findProposalsAndAgreements() {
     setScanMessage(null);
@@ -199,15 +261,19 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     window.history.replaceState(null, "", url.toString());
   }
 
-  const notifications: AppNotification[] = savedProposals
-    .flatMap(({ record }) =>
-      record.events.map((event) => ({
-        id: `${record.id}-${event.id}`,
-        createdAt: event.createdAt,
-        actor: roleLabel[event.actorRole as keyof typeof roleLabel] || "System",
-        summary: event.summary,
-      })),
-    )
+  const notifications: AppNotification[] = [
+    ...savedProposals.flatMap(({ record }) =>
+      record.events
+        .filter((event) => event.action !== "record_snapshot_anchored")
+        .map((event) => ({
+          id: `${record.id}-${event.id}`,
+          createdAt: event.createdAt,
+          actor: roleLabel[event.actorRole as keyof typeof roleLabel] || "System",
+          summary: event.summary,
+        })),
+    ),
+    ...onchainNotifications,
+  ]
     .sort(
       (left, right) =>
         new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),

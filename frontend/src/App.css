@@ -93,6 +93,24 @@
   font-size: 16px;
 }
 
+.notification-menu-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.notification-menu-heading button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .notification-menu p {
   margin: 0;
   color: var(--text);
@@ -113,6 +131,11 @@
   font-size: 12px;
 }
 
+.notification-menu li.unread {
+  border-left: 3px solid var(--accent);
+  padding-left: 9px;
+}
+
 .notification-menu li strong {
   color: var(--accent);
 }
@@ -120,6 +143,12 @@
 .notification-menu li time {
   color: var(--text);
   font-size: 11px;
+}
+
+.notification-menu li a {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .tagline {
@@ -1446,6 +1475,49 @@ a.btn.disabled {
 
 .onchain-ready h3 {
   margin: 2px 0;
+}
+
+.onchain-record-tools,
+.private-activity-publisher,
+.private-proof-success {
+  display: grid;
+  gap: 12px;
+}
+
+.onchain-record-tools {
+  margin-top: 16px;
+}
+
+.private-activity-publisher label {
+  margin: 0;
+}
+
+.private-proof-success {
+  align-items: start;
+}
+
+.private-proof-success p {
+  margin: 0;
+}
+
+.private-proof-success a {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.receipt-recovery {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  margin-top: 10px;
+  border: 1px solid var(--warning-border);
+  border-radius: 9px;
+  padding: 12px;
+  background: var(--warning-bg);
+}
+
+.receipt-recovery p {
+  margin: 0;
 }
 
 .evidence-upload,

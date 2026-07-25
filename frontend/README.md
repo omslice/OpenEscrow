@@ -71,7 +71,9 @@ tenant respond (accept/partial/dispute) -> arbiter resolve -> permissionless tim
 pull-based withdraw, mutual-consent arbiter replacement, plus a live deadline countdown and an
 evidence trail view. The optional account layer supports Google authentication, automatically
 provisioned embedded EVM wallets, linked external EVM wallets, active-wallet selection, and
-device-local notification preferences.
+server-persisted email notification consent. Saved proposal activity refreshes automatically, while
+the notification bell includes wallet-scoped Base Sepolia registry receipts and keeps read state
+locally per wallet.
 
 Agreement discovery has two paths: a "Scan for my agreements" button that chunked-scans
 `AgreementProposed`/`ArbiterReplaced` event logs for the connected address (see

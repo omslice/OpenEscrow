@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSendTransaction, useWallets } from "@privy-io/react-auth";
 import { encodeFunctionData } from "viem";
 import { useAccount, usePublicClient, useReadContract } from "wagmi";
@@ -22,6 +22,40 @@ type AnchorProps = {
   onAnchored: () => void;
 };
 
+function useAnchorRecovery(
+  access: NegotiationAccess,
+  snapshot: AgreementSnapshot,
+  address?: `0x${string}`,
+) {
+  const storageKey = address
+    ? `openescrow:pending-anchor:${access.proposalId}:${snapshot.hash}:${address.toLowerCase()}`
+    : null;
+  const [pendingTransaction, setPendingTransaction] = useState<`0x${string}` | null>(null);
+
+  useEffect(() => {
+    if (!storageKey) {
+      setPendingTransaction(null);
+      return;
+    }
+    const stored = window.localStorage.getItem(storageKey);
+    setPendingTransaction(
+      stored && /^0x[a-fA-F0-9]{64}$/.test(stored) ? (stored as `0x${string}`) : null,
+    );
+  }, [storageKey]);
+
+  function remember(transactionHash: `0x${string}`) {
+    setPendingTransaction(transactionHash);
+    if (storageKey) window.localStorage.setItem(storageKey, transactionHash);
+  }
+
+  function clear() {
+    setPendingTransaction(null);
+    if (storageKey) window.localStorage.removeItem(storageKey);
+  }
+
+  return { pendingTransaction, remember, clear };
+}
+
 function StandardAnchorAction({
   access,
   agreementId,
@@ -30,6 +64,7 @@ function StandardAnchorAction({
 }: AnchorProps) {
   const { address } = useAccount();
   const [error, setError] = useState<string | null>(null);
+  const recovery = useAnchorRecovery(access, snapshot, address);
   const anchored = useReadContract({
     address: AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
     abi: AgreementActivityRegistryABI,
@@ -38,8 +73,40 @@ function StandardAnchorAction({
     query: { enabled: Boolean(address) },
   });
 
+  async function recordReceipt(transactionHash: `0x${string}`) {
+    setError(null);
+    try {
+      await negotiationAction(access, {
+        type: "record_snapshot_anchored",
+        snapshotHash: snapshot.hash,
+        transactionHash,
+      });
+      recovery.clear();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? `The anchor succeeded, but the activity record could not be updated: ${cause.message}`
+          : "The anchor succeeded, but the activity record could not be updated.",
+      );
+    }
+  }
+
   if (anchored.data === true) {
-    return <p className="tx-success">This wallet has anchored this exact snapshot onchain.</p>;
+    return (
+      <>
+        <p className="tx-success">This wallet has anchored this exact snapshot onchain.</p>
+        {recovery.pendingTransaction && (
+          <button
+            className="btn btn-ghost small"
+            type="button"
+            onClick={() => void recordReceipt(recovery.pendingTransaction!)}
+          >
+            Retry saving the transaction receipt
+          </button>
+        )}
+        {error && <p className="tx-error">{error}</p>}
+      </>
+    );
   }
 
   return (
@@ -51,25 +118,24 @@ function StandardAnchorAction({
         args={[agreementId, snapshot.hash]}
         label="Anchor this snapshot onchain"
         onSuccess={(transactionHash) => {
-          setError(null);
-          void negotiationAction(access, {
-            type: "record_snapshot_anchored",
-            snapshotHash: snapshot.hash,
-            transactionHash,
-          })
+          recovery.remember(transactionHash);
+          void recordReceipt(transactionHash)
             .then(() => {
               void anchored.refetch();
               onAnchored();
             })
-            .catch((cause) =>
-              setError(
-                cause instanceof Error
-                  ? `The anchor succeeded, but the activity record could not be updated: ${cause.message}`
-                  : "The anchor succeeded, but the activity record could not be updated.",
-              ),
-            );
+            .catch(() => undefined);
         }}
       />
+      {recovery.pendingTransaction && (
+        <button
+          className="btn btn-ghost small"
+          type="button"
+          onClick={() => void recordReceipt(recovery.pendingTransaction!)}
+        >
+          Retry saving the transaction receipt
+        </button>
+      )}
       {error && <p className="tx-error">{error}</p>}
     </>
   );
@@ -86,6 +152,7 @@ function SponsoredAnchorAction({
   const { sendTransaction } = useSendTransaction();
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const recovery = useAnchorRecovery(access, snapshot, address);
   const anchored = useReadContract({
     address: AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
     abi: AgreementActivityRegistryABI,
@@ -94,8 +161,40 @@ function SponsoredAnchorAction({
     query: { enabled: Boolean(address) },
   });
 
+  async function recordReceipt(transactionHash: `0x${string}`) {
+    setError(null);
+    try {
+      await negotiationAction(access, {
+        type: "record_snapshot_anchored",
+        snapshotHash: snapshot.hash,
+        transactionHash,
+      });
+      recovery.clear();
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? `The anchor succeeded, but the activity record could not be updated: ${cause.message}`
+          : "The anchor succeeded, but the activity record could not be updated.",
+      );
+    }
+  }
+
   if (anchored.data === true) {
-    return <p className="tx-success">This wallet has anchored this exact snapshot onchain.</p>;
+    return (
+      <>
+        <p className="tx-success">This wallet has anchored this exact snapshot onchain.</p>
+        {recovery.pendingTransaction && (
+          <button
+            className="btn btn-ghost small"
+            type="button"
+            onClick={() => void recordReceipt(recovery.pendingTransaction!)}
+          >
+            Retry saving the transaction receipt
+          </button>
+        )}
+        {error && <p className="tx-error">{error}</p>}
+      </>
+    );
   }
 
   return (
@@ -122,19 +221,8 @@ function SponsoredAnchorAction({
               { address, sponsor: true },
             );
             await publicClient.waitForTransactionReceipt({ hash: result.hash });
-            try {
-              await negotiationAction(access, {
-                type: "record_snapshot_anchored",
-                snapshotHash: snapshot.hash,
-                transactionHash: result.hash,
-              });
-            } catch (recordError) {
-              setError(
-                recordError instanceof Error
-                  ? `The anchor succeeded, but the activity record could not be updated: ${recordError.message}`
-                  : "The anchor succeeded, but the activity record could not be updated.",
-              );
-            }
+            recovery.remember(result.hash);
+            await recordReceipt(result.hash);
             await anchored.refetch();
             onAnchored();
           } catch (cause) {
@@ -150,6 +238,15 @@ function SponsoredAnchorAction({
       >
         {working ? "Anchoring with gas covered..." : "Anchor this snapshot—gas covered"}
       </button>
+      {recovery.pendingTransaction && (
+        <button
+          className="btn btn-ghost small"
+          type="button"
+          onClick={() => void recordReceipt(recovery.pendingTransaction!)}
+        >
+          Retry saving the transaction receipt
+        </button>
+      )}
       {error && <p className="tx-error">{error}</p>}
     </>
   );
