@@ -93,16 +93,20 @@ function inviteContent(
 }
 
 function AgreementForm({
+  landlordName,
   landlordEmail,
   initialAccess,
 }: {
+  landlordName: string;
   landlordEmail: string;
   initialAccess?: NegotiationAccess | null;
 }) {
   const { address, isConnected } = useAccount();
   const { addId } = useTrackedAgreements();
 
+  const [tenantName, setTenantName] = useState("");
   const [tenantEmail, setTenantEmail] = useState("");
+  const [arbiterName, setArbiterName] = useState("");
   const [arbiterEmail, setArbiterEmail] = useState("");
   const [deposit, setDeposit] = useState("100");
   const [tokenChoice, setTokenChoice] = useState<"plain" | "yield">("plain");
@@ -120,6 +124,7 @@ function AgreementForm({
   const [invalidField, setInvalidField] = useState<ProposalField | null>(null);
   const [copiedInvite, setCopiedInvite] = useState<InviteRole | null>(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isEditingRevision, setIsEditingRevision] = useState(false);
   const submittedJurisdiction = useRef<JurisdictionCode>("testnet-generic");
   const handledReceipt = useRef<`0x${string}` | null>(null);
 
@@ -127,6 +132,7 @@ function AgreementForm({
   const { data: receipt, isLoading: isMining } = useWaitForTransactionReceipt({ hash });
   const claimWindowHasPassed =
     Boolean(claimWindowStart) && new Date(claimWindowStart).getTime() <= Date.now();
+  const approvedTermsLocked = Boolean(draft?.tenantApproved) && !isEditingRevision;
 
   const landlordAccess = useMemo<NegotiationAccess | null>(
     () =>
@@ -137,7 +143,9 @@ function AgreementForm({
   );
 
   function applyTerms(record: NegotiationRecord) {
+    setTenantName(record.tenantName || "");
     setTenantEmail(record.tenantEmail);
+    setArbiterName(record.arbiterName || "");
     setArbiterEmail(record.arbiterEmail || "");
     setDeposit(record.terms.deposit);
     setTokenChoice(record.terms.tokenChoice);
@@ -326,8 +334,11 @@ function AgreementForm({
     try {
       if (!draft) {
         const created = await createNegotiation({
+          landlordName,
           landlordEmail,
+          tenantName,
           tenantEmail,
+          arbiterName,
           arbiterEmail: arbiterEmail.trim() || null,
           terms: currentTerms(),
         });
@@ -347,9 +358,11 @@ function AgreementForm({
           type: "revise",
           summary: revisionSummary.trim(),
           terms: currentTerms(),
+          participants: { landlordName, tenantName, arbiterName },
         });
         setDraft(updated);
         setRevisionSummary("");
+        setIsEditingRevision(false);
         setFormMessage(
           `Revision ${updated.revision} published. Prior approvals were reset; resend the review invitation so the tenant${updated.arbiterEmail ? " and arbiter" : ""} can approve the new revision.`,
         );
@@ -368,9 +381,26 @@ function AgreementForm({
     setDraft(null);
     setAccessBundle(null);
     setRevisionSummary("");
+    setIsEditingRevision(false);
     setInvalidField(null);
     setFormError(null);
     setFormMessage("Ready to create a separate proposal.");
+  }
+
+  function addOrReplaceTenant() {
+    setDraft(null);
+    setAccessBundle(null);
+    setTenantName("");
+    setTenantEmail("");
+    setArbiterName("");
+    setArbiterEmail("");
+    setRevisionSummary("");
+    setIsEditingRevision(false);
+    setInvalidField(null);
+    setFormError(null);
+    setFormMessage(
+      "Started a separate proposal for a new tenant. The existing approved record remains unchanged.",
+    );
   }
 
   function inviteFor(role: InviteRole) {
@@ -390,6 +420,12 @@ function AgreementForm({
   }
 
   async function copyInvite(role: InviteRole) {
+    if (
+      (role === "tenant" && draft?.tenantApproved) ||
+      (role === "arbiter" && draft?.arbiterApproved)
+    ) {
+      return;
+    }
     const invitation = inviteFor(role);
     if (!invitation) return;
     await navigator.clipboard.writeText(invitation.body);
@@ -398,6 +434,12 @@ function AgreementForm({
   }
 
   function openInvite(role: InviteRole) {
+    if (
+      (role === "tenant" && draft?.tenantApproved) ||
+      (role === "arbiter" && draft?.arbiterApproved)
+    ) {
+      return;
+    }
     const invitation = inviteFor(role);
     if (!invitation) return;
     window.open(invitation.gmailUrl, "_blank", "noopener,noreferrer");
@@ -470,11 +512,22 @@ function AgreementForm({
       </p>
 
       <div className="participant-summary">
-        <span>Landlord email</span>
-        <strong>{landlordEmail || "Link Google in your account settings first"}</strong>
+        <span>Landlord</span>
+        <strong>{landlordName || "Name from linked account"}</strong>
+        <small>{landlordEmail || "Link Google in your account settings first"}</small>
         <small>The active wallet becomes the onchain landlord after approvals.</small>
       </div>
 
+      <label>
+        Tenant name
+        <input
+          value={tenantName}
+          onChange={(event) => setTenantName(event.target.value)}
+          placeholder="Tenant's full name"
+          autoComplete="name"
+          disabled={Boolean(draft)}
+        />
+      </label>
       <label>
         Tenant email
         <input
@@ -489,6 +542,16 @@ function AgreementForm({
           disabled={Boolean(draft)}
           data-proposal-field="tenantEmail"
           aria-invalid={invalidField === "tenantEmail"}
+        />
+      </label>
+      <label>
+        Arbiter name (optional)
+        <input
+          value={arbiterName}
+          onChange={(event) => setArbiterName(event.target.value)}
+          placeholder="Arbiter's full name"
+          autoComplete="name"
+          disabled={Boolean(draft)}
         />
       </label>
       <label>
@@ -509,13 +572,18 @@ function AgreementForm({
       </label>
       {draft && (
         <p className="field-help">
-          Party emails are locked once invitations exist. Start a separate proposal to change the parties.
+          Party identities are locked once invitations exist. Use “Add / replace tenant” to start a
+          separate proposal without changing this record.
         </p>
       )}
 
       <label>
         Jurisdiction context
-        <select value={jurisdiction} onChange={(event) => setJurisdiction(event.target.value as JurisdictionCode)}>
+        <select
+          value={jurisdiction}
+          disabled={approvedTermsLocked}
+          onChange={(event) => setJurisdiction(event.target.value as JurisdictionCode)}
+        >
           {JURISDICTIONS.map((option) => (
             <option key={option.code} value={option.code}>{option.label}</option>
           ))}
@@ -528,11 +596,11 @@ function AgreementForm({
       <fieldset className="token-choice">
         <legend>Deposit test token</legend>
         <label title="Plain freely mintable test token. Its displayed value does not grow.">
-          <input type="radio" name="deposit-token" checked={tokenChoice === "plain"} onChange={() => setTokenChoice("plain")} />
+          <input type="radio" name="deposit-token" checked={tokenChoice === "plain"} disabled={approvedTermsLocked} onChange={() => setTokenChoice("plain")} />
           <span><strong>testUSDC</strong><small>Plain test token · stable demo value</small></span>
         </label>
         <label title="Freely mintable test shares whose displayed testUSDC value grows 20% per day.">
-          <input type="radio" name="deposit-token" checked={tokenChoice === "yield"} onChange={() => setTokenChoice("yield")} />
+          <input type="radio" name="deposit-token" checked={tokenChoice === "yield"} disabled={approvedTermsLocked} onChange={() => setTokenChoice("yield")} />
           <span><strong>ytUSDC ⓘ</strong><small>Yield-test shares · 20%/day accelerated demo</small></span>
         </label>
       </fieldset>
@@ -547,6 +615,7 @@ function AgreementForm({
           type="number"
           min="0"
           step="0.000001"
+          disabled={approvedTermsLocked}
           data-proposal-field="deposit"
           aria-invalid={invalidField === "deposit"}
         />
@@ -560,6 +629,7 @@ function AgreementForm({
             clearFieldIssue("claimWindowStart");
           }}
           type="datetime-local"
+          disabled={approvedTermsLocked}
           data-proposal-field="claimWindowStart"
           aria-invalid={invalidField === "claimWindowStart" || claimWindowHasPassed}
         />
@@ -581,6 +651,7 @@ function AgreementForm({
           }}
           type="number"
           min="1"
+          disabled={approvedTermsLocked}
           data-proposal-field="claimDays"
           aria-invalid={invalidField === "claimDays"}
         />
@@ -595,6 +666,7 @@ function AgreementForm({
           }}
           type="number"
           min="1"
+          disabled={approvedTermsLocked}
           data-proposal-field="responseDays"
           aria-invalid={invalidField === "responseDays"}
         />
@@ -609,6 +681,7 @@ function AgreementForm({
           }}
           type="number"
           min="1"
+          disabled={approvedTermsLocked}
           data-proposal-field="arbiterDays"
           aria-invalid={invalidField === "arbiterDays"}
         />
@@ -616,12 +689,42 @@ function AgreementForm({
 
       {draft && draft.status !== "finalized" ? (
         <section className="revision-publisher" aria-labelledby="revision-publisher-title">
+          {approvedTermsLocked ? (
+            <div className="revision-lock">
+              <div>
+                <h3 id="revision-publisher-title">Approved terms are locked</h3>
+                <p className="hint">
+                  The tenant approved revision {draft.revision}. Unlocking edits does not change the
+                  record until you publish a new revision.
+                </p>
+              </div>
+              <div className="button-row">
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  title="Any published edit creates a new revision, cancels the current approval, and requires the tenant and optional arbiter to approve again."
+                  onClick={() => setIsEditingRevision(true)}
+                >
+                  Edit approved proposal ⓘ
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  title="OpenEscrow supports one tenant wallet per onchain agreement. This starts a separate proposal and preserves the existing approved record."
+                  onClick={addOrReplaceTenant}
+                >
+                  Add / replace tenant
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
           <h3 id="revision-publisher-title">Publish a new revision</h3>
           <p className="hint">
             Update the terms above, then describe the change. Publishing creates a new timestamped
             revision and requires fresh approval from every invited reviewer.
           </p>
-          {draft.status === "ready" && (
+          {(draft.tenantApproved || draft.arbiterApproved) && (
             <div className="revision-impact">
               <strong>The current revision is already approved.</strong>
               <span>
@@ -658,7 +761,17 @@ function AgreementForm({
             <button className="btn btn-ghost" type="button" onClick={startAnotherProposal}>
               Start another proposal
             </button>
+            <button
+              className="btn btn-ghost"
+              type="button"
+              title="OpenEscrow currently supports one tenant wallet per onchain agreement. This starts a separate proposal and preserves the existing record."
+              onClick={addOrReplaceTenant}
+            >
+              Add / replace tenant
+            </button>
           </div>
+            </>
+          )}
         </section>
       ) : !draft ? (
         <div className="button-row">
@@ -675,6 +788,14 @@ function AgreementForm({
         <div className="button-row">
           <button className="btn btn-ghost" type="button" onClick={startAnotherProposal}>
             Start another proposal
+          </button>
+          <button
+            className="btn btn-ghost"
+            type="button"
+            title="OpenEscrow currently supports one tenant wallet per onchain agreement. This starts a separate proposal and preserves the existing record."
+            onClick={addOrReplaceTenant}
+          >
+            Add / replace tenant
           </button>
         </div>
       )}
@@ -709,27 +830,64 @@ function AgreementForm({
             )}
           </div>
           <div className="invite-actions">
-            <button className="btn btn-secondary" type="button" onClick={() => openInvite("tenant")}>Open tenant invite in Gmail</button>
-            <button className="btn btn-secondary" type="button" onClick={() => void copyInvite("tenant")}>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              disabled={draft.tenantApproved}
+              title={draft.tenantApproved ? "The tenant already approved this revision. Start a new revision or add a different tenant to send another invitation." : undefined}
+              onClick={() => openInvite("tenant")}
+            >
+              Open tenant invite in Gmail
+            </button>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              disabled={draft.tenantApproved}
+              title={draft.tenantApproved ? "The tenant already approved this revision. Start a new revision or add a different tenant to send another invitation." : undefined}
+              onClick={() => void copyInvite("tenant")}
+            >
               {copiedInvite === "tenant" ? "Tenant invite copied" : "Copy tenant invite"}
             </button>
             {draft.arbiterEmail && (
               <>
-                <button className="btn btn-secondary" type="button" onClick={() => openInvite("arbiter")}>Open arbiter invite in Gmail</button>
-                <button className="btn btn-secondary" type="button" onClick={() => void copyInvite("arbiter")}>
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  disabled={draft.arbiterApproved}
+                  title={draft.arbiterApproved ? "The arbiter already approved this revision." : undefined}
+                  onClick={() => openInvite("arbiter")}
+                >
+                  Open arbiter invite in Gmail
+                </button>
+                <button
+                  className="btn btn-secondary"
+                  type="button"
+                  disabled={draft.arbiterApproved}
+                  title={draft.arbiterApproved ? "The arbiter already approved this revision." : undefined}
+                  onClick={() => void copyInvite("arbiter")}
+                >
                   {copiedInvite === "arbiter" ? "Arbiter invite copied" : "Copy arbiter invite"}
                 </button>
               </>
             )}
           </div>
+          {(draft.tenantApproved || draft.arbiterApproved) && (
+            <p className="field-help">
+              Invitation controls are disabled for parties who already approved this revision.
+            </p>
+          )}
 
           <div className="approval-grid">
             <div className={draft.tenantApproved ? "approval approved" : "approval"}>
-              <strong>Tenant</strong><span>{draft.tenantApproved ? "Approved current revision" : "Awaiting approval"}</span>
+              <strong>{draft.tenantName || "Tenant"}</strong>
+              <span>{draft.tenantEmail}</span>
+              <span>{draft.tenantApproved ? "Approved current revision" : "Awaiting approval"}</span>
             </div>
             {draft.arbiterEmail && (
               <div className={draft.arbiterApproved ? "approval approved" : "approval"}>
-                <strong>Arbiter</strong><span>{draft.arbiterApproved ? "Approved current revision" : "Awaiting approval"}</span>
+                <strong>{draft.arbiterName || "Arbiter"}</strong>
+                <span>{draft.arbiterEmail}</span>
+                <span>{draft.arbiterApproved ? "Approved current revision" : "Awaiting approval"}</span>
               </div>
             )}
           </div>
@@ -776,7 +934,11 @@ function AgreementForm({
           <p className="tx-success">This proposal is finalized as onchain agreement #{draft.onchainAgreementId}.</p>
           {draft.onchainAgreementId && landlordAccess && (
             <div className="finalized-agreement-workspace">
-              <AgreementCard id={BigInt(draft.onchainAgreementId)} negotiationAccess={landlordAccess} />
+              <AgreementCard
+                id={BigInt(draft.onchainAgreementId)}
+                negotiationAccess={landlordAccess}
+                participantRecord={draft}
+              />
             </div>
           )}
         </>
@@ -793,8 +955,15 @@ function PrivyCreateAgreementForm({
   initialAccess?: NegotiationAccess | null;
 }) {
   const { user } = usePrivy();
+  const landlordName = user?.google?.name ?? "";
   const landlordEmail = user?.google?.email ?? user?.email?.address ?? "";
-  return <AgreementForm landlordEmail={landlordEmail} initialAccess={initialAccess} />;
+  return (
+    <AgreementForm
+      landlordName={landlordName}
+      landlordEmail={landlordEmail}
+      initialAccess={initialAccess}
+    />
+  );
 }
 
 export function CreateAgreementForm({
@@ -805,6 +974,6 @@ export function CreateAgreementForm({
   return ACCOUNT_AUTH_ENABLED ? (
     <PrivyCreateAgreementForm initialAccess={initialAccess} />
   ) : (
-    <AgreementForm landlordEmail="" initialAccess={initialAccess} />
+    <AgreementForm landlordName="" landlordEmail="" initialAccess={initialAccess} />
   );
 }

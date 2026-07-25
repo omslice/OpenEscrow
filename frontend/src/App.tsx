@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useIdentityToken } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
-import { Layout } from "./components/Layout";
+import { Layout, type AppNotification } from "./components/Layout";
 import { CreateAgreementForm } from "./components/CreateAgreementForm";
 import { AgreementCard } from "./components/AgreementCard";
 import { useTrackedAgreements } from "./lib/useTrackedAgreements";
@@ -199,8 +199,23 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     window.history.replaceState(null, "", url.toString());
   }
 
+  const notifications: AppNotification[] = savedProposals
+    .flatMap(({ record }) =>
+      record.events.map((event) => ({
+        id: `${record.id}-${event.id}`,
+        createdAt: event.createdAt,
+        actor: roleLabel[event.actorRole as keyof typeof roleLabel] || "System",
+        summary: event.summary,
+      })),
+    )
+    .sort(
+      (left, right) =>
+        new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime(),
+    )
+    .slice(0, 10);
+
   return (
-    <Layout>
+    <Layout notifications={notifications}>
       <PublicIntro onStart={startDemo} />
       {inviteRole && (
         <section className="card invite-landing-notice" aria-labelledby="invite-landing-title">
@@ -409,9 +424,20 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           </div>
 
           {ids.length === 0 && <p className="hint">No security deposits tracked yet in this browser.</p>}
-          {ids.map((id) => (
-            <AgreementCard key={id.toString()} id={id} onRemove={() => removeId(id)} />
-          ))}
+          {ids.map((id) => {
+            const proposal = savedProposals.find(
+              (item) => item.record.onchainAgreementId === id.toString(),
+            );
+            return (
+              <AgreementCard
+                key={id.toString()}
+                id={id}
+                onRemove={() => removeId(id)}
+                negotiationAccess={proposal?.access}
+                participantRecord={proposal?.record}
+              />
+            );
+          })}
           {workspaceRole === "tenant" && <TestFunds />}
             </>
           )}

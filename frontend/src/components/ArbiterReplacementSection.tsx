@@ -6,7 +6,7 @@ import { shortAddr } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
 
-const REPLACEABLE = new Set<number>([Phase.ReadyToFund, Phase.Active, Phase.ClaimOpen, Phase.Disputed]);
+const REPLACEABLE = new Set<number>([Phase.Active, Phase.ClaimOpen, Phase.Disputed]);
 
 /**
  * Mutual-consent arbiter replacement (spec decision 5): either party proposes, the

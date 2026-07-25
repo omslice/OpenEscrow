@@ -94,8 +94,11 @@ async function create(db, arbiterEmail = null) {
   return jsonResponse(
     await worker.fetch(
       request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
         landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
         tenantEmail: "tenant@example.com",
+        arbiterName: arbiterEmail ? "Ari Arbiter" : "",
         arbiterEmail,
         terms,
       }),
@@ -153,6 +156,8 @@ test("tenant can request changes, approve, and make an arbiter-free proposal rea
   const db = new TestD1();
   const created = await create(db);
   const id = created.record.id;
+  assert.equal(created.record.landlordName, "Lena Landlord");
+  assert.equal(created.record.tenantName, "Terry Tenant");
 
   const change = await jsonResponse(
     await act(db, id, created.access.tenant, {
@@ -166,11 +171,13 @@ test("tenant can request changes, approve, and make an arbiter-free proposal rea
     await act(db, id, created.access.tenant, {
       type: "approve",
       wallet: "0x1111111111111111111111111111111111111111",
+      name: "Terrence Tenant",
     }),
   );
   assert.equal(approved.status, "ready");
   assert.equal(approved.tenantApproved, true);
   assert.equal(approved.arbiterApproved, true);
+  assert.equal(approved.tenantName, "Terrence Tenant");
 
   const report = await worker.fetch(
     request(`/api/negotiations/${id}/report?token=${created.access.tenant}`),

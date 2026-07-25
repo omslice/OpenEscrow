@@ -12,6 +12,7 @@ import type { Agreement } from "../lib/useAgreement";
 import { useAccount, useReadContract } from "wagmi";
 import { jurisdictionLabel, readJurisdiction } from "../lib/jurisdictions";
 import { roleLabel, useInviteRole } from "../lib/inviteContext";
+import type { NegotiationRecord } from "../lib/negotiations";
 
 function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | null {
   switch (agreement.phase) {
@@ -26,7 +27,42 @@ function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | nul
   }
 }
 
-export function AgreementDashboard({ id, agreement }: { id: bigint; agreement: Agreement }) {
+function PartyIdentity({
+  label,
+  name,
+  email,
+  address,
+  fallback,
+  suffix,
+}: {
+  label: string;
+  name?: string | null;
+  email?: string | null;
+  address?: string | null;
+  fallback?: string;
+  suffix?: string;
+}) {
+  return (
+    <div className="dashboard-row party-identity">
+      <span className="label">{label}</span>
+      <span>
+        {name && <strong>{name}</strong>}
+        {email && <small>{email}</small>}
+        {address ? <small title={address}>{shortAddr(address)}{suffix || ""}</small> : fallback}
+      </span>
+    </div>
+  );
+}
+
+export function AgreementDashboard({
+  id,
+  agreement,
+  participantRecord,
+}: {
+  id: bigint;
+  agreement: Agreement;
+  participantRecord?: NegotiationRecord | null;
+}) {
   const now = useNow();
   const deadline = nextDeadline(agreement);
   const { address } = useAccount();
@@ -147,26 +183,36 @@ export function AgreementDashboard({ id, agreement }: { id: bigint; agreement: A
           <span>{closeReasonLabel[agreement.closeReason]}</span>
         </div>
       )}
-      <div className="dashboard-row">
-        <span className="label">Landlord</span>
-        <span title={agreement.landlord}>{shortAddr(agreement.landlord)}</span>
-      </div>
-      <div className="dashboard-row">
-        <span className="label">Tenant</span>
-        <span title={agreement.tenant}>{shortAddr(agreement.tenant)}</span>
-      </div>
-      <div className="dashboard-row">
-        <span className="label">Arbiter</span>
-        {agreement.arbiter === ZERO_ADDRESS ? (
-          <span>No arbiter selected</span>
-        ) : (
-          <span title={agreement.arbiter}>
-            {shortAddr(agreement.arbiter)} {agreement.arbiterAccepted ? "(accepted)" : "(pending acceptance)"}
-            {agreement.arbiterDeclined && " - declined"}
-            {agreement.arbiterResigned && " - resigned"}
-          </span>
-        )}
-      </div>
+      <PartyIdentity
+        label="Landlord"
+        name={participantRecord?.landlordName}
+        email={participantRecord?.landlordEmail}
+        address={agreement.landlord}
+      />
+      <PartyIdentity
+        label="Tenant"
+        name={participantRecord?.tenantName}
+        email={participantRecord?.tenantEmail}
+        address={agreement.tenant}
+      />
+      <PartyIdentity
+        label="Arbiter"
+        name={participantRecord?.arbiterName}
+        email={participantRecord?.arbiterEmail}
+        address={agreement.arbiter === ZERO_ADDRESS ? null : agreement.arbiter}
+        fallback="No arbiter selected"
+        suffix={
+          agreement.arbiter === ZERO_ADDRESS
+            ? ""
+            : agreement.arbiterAccepted
+              ? " (accepted)"
+              : agreement.arbiterDeclined
+                ? " (declined)"
+                : agreement.arbiterResigned
+                  ? " (resigned)"
+                  : " (pending acceptance)"
+        }
+      />
       <div className="dashboard-row">
         <span className="label">Jurisdiction context</span>
         <span>

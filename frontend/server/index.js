@@ -312,12 +312,36 @@ async function eventsFor(db, id) {
 
 async function serialize(db, row) {
   const arbiterRequired = Boolean(row.arbiter_email);
+  const events = await eventsFor(db, row.id);
+  const participantNames = {
+    landlordName: null,
+    tenantName: null,
+    arbiterName: null,
+  };
+  for (const event of events) {
+    const participants = event.metadata?.participants;
+    if (participants && typeof participants === "object") {
+      for (const key of Object.keys(participantNames)) {
+        if (typeof participants[key] === "string" && participants[key].trim()) {
+          participantNames[key] = participants[key].trim();
+        }
+      }
+    }
+    if (
+      event.action === "revision_approved" &&
+      typeof event.metadata?.name === "string" &&
+      (event.actorRole === "tenant" || event.actorRole === "arbiter")
+    ) {
+      participantNames[`${event.actorRole}Name`] = event.metadata.name.trim() || null;
+    }
+  }
   return {
     id: row.id,
     status: row.status,
     revision: row.revision,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    ...participantNames,
     landlordEmail: row.landlord_email,
     tenantEmail: row.tenant_email,
     arbiterEmail: row.arbiter_email,
@@ -328,7 +352,7 @@ async function serialize(db, row) {
     arbiterWallet: row.arbiter_wallet,
     onchainAgreementId: row.onchain_agreement_id,
     onchainTxHash: row.onchain_tx_hash,
-    events: await eventsFor(db, row.id),
+    events,
   };
 }
 
@@ -342,8 +366,11 @@ function eventStatement(db, id, now, actorRole, action, summary, revision, metad
 
 async function createNegotiation(request, db) {
   const body = await request.json();
+  const landlordName = cleanText(body.landlordName, 120);
   const landlordEmail = normalizeEmail(body.landlordEmail);
+  const tenantName = cleanText(body.tenantName, 120);
   const tenantEmail = normalizeEmail(body.tenantEmail);
+  const arbiterName = cleanText(body.arbiterName, 120);
   const arbiterEmail = normalizeEmail(body.arbiterEmail) || null;
 
   if (!EMAIL_PATTERN.test(landlordEmail) || !EMAIL_PATTERN.test(tenantEmail)) {
@@ -400,7 +427,10 @@ async function createNegotiation(request, db) {
       "proposal_created",
       `Created revision 1 for ${tenantEmail}${arbiterEmail ? ` with ${arbiterEmail} as optional arbiter` : " without an arbiter"}.`,
       1,
-      { terms: body.terms },
+      {
+        terms: body.terms,
+        participants: { landlordName, tenantName, arbiterName },
+      },
     ),
   ]);
 
@@ -486,6 +516,7 @@ async function applyAction(request, env, id) {
       return json({ error: "Connect a valid EVM wallet before approving." }, 400);
     }
     const field = role === "tenant" ? "tenant" : "arbiter";
+    const participantName = cleanText(body.name, 120);
     statements.push(
       db
         .prepare(
@@ -500,8 +531,9 @@ async function applyAction(request, env, id) {
         now,
         role,
         "revision_approved",
-        `Approved revision ${revision} and confirmed wallet ${body.wallet}.`,
+        `Approved revision ${revision}${participantName ? ` as ${participantName}` : ""} and confirmed wallet ${body.wallet}.`,
         revision,
+        { wallet: body.wallet, name: participantName },
       ),
     );
   } else if (body.type === "revise") {
@@ -512,6 +544,11 @@ async function applyAction(request, env, id) {
     if (!validTerms(body.terms)) return json({ error: "The revised agreement terms are invalid." }, 400);
     const summary = cleanText(body.summary, 1000);
     if (summary.length < 8) return json({ error: "Describe what changed in this revision." }, 400);
+    const participants = {
+      landlordName: cleanText(body.participants?.landlordName, 120),
+      tenantName: cleanText(body.participants?.tenantName, 120),
+      arbiterName: cleanText(body.participants?.arbiterName, 120),
+    };
     const nextRevision = revision + 1;
     statements.push(
       db
@@ -530,7 +567,7 @@ async function applyAction(request, env, id) {
         "proposal_revised",
         `Published revision ${nextRevision}: ${summary}`,
         nextRevision,
-        { terms: body.terms },
+        { terms: body.terms, participants },
       ),
     );
   } else if (body.type === "invitation_prepared") {

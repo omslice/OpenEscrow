@@ -34,11 +34,13 @@ function Terms({ record }: { record: NegotiationRecord }) {
 
 function AgreementNegotiationView({
   access,
+  currentName,
   currentEmail,
   enforceInvitedEmail,
   onUseInvitedAccount,
 }: {
   access: NegotiationAccess;
+  currentName?: string | null;
   currentEmail?: string | null;
   enforceInvitedEmail: boolean;
   onUseInvitedAccount?: () => void;
@@ -67,7 +69,7 @@ function AgreementNegotiationView({
 
   async function act(
     action:
-      | { type: "approve"; wallet: string }
+      | { type: "approve"; wallet: string; name?: string }
       | { type: "propose_change"; summary: string },
     success: string,
   ) {
@@ -155,9 +157,21 @@ function AgreementNegotiationView({
       )}
 
       <div className="participant-grid">
-        <div><span>Landlord</span><strong>{record.landlordEmail}</strong></div>
-        <div><span>Tenant</span><strong>{record.tenantEmail}</strong></div>
-        <div><span>Arbiter</span><strong>{record.arbiterEmail || "Not appointed"}</strong></div>
+        <div>
+          <span>Landlord</span>
+          <strong>{record.landlordName || record.landlordEmail}</strong>
+          {record.landlordName && <small>{record.landlordEmail}</small>}
+        </div>
+        <div>
+          <span>Tenant</span>
+          <strong>{record.tenantName || record.tenantEmail}</strong>
+          {record.tenantName && <small>{record.tenantEmail}</small>}
+        </div>
+        <div>
+          <span>Arbiter</span>
+          <strong>{record.arbiterName || record.arbiterEmail || "Not appointed"}</strong>
+          {record.arbiterName && record.arbiterEmail && <small>{record.arbiterEmail}</small>}
+        </div>
       </div>
       <Terms record={record} />
 
@@ -205,7 +219,7 @@ function AgreementNegotiationView({
               onClick={() =>
                 address &&
                 void act(
-                  { type: "approve", wallet: address },
+                  { type: "approve", wallet: address, name: currentName?.trim() || undefined },
                   `Revision ${record.revision} approved and your wallet was recorded.`,
                 )
               }
@@ -248,6 +262,7 @@ function AgreementNegotiationView({
           <AgreementCard
             id={BigInt(record.onchainAgreementId)}
             negotiationAccess={access}
+            participantRecord={record}
           />
         </div>
       )}
@@ -257,10 +272,12 @@ function AgreementNegotiationView({
 
 function PrivyAgreementNegotiation({ access }: { access: NegotiationAccess }) {
   const { authenticated, user, logout } = usePrivy();
+  const currentName = user?.google?.name ?? null;
   const currentEmail = user?.google?.email ?? user?.email?.address ?? null;
   return (
     <AgreementNegotiationView
       access={access}
+      currentName={currentName}
       currentEmail={authenticated ? currentEmail : null}
       enforceInvitedEmail
       onUseInvitedAccount={() => void logout()}

@@ -11,16 +11,18 @@ import { ArbiterReplacementSection } from "./ArbiterReplacementSection";
 import { NextAction } from "./NextAction";
 import { ProposalActions } from "./ProposalActions";
 import { AgreementNoticeCenter } from "./AgreementNoticeCenter";
-import type { NegotiationAccess } from "../lib/negotiations";
+import type { NegotiationAccess, NegotiationRecord } from "../lib/negotiations";
 
 export function AgreementCard({
   id,
   onRemove,
   negotiationAccess,
+  participantRecord,
 }: {
   id: bigint;
   onRemove?: () => void;
   negotiationAccess?: NegotiationAccess | null;
+  participantRecord?: NegotiationRecord | null;
 }) {
   const { agreement, exists, isLoading, error, refetch } = useAgreement(id);
 
@@ -44,7 +46,7 @@ export function AgreementCard({
 
   return (
     <div className="card agreement-card">
-      <AgreementDashboard id={id} agreement={agreement} />
+      <AgreementDashboard id={id} agreement={agreement} participantRecord={participantRecord} />
       <AgreementNoticeCenter agreement={agreement} />
       <NextAction agreement={agreement} />
       <ArbiterActions id={id} agreement={agreement} onRefetch={onRefetch} />
@@ -56,6 +58,25 @@ export function AgreementCard({
       <ArbiterReplacementSection id={id} agreement={agreement} onRefetch={onRefetch} />
       <TimeoutSection id={id} agreement={agreement} onRefetch={onRefetch} />
       <WithdrawSection id={id} agreement={agreement} onRefetch={onRefetch} />
+      {participantRecord && (
+        <details className="agreement-activity">
+          <summary>Recent agreement activity</summary>
+          <ol className="activity-timeline">
+            {[...participantRecord.events]
+              .reverse()
+              .slice(0, 8)
+              .map((event) => (
+                <li key={event.id}>
+                  <time dateTime={event.createdAt}>
+                    {new Date(event.createdAt).toLocaleString()}
+                  </time>
+                  <strong>{event.actorRole}</strong>
+                  <span>{event.summary}</span>
+                </li>
+              ))}
+          </ol>
+        </details>
+      )}
       {onRemove && (
         <button className="btn btn-ghost small" onClick={onRemove}>
           Stop tracking this agreement

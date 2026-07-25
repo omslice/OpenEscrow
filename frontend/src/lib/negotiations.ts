@@ -29,8 +29,11 @@ export interface NegotiationRecord {
   revision: number;
   createdAt: string;
   updatedAt: string;
+  landlordName: string | null;
   landlordEmail: string;
+  tenantName: string | null;
   tenantEmail: string;
+  arbiterName: string | null;
   arbiterEmail: string | null;
   terms: AgreementTerms;
   tenantApproved: boolean;
@@ -277,8 +280,11 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
 }
 
 export async function createNegotiation(input: {
+  landlordName: string;
   landlordEmail: string;
+  tenantName: string;
   tenantEmail: string;
+  arbiterName: string;
   arbiterEmail: string | null;
   terms: AgreementTerms;
 }) {
@@ -313,9 +319,18 @@ export async function discoverNegotiationsForAccount(
 export async function negotiationAction(
   access: NegotiationAccess,
   action:
-    | { type: "approve"; wallet: string }
+    | { type: "approve"; wallet: string; name?: string }
     | { type: "propose_change"; summary: string }
-    | { type: "revise"; summary: string; terms: AgreementTerms }
+    | {
+        type: "revise";
+        summary: string;
+        terms: AgreementTerms;
+        participants?: {
+          landlordName?: string;
+          tenantName?: string;
+          arbiterName?: string;
+        };
+      }
     | { type: "invitation_prepared"; invitedRole: InviteRole; method: "gmail" | "copy" }
     | { type: "finalize"; agreementId: string; transactionHash: string }
     | {

@@ -30,6 +30,98 @@
   color: var(--text-h);
 }
 
+.header-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 auto;
+}
+
+.notification-center {
+  position: relative;
+}
+
+.notification-center > summary {
+  position: relative;
+  display: grid;
+  width: 40px;
+  height: 40px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  cursor: pointer;
+  list-style: none;
+}
+
+.notification-center > summary::-webkit-details-marker {
+  display: none;
+}
+
+.notification-center > summary b {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  min-width: 18px;
+  padding: 2px 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+  font-size: 10px;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.notification-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 10px);
+  right: 0;
+  width: min(390px, calc(100vw - 32px));
+  max-height: 460px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px;
+  background: var(--bg);
+  box-shadow: 0 16px 48px rgb(0 0 0 / 28%);
+}
+
+.notification-menu h2 {
+  margin: 0 0 8px;
+  font-size: 16px;
+}
+
+.notification-menu p {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.notification-menu ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.notification-menu li {
+  display: grid;
+  gap: 3px;
+  border-top: 1px solid var(--border);
+  padding: 9px 0;
+  font-size: 12px;
+}
+
+.notification-menu li strong {
+  color: var(--accent);
+}
+
+.notification-menu li time {
+  color: var(--text);
+  font-size: 11px;
+}
+
 .tagline {
   margin: 0;
   font-size: 15px;
@@ -549,6 +641,17 @@
 }
 
 .dashboard-row .label {
+  color: var(--text);
+}
+
+.party-identity > span:last-child {
+  display: grid;
+  justify-items: end;
+  gap: 2px;
+  text-align: right;
+}
+
+.party-identity small {
   color: var(--text);
 }
 
@@ -1250,10 +1353,32 @@ a.btn.disabled {
   margin: 12px 0 0;
 }
 
+.agreement-activity {
+  margin-top: 20px;
+  border-top: 1px solid var(--border);
+  padding-top: 16px;
+}
+
+.agreement-activity summary {
+  color: var(--text-h);
+  cursor: pointer;
+  font-weight: 700;
+}
+
 @media (max-width: 680px) {
   .app-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .notification-menu {
+    right: auto;
+    left: 0;
   }
 
   .amount-grid {
