@@ -8,6 +8,8 @@ import {
   MIN_PERIOD_SECONDS,
   OpenEscrowABI,
   OPEN_ESCROW_ADDRESS,
+  USDC_ADDRESS,
+  YIELD_USDC_ADDRESS,
 } from "../contracts/config";
 import { parseUSDC } from "../lib/format";
 import {
@@ -22,6 +24,7 @@ import { useTrackedAgreements } from "../lib/useTrackedAgreements";
 const DAY = 24 * 60 * 60;
 const MAX_PERIOD_DAYS = MAX_PERIOD_SECONDS / DAY;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
 function validatePeriodDays(days: string, label: string): string | null {
   const n = Number(days);
@@ -32,7 +35,7 @@ function validatePeriodDays(days: string, label: string): string | null {
   return null;
 }
 
-function openInvite(email: string, role: "tenant" | "arbiter") {
+function inviteContent(email: string, role: "tenant" | "arbiter") {
   const inviteUrl = `${window.location.origin}/?invite=${role}`;
   const subject = "You have been invited to OpenEscrow";
   const body = [
@@ -44,7 +47,11 @@ function openInvite(email: string, role: "tenant" | "arbiter") {
     "",
     "This is a Base Sepolia testnet demonstration. Do not send real funds.",
   ].join("\n");
-  window.location.href = `mailto:${encodeURIComponent(email)}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+  return {
+    subject,
+    body,
+    gmailUrl: `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+  };
 }
 
 function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
@@ -56,6 +63,7 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
   const [tenantWallet, setTenantWallet] = useState("");
   const [arbiterWallet, setArbiterWallet] = useState("");
   const [deposit, setDeposit] = useState("100");
+  const [tokenChoice, setTokenChoice] = useState<"plain" | "yield">("plain");
   const [claimWindowStart, setClaimWindowStart] = useState("");
   const [claimDays, setClaimDays] = useState("30");
   const [responseDays, setResponseDays] = useState("7");
@@ -63,6 +71,7 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
   const [jurisdiction, setJurisdiction] = useState<JurisdictionCode>("testnet-generic");
   const [createdId, setCreatedId] = useState<bigint | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
+  const [copiedInvite, setCopiedInvite] = useState<"tenant" | "arbiter" | null>(null);
   const submittedJurisdiction = useRef<JurisdictionCode>("testnet-generic");
   const handledReceipt = useRef<`0x${string}` | null>(null);
 
@@ -102,30 +111,34 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
       return setFormError("The landlord must link a verified email before proposing an agreement.");
     }
     if (!EMAIL_PATTERN.test(tenantEmail)) return setFormError("Enter a valid tenant email.");
-    if (!EMAIL_PATTERN.test(arbiterEmail)) return setFormError("Enter a valid arbiter email.");
-    if (tenantEmail.toLowerCase() === arbiterEmail.toLowerCase()) {
+    const hasArbiter = arbiterEmail.trim() !== "" || arbiterWallet.trim() !== "";
+    if (hasArbiter && !EMAIL_PATTERN.test(arbiterEmail)) {
+      return setFormError("Enter a valid arbiter email, or leave both arbiter fields blank.");
+    }
+    if (hasArbiter && tenantEmail.toLowerCase() === arbiterEmail.toLowerCase()) {
       return setFormError("Tenant and arbiter must use different emails.");
     }
     if (
       tenantEmail.toLowerCase() === landlordEmail.toLowerCase() ||
-      arbiterEmail.toLowerCase() === landlordEmail.toLowerCase()
+      (hasArbiter && arbiterEmail.toLowerCase() === landlordEmail.toLowerCase())
     ) {
       return setFormError("Landlord, tenant, and arbiter must use different emails.");
     }
-    if (!tenantWallet || !arbiterWallet) {
-      return setFormError(
-        "Both participant wallets must be resolved before this draft can be finalized onchain.",
-      );
+    if (!tenantWallet) return setFormError("The tenant wallet must be resolved before finalizing.");
+    if (hasArbiter && (!arbiterEmail || !arbiterWallet)) {
+      return setFormError("Provide both an arbiter email and wallet, or leave both blank.");
     }
     if (!isAddress(tenantWallet)) return setFormError("The mapped tenant wallet is not valid.");
-    if (!isAddress(arbiterWallet)) return setFormError("The mapped arbiter wallet is not valid.");
-    if (tenantWallet.toLowerCase() === arbiterWallet.toLowerCase()) {
+    if (hasArbiter && !isAddress(arbiterWallet)) {
+      return setFormError("The mapped arbiter wallet is not valid.");
+    }
+    if (hasArbiter && tenantWallet.toLowerCase() === arbiterWallet.toLowerCase()) {
       return setFormError("Tenant and arbiter must be different addresses.");
     }
     if (
       address &&
       (tenantWallet.toLowerCase() === address.toLowerCase() ||
-        arbiterWallet.toLowerCase() === address.toLowerCase())
+        (hasArbiter && arbiterWallet.toLowerCase() === address.toLowerCase()))
     ) {
       return setFormError("Tenant and arbiter must both be different from your connected (landlord) address.");
     }
@@ -163,10 +176,11 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
     writeContract({
       address: OPEN_ESCROW_ADDRESS,
       abi: OpenEscrowABI,
-      functionName: "createAgreement",
+      functionName: "createAgreementWithToken",
       args: [
         tenantWallet as `0x${string}`,
-        arbiterWallet as `0x${string}`,
+        hasArbiter ? (arbiterWallet as `0x${string}`) : ZERO_ADDRESS,
+        tokenChoice === "yield" ? YIELD_USDC_ADDRESS : USDC_ADDRESS,
         depositRaw,
         BigInt(startSec),
         claimPeriod,
@@ -180,8 +194,9 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
     <form className="card" onSubmit={submit}>
       <h2>Propose a new agreement</h2>
       <p className="hint">
-        You are the landlord. Invite the tenant and arbiter by email; each email will be matched to
-        the wallet created for their OpenEscrow account, or to a wallet they connect themselves.
+        You are the landlord. Invite the tenant by email and optionally nominate an arbiter. Each
+        email is matched to the wallet created for their OpenEscrow account, or to a wallet they
+        connect themselves.
       </p>
 
       <div className="participant-summary">
@@ -220,7 +235,7 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
         />
       </label>
       <label>
-        Arbiter email
+        Arbiter email (optional)
         <input
           value={arbiterEmail}
           onChange={(e) => setArbiterEmail(e.target.value)}
@@ -230,33 +245,61 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
         />
       </label>
       <div className="invite-actions">
+        <a
+          className={`btn btn-secondary${EMAIL_PATTERN.test(tenantEmail) ? "" : " disabled"}`}
+          href={EMAIL_PATTERN.test(tenantEmail) ? inviteContent(tenantEmail, "tenant").gmailUrl : undefined}
+          target="_blank"
+          rel="noreferrer"
+          aria-disabled={!EMAIL_PATTERN.test(tenantEmail)}
+        >
+          Open tenant invite in Gmail
+        </a>
         <button
           className="btn btn-secondary"
           type="button"
           disabled={!EMAIL_PATTERN.test(tenantEmail)}
-          onClick={() => openInvite(tenantEmail, "tenant")}
+          onClick={async () => {
+            await navigator.clipboard.writeText(inviteContent(tenantEmail, "tenant").body);
+            setCopiedInvite("tenant");
+          }}
         >
-          Email tenant setup invite
+          {copiedInvite === "tenant" ? "Tenant invite copied" : "Copy tenant invite"}
         </button>
-        <button
-          className="btn btn-secondary"
-          type="button"
-          disabled={!EMAIL_PATTERN.test(arbiterEmail)}
-          onClick={() => openInvite(arbiterEmail, "arbiter")}
-        >
-          Email arbiter setup invite
-        </button>
+        {arbiterEmail.trim() !== "" && (
+          <>
+            <a
+              className={`btn btn-secondary${EMAIL_PATTERN.test(arbiterEmail) ? "" : " disabled"}`}
+              href={EMAIL_PATTERN.test(arbiterEmail) ? inviteContent(arbiterEmail, "arbiter").gmailUrl : undefined}
+              target="_blank"
+              rel="noreferrer"
+              aria-disabled={!EMAIL_PATTERN.test(arbiterEmail)}
+            >
+              Open arbiter invite in Gmail
+            </a>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              disabled={!EMAIL_PATTERN.test(arbiterEmail)}
+              onClick={async () => {
+                await navigator.clipboard.writeText(inviteContent(arbiterEmail, "arbiter").body);
+                setCopiedInvite("arbiter");
+              }}
+            >
+              {copiedInvite === "arbiter" ? "Arbiter invite copied" : "Copy arbiter invite"}
+            </button>
+          </>
+        )}
       </div>
       <p className="field-help">
-        These buttons open a prewritten invitation in your email app. Automatic sending and wallet
-        matching will replace this manual bridge once the server-side invitation service is active.
+        Gmail opens in a new tab, and the copy option works without a desktop mail app. Automatic
+        sending and wallet matching remain a server-side milestone.
       </p>
       <details className="participant-resolution">
         <summary>Participant wallet resolution — temporary MVP step</summary>
         <p className="hint">
           Automatic email invitations and account-to-wallet matching require the invitation
           service now being built. Until it is connected, enter the wallets supplied by the
-          tenant and arbiter to finalize this draft onchain.
+          tenant and, if used, the arbiter to finalize this draft onchain.
         </p>
         <label>
           Tenant wallet mapped to {tenantEmail || "tenant email"}
@@ -267,16 +310,48 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
           />
         </label>
         <label>
-          Arbiter wallet mapped to {arbiterEmail || "arbiter email"}
+          Arbiter wallet mapped to {arbiterEmail || "optional arbiter email"}
           <input
             value={arbiterWallet}
             onChange={(e) => setArbiterWallet(e.target.value)}
             placeholder="0x..."
           />
         </label>
+        <p className="field-help">
+          Leave both arbiter fields blank to proceed without one. If a dispute later occurs, the
+          landlord and tenant may mutually appoint an arbiter before the fixed ruling deadline;
+          otherwise the disputed balance defaults to the tenant when the deadline expires.
+        </p>
       </details>
+      <fieldset className="token-choice">
+        <legend>Deposit test token</legend>
+        <label title="Plain freely mintable test token. Its displayed value does not grow.">
+          <input
+            type="radio"
+            name="deposit-token"
+            checked={tokenChoice === "plain"}
+            onChange={() => setTokenChoice("plain")}
+          />
+          <span>
+            <strong>testUSDC</strong>
+            <small>Plain test token · stable demo value</small>
+          </span>
+        </label>
+        <label title="Freely mintable test shares whose displayed testUSDC value grows 20% per day. No real assets or redemption.">
+          <input
+            type="radio"
+            name="deposit-token"
+            checked={tokenChoice === "yield"}
+            onChange={() => setTokenChoice("yield")}
+          />
+          <span>
+            <strong>ytUSDC ⓘ</strong>
+            <small>Yield-test shares · 20%/day accelerated demo</small>
+          </span>
+        </label>
+      </fieldset>
       <label>
-        Deposit amount (USDC)
+        Deposit amount ({tokenChoice === "yield" ? "ytUSDC shares" : "testUSDC"})
         <input value={deposit} onChange={(e) => setDeposit(e.target.value)} type="number" min="0" step="0.000001" />
       </label>
       <label>
@@ -313,8 +388,9 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
       {createdId !== null && (
         <div className="tx-success">
           <p>
-            Created agreement #{createdId.toString()}. Share this link with your tenant and arbiter -
-            opening it takes them straight to it, and it's also now tracked in "My agreements" below.
+            Created agreement #{createdId.toString()}. Share this link with the tenant
+            {arbiterEmail ? " and arbiter" : ""}; opening it takes them straight to the deposit
+            dashboard.
           </p>
           <p>
             Jurisdiction context: {jurisdictionLabel(submittedJurisdiction.current)} (off-chain).

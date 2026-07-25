@@ -7,13 +7,15 @@ import MockUSDCABIJson from "./MockUSDCABI.json";
 // Redeployed 2026-07-24 after the independent review addendum in
 // docs/security-review.md. Earlier addresses run superseded bytecode and should
 // be treated as retired.
-export const OPEN_ESCROW_ADDRESS = "0x4365f7B9632d083F1a03D57AE56a0e6d239ef62F" as const;
+export const OPEN_ESCROW_ADDRESS = "0x83faBc39c4FcccB6a4e42c568E9750D1a24FF11f" as const;
 export const USDC_ADDRESS = "0xE129b23BD89904D363ba226eE52deC74185D7789" as const;
+export const YIELD_USDC_ADDRESS = "0x2746034FF16371A65c133016470f85535992dabC" as const;
 export const USDC_DECIMALS = 6;
+export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
 // Block OpenEscrow was deployed at (broadcast/DeployOpenEscrow.s.sol/84532/run-latest.json) -
 // bounds event-log scans so "discover my agreements" doesn't have to search from genesis.
-export const DEPLOYMENT_BLOCK = 44574172n;
+export const DEPLOYMENT_BLOCK = 44584931n;
 
 export const chain = baseSepolia;
 

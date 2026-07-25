@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-import { MockUSDCABI, OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, USDC_ADDRESS } from "../contracts/config";
+import { MockUSDCABI, OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, YIELD_USDC_ADDRESS } from "../contracts/config";
 import { formatUSDC } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
@@ -18,7 +18,7 @@ export function TenantFundAction({
   const isTenant = address?.toLowerCase() === agreement.tenant.toLowerCase();
 
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: USDC_ADDRESS,
+    address: agreement.token,
     abi: MockUSDCABI,
     functionName: "allowance",
     args: address ? [address, OPEN_ESCROW_ADDRESS] : undefined,
@@ -40,15 +40,16 @@ export function TenantFundAction({
   if (!isTenant) return null;
 
   const needed = agreement.agreedAmount;
+  const tokenLabel = agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase() ? "ytUSDC" : "testUSDC";
   const hasAllowance = typeof allowance === "bigint" && allowance >= needed;
 
   return (
     <div className="action-section">
       <h3>Fund this agreement</h3>
       <p className="hint">
-        Depositing {formatUSDC(needed)} USDC. This is a two-step process: approve the token spend, then
-        fund. Acceptance and funding happen in the same transaction (spec §6) - there's no separate
-        "I agree but haven't paid" state.
+        Depositing {formatUSDC(needed)} {tokenLabel}
+        {tokenLabel === "ytUSDC" ? " shares. The dashboard will show their growing testUSDC value" : ""}
+        . Approve the token spend, then fund; acceptance and funding happen in the same transaction.
       </p>
       {!hasAllowance ? (
         <button
@@ -56,14 +57,14 @@ export function TenantFundAction({
           disabled={approving || approveMining}
           onClick={() =>
             approve({
-              address: USDC_ADDRESS,
+              address: agreement.token,
               abi: MockUSDCABI,
               functionName: "approve",
               args: [OPEN_ESCROW_ADDRESS, needed],
             })
           }
         >
-          {approving ? "Confirm in wallet..." : approveMining ? "Mining..." : `1. Approve ${formatUSDC(needed)} USDC`}
+          {approving ? "Confirm in wallet..." : approveMining ? "Mining..." : `1. Approve ${formatUSDC(needed)} ${tokenLabel}`}
         </button>
       ) : (
         <TxButton

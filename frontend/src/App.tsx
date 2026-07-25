@@ -53,7 +53,7 @@ function App() {
 
       <nav className="tabs" id="demo-workspace">
         <button className={tab === "track" ? "tab active" : "tab"} onClick={() => setTab("track")}>
-          My agreements
+          Deposit dashboard
         </button>
         <button className={tab === "create" ? "tab active" : "tab"} onClick={() => setTab("create")}>
           Propose new agreement
@@ -70,8 +70,8 @@ function App() {
             <h2>Find agreements involving you</h2>
             <p className="hint">
               Scan Base Sepolia for agreements where your connected wallet is the landlord, tenant,
-              or arbiter. The demo reads contract events directly, so no account or backend is
-              required.
+              or arbiter. Track custody, test yield, deduction claims, disputes, deadlines, and
+              resolution from one place.
             </p>
             <button
               className="btn btn-primary"
@@ -122,7 +122,7 @@ function App() {
             </div>
           </div>
 
-          {ids.length === 0 && <p className="hint">No agreements tracked yet in this browser.</p>}
+          {ids.length === 0 && <p className="hint">No security deposits tracked yet in this browser.</p>}
           {ids.map((id) => (
             <AgreementCard key={id.toString()} id={id} onRemove={() => removeId(id)} />
           ))}

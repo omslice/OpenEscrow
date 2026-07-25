@@ -84,7 +84,8 @@ The contract cannot determine whether evidence is truthful or legally sufficient
 
 ## Arbitration
 
-- The initial arbiter must accept before funding.
+- A nominated initial arbiter must accept before funding. If the agreement is created without an
+  arbiter, it may fund immediately and the parties can mutually appoint one if a dispute occurs.
 - A declined nomination cannot later be accepted unless the landlord renominates.
 - Post-funding replacement requires one party to propose, the other to confirm, and the candidate to accept.
 - Replacement never extends a live ruling deadline.

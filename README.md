@@ -15,14 +15,17 @@ The project is an open-source public-interest prototype. It is not a law firm, b
 The Base Sepolia testnet MVP implements the complete technical lifecycle:
 
 - A landlord proposes an agreement.
-- A nominated arbiter must explicitly accept.
-- The tenant accepts and funds with one pinned test-USDC token.
+- An arbiter may be nominated up front and must explicitly accept; or the parties can create the
+  agreement without one and mutually appoint one later if a dispute occurs.
+- The tenant accepts and funds with either allowlisted plain testUSDC or test-only ytUSDC shares.
 - The landlord may submit one timely claim with evidence commitments.
 - The tenant may accept all, accept part, or dispute the claim.
 - Tenant silence becomes a dispute; it never pays the landlord automatically.
 - Only the disputed amount remains locked.
-- The arbiter may award no more than the disputed amount.
+- The current arbiter may award no more than the disputed amount.
 - If the arbiter misses the deadline, the disputed balance defaults to the tenant.
+- The tenant dashboard shows onchain custody, a deliberately accelerated 20%-per-day demo value,
+  deduction/dispute alerts, deadlines, and resolution status. The demo value is not real yield.
 - Tenant and landlord withdraw credited balances using pull payments.
 
 The current source includes:

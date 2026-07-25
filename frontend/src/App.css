@@ -505,6 +505,19 @@
   margin-bottom: 14px;
 }
 
+.amount-grid.secondary {
+  margin-top: 4px;
+}
+
+.yield-disclaimer {
+  margin: -6px 0 8px;
+  padding: 8px 10px;
+  border-left: 3px solid var(--warning);
+  background: var(--warning-bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
 .amount-tile {
   padding: 12px;
   border-radius: 8px;
@@ -599,6 +612,54 @@
   flex-wrap: wrap;
 }
 
+.token-choice {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin: 0 0 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.token-choice legend {
+  color: var(--text-h);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.token-choice label {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.token-choice input {
+  width: auto;
+  margin: 3px 0 0;
+}
+
+.token-choice strong,
+.token-choice small {
+  display: block;
+}
+
+.token-choice small {
+  margin-top: 2px;
+  color: var(--text);
+}
+
+.test-funds-stack {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .participant-resolution summary {
   color: var(--text-h);
   cursor: pointer;
@@ -641,6 +702,51 @@
   border: 1px solid var(--accent-border);
   border-radius: 10px;
   background: var(--accent-bg);
+}
+
+.notice-center {
+  margin: 16px 0;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.agreement-notice {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--accent-bg);
+}
+
+.agreement-notice.warning {
+  border-left-color: var(--warning);
+  background: var(--warning-bg);
+}
+
+.agreement-notice.success {
+  border-left-color: var(--success);
+}
+
+.agreement-notice strong,
+.agreement-notice p {
+  display: block;
+}
+
+.agreement-notice p {
+  margin: 3px 0 0;
+  font-size: 13px;
+}
+
+.notice-center small {
+  display: block;
+  margin-top: 10px;
+  color: var(--text);
+}
+
+a.btn.disabled {
+  pointer-events: none;
+  opacity: 0.5;
 }
 
 .next-action strong,
@@ -737,6 +843,11 @@
   .test-funds {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .test-funds-stack,
+  .token-choice {
+    grid-template-columns: 1fr;
   }
 
   .public-intro {

@@ -10,6 +10,7 @@ import { WithdrawSection } from "./WithdrawSection";
 import { ArbiterReplacementSection } from "./ArbiterReplacementSection";
 import { NextAction } from "./NextAction";
 import { ProposalActions } from "./ProposalActions";
+import { AgreementNoticeCenter } from "./AgreementNoticeCenter";
 
 export function AgreementCard({ id, onRemove }: { id: bigint; onRemove?: () => void }) {
   const { agreement, exists, isLoading, error, refetch } = useAgreement(id);
@@ -35,6 +36,7 @@ export function AgreementCard({ id, onRemove }: { id: bigint; onRemove?: () => v
   return (
     <div className="card agreement-card">
       <AgreementDashboard id={id} agreement={agreement} />
+      <AgreementNoticeCenter agreement={agreement} />
       <NextAction agreement={agreement} />
       <ArbiterActions id={id} agreement={agreement} onRefetch={onRefetch} />
       <ProposalActions id={id} agreement={agreement} onRefetch={onRefetch} />

@@ -4,7 +4,7 @@ pragma solidity 0.8.26;
 import {Script, console} from "forge-std/Script.sol";
 import {OpenEscrow} from "../contracts/OpenEscrow.sol";
 
-/// @notice Deploys OpenEscrow pinned to a single immutable token address (ADR-0002).
+/// @notice Deploys OpenEscrow with immutable plain and yield-test token allowlist entries.
 ///
 /// Usage:
 ///   TOKEN_ADDRESS=0x... forge script script/DeployOpenEscrow.s.sol:DeployOpenEscrow \
@@ -17,13 +17,16 @@ import {OpenEscrow} from "../contracts/OpenEscrow.sol";
 contract DeployOpenEscrow is Script {
     function run() external returns (OpenEscrow escrow) {
         address token = vm.envAddress("TOKEN_ADDRESS");
+        address yieldToken = vm.envAddress("YIELD_TOKEN_ADDRESS");
         require(token != address(0), "TOKEN_ADDRESS env var not set");
+        require(yieldToken != address(0), "YIELD_TOKEN_ADDRESS env var not set");
 
         vm.startBroadcast();
-        escrow = new OpenEscrow(token);
+        escrow = new OpenEscrow(token, yieldToken);
         vm.stopBroadcast();
 
         console.log("OpenEscrow deployed at:", address(escrow));
         console.log("Pinned token address:  ", token);
+        console.log("Yield token address:   ", yieldToken);
     }
 }

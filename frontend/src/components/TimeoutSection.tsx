@@ -44,8 +44,9 @@ export function TimeoutSection({
       <div className="action-section">
         <h3>Response window has closed</h3>
         <p className="hint">
-          The tenant never responded. Anyone can trigger this - it creates a dispute for the arbiter to
-          review, it does not pay the landlord automatically.
+          The tenant never responded. Anyone can trigger this—it creates a dispute and never pays
+          the landlord automatically. If no arbiter is appointed and rules in time, the disputed
+          balance defaults to the tenant.
         </p>
         <TxButton
           address={OPEN_ESCROW_ADDRESS}

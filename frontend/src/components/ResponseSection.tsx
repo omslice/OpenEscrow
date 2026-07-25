@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAccount } from "wagmi";
-import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
+import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
 import { formatUSDC, parseUSDC } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
@@ -40,8 +40,11 @@ export function ResponseSection({
     <div className="action-section">
       <h3>Respond to claim</h3>
       <p className="hint">
-        Landlord claimed {formatUSDC(claimed)} USDC. Whatever you don't accept becomes disputed and goes
-        to your arbiter, not the landlord automatically - even if you never respond at all (spec §6).
+        Landlord claimed {formatUSDC(claimed)} ytUSDC shares. Whatever you don't accept becomes
+        disputed, not paid to the landlord automatically—even if you never respond.
+        {agreement.arbiter === ZERO_ADDRESS
+          ? " Because no arbiter was preselected, both parties may mutually appoint one during the fixed ruling window."
+          : " The accepted arbiter can rule on the disputed portion."}
       </p>
       <div className="radio-row">
         <label>

@@ -10,7 +10,16 @@ interface EvidenceEntry {
   submittedBy: `0x${string}`;
 }
 
-const TYPE_LABEL: Record<number, string> = { 0: "Claim", 1: "Amendment", 2: "Response/rebuttal" };
+const TYPE_LABEL: Record<number, string> = {
+  0: "Claim",
+  1: "Amendment",
+  2: "Response/rebuttal",
+  10: "Claim—unpaid rent",
+  11: "Claim—damage beyond ordinary wear",
+  12: "Claim—cleaning",
+  13: "Claim—utilities or unpaid charges",
+  14: "Claim—other",
+};
 
 export function EvidenceList({ id }: { id: bigint }) {
   const { data } = useReadContract({

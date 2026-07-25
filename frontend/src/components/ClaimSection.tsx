@@ -18,6 +18,8 @@ export function ClaimSection({
   const { address } = useAccount();
   const { fields, contentHash, uri, valid } = useEvidenceInputs();
   const [amount, setAmount] = useState("");
+  const [category, setCategory] = useState("10");
+  const evidenceType = Number(category);
 
   const isLandlord = address?.toLowerCase() === agreement.landlord.toLowerCase();
   if (!isLandlord) return null;
@@ -34,11 +36,25 @@ export function ClaimSection({
       <div className="action-section">
         <h3>Submit a claim</h3>
         <p className="hint">
-          Deposit is {formatUSDC(agreement.depositAmount)} USDC. Whatever you don't claim becomes
-          withdrawable by the tenant immediately (spec §6/§9).
+          Deposit is {formatUSDC(agreement.depositAmount)} ytUSDC shares. Whatever you don't claim
+          becomes withdrawable by the tenant immediately.
         </p>
         <label>
-          Claim amount (USDC, max {formatUSDC(agreement.depositAmount)})
+          Deduction category
+          <select value={category} onChange={(e) => setCategory(e.target.value)}>
+            <option value="10">Unpaid rent</option>
+            <option value="11">Damage beyond ordinary wear</option>
+            <option value="12">Cleaning</option>
+            <option value="13">Utilities or other unpaid charges</option>
+            <option value="14">Other—requires explanation</option>
+          </select>
+        </label>
+        <p className="field-help">
+          This category is an itemization aid, not a legal determination. Permitted deductions and
+          documentation requirements depend on the agreement's jurisdiction.
+        </p>
+        <label>
+          Claim amount (ytUSDC shares, max {formatUSDC(agreement.depositAmount)})
           <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" min="0" step="0.000001" />
         </label>
         {fields}
@@ -46,7 +62,7 @@ export function ClaimSection({
           address={OPEN_ESCROW_ADDRESS}
           abi={OpenEscrowABI}
           functionName="submitClaim"
-          args={amountRaw !== null ? [id, amountRaw, contentHash, uri, 0] : [id, 0n, contentHash, uri, 0]}
+          args={amountRaw !== null ? [id, amountRaw, contentHash, uri, evidenceType] : [id, 0n, contentHash, uri, evidenceType]}
           label="Submit claim"
           disabled={!valid || amountRaw === null || amountRaw <= 0n || amountRaw > agreement.depositAmount}
           onSuccess={onRefetch}
@@ -60,13 +76,13 @@ export function ClaimSection({
       <div className="action-section">
         <h3>Amend claim (one-time only)</h3>
         <p className="hint">
-          Current claimed amount: {formatUSDC(agreement.claimedAmount)} USDC. You may only lower this
+          Current claimed amount: {formatUSDC(agreement.claimedAmount)} shares. You may only lower this
           figure, never raise it, and this is the only amendment this agreement will ever allow (spec
           decision 2). It will not extend the tenant's response deadline. Setting the new amount to 0
           retracts the claim entirely.
         </p>
         <label>
-          New claim amount (USDC, max {formatUSDC(agreement.claimedAmount)})
+          New claim amount (ytUSDC shares, max {formatUSDC(agreement.claimedAmount)})
           <input value={amount} onChange={(e) => setAmount(e.target.value)} type="number" min="0" step="0.000001" />
         </label>
         {fields}

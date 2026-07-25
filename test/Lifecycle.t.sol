@@ -27,12 +27,15 @@ contract LifecycleTest is Base {
         );
     }
 
-    function test_createAgreement_revertsOnZeroArbiter() public {
+    function test_createAgreement_withoutArbiter_isImmediatelyReadyToFund() public {
         vm.prank(landlord);
-        vm.expectRevert(OpenEscrow.ZeroAddress.selector);
-        escrow.createAgreement(
+        uint256 id = escrow.createAgreement(
             tenant, address(0), DEPOSIT, uint64(block.timestamp), CLAIM_PERIOD, RESPONSE_PERIOD, ARBITER_PERIOD
         );
+        OpenEscrow.Agreement memory a = escrow.getAgreement(id);
+        assertEq(uint8(a.phase), uint8(OpenEscrow.Phase.ReadyToFund));
+        assertEq(a.arbiter, address(0));
+        assertFalse(a.arbiterAccepted);
     }
 
     function test_createAgreement_revertsOnZeroDeposit() public {
@@ -203,6 +206,7 @@ contract LifecycleTest is Base {
         OpenEscrow.Agreement memory a = escrow.getAgreement(id);
         assertEq(uint8(a.phase), uint8(OpenEscrow.Phase.Active));
         assertEq(a.depositAmount, DEPOSIT);
+        assertEq(a.fundedAt, block.timestamp);
         assertEq(a.locked, DEPOSIT);
         assertEq(usdc.balanceOf(tenant), tenantBalBefore - DEPOSIT);
         assertEq(usdc.balanceOf(address(escrow)), escrowBalBefore + DEPOSIT);
@@ -225,7 +229,7 @@ contract LifecycleTest is Base {
 
     function test_tenantAcceptAndFund_revertsOnDepositMismatch_shortTransferToken() public {
         ShortTransferToken shortToken = new ShortTransferToken();
-        OpenEscrow shortEscrow = new OpenEscrow(address(shortToken));
+        OpenEscrow shortEscrow = new OpenEscrow(address(shortToken), address(shortToken));
         shortToken.mint(tenant, DEPOSIT);
         vm.prank(tenant);
         shortToken.approve(address(shortEscrow), type(uint256).max);

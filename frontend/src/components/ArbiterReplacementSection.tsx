@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { isAddress } from "viem";
 import { useAccount } from "wagmi";
-import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
+import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
 import { shortAddr } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
@@ -34,12 +34,21 @@ export function ArbiterReplacementSection({
   if (!isLandlord && !isTenant && !isArbiter) return null;
 
   const hasPending = agreement.pendingArbiter !== "0x0000000000000000000000000000000000000000";
+  const isInitialAppointment = agreement.arbiter === ZERO_ADDRESS;
   const isProposer = address?.toLowerCase() === agreement.pendingArbiterProposer.toLowerCase();
   const isPendingArbiter = address?.toLowerCase() === agreement.pendingArbiter.toLowerCase();
 
   return (
     <div className="action-section">
-      <h3>Arbiter replacement (mutual consent)</h3>
+      <h3>
+        {isInitialAppointment ? "Appoint an arbiter (mutual consent)" : "Arbiter replacement (mutual consent)"}
+      </h3>
+      {isInitialAppointment && (
+        <p className="hint">
+          An arbiter was optional at creation. Either party can propose one and the other must
+          confirm. If a dispute is already open, this never extends the ruling deadline.
+        </p>
+      )}
       {isArbiter && !hasPending && (
         <p className="hint">You may resign; a replacement still requires both parties' agreement.</p>
       )}
@@ -67,7 +76,7 @@ export function ArbiterReplacementSection({
             abi={OpenEscrowABI}
             functionName="proposeArbiterReplacement"
             args={[id, candidate]}
-            label="Propose replacement"
+            label={isInitialAppointment ? "Propose arbiter" : "Propose replacement"}
             disabled={
               !isAddress(candidate) ||
               candidate.toLowerCase() === agreement.landlord.toLowerCase() ||

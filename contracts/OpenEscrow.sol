@@ -6,9 +6,9 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 
 /// @title OpenEscrow - shared rental security deposit escrow (Base Sepolia MVP)
-/// @notice Implements docs/mvp-spec.md. One immutable test-USDC token, one shared
-///         contract holding many independent agreements keyed by id. No admin role,
-///         no rules module, no yield, no upgradeability.
+/// @notice Implements docs/mvp-spec.md. One default test token plus an explicit
+///         per-agreement test-token path, in one shared contract holding independent
+///         agreements keyed by id. No admin role or upgradeability.
 /// @dev Evidence stored onchain is limited to a content hash, a pointer/URI, a type
 ///      code, a timestamp and the submitting address. The URI is NOT private storage
 ///      (e.g. public IPFS is publicly readable and permanent) - callers must never
@@ -54,8 +54,10 @@ contract OpenEscrow is ReentrancyGuard {
         address arbiter;
         address pendingArbiter;
         address pendingArbiterProposer;
+        address token;
         uint256 agreedAmount; // term agreed at proposal; target for funding
         uint256 depositAmount; // D, set to the amount actually received at funding
+        uint64 fundedAt;
         uint64 claimWindowStart;
         uint64 claimPeriod;
         uint64 responsePeriod;
@@ -84,6 +86,7 @@ contract OpenEscrow is ReentrancyGuard {
     // ---------------------------------------------------------------------
 
     IERC20 public immutable TOKEN;
+    IERC20 public immutable YIELD_TOKEN;
 
     uint256 public nextAgreementId;
     mapping(uint256 => Agreement) public agreements;
@@ -164,14 +167,16 @@ contract OpenEscrow is ReentrancyGuard {
     error CannotConfirmOwnProposal();
     error NothingToWithdraw();
     error InvalidEvidence();
+    error UnsupportedToken();
 
     // ---------------------------------------------------------------------
     // Constructor
     // ---------------------------------------------------------------------
 
-    constructor(address token) {
-        if (token == address(0)) revert ZeroAddress();
+    constructor(address token, address yieldToken) {
+        if (token == address(0) || yieldToken == address(0)) revert ZeroAddress();
         TOKEN = IERC20(token);
+        YIELD_TOKEN = IERC20(yieldToken);
     }
 
     // ---------------------------------------------------------------------
@@ -187,9 +192,51 @@ contract OpenEscrow is ReentrancyGuard {
         uint64 responsePeriod,
         uint64 arbiterRulingPeriod
     ) external returns (uint256 id) {
+        return _createAgreement(
+            tenant,
+            arbiter,
+            address(TOKEN),
+            depositAmount,
+            claimWindowStart,
+            claimPeriod,
+            responsePeriod,
+            arbiterRulingPeriod
+        );
+    }
+
+    /// @notice Testnet-only token selection path. The UI only offers the two documented
+    ///         demo assets. Any production version must replace this with a reviewed
+    ///         allowlist or a dedicated vault/asset architecture.
+    function createAgreementWithToken(
+        address tenant,
+        address arbiter,
+        address token,
+        uint256 depositAmount,
+        uint64 claimWindowStart,
+        uint64 claimPeriod,
+        uint64 responsePeriod,
+        uint64 arbiterRulingPeriod
+    ) external returns (uint256 id) {
+        return _createAgreement(
+            tenant, arbiter, token, depositAmount, claimWindowStart, claimPeriod, responsePeriod, arbiterRulingPeriod
+        );
+    }
+
+    function _createAgreement(
+        address tenant,
+        address arbiter,
+        address token,
+        uint256 depositAmount,
+        uint64 claimWindowStart,
+        uint64 claimPeriod,
+        uint64 responsePeriod,
+        uint64 arbiterRulingPeriod
+    ) internal returns (uint256 id) {
         address landlord = msg.sender;
-        if (tenant == address(0) || arbiter == address(0)) revert ZeroAddress();
-        if (tenant == landlord || arbiter == landlord || arbiter == tenant) revert InvalidRoleAssignment();
+        if (tenant == address(0) || token == address(0)) revert ZeroAddress();
+        if (token != address(TOKEN) && token != address(YIELD_TOKEN)) revert UnsupportedToken();
+        if (tenant == landlord) revert InvalidRoleAssignment();
+        if (arbiter != address(0) && (arbiter == landlord || arbiter == tenant)) revert InvalidRoleAssignment();
         if (depositAmount == 0) revert ZeroDeposit();
         if (claimWindowStart < block.timestamp) revert InvalidClaimWindowStart();
         if (claimWindowStart > block.timestamp + MAX_CLAIM_WINDOW_OFFSET) revert InvalidClaimWindowStart();
@@ -202,13 +249,18 @@ contract OpenEscrow is ReentrancyGuard {
         a.landlord = landlord;
         a.tenant = tenant;
         a.arbiter = arbiter;
+        a.token = token;
         a.agreedAmount = depositAmount;
         a.claimWindowStart = claimWindowStart;
         a.claimPeriod = claimPeriod;
         a.responsePeriod = responsePeriod;
         a.arbiterRulingPeriod = arbiterRulingPeriod;
         a.claimSubmissionDeadline = claimWindowStart + claimPeriod;
-        a.phase = Phase.Proposed;
+        // A named arbiter must accept before funding. With no named arbiter the
+        // agreement can fund immediately; if a dispute later occurs, the parties
+        // can mutually appoint one before the fixed ruling deadline. Otherwise the
+        // existing tenant-favoring timeout resolves the unproven claim.
+        a.phase = arbiter == address(0) ? Phase.ReadyToFund : Phase.Proposed;
 
         emit AgreementProposed(
             id,
@@ -298,12 +350,14 @@ contract OpenEscrow is ReentrancyGuard {
         if (msg.sender != a.tenant) revert NotAuthorized();
 
         uint256 target = a.agreedAmount;
-        uint256 balBefore = TOKEN.balanceOf(address(this));
-        TOKEN.safeTransferFrom(msg.sender, address(this), target);
-        uint256 received = TOKEN.balanceOf(address(this)) - balBefore;
+        IERC20 token = IERC20(a.token);
+        uint256 balBefore = token.balanceOf(address(this));
+        token.safeTransferFrom(msg.sender, address(this), target);
+        uint256 received = token.balanceOf(address(this)) - balBefore;
         if (received != target) revert DepositMismatch();
 
         a.depositAmount = received;
+        a.fundedAt = uint64(block.timestamp);
         a.locked = received;
         a.phase = Phase.Active;
         emit AgreementFunded(id, received);
@@ -548,7 +602,7 @@ contract OpenEscrow is ReentrancyGuard {
         }
 
         a.withdrawn += amount;
-        TOKEN.safeTransfer(msg.sender, amount);
+        IERC20(a.token).safeTransfer(msg.sender, amount);
         emit Withdrawn(id, msg.sender, amount);
     }
 

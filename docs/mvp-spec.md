@@ -10,15 +10,23 @@ This spec supersedes the flow described in `protocol-flow.md` and `technical-ove
 1. Tenant non-response never automatically awards money to the landlord. Past the response deadline the claimed amount becomes disputed and requires arbiter review — this was already the design (§6), now confirmed as approved rather than a flagged default.
 2. **Changed from the first draft:** at most **one** claim amendment is permitted (not three), and amendment **never resets or extends** `responseDeadline` (the first draft reset it on every amendment). See §5.
 3. Arbiter ruling timeout sends the disputed amount to the tenant via an explicit, permissionless transaction — already the design (§8), now confirmed.
-4. The arbiter must explicitly accept the appointment before the tenant may fund — already the design (§8), now confirmed.
+4. **Revised for the experiment:** an arbiter is optional at creation. A named arbiter must accept
+   before funding; a zero-address arbiter makes the agreement immediately ready to fund. If a
+   dispute occurs without an arbiter, landlord and tenant may mutually appoint one during the fixed
+   ruling period. Timeout still sends the entire disputed amount to the tenant.
 5. **Changed from the first draft:** arbiter replacement requires mutual consent (already the design) but `arbiterRulingDeadline` is now **never** reset by a replacement, even mid-dispute (the first draft reset it to give the incoming arbiter a fresh window). A fixed, replacement-proof deadline is the simplest way to guarantee neither party can use replacement to unilaterally extend a dispute. See §8.
 6. **New:** onchain evidence is a structured record — content hash, privacy-safe URI/opaque identifier, evidence type code, timestamp, submitting party — and nothing else. No names, physical addresses, lease documents, invoices, or photographs go onchain directly. Public IPFS (or any public pointer) is explicitly documented as not private storage. See §9 and the data model in §2.
 7. **Changed from the first draft:** there is no administrator role at all — not even the creation-only `pauseNewAgreements()` proposed in the first draft of §10. Every function is permissionless or role-gated to landlord/tenant/arbiter; nothing is gated to a deployer/owner address.
-8. Single immutable test-USDC token address supplied at deployment; no generic ERC20, ETH, yield, fees, upgradeability, or multi-chain support — already ADR-0002, now confirmed.
+8. Single immutable test-token address supplied at deployment; no generic ERC20, ETH, fees,
+   upgradeability, or multi-chain support. The current deployment uses static `ytUSDC` shares whose
+   *displayed testUSDC value* grows linearly at 20% per day. This is experimental accounting only:
+   no underlying asset, redemption, real yield, or monetary value.
 
 ## 0. Scope lock (as given)
 
-Base Sepolia only · test USDC only · one shared contract · one mutually-accepted arbiter per agreement · testnet/demo use only. Explicitly out of scope: yield, fiat ramps, reputation, DAO governance, multi-chain, upgradeability, account abstraction, decentralized arbitration (Kleros/UMA/etc.).
+Base Sepolia only · two allowlisted test tokens (plain and yield-test shares) · one shared contract · optional,
+mutually-accepted arbiter · testnet/demo use only. Explicitly out of scope: real yield, redemption,
+fiat ramps, reputation, DAO governance, multi-chain, upgradeability, and decentralized arbitration.
 
 Because upgradeability is out of scope, bugs found post-deploy are fixed by deploying a new contract and starting new agreements there. Existing agreements on a superseded contract keep running to completion under the old code. This is acceptable for a testnet demo and should not be treated as acceptable for a mainnet deployment holding real deposits — flagged again in §12.
 
@@ -32,7 +40,8 @@ Because upgradeability is out of scope, bugs found post-deploy are fixed by depl
 - Not a production custody system. Test USDC on a testnet, demo/pilot use only.
 - Not a source of legal truth about lease terms, move-out dates, or deduction legality — see §15 / `open-questions.md`.
 - Not decentralized dispute resolution. The arbiter is a single address the two parties pick and trust; there is no juror pool, staking, or appeal.
-- Not multi-token, multi-chain, or yield-bearing.
+- Not multi-token or multi-chain. The accelerated yield display is a test harness, not an investment
+  product or claim on underlying assets.
 - Not upgradeable. No admin can change a live agreement's outcome.
 - Does not model lease renewal, month-to-month rollover, or early termination. One agreement = one fixed claim-window start date, set once at proposal.
 - Does not verify identity of landlord, tenant, or arbiter beyond wallet address control. No KYC.

@@ -15,8 +15,10 @@ export interface Agreement {
   arbiter: `0x${string}`;
   pendingArbiter: `0x${string}`;
   pendingArbiterProposer: `0x${string}`;
+  token: `0x${string}`;
   agreedAmount: bigint;
   depositAmount: bigint;
+  fundedAt: bigint;
   claimWindowStart: bigint;
   claimPeriod: bigint;
   responsePeriod: bigint;

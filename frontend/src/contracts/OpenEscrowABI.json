@@ -6,6 +6,11 @@
         "name": "token",
         "type": "address",
         "internalType": "address"
+      },
+      {
+        "name": "yieldToken",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "nonpayable"
@@ -52,6 +57,19 @@
   {
     "type": "function",
     "name": "TOKEN",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract IERC20"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "YIELD_TOKEN",
     "inputs": [],
     "outputs": [
       {
@@ -147,6 +165,11 @@
         "internalType": "address"
       },
       {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
         "name": "agreedAmount",
         "type": "uint256",
         "internalType": "uint256"
@@ -155,6 +178,11 @@
         "name": "depositAmount",
         "type": "uint256",
         "internalType": "uint256"
+      },
+      {
+        "name": "fundedAt",
+        "type": "uint64",
+        "internalType": "uint64"
       },
       {
         "name": "claimWindowStart",
@@ -360,6 +388,60 @@
   },
   {
     "type": "function",
+    "name": "createAgreementWithToken",
+    "inputs": [
+      {
+        "name": "tenant",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "arbiter",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "depositAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "claimWindowStart",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "claimPeriod",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "responsePeriod",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "arbiterRulingPeriod",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "declineArbiterRole",
     "inputs": [
       {
@@ -480,6 +562,11 @@
             "internalType": "address"
           },
           {
+            "name": "token",
+            "type": "address",
+            "internalType": "address"
+          },
+          {
             "name": "agreedAmount",
             "type": "uint256",
             "internalType": "uint256"
@@ -488,6 +575,11 @@
             "name": "depositAmount",
             "type": "uint256",
             "internalType": "uint256"
+          },
+          {
+            "name": "fundedAt",
+            "type": "uint64",
+            "internalType": "uint64"
           },
           {
             "name": "claimWindowStart",
@@ -1462,6 +1554,11 @@
         "internalType": "address"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "UnsupportedToken",
+    "inputs": []
   },
   {
     "type": "error",

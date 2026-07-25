@@ -8,10 +8,9 @@ Public demo: https://openescrow-demo.omrigross.chatgpt.site
 
 ## Deployed addresses (Base Sepolia, chain id 84532)
 
-- `OpenEscrow`: `0x4365f7B9632d083F1a03D57AE56a0e6d239ef62F` (deployed 2026-07-24 after the
-  independent review addendum in `../docs/security-review.md`; earlier addresses run superseded
-  bytecode and are intentionally retired)
+- `OpenEscrow`: see `src/contracts/config.ts` for the active deployment.
 - `MockUSDC` (test token, freely mintable): `0xE129b23BD89904D363ba226eE52deC74185D7789` (unchanged)
+- `MockYieldUSDC` (freely mintable yield-test shares): `0x2746034FF16371A65c133016470f85535992dabC`
 
 See `../script/DeployOpenEscrow.s.sol` and `../script/DeployMockUSDC.s.sol` if you need to redeploy;
 update `src/contracts/config.ts` (address *and* `DEPLOYMENT_BLOCK`) with the new values afterward.
@@ -23,10 +22,10 @@ npm install
 npm run dev
 ```
 
-Requires an EVM wallet connected to Base Sepolia. Once connected, use the in-app
-**Get 1,000 test USDC — gas covered** button. With Privy gas sponsorship enabled for Base Sepolia,
-the app sponsors this transaction so a new embedded-wallet user does not need test ETH. The mock
-token is freely mintable and has no value.
+Requires an EVM wallet connected to Base Sepolia. Once connected, use either in-app gas-covered
+faucet: plain testUSDC or ytUSDC shares. Both are freely mintable and worthless. The ytUSDC display
+index grows 20% per day solely so short usability tests can observe yield movement; it has no
+underlying asset or redemption.
 
 ### Optional account and embedded-wallet setup
 
@@ -59,7 +58,8 @@ npm run e2e:live
 
 ## What's here vs. what isn't
 
-Implemented: propose -> arbiter accept/decline/renominate -> tenant approve+fund -> claim submit/amend ->
+Implemented: choose plain or yield-test token -> propose with optional arbiter ->
+arbiter accept/decline/renominate -> tenant approve+fund -> claim submit/amend ->
 tenant respond (accept/partial/dispute) -> arbiter resolve -> permissionless timeout triggers ->
 pull-based withdraw, mutual-consent arbiter replacement, plus a live deadline countdown and an
 evidence trail view. The optional account layer supports Google authentication, automatically

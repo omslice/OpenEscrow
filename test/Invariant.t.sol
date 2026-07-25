@@ -16,7 +16,7 @@ contract InvariantTest is Test {
 
     function setUp() public {
         usdc = new MockUSDC();
-        escrow = new OpenEscrow(address(usdc));
+        escrow = new OpenEscrow(address(usdc), address(usdc));
         handler = new Handler(escrow, usdc);
         targetContract(address(handler));
     }

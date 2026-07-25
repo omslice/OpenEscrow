@@ -1,5 +1,5 @@
 import { useAccount } from "wagmi";
-import { Phase } from "../contracts/config";
+import { Phase, ZERO_ADDRESS } from "../contracts/config";
 import { formatTimestamp } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 
@@ -32,7 +32,10 @@ export function NextAction({ agreement }: { agreement: Agreement }) {
   } else if (agreement.phase === Phase.ReadyToFund) {
     if (isTenant) {
       title = "Review and fund";
-      message = "The arbiter accepted. Confirm every term before approving and depositing test USDC.";
+      message =
+        agreement.arbiter === ZERO_ADDRESS
+          ? "No arbiter is preselected. Confirm every term before depositing; if a dispute occurs, both parties can mutually appoint one or let the fixed timeout return disputed funds to you."
+          : "The arbiter accepted. Confirm every term before approving and depositing yield-test shares.";
     } else {
       title = "Waiting for tenant funding";
       message = "The tenant must explicitly accept and fund the agreement.";
@@ -58,7 +61,11 @@ export function NextAction({ agreement }: { agreement: Agreement }) {
       message = "You act only if the tenant disputes some or all of the claim.";
     }
   } else if (agreement.phase === Phase.Disputed) {
-    if (isArbiter && !agreement.arbiterResigned) {
+    if (agreement.arbiter === ZERO_ADDRESS) {
+      title = "Mutually appoint an arbiter—or wait for timeout";
+      message =
+        "The landlord and tenant may appoint a neutral arbiter by mutual consent. The deadline does not extend; if nobody rules, the disputed balance goes to the tenant.";
+    } else if (isArbiter && !agreement.arbiterResigned) {
       title = "Ruling required";
       message = "Review the evidence and allocate no more than the disputed balance before the deadline.";
     } else {
