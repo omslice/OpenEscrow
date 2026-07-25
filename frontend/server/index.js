@@ -1620,6 +1620,21 @@ async function applyAction(request, env, id) {
     if (row.status !== "ready") {
       return json({ error: "The current revision must be approved before it can be finalized." }, 409);
     }
+    let approvedTerms;
+    try {
+      approvedTerms = JSON.parse(row.terms_json);
+    } catch {
+      approvedTerms = null;
+    }
+    if (!validTerms(approvedTerms)) {
+      return json(
+        {
+          error:
+            "This approved revision predates the locked California policy. Publish a California-policy revision and collect fresh approvals before finalizing.",
+        },
+        409,
+      );
+    }
     const agreementId = cleanText(body.agreementId, 80);
     const transactionHash = cleanText(body.transactionHash, 100);
     if (!agreementId || !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {

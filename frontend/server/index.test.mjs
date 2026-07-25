@@ -239,6 +239,35 @@ test("tenant can request changes, approve, and make an arbiter-free proposal rea
   assert.equal(firstSnapshot.canonical, repeatedSnapshot.canonical);
 });
 
+test("a legacy approved proposal cannot bypass the locked California policy at finalization", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+  db.database
+    .prepare("UPDATE agreement_negotiations SET terms_json = ? WHERE id = ?")
+    .run(
+      JSON.stringify({
+        ...terms,
+        policyVersion: undefined,
+        operationsReserve: "5",
+        claimDays: "30",
+      }),
+      created.record.id,
+    );
+  const response = await act(db, created.record.id, created.access.landlord, {
+    type: "finalize",
+    agreementId: "42",
+    transactionHash: `0x${"a".repeat(64)}`,
+  });
+  assert.equal(response.status, 409);
+  assert.match((await response.json()).error, /predates the locked California policy/);
+});
+
 test("a verified Privy identity can discover its landlord proposals across browser sessions", async () => {
   const db = new TestD1();
   const created = await create(db);

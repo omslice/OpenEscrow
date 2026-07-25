@@ -657,6 +657,18 @@ function AgreementForm({
       return setFormError("Every tenant and the optional arbiter must approve the current revision first.");
     }
     if (!address) return setFormError("Connect the landlord wallet before finalizing.");
+    if (
+      draft.terms.policyVersion !== CALIFORNIA_POLICY.version ||
+      draft.terms.jurisdiction !== CALIFORNIA_POLICY.jurisdiction ||
+      draft.terms.operationsReserve !== CALIFORNIA_POLICY.operationsReserve ||
+      draft.terms.claimDays !== CALIFORNIA_POLICY.claimDays ||
+      draft.terms.responseDays !== CALIFORNIA_POLICY.responseDays ||
+      draft.terms.arbiterDays !== CALIFORNIA_POLICY.arbiterDays
+    ) {
+      return setFormError(
+        "This approved revision predates the locked California policy. Unlock edits, publish the California-policy revision, and collect fresh approvals before finalizing.",
+      );
+    }
     const tenantWallet = draft.tenantWallet || "";
     const arbiterWallet = draft.arbiterWallet || "";
     const hasArbiter = Boolean(draft.arbiterEmail);
