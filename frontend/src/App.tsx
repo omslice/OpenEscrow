@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useIdentityToken } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
 import { Layout } from "./components/Layout";
 import { CreateAgreementForm } from "./components/CreateAgreementForm";
@@ -19,32 +20,40 @@ import {
 } from "./lib/inviteContext";
 import {
   captureNegotiationAccessFromUrl,
+  discoverNegotiationsForAccount,
   listNegotiationAccesses,
   loadNegotiation,
   readNegotiationAccess,
   type NegotiationAccess,
   type NegotiationRecord,
 } from "./lib/negotiations";
+import { ACCOUNT_AUTH_ENABLED } from "./lib/accountConfig";
 import "./App.css";
 
 type Tab = "create" | "track";
 type SavedProposal = { access: NegotiationAccess; record: NegotiationRecord };
 
-function App() {
+function AppView({ identityToken = null }: { identityToken?: string | null }) {
+  const [initialCapturedAccess] = useState(() => captureNegotiationAccessFromUrl());
   const [tab, setTab] = useState<Tab>("track");
   const { ids, addId, removeId } = useTrackedAgreements();
   const { address } = useAccount();
   const { discover, isScanning, scanError } = useDiscoverAgreements();
   const [manualId, setManualId] = useState("");
   const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [findError, setFindError] = useState<string | null>(null);
+  const [isFinding, setIsFinding] = useState(false);
   const [savedProposals, setSavedProposals] = useState<SavedProposal[]>([]);
   const [activeLandlordAccess, setActiveLandlordAccess] =
-    useState<NegotiationAccess | null>(null);
+    useState<NegotiationAccess | null>(
+      initialCapturedAccess?.role === "landlord" ? initialCapturedAccess : null,
+    );
   const inviteRole = useInviteRole();
   const workspaceRole = useWorkspaceRole();
   const [proposalAccess, setProposalAccess] = useState<NegotiationAccess | null>(() => {
-    const captured = captureNegotiationAccessFromUrl();
-    if (captured) return captured;
+    if (initialCapturedAccess && initialCapturedAccess.role !== "landlord") {
+      return initialCapturedAccess;
+    }
     const params = new URLSearchParams(window.location.search);
     const proposalId = params.get("proposal");
     const role = params.get("invite");
@@ -55,6 +64,12 @@ function App() {
         )
       : null;
   });
+
+  useEffect(() => {
+    if (initialCapturedAccess?.role !== "landlord") return;
+    selectWorkspaceRole("landlord");
+    setTab("create");
+  }, [initialCapturedAccess]);
   const startDemo = () => {
     setTab(workspaceRole === "landlord" ? "create" : "track");
     window.requestAnimationFrame(() => {
@@ -84,6 +99,7 @@ function App() {
   useEffect(() => {
     setSavedProposals([]);
     setScanMessage(null);
+    setFindError(null);
     if (inviteRole) {
       setTab("track");
     } else if (
@@ -94,39 +110,73 @@ function App() {
     }
   }, [inviteRole, workspaceRole]);
 
+  useEffect(() => {
+    if (
+      !inviteRole &&
+      proposalAccess &&
+      proposalAccess.role !== "landlord" &&
+      !new URLSearchParams(window.location.search).has("invite")
+    ) {
+      setProposalAccess(null);
+    }
+  }, [inviteRole, proposalAccess]);
+
   async function findProposalsAndAgreements() {
     setScanMessage(null);
-    const accesses = listNegotiationAccesses(workspaceRole || undefined);
-    const loaded = await Promise.allSettled(
-      accesses.map(async (access) => ({
-        access,
-        record: await loadNegotiation(access),
-      })),
-    );
-    const proposals = loaded
-      .filter(
-        (result): result is PromiseFulfilledResult<SavedProposal> =>
-          result.status === "fulfilled",
-      )
-      .map((result) => result.value)
-      .sort(
-        (a, b) =>
-          new Date(b.record.updatedAt).getTime() - new Date(a.record.updatedAt).getTime(),
+    setIsFinding(true);
+    try {
+      const localAccesses = listNegotiationAccesses(workspaceRole || undefined);
+      const accountAccesses =
+        identityToken && workspaceRole
+          ? await discoverNegotiationsForAccount(workspaceRole, identityToken)
+          : [];
+      const accesses = [...localAccesses, ...accountAccesses].filter(
+        (access, index, all) =>
+          all.findIndex(
+            (candidate) =>
+              candidate.proposalId === access.proposalId && candidate.role === access.role,
+          ) === index,
       );
-    setSavedProposals(proposals);
+      const loaded = await Promise.allSettled(
+        accesses.map(async (access) => ({
+          access,
+          record: await loadNegotiation(access),
+        })),
+      );
+      const proposals = loaded
+        .filter(
+          (result): result is PromiseFulfilledResult<SavedProposal> =>
+            result.status === "fulfilled",
+        )
+        .map((result) => result.value)
+        .sort(
+          (a, b) =>
+            new Date(b.record.updatedAt).getTime() -
+            new Date(a.record.updatedAt).getTime(),
+        );
+      setSavedProposals(proposals);
 
-    let onchainCount = 0;
-    if (address) {
-      const found = await discover(address);
-      found.forEach(addId);
-      onchainCount = found.length;
+      let onchainCount = 0;
+      if (address) {
+        const found = await discover(address);
+        found.forEach(addId);
+        onchainCount = found.length;
+      }
+      const skipped = loaded.length - proposals.length;
+      setScanMessage(
+        `Found ${proposals.length} saved proposal(s) and ${onchainCount} onchain agreement(s).${
+          skipped ? ` ${skipped} unavailable saved link(s) were skipped.` : ""
+        }`,
+      );
+    } catch (error) {
+      setFindError(
+        error instanceof Error
+          ? error.message
+          : "Your proposals and agreements could not be searched.",
+      );
+    } finally {
+      setIsFinding(false);
     }
-    const skipped = loaded.length - proposals.length;
-    setScanMessage(
-      `Found ${proposals.length} saved proposal(s) and ${onchainCount} onchain agreement(s).${
-        skipped ? ` ${skipped} unavailable saved link(s) were skipped.` : ""
-      }`,
-    );
   }
 
   function openSavedProposal(item: SavedProposal) {
@@ -263,10 +313,10 @@ function App() {
             </p>
             <button
               className="btn btn-primary"
-              disabled={isScanning}
+              disabled={isScanning || isFinding}
               onClick={() => void findProposalsAndAgreements()}
             >
-              {isScanning ? "Searching..." : "Find my proposals & agreements"}
+              {isScanning || isFinding ? "Searching..." : "Find my proposals & agreements"}
             </button>
             {!address && (
               <p className="field-help">
@@ -274,6 +324,7 @@ function App() {
               </p>
             )}
             {scanMessage && <p className="tx-success">{scanMessage}</p>}
+            {findError && <p className="tx-error">{findError}</p>}
             {scanError && <p className="tx-error">{scanError}</p>}
           </div>
 
@@ -371,6 +422,15 @@ function App() {
       )}
     </Layout>
   );
+}
+
+function AuthenticatedApp() {
+  const { identityToken } = useIdentityToken();
+  return <AppView identityToken={identityToken} />;
+}
+
+function App() {
+  return ACCOUNT_AUTH_ENABLED ? <AuthenticatedApp /> : <AppView />;
 }
 
 export default App;

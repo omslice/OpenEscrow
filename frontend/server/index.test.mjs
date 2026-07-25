@@ -6,15 +6,24 @@ import worker from "./index.js";
 
 test("the packaged D1 migration applies cleanly", () => {
   const database = new DatabaseSync(":memory:");
-  const migration = readFileSync(new URL("../../drizzle/0000_agreement_negotiations.sql", import.meta.url), "utf8");
-  for (const statement of migration.split("--> statement-breakpoint")) {
-    if (statement.trim()) database.exec(statement);
+  for (const migrationName of [
+    "0000_agreement_negotiations.sql",
+    "0001_negotiation_account_access.sql",
+  ]) {
+    const migration = readFileSync(
+      new URL(`../../drizzle/${migrationName}`, import.meta.url),
+      "utf8",
+    );
+    for (const statement of migration.split("--> statement-breakpoint")) {
+      if (statement.trim()) database.exec(statement);
+    }
   }
   const tables = database
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
     .all()
     .map((row) => row.name);
   assert.ok(tables.includes("agreement_negotiations"));
+  assert.ok(tables.includes("negotiation_account_access"));
   assert.ok(tables.includes("negotiation_events"));
 });
 
@@ -95,6 +104,28 @@ async function create(db, arbiterEmail = null) {
   );
 }
 
+function base64UrlJson(value) {
+  return Buffer.from(JSON.stringify(value)).toString("base64url");
+}
+
+async function identityTokenFor(privateKey, appId, kid, email) {
+  const encodedHeader = base64UrlJson({ alg: "ES256", typ: "JWT", kid });
+  const encodedPayload = base64UrlJson({
+    sub: "did:privy:test-landlord",
+    iss: "privy.io",
+    aud: appId,
+    iat: Math.floor(Date.now() / 1000),
+    exp: Math.floor(Date.now() / 1000) + 3600,
+    linked_accounts: JSON.stringify([{ type: "google_oauth", email }]),
+  });
+  const signature = await crypto.subtle.sign(
+    { name: "ECDSA", hash: "SHA-256" },
+    privateKey,
+    new TextEncoder().encode(`${encodedHeader}.${encodedPayload}`),
+  );
+  return `${encodedHeader}.${encodedPayload}.${Buffer.from(signature).toString("base64url")}`;
+}
+
 async function act(db, id, token, action, env = {}) {
   return worker.fetch(
     request(`/api/negotiations/${id}/actions`, "POST", { token, ...action }),
@@ -147,6 +178,64 @@ test("tenant can request changes, approve, and make an arbiter-free proposal rea
   );
   assert.equal(report.status, 200);
   assert.match(await report.text(), /Timestamped activity/);
+});
+
+test("a verified Privy identity can discover its landlord proposals across browser sessions", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const appId = "test-privy-app";
+  const kid = "test-key";
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  const identityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "landlord@example.com",
+  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    assert.equal(
+      String(input),
+      `https://auth.privy.io/api/v1/apps/${appId}/jwks.json`,
+    );
+    return Response.json({ keys: [{ ...publicJwk, kid, alg: "ES256", use: "sig" }] });
+  };
+
+  try {
+    const discovery = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/negotiations/discover", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": identityToken,
+          },
+          body: JSON.stringify({ role: "landlord" }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(discovery.accesses.length, 1);
+    assert.equal(discovery.accesses[0].proposalId, created.record.id);
+    assert.equal(discovery.accesses[0].role, "landlord");
+
+    const recovered = await jsonResponse(
+      await worker.fetch(
+        request(
+          `/api/negotiations/${created.record.id}?token=${discovery.accesses[0].token}`,
+        ),
+        { DB: db },
+      ),
+    );
+    assert.equal(recovered.landlordEmail, "landlord@example.com");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("optional arbiter approval is required only when an arbiter is appointed", async () => {

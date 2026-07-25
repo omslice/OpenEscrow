@@ -12,15 +12,16 @@ production identity, custody, privacy, or communications design.
   fallback when an extension is not available.
 - The existing injected-wallet flow remains available when Privy is not configured.
 - A verified Google/email identity is displayed in the account panel.
+- Privy identity tokens are verified against the app's public JWKS before proposals are discovered
+  by landlord, tenant, or arbiter email across browser sessions.
 - Agreement-activity and deadline-reminder preferences are collected per authenticated user.
 
 The preference values are currently device-local. No email is sent yet, and the interface says so
 explicitly.
 
-The proposal form now collects landlord, tenant, and arbiter email identities before wallet
-addresses. The landlord is the signed-in account. Tenant and arbiter wallet addresses remain a
-temporary explicit resolution step until the invitation service and durable account registry are
-online.
+The proposal form collects landlord, tenant, and optional arbiter email identities. The landlord is
+the signed-in account. Tenant and arbiter wallet addresses are recorded when the invited parties
+approve the current proposal revision.
 
 ## Configuration
 
@@ -28,10 +29,14 @@ online.
 2. Enable Google and wallet login methods.
 3. Add the local and production OpenEscrow origins to the app's allowed origins.
 4. Put the public Privy app ID in `frontend/.env.local` as `VITE_PRIVY_APP_ID`.
-5. Build and test Google login, embedded wallet creation, external wallet linking, wallet switching,
+5. Enable **Return user data in an identity token** under Authentication > Advanced. The worker
+   validates those ES256 tokens against Privy's public JWKS endpoint; no app secret is placed in the
+   browser.
+6. Build and test Google login, embedded wallet creation, external wallet linking, wallet switching,
    sign-out, and sign-in recovery before enabling the value in production.
-6. Enable native gas sponsorship for Base Sepolia. The test-USDC claim uses Privy's sponsored
-   transaction path so first-time embedded-wallet users do not need Base Sepolia ETH.
+7. Enable native gas sponsorship for Base Sepolia. The test-token faucet, approval, and escrow
+   funding calls use Privy's sponsored transaction path so embedded-wallet users do not need Base
+   Sepolia ETH.
 
 The app ID is a public browser identifier, not a server secret. Any future Privy app secret,
 webhook signing secret, or email-provider API key must remain server-side.
@@ -41,9 +46,9 @@ webhook signing secret, or email-provider API key must remain server-side.
 Email delivery needs a server-side service; it must not be implemented by putting an email API key
 in this Vite client. The minimum credible service should:
 
-1. Persist the Privy user ID, verified email, linked wallet addresses, consent state, and consent
-   timestamp in a server-side database.
-2. Verify Privy access tokens before accepting profile or preference changes.
+1. Persist notification consent state and consent timestamps in the server-side database. Proposal
+   access is already recovered from a verified Privy identity token and email match.
+2. Require verified Privy identity tokens before accepting profile or preference changes.
 3. Index OpenEscrow events from the configured deployment block and map affected wallet addresses
    to opted-in accounts.
 4. Send idempotent messages for invitations, funding, claims, responses, rulings, and withdrawals.

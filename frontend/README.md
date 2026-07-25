@@ -38,7 +38,9 @@ cp .env.example .env.local
 
 Google and wallet login must also be enabled in the Privy dashboard, with the local and production
 OpenEscrow origins added to the allowed-origin list. Enable native gas sponsorship for Base Sepolia
-before using the sponsored test-USDC claim. The wallet picker detects installed EVM extensions
+and enable **Return user data in an identity token** before using signed-in proposal discovery.
+The test-token faucet and embedded-wallet approval/funding flow use sponsored transactions. The
+wallet picker detects installed EVM extensions
 (including Rabby) and includes the searchable WalletConnect registry as a fallback. When the
 variable is absent, the existing injected-wallet connection remains active. See
 `../docs/account-notifications-mvp.md` for the implemented boundary and the server-side work still
@@ -78,9 +80,9 @@ validated on-chain and does not change contract behavior. The UI labels it as of
 context because none of the listed jurisdiction profiles have completed legal review.
 
 The proposal form is email-first: the signed-in identity is the landlord, with tenant and arbiter
-emails collected as the participant identifiers. Until the server-side invitation registry is
-connected, their mapped wallet addresses must still be supplied in the clearly labeled temporary
-resolution section before the onchain agreement can be created.
+emails collected as the participant identifiers. The D1 negotiation registry verifies Privy
+identity tokens and restores role-scoped proposal access by verified email across browser sessions.
+Participant wallet addresses are recorded when the invited parties approve the current revision.
 
 Not implemented: automatic invitation delivery and wallet resolution, a production indexer, or a
 fiat-to-USDC security-deposit onramp. See `../docs/open-questions.md` for the non-UI

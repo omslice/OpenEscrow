@@ -43,6 +43,21 @@ const MAX_PERIOD_DAYS = MAX_PERIOD_SECONDS / DAY;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
+type ProposalField =
+  | "tenantEmail"
+  | "arbiterEmail"
+  | "deposit"
+  | "claimWindowStart"
+  | "claimDays"
+  | "responseDays"
+  | "arbiterDays"
+  | "revisionSummary";
+
+type ProposalValidationIssue = {
+  field?: ProposalField;
+  message: string;
+};
+
 function validatePeriodDays(days: string, label: string): string | null {
   const n = Number(days);
   if (!Number.isFinite(n) || n <= 0) return `${label} must be a positive number of days.`;
@@ -102,6 +117,7 @@ function AgreementForm({
   const [createdId, setCreatedId] = useState<bigint | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
   const [formMessage, setFormMessage] = useState<string | null>(null);
+  const [invalidField, setInvalidField] = useState<ProposalField | null>(null);
   const [copiedInvite, setCopiedInvite] = useState<InviteRole | null>(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const submittedJurisdiction = useRef<JurisdictionCode>("testnet-generic");
@@ -109,6 +125,8 @@ function AgreementForm({
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { data: receipt, isLoading: isMining } = useWaitForTransactionReceipt({ hash });
+  const claimWindowHasPassed =
+    Boolean(claimWindowStart) && new Date(claimWindowStart).getTime() <= Date.now();
 
   const landlordAccess = useMemo<NegotiationAccess | null>(
     () =>
@@ -201,54 +219,108 @@ function AgreementForm({
     };
   }
 
-  function validateDraft(): string | null {
+  function validateDraft(): ProposalValidationIssue | null {
     if (ACCOUNT_AUTH_ENABLED && !landlordEmail) {
-      return "The landlord must link a verified email before creating a proposal.";
+      return { message: "The landlord must link a verified email before creating a proposal." };
     }
-    if (!EMAIL_PATTERN.test(tenantEmail)) return "Enter a valid tenant email.";
+    if (!EMAIL_PATTERN.test(tenantEmail)) {
+      return { field: "tenantEmail", message: "Enter a valid tenant email." };
+    }
     const hasArbiter = arbiterEmail.trim() !== "";
     if (hasArbiter && !EMAIL_PATTERN.test(arbiterEmail)) {
-      return "Enter a valid arbiter email, or leave it blank.";
+      return {
+        field: "arbiterEmail",
+        message: "Enter a valid arbiter email, or leave it blank.",
+      };
     }
     if (hasArbiter && tenantEmail.toLowerCase() === arbiterEmail.toLowerCase()) {
-      return "Tenant and arbiter must use different emails.";
+      return {
+        field: "arbiterEmail",
+        message: "Tenant and arbiter must use different emails.",
+      };
     }
     if (
       tenantEmail.toLowerCase() === landlordEmail.toLowerCase() ||
       (hasArbiter && arbiterEmail.toLowerCase() === landlordEmail.toLowerCase())
     ) {
-      return "Landlord, tenant, and arbiter must use different emails.";
+      return {
+        field:
+          tenantEmail.toLowerCase() === landlordEmail.toLowerCase()
+            ? "tenantEmail"
+            : "arbiterEmail",
+        message: "Landlord, tenant, and arbiter must use different emails.",
+      };
     }
-    if (!claimWindowStart) return "Expected lease expiration is required.";
+    if (!claimWindowStart) {
+      return {
+        field: "claimWindowStart",
+        message: "Expected lease expiration is required.",
+      };
+    }
     const nowSec = Math.floor(Date.now() / 1000);
     const startSec = Math.floor(new Date(claimWindowStart).getTime() / 1000);
     if (!Number.isFinite(startSec) || startSec <= nowSec) {
-      return "Expected lease expiration must be in the future.";
+      return {
+        field: "claimWindowStart",
+        message:
+          "The saved lease-expiration date has passed. Choose a future date before publishing this revision.",
+      };
     }
     if (startSec - nowSec > MAX_CLAIM_WINDOW_OFFSET_SECONDS) {
-      return "Expected lease expiration is too far in the future.";
+      return {
+        field: "claimWindowStart",
+        message: "Expected lease expiration is too far in the future.",
+      };
     }
     try {
-      if (parseUSDC(deposit) <= 0n) return "Deposit must be greater than zero.";
+      if (parseUSDC(deposit) <= 0n) {
+        return { field: "deposit", message: "Deposit must be greater than zero." };
+      }
     } catch {
-      return "Invalid deposit amount.";
+      return { field: "deposit", message: "Invalid deposit amount." };
     }
-    for (const [days, label] of [
-      [claimDays, "Claim period"],
-      [responseDays, "Response period"],
-      [arbiterDays, "Arbiter ruling period"],
+    for (const [days, label, field] of [
+      [claimDays, "Claim period", "claimDays"],
+      [responseDays, "Response period", "responseDays"],
+      [arbiterDays, "Arbiter ruling period", "arbiterDays"],
     ] as const) {
       const validation = validatePeriodDays(days, label);
-      if (validation) return validation;
+      if (validation) return { field, message: validation };
     }
     return null;
+  }
+
+  function clearFieldIssue(field: ProposalField) {
+    if (invalidField !== field) return;
+    setInvalidField(null);
+    setFormError(null);
+  }
+
+  function reportIssue(issue: ProposalValidationIssue) {
+    setFormMessage(null);
+    setFormError(issue.message);
+    setInvalidField(issue.field || null);
+    window.requestAnimationFrame(() => {
+      const target = issue.field
+        ? document.querySelector<HTMLElement>(`[data-proposal-field="${issue.field}"]`)
+        : document.getElementById("proposal-form-feedback");
+      target?.focus({ preventScroll: true });
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    });
   }
 
   async function saveDraft() {
     setFormError(null);
     setFormMessage(null);
+    setInvalidField(null);
+    if (draft && revisionSummary.trim().length < 8) {
+      return reportIssue({
+        field: "revisionSummary",
+        message: "Add a revision note of at least 8 characters describing what changed.",
+      });
+    }
     const validation = validateDraft();
-    if (validation) return setFormError(validation);
+    if (validation) return reportIssue(validation);
 
     setIsSavingDraft(true);
     try {
@@ -271,9 +343,6 @@ function AgreementForm({
         setFormMessage("Proposal saved. Invitations are now unlocked for this exact revision.");
       } else {
         if (!landlordAccess) throw new Error("The landlord proposal access is unavailable.");
-        if (revisionSummary.trim().length < 8) {
-          throw new Error("Describe what changed before publishing a new revision.");
-        }
         const updated = await negotiationAction(landlordAccess, {
           type: "revise",
           summary: revisionSummary.trim(),
@@ -281,13 +350,27 @@ function AgreementForm({
         });
         setDraft(updated);
         setRevisionSummary("");
-        setFormMessage(`Revision ${updated.revision} published. Prior approvals were reset.`);
+        setFormMessage(
+          `Revision ${updated.revision} published. Prior approvals were reset; resend the review invitation so the tenant${updated.arbiterEmail ? " and arbiter" : ""} can approve the new revision.`,
+        );
       }
     } catch (saveError) {
-      setFormError(saveError instanceof Error ? saveError.message : "The proposal could not be saved.");
+      reportIssue({
+        message:
+          saveError instanceof Error ? saveError.message : "The proposal could not be saved.",
+      });
     } finally {
       setIsSavingDraft(false);
     }
+  }
+
+  function startAnotherProposal() {
+    setDraft(null);
+    setAccessBundle(null);
+    setRevisionSummary("");
+    setInvalidField(null);
+    setFormError(null);
+    setFormMessage("Ready to create a separate proposal.");
   }
 
   function inviteFor(role: InviteRole) {
@@ -396,22 +479,32 @@ function AgreementForm({
         Tenant email
         <input
           value={tenantEmail}
-          onChange={(event) => setTenantEmail(event.target.value)}
+          onChange={(event) => {
+            setTenantEmail(event.target.value);
+            clearFieldIssue("tenantEmail");
+          }}
           placeholder="tenant@example.com"
           type="email"
           autoComplete="email"
           disabled={Boolean(draft)}
+          data-proposal-field="tenantEmail"
+          aria-invalid={invalidField === "tenantEmail"}
         />
       </label>
       <label>
         Arbiter email (optional)
         <input
           value={arbiterEmail}
-          onChange={(event) => setArbiterEmail(event.target.value)}
+          onChange={(event) => {
+            setArbiterEmail(event.target.value);
+            clearFieldIssue("arbiterEmail");
+          }}
           placeholder="arbiter@example.com"
           type="email"
           autoComplete="email"
           disabled={Boolean(draft)}
+          data-proposal-field="arbiterEmail"
+          aria-invalid={invalidField === "arbiterEmail"}
         />
       </label>
       {draft && (
@@ -445,55 +538,154 @@ function AgreementForm({
       </fieldset>
       <label>
         Deposit amount ({tokenChoice === "yield" ? "ytUSDC shares" : "testUSDC"})
-        <input value={deposit} onChange={(event) => setDeposit(event.target.value)} type="number" min="0" step="0.000001" />
+        <input
+          value={deposit}
+          onChange={(event) => {
+            setDeposit(event.target.value);
+            clearFieldIssue("deposit");
+          }}
+          type="number"
+          min="0"
+          step="0.000001"
+          data-proposal-field="deposit"
+          aria-invalid={invalidField === "deposit"}
+        />
       </label>
       <label>
         Expected lease expiration / claim window start
-        <input value={claimWindowStart} onChange={(event) => setClaimWindowStart(event.target.value)} type="datetime-local" />
+        <input
+          value={claimWindowStart}
+          onChange={(event) => {
+            setClaimWindowStart(event.target.value);
+            clearFieldIssue("claimWindowStart");
+          }}
+          type="datetime-local"
+          data-proposal-field="claimWindowStart"
+          aria-invalid={invalidField === "claimWindowStart" || claimWindowHasPassed}
+        />
       </label>
       <p className="field-help">The claim window opens when the lease is expected to expire.</p>
+      {claimWindowHasPassed && (
+        <p className="field-validation-error" role="alert">
+          This saved date has passed. Select a future lease-expiration date before publishing a
+          revision or finalizing onchain.
+        </p>
+      )}
       <label>
         Claim period (days the landlord has to submit a claim)
-        <input value={claimDays} onChange={(event) => setClaimDays(event.target.value)} type="number" min="1" />
+        <input
+          value={claimDays}
+          onChange={(event) => {
+            setClaimDays(event.target.value);
+            clearFieldIssue("claimDays");
+          }}
+          type="number"
+          min="1"
+          data-proposal-field="claimDays"
+          aria-invalid={invalidField === "claimDays"}
+        />
       </label>
       <label>
         Response period (days the tenant has to respond)
-        <input value={responseDays} onChange={(event) => setResponseDays(event.target.value)} type="number" min="1" />
+        <input
+          value={responseDays}
+          onChange={(event) => {
+            setResponseDays(event.target.value);
+            clearFieldIssue("responseDays");
+          }}
+          type="number"
+          min="1"
+          data-proposal-field="responseDays"
+          aria-invalid={invalidField === "responseDays"}
+        />
       </label>
       <label>
         Arbiter ruling period (days the optional arbiter has to rule)
-        <input value={arbiterDays} onChange={(event) => setArbiterDays(event.target.value)} type="number" min="1" />
+        <input
+          value={arbiterDays}
+          onChange={(event) => {
+            setArbiterDays(event.target.value);
+            clearFieldIssue("arbiterDays");
+          }}
+          type="number"
+          min="1"
+          data-proposal-field="arbiterDays"
+          aria-invalid={invalidField === "arbiterDays"}
+        />
       </label>
 
-      {draft && (
-        <label>
-          Revision note
-          <textarea
-            value={revisionSummary}
-            onChange={(event) => setRevisionSummary(event.target.value)}
-            placeholder="Summarize what changed and why. Publishing a revision resets prior approvals."
-            rows={3}
-          />
-        </label>
-      )}
-      <div className="button-row">
-        <button className="btn btn-primary" type="button" disabled={isSavingDraft} onClick={() => void saveDraft()}>
-          {isSavingDraft ? "Saving..." : draft ? "Publish revised proposal" : "Save proposal for review"}
-        </button>
-        {draft && (
+      {draft && draft.status !== "finalized" ? (
+        <section className="revision-publisher" aria-labelledby="revision-publisher-title">
+          <h3 id="revision-publisher-title">Publish a new revision</h3>
+          <p className="hint">
+            Update the terms above, then describe the change. Publishing creates a new timestamped
+            revision and requires fresh approval from every invited reviewer.
+          </p>
+          {draft.status === "ready" && (
+            <div className="revision-impact">
+              <strong>The current revision is already approved.</strong>
+              <span>
+                Publishing changes will cancel its ready-to-finalize status and reset the recorded
+                tenant{draft.arbiterEmail ? " and arbiter approvals" : " approval"}.
+              </span>
+            </div>
+          )}
+          <label>
+            Revision note (required)
+            <textarea
+              value={revisionSummary}
+              onChange={(event) => {
+                setRevisionSummary(event.target.value);
+                clearFieldIssue("revisionSummary");
+              }}
+              placeholder="For example: Extended the response period from 7 to 10 days."
+              rows={3}
+              minLength={8}
+              data-proposal-field="revisionSummary"
+              aria-invalid={invalidField === "revisionSummary"}
+            />
+          </label>
+          <p className="field-help">At least 8 characters. This note becomes part of the running record.</p>
+          <div className="button-row">
+            <button
+              className="btn btn-primary"
+              type="button"
+              disabled={isSavingDraft}
+              onClick={() => void saveDraft()}
+            >
+              {isSavingDraft ? "Publishing revision..." : "Publish revised proposal"}
+            </button>
+            <button className="btn btn-ghost" type="button" onClick={startAnotherProposal}>
+              Start another proposal
+            </button>
+          </div>
+        </section>
+      ) : !draft ? (
+        <div className="button-row">
           <button
-            className="btn btn-ghost"
+            className="btn btn-primary"
             type="button"
-            onClick={() => {
-              setDraft(null);
-              setAccessBundle(null);
-              setRevisionSummary("");
-              setFormMessage("Ready to create a separate proposal.");
-            }}
+            disabled={isSavingDraft}
+            onClick={() => void saveDraft()}
           >
+            {isSavingDraft ? "Saving proposal..." : "Save proposal for review"}
+          </button>
+        </div>
+      ) : (
+        <div className="button-row">
+          <button className="btn btn-ghost" type="button" onClick={startAnotherProposal}>
             Start another proposal
           </button>
-        )}
+        </div>
+      )}
+      <div
+        className="proposal-form-feedback"
+        id="proposal-form-feedback"
+        aria-live="assertive"
+        tabIndex={-1}
+      >
+        {formMessage && <p className="tx-success">{formMessage}</p>}
+        {formError && <p className="tx-error">{formError}</p>}
       </div>
 
       {!draft && (
@@ -589,8 +781,6 @@ function AgreementForm({
           )}
         </>
       )}
-      {formMessage && <p className="tx-success">{formMessage}</p>}
-      {formError && <p className="tx-error">{formError}</p>}
       {error && <p className="tx-error">{error.message.split("\n")[0]}</p>}
       {createdId !== null && <p className="tx-success">Created and recorded onchain agreement #{createdId.toString()}.</p>}
     </section>

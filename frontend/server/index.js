@@ -37,8 +37,26 @@ const EVENTS_INDEX = `
 CREATE INDEX IF NOT EXISTS negotiation_events_negotiation_id_idx
 ON negotiation_events (negotiation_id, id)`;
 
+const ACCOUNT_ACCESS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS negotiation_account_access (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  negotiation_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  FOREIGN KEY (negotiation_id) REFERENCES agreement_negotiations(id)
+)`;
+
+const ACCOUNT_ACCESS_INDEX = `
+CREATE INDEX IF NOT EXISTS negotiation_account_access_lookup_idx
+ON negotiation_account_access (negotiation_id, token_hash, expires_at)`;
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const WALLET_PATTERN = /^0x[a-fA-F0-9]{40}$/;
+const PRIVY_APP_ID = "cmrzdp7ss00670cju098baqsr";
+const ACCOUNT_ACCESS_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const encoder = new TextEncoder();
 
 function json(data, status = 200) {
@@ -89,12 +107,160 @@ async function hashToken(token) {
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+function decodeJwtJson(segment) {
+  const padded = segment.replaceAll("-", "+").replaceAll("_", "/").padEnd(
+    Math.ceil(segment.length / 4) * 4,
+    "=",
+  );
+  const bytes = Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+  return JSON.parse(new TextDecoder().decode(bytes));
+}
+
+function decodeJwtBytes(segment) {
+  const padded = segment.replaceAll("-", "+").replaceAll("_", "/").padEnd(
+    Math.ceil(segment.length / 4) * 4,
+    "=",
+  );
+  return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+}
+
+async function verifyPrivyIdentity(request, env) {
+  const token = cleanText(request.headers.get("privy-id-token"), 20_000);
+  const segments = token.split(".");
+  if (segments.length !== 3) throw new Error("Sign in again to securely find account proposals.");
+
+  const [encodedHeader, encodedPayload, encodedSignature] = segments;
+  const header = decodeJwtJson(encodedHeader);
+  const payload = decodeJwtJson(encodedPayload);
+  const appId = cleanText(env.PRIVY_APP_ID, 100) || PRIVY_APP_ID;
+  const now = Math.floor(Date.now() / 1000);
+  const audienceMatches =
+    payload.aud === appId || (Array.isArray(payload.aud) && payload.aud.includes(appId));
+  if (
+    header.alg !== "ES256" ||
+    !header.kid ||
+    payload.iss !== "privy.io" ||
+    !audienceMatches ||
+    typeof payload.sub !== "string" ||
+    typeof payload.exp !== "number" ||
+    payload.exp <= now
+  ) {
+    throw new Error("The signed-in account could not be verified.");
+  }
+
+  const jwksResponse = await fetch(`https://auth.privy.io/api/v1/apps/${appId}/jwks.json`, {
+    headers: { accept: "application/json", "user-agent": "OpenEscrow/1.0" },
+  });
+  if (!jwksResponse.ok) throw new Error("Account verification is temporarily unavailable.");
+  const jwks = await jwksResponse.json();
+  const jwk = Array.isArray(jwks.keys)
+    ? jwks.keys.find((candidate) => candidate.kid === header.kid && candidate.kty === "EC")
+    : null;
+  if (!jwk) throw new Error("The signed-in account uses an unknown verification key.");
+
+  const publicKey = await crypto.subtle.importKey(
+    "jwk",
+    jwk,
+    { name: "ECDSA", namedCurve: "P-256" },
+    false,
+    ["verify"],
+  );
+  const verified = await crypto.subtle.verify(
+    { name: "ECDSA", hash: "SHA-256" },
+    publicKey,
+    decodeJwtBytes(encodedSignature),
+    encoder.encode(`${encodedHeader}.${encodedPayload}`),
+  );
+  if (!verified) throw new Error("The signed-in account could not be verified.");
+
+  let linkedAccounts = [];
+  try {
+    linkedAccounts =
+      typeof payload.linked_accounts === "string"
+        ? JSON.parse(payload.linked_accounts)
+        : payload.linked_accounts;
+  } catch {
+    linkedAccounts = [];
+  }
+  const emails = [
+    ...new Set(
+      (Array.isArray(linkedAccounts) ? linkedAccounts : [])
+        .flatMap((account) => [account?.email, account?.address])
+        .map(normalizeEmail)
+        .filter((email) => EMAIL_PATTERN.test(email)),
+    ),
+  ];
+  if (!emails.length) {
+    throw new Error("Link a verified Google or email account before finding proposals.");
+  }
+  return { userId: payload.sub, emails };
+}
+
 async function initialize(db) {
   await db.batch([
     db.prepare(AGREEMENTS_SCHEMA),
     db.prepare(EVENTS_SCHEMA),
     db.prepare(EVENTS_INDEX),
+    db.prepare(ACCOUNT_ACCESS_SCHEMA),
+    db.prepare(ACCOUNT_ACCESS_INDEX),
   ]);
+}
+
+async function discoverNegotiations(request, env) {
+  let identity;
+  try {
+    identity = await verifyPrivyIdentity(request, env);
+  } catch (error) {
+    return json(
+      {
+        error:
+          error instanceof Error ? error.message : "The signed-in account could not be verified.",
+      },
+      401,
+    );
+  }
+
+  const body = await request.json();
+  const role = body.role;
+  const emailColumn =
+    role === "landlord"
+      ? "landlord_email"
+      : role === "tenant"
+        ? "tenant_email"
+        : role === "arbiter"
+          ? "arbiter_email"
+          : null;
+  if (!emailColumn) return json({ error: "Choose a valid account role before searching." }, 400);
+
+  const placeholders = identity.emails.map(() => "?").join(", ");
+  const result = await env.DB
+    .prepare(
+      `SELECT * FROM agreement_negotiations WHERE ${emailColumn} IN (${placeholders}) ORDER BY updated_at DESC`,
+    )
+    .bind(...identity.emails)
+    .all();
+  const rows = result.results || [];
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + ACCOUNT_ACCESS_LIFETIME_MS).toISOString();
+  const accesses = [];
+
+  await env.DB
+    .prepare("DELETE FROM negotiation_account_access WHERE expires_at <= ?")
+    .bind(now.toISOString())
+    .run();
+  for (const row of rows) {
+    const token = randomToken();
+    const tokenHash = await hashToken(token);
+    await env.DB
+      .prepare(
+        "INSERT INTO negotiation_account_access (negotiation_id, user_id, role, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
+      )
+      .bind(row.id, identity.userId, role, tokenHash, now.toISOString(), expiresAt)
+      .run();
+    accesses.push({ proposalId: row.id, role, token });
+  }
+
+  return json({ accesses });
 }
 
 async function rowFor(db, id) {
@@ -104,12 +270,25 @@ async function rowFor(db, id) {
     .first();
 }
 
-async function authorize(row, token) {
+async function authorize(db, row, token) {
   if (!row || !token) return null;
   const hash = await hashToken(token);
   if (hash === row.landlord_token_hash) return "landlord";
   if (hash === row.tenant_token_hash) return "tenant";
   if (row.arbiter_token_hash && hash === row.arbiter_token_hash) return "arbiter";
+  const accountAccess = await db
+    .prepare(
+      "SELECT role FROM negotiation_account_access WHERE negotiation_id = ? AND token_hash = ? AND expires_at > ?",
+    )
+    .bind(row.id, hash, new Date().toISOString())
+    .first();
+  if (
+    accountAccess?.role === "landlord" ||
+    accountAccess?.role === "tenant" ||
+    accountAccess?.role === "arbiter"
+  ) {
+    return accountAccess.role;
+  }
   return null;
 }
 
@@ -238,7 +417,7 @@ async function createNegotiation(request, db) {
 
 async function getNegotiation(db, id, token) {
   const row = await rowFor(db, id);
-  const role = await authorize(row, token);
+  const role = await authorize(db, row, token);
   if (!role) return json({ error: "This proposal link is invalid or no longer available." }, 403);
   return json(await serialize(db, row));
 }
@@ -276,7 +455,7 @@ async function applyAction(request, env, id) {
   const db = env.DB;
   const body = await request.json();
   const row = await rowFor(db, id);
-  const role = await authorize(row, body.token);
+  const role = await authorize(db, row, body.token);
   if (!role) return json({ error: "This proposal link is invalid or no longer available." }, 403);
 
   const now = new Date().toISOString();
@@ -601,7 +780,7 @@ async function uploadEvidence(request, env) {
   const token = cleanText(form.get("token"), 200);
   const file = form.get("file");
   const row = await rowFor(env.DB, proposalId);
-  const role = await authorize(row, token);
+  const role = await authorize(env.DB, row, token);
   if (!role || (role !== "landlord" && role !== "tenant")) {
     return json({ error: "Only an agreement party may upload claim evidence." }, 403);
   }
@@ -667,7 +846,7 @@ async function sendClaimNotification(request, env) {
   const body = await request.json();
   const proposalId = cleanText(body.proposalId, 80);
   const row = await rowFor(env.DB, proposalId);
-  const role = await authorize(row, body.token);
+  const role = await authorize(env.DB, row, body.token);
   if (role !== "landlord") {
     return json({ error: "Only the landlord may send a deduction-claim notice." }, 403);
   }
@@ -749,7 +928,7 @@ function escapeHtml(value) {
 
 async function report(db, id, token) {
   const row = await rowFor(db, id);
-  const role = await authorize(row, token);
+  const role = await authorize(db, row, token);
   if (!role) return new Response("Invalid report link.", { status: 403 });
   const record = await serialize(db, row);
   const terms = record.terms;
@@ -831,6 +1010,9 @@ const worker = {
 
       if (url.pathname === "/api/negotiations" && request.method === "POST") {
         return createNegotiation(request, env.DB);
+      }
+      if (url.pathname === "/api/negotiations/discover" && request.method === "POST") {
+        return discoverNegotiations(request, env);
       }
 
       const match = url.pathname.match(/^\/api\/negotiations\/([a-zA-Z0-9-]+)(?:\/(actions|report))?$/);

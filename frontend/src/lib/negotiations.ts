@@ -234,12 +234,19 @@ export function captureNegotiationAccessFromUrl(): NegotiationAccess | null {
   const url = new URL(window.location.href);
   const proposalId = url.searchParams.get("proposal");
   const token = url.searchParams.get("token");
-  const role = url.searchParams.get("invite");
-  if (!proposalId || !token || (role !== "tenant" && role !== "arbiter")) return null;
+  const role = url.searchParams.get("access") || url.searchParams.get("invite");
+  if (
+    !proposalId ||
+    !token ||
+    (role !== "landlord" && role !== "tenant" && role !== "arbiter")
+  ) {
+    return null;
+  }
 
   const access: NegotiationAccess = { proposalId, token, role };
   storeNegotiationAccess(access, true);
   url.searchParams.delete("token");
+  url.searchParams.delete("access");
   window.history.replaceState(null, "", url.toString());
   return access;
 }
@@ -285,6 +292,22 @@ export async function loadNegotiation(access: NegotiationAccess) {
   return request<NegotiationRecord>(
     `/api/negotiations/${encodeURIComponent(access.proposalId)}?token=${encodeURIComponent(access.token)}`,
   );
+}
+
+export async function discoverNegotiationsForAccount(
+  role: NegotiationRole,
+  identityToken: string,
+) {
+  const result = await request<{ accesses: NegotiationAccess[] }>(
+    "/api/negotiations/discover",
+    {
+      method: "POST",
+      headers: { "privy-id-token": identityToken },
+      body: JSON.stringify({ role }),
+    },
+  );
+  result.accesses.forEach((access) => storeNegotiationAccess(access, true));
+  return result.accesses;
 }
 
 export async function negotiationAction(

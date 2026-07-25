@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 export type InviteRole = "tenant" | "arbiter";
 export type WorkspaceRole = "landlord" | InviteRole;
 
-const INVITE_STORAGE_KEY = "openescrow.pendingInviteRole";
 const WORKSPACE_ROLE_STORAGE_KEY = "openescrow.workspaceRole";
 const CHANGE_EVENT = "openescrow:invite-context-changed";
 
@@ -19,26 +18,11 @@ function isInviteRole(value: string | null): value is InviteRole {
 
 export function readInviteRole(): InviteRole | null {
   const fromUrl = new URLSearchParams(window.location.search).get("invite");
-  if (isInviteRole(fromUrl)) {
-    try {
-      window.sessionStorage.setItem(INVITE_STORAGE_KEY, fromUrl);
-    } catch {
-      // The URL remains the source of truth when session storage is unavailable.
-    }
-    return fromUrl;
-  }
-
-  try {
-    const stored = window.sessionStorage.getItem(INVITE_STORAGE_KEY);
-    return isInviteRole(stored) ? stored : null;
-  } catch {
-    return null;
-  }
+  return isInviteRole(fromUrl) ? fromUrl : null;
 }
 
 export function clearInviteRole() {
   try {
-    window.sessionStorage.removeItem(INVITE_STORAGE_KEY);
     window.sessionStorage.removeItem(WORKSPACE_ROLE_STORAGE_KEY);
   } catch {
     // Clearing the URL still exits invitation mode for this page.
@@ -46,6 +30,8 @@ export function clearInviteRole() {
 
   const url = new URL(window.location.href);
   url.searchParams.delete("invite");
+  url.searchParams.delete("proposal");
+  url.searchParams.delete("token");
   window.history.replaceState(null, "", url.toString());
   window.dispatchEvent(new Event(CHANGE_EVENT));
 }

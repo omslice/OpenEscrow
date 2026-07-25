@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
+import { usePrivy } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
+import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import { jurisdictionLabel, type JurisdictionCode } from "../lib/jurisdictions";
 import {
   loadNegotiation,
@@ -30,7 +32,17 @@ function Terms({ record }: { record: NegotiationRecord }) {
   );
 }
 
-export function AgreementNegotiation({ access }: { access: NegotiationAccess }) {
+function AgreementNegotiationView({
+  access,
+  currentEmail,
+  enforceInvitedEmail,
+  onUseInvitedAccount,
+}: {
+  access: NegotiationAccess;
+  currentEmail?: string | null;
+  enforceInvitedEmail: boolean;
+  onUseInvitedAccount?: () => void;
+}) {
   const { address, isConnected } = useAccount();
   const [record, setRecord] = useState<NegotiationRecord | null>(null);
   const [changeSummary, setChangeSummary] = useState("");
@@ -82,7 +94,21 @@ export function AgreementNegotiation({ access }: { access: NegotiationAccess }) 
     );
   }
 
-  const canRespond = access.role === "tenant" || access.role === "arbiter";
+  const invitedEmail =
+    access.role === "tenant"
+      ? record.tenantEmail
+      : access.role === "arbiter"
+        ? record.arbiterEmail
+        : record.landlordEmail;
+  const invitedEmailMatches =
+    !enforceInvitedEmail ||
+    Boolean(
+      currentEmail &&
+        invitedEmail &&
+        currentEmail.trim().toLowerCase() === invitedEmail.trim().toLowerCase(),
+    );
+  const canRespond =
+    (access.role === "tenant" || access.role === "arbiter") && invitedEmailMatches;
   const alreadyApproved =
     access.role === "tenant"
       ? record.tenantApproved
@@ -106,6 +132,27 @@ export function AgreementNegotiation({ access }: { access: NegotiationAccess }) 
         agreement from this invitation. Review these terms, request a change, or approve the
         current revision.
       </p>
+      {!invitedEmailMatches && (
+        <div className="role-mismatch" role="alert">
+          <div>
+            <strong>
+              {currentEmail
+                ? "This invitation belongs to a different Google account."
+                : `Sign in with the invited ${access.role} account.`}
+            </strong>
+            <p>
+              This {access.role} invitation was sent to <strong>{invitedEmail}</strong>
+              {currentEmail ? `, but you are signed in as ${currentEmail}.` : "."} Review and
+              approval controls stay locked until the invited account is used.
+            </p>
+          </div>
+          {currentEmail && onUseInvitedAccount && (
+            <button className="btn btn-ghost" type="button" onClick={onUseInvitedAccount}>
+              Sign out and use invited account
+            </button>
+          )}
+        </div>
+      )}
 
       <div className="participant-grid">
         <div><span>Landlord</span><strong>{record.landlordEmail}</strong></div>
@@ -205,5 +252,26 @@ export function AgreementNegotiation({ access }: { access: NegotiationAccess }) 
         </div>
       )}
     </section>
+  );
+}
+
+function PrivyAgreementNegotiation({ access }: { access: NegotiationAccess }) {
+  const { authenticated, user, logout } = usePrivy();
+  const currentEmail = user?.google?.email ?? user?.email?.address ?? null;
+  return (
+    <AgreementNegotiationView
+      access={access}
+      currentEmail={authenticated ? currentEmail : null}
+      enforceInvitedEmail
+      onUseInvitedAccount={() => void logout()}
+    />
+  );
+}
+
+export function AgreementNegotiation({ access }: { access: NegotiationAccess }) {
+  return ACCOUNT_AUTH_ENABLED ? (
+    <PrivyAgreementNegotiation access={access} />
+  ) : (
+    <AgreementNegotiationView access={access} enforceInvitedEmail={false} />
   );
 }
