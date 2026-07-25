@@ -5,8 +5,8 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
         <p className="eyebrow">Open-source public-interest prototype</p>
         <h2 id="public-intro-title">Rental deposits, protected by default.</h2>
         <p className="intro-lede">
-          OpenEscrow tests a tenant-first rule: the deposit stays protected unless a landlord
-          submits a timely claim that the tenant accepts or a mutually chosen arbiter resolves.
+          Financial inclusion is optional: tenants can use email-based onboarding and choose a
+          yield-bearing deposit option, while anyone can still connect their own wallet.
         </p>
         <div className="intro-actions">
           <button className="btn btn-primary" onClick={onStart}>

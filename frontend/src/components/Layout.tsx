@@ -59,8 +59,8 @@ export function Layout({
           <p className="eyebrow">Rental deposit protection · Base Sepolia</p>
           <h1>OpenEscrow</h1>
           <p className="tagline">
-            The deposit stays protected unless a landlord submits a claim the tenant accepts or an
-            agreed arbiter resolves.
+            OpenEscrow is a free, open-source platform for fair and transparent management of rental
+            security deposits.
           </p>
         </div>
         <div className="header-actions">
