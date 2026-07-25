@@ -20,6 +20,13 @@ export interface DeductionLineItem {
   amount: string;
 }
 
+export interface NotificationPreferences {
+  agreementActivity: boolean;
+  deadlineReminders: boolean;
+  consentedAt?: string | null;
+  updatedAt?: string | null;
+}
+
 export interface NegotiationEvent {
   id: number;
   createdAt: string;
@@ -321,6 +328,29 @@ export async function discoverNegotiationsForAccount(
   );
   result.accesses.forEach((access) => storeNegotiationAccess(access, true));
   return result.accesses;
+}
+
+export function loadNotificationPreferences(identityToken: string) {
+  return request<NotificationPreferences>("/api/profile/notification-preferences", {
+    headers: { "privy-id-token": identityToken },
+  });
+}
+
+export function saveNotificationPreferences(
+  identityToken: string,
+  preferences: Pick<
+    NotificationPreferences,
+    "agreementActivity" | "deadlineReminders"
+  >,
+) {
+  return request<NotificationPreferences>("/api/profile/notification-preferences", {
+    method: "PUT",
+    headers: {
+      "content-type": "application/json",
+      "privy-id-token": identityToken,
+    },
+    body: JSON.stringify(preferences),
+  });
 }
 
 export async function negotiationAction(

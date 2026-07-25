@@ -53,6 +53,16 @@ const ACCOUNT_ACCESS_INDEX = `
 CREATE INDEX IF NOT EXISTS negotiation_account_access_lookup_idx
 ON negotiation_account_access (negotiation_id, token_hash, expires_at)`;
 
+const NOTIFICATION_PREFERENCES_SCHEMA = `
+CREATE TABLE IF NOT EXISTS notification_preferences (
+  user_id TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  agreement_activity INTEGER NOT NULL DEFAULT 0,
+  deadline_reminders INTEGER NOT NULL DEFAULT 0,
+  consented_at TEXT,
+  updated_at TEXT NOT NULL
+)`;
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const WALLET_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const DEDUCTION_CATEGORY_LABEL = {
@@ -253,7 +263,74 @@ async function initialize(db) {
     db.prepare(EVENTS_INDEX),
     db.prepare(ACCOUNT_ACCESS_SCHEMA),
     db.prepare(ACCOUNT_ACCESS_INDEX),
+    db.prepare(NOTIFICATION_PREFERENCES_SCHEMA),
   ]);
+}
+
+async function notificationPreferences(request, env) {
+  let identity;
+  try {
+    identity = await verifyPrivyIdentity(request, env);
+  } catch (error) {
+    return json(
+      {
+        error:
+          error instanceof Error ? error.message : "The signed-in account could not be verified.",
+      },
+      401,
+    );
+  }
+
+  const existing = await env.DB
+    .prepare("SELECT * FROM notification_preferences WHERE user_id = ?")
+    .bind(identity.userId)
+    .first();
+  if (request.method === "GET") {
+    return json({
+      agreementActivity: existing?.agreement_activity === 1,
+      deadlineReminders: existing?.deadline_reminders === 1,
+      consentedAt: existing?.consented_at || null,
+      updatedAt: existing?.updated_at || null,
+    });
+  }
+
+  const body = await request.json();
+  if (
+    typeof body.agreementActivity !== "boolean" ||
+    typeof body.deadlineReminders !== "boolean"
+  ) {
+    return json({ error: "Choose valid notification preferences." }, 400);
+  }
+  const now = new Date().toISOString();
+  const enabled = body.agreementActivity || body.deadlineReminders;
+  const consentedAt = enabled ? existing?.consented_at || now : null;
+  await env.DB
+    .prepare(
+      `INSERT INTO notification_preferences
+       (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?)
+       ON CONFLICT(user_id) DO UPDATE SET
+         email = excluded.email,
+         agreement_activity = excluded.agreement_activity,
+         deadline_reminders = excluded.deadline_reminders,
+         consented_at = excluded.consented_at,
+         updated_at = excluded.updated_at`,
+    )
+    .bind(
+      identity.userId,
+      identity.emails[0],
+      body.agreementActivity ? 1 : 0,
+      body.deadlineReminders ? 1 : 0,
+      consentedAt,
+      now,
+    )
+    .run();
+  return json({
+    agreementActivity: body.agreementActivity,
+    deadlineReminders: body.deadlineReminders,
+    consentedAt,
+    updatedAt: now,
+  });
 }
 
 async function discoverNegotiations(request, env) {
@@ -1005,6 +1082,30 @@ async function sendClaimNotification(request, env) {
         `${index + 1}. ${item.category}: ${item.description} (${item.amount} shares)`,
     )
     .join("\n");
+  const deliveryKey = (
+    await hashToken(
+      JSON.stringify({
+        proposalId,
+        agreementId,
+        amount,
+        items,
+        note,
+        evidenceUri,
+      }),
+    )
+  ).slice(0, 32);
+  const existingRecord = await serialize(env.DB, row);
+  const existingDelivery = existingRecord.events.find(
+    (event) =>
+      event.action === "claim_notification_sent" &&
+      event.metadata?.deliveryKey === deliveryKey,
+  );
+  if (existingDelivery) {
+    return json({
+      messageId: existingDelivery.metadata.messageId,
+      duplicate: true,
+    });
+  }
   const text = [
     `A deduction claim of ${amount} shares has been submitted for OpenEscrow agreement #${agreementId}.`,
     `Itemized deductions:\n${itemSummary}`,
@@ -1018,7 +1119,7 @@ async function sendClaimNotification(request, env) {
     headers: {
       authorization: `Bearer ${env.RESEND_API_KEY}`,
       "content-type": "application/json",
-      "idempotency-key": `claim-${proposalId}-${crypto.randomUUID()}`,
+      "idempotency-key": `claim-${proposalId}-${deliveryKey}`,
       "user-agent": "OpenEscrow/1.0",
     },
     body: JSON.stringify({
@@ -1046,10 +1147,10 @@ async function sendClaimNotification(request, env) {
       "claim_notification_sent",
       `Sent the deduction-claim notice to ${row.tenant_email}.`,
       row.revision,
-      { messageId: result.id },
+      { messageId: result.id, deliveryKey },
     ),
   ]);
-  return json({ messageId: result.id });
+  return json({ messageId: result.id, duplicate: false });
 }
 
 function escapeHtml(value) {
@@ -1149,6 +1250,17 @@ function sameOriginPost(request) {
 const worker = {
   async fetch(request, env) {
     const url = new URL(request.url);
+    if (
+      url.pathname === "/api/profile/notification-preferences" &&
+      (request.method === "GET" || request.method === "PUT")
+    ) {
+      if (!env.DB) return json({ error: "Account preference storage is not available." }, 503);
+      if (request.method === "PUT" && !sameOriginPost(request)) {
+        return json({ error: "Cross-origin writes are not allowed." }, 403);
+      }
+      await initialize(env.DB);
+      return notificationPreferences(request, env);
+    }
     if (url.pathname === "/api/notifications/claim" && request.method === "POST") {
       if (!sameOriginPost(request)) return json({ error: "Cross-origin writes are not allowed." }, 403);
       if (env.DB) await initialize(env.DB);

@@ -18,6 +18,7 @@ test("the packaged D1 migration applies cleanly", () => {
   for (const migrationName of [
     "0000_agreement_negotiations.sql",
     "0001_negotiation_account_access.sql",
+    "0002_notification_preferences.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -29,6 +30,7 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.ok(tables.includes("agreement_negotiations"));
   assert.ok(tables.includes("negotiation_account_access"));
   assert.ok(tables.includes("negotiation_events"));
+  assert.ok(tables.includes("notification_preferences"));
 });
 
 class Statement {
@@ -245,6 +247,40 @@ test("a verified Privy identity can discover its landlord proposals across brows
       ),
     );
     assert.equal(recovered.landlordEmail, "landlord@example.com");
+
+    const savedPreferences = await jsonResponse(
+      await worker.fetch(
+        new Request(
+          "https://openescrow.example/api/profile/notification-preferences",
+          {
+            method: "PUT",
+            headers: {
+              "content-type": "application/json",
+              "privy-id-token": identityToken,
+            },
+            body: JSON.stringify({
+              agreementActivity: true,
+              deadlineReminders: true,
+            }),
+          },
+        ),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(savedPreferences.agreementActivity, true);
+    assert.ok(savedPreferences.consentedAt);
+
+    const restoredPreferences = await jsonResponse(
+      await worker.fetch(
+        new Request(
+          "https://openescrow.example/api/profile/notification-preferences",
+          { headers: { "privy-id-token": identityToken } },
+        ),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(restoredPreferences.deadlineReminders, true);
+    assert.equal(restoredPreferences.consentedAt, savedPreferences.consentedAt);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -442,4 +478,57 @@ test("documented claim, tenant decision, and email attempts are included in the 
   );
   assert.equal(email.status, 503);
   assert.match((await email.json()).error, /not configured/);
+
+  const originalFetch = globalThis.fetch;
+  let deliveryCount = 0;
+  globalThis.fetch = async (url) => {
+    assert.equal(url, "https://api.resend.com/emails");
+    deliveryCount += 1;
+    return Response.json({ id: "claim-message-1" });
+  };
+  try {
+    const payload = {
+      proposalId: created.record.id,
+      token: created.access.landlord,
+      reviewUrl: `https://openescrow.example/?invite=tenant&proposal=${created.record.id}&token=${created.access.tenant}`,
+      agreementId: "42",
+      amount: "300",
+      items: [
+        {
+          category: "Damage beyond ordinary wear",
+          description: "Replacement of the tenant-damaged door",
+          amount: "225",
+        },
+        {
+          category: "Utilities or other unpaid charges",
+          description: "Final water bill",
+          amount: "75",
+        },
+      ],
+      note: "",
+      evidenceUri: "ipfs://bafy-test-invoice",
+    };
+    const notificationEnv = {
+      DB: db,
+      RESEND_API_KEY: "test-resend-key",
+      NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+    };
+    const firstDelivery = await jsonResponse(
+      await worker.fetch(
+        request("/api/notifications/claim", "POST", payload),
+        notificationEnv,
+      ),
+    );
+    const duplicateDelivery = await jsonResponse(
+      await worker.fetch(
+        request("/api/notifications/claim", "POST", payload),
+        notificationEnv,
+      ),
+    );
+    assert.equal(firstDelivery.duplicate, false);
+    assert.equal(duplicateDelivery.duplicate, true);
+    assert.equal(deliveryCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

@@ -1,18 +1,23 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useCreateWallet, usePrivy, useWallets } from "@privy-io/react-auth";
+import {
+  useCreateWallet,
+  useIdentityToken,
+  usePrivy,
+  useWallets,
+} from "@privy-io/react-auth";
 import { useSetActiveWallet } from "@privy-io/wagmi";
 import { useAccount } from "wagmi";
 import { shortAddr } from "../lib/format";
+import {
+  loadNotificationPreferences,
+  saveNotificationPreferences,
+  type NotificationPreferences,
+} from "../lib/negotiations";
 import {
   clearInviteRole,
   roleLabel,
   useInviteRole,
 } from "../lib/inviteContext";
-
-type NotificationPreferences = {
-  agreementActivity: boolean;
-  deadlineReminders: boolean;
-};
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   agreementActivity: false,
@@ -21,11 +26,14 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
 
 export function PrivyAccountCenter() {
   const { ready, authenticated, user, linkGoogle, linkWallet, logout } = usePrivy();
+  const { identityToken } = useIdentityToken();
   const { ready: walletsReady, wallets } = useWallets();
   const { createWallet } = useCreateWallet();
   const { setActiveWallet } = useSetActiveWallet();
   const { address } = useAccount();
   const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES);
+  const [preferenceStatus, setPreferenceStatus] = useState<string | null>(null);
+  const preferenceWrite = useRef(0);
   const [walletSetup, setWalletSetup] = useState<"idle" | "creating" | "slow" | "error">("idle");
   const [walletError, setWalletError] = useState<string | null>(null);
   const attemptedForUser = useRef<string | null>(null);
@@ -41,6 +49,7 @@ export function PrivyAccountCenter() {
   useEffect(() => {
     if (!preferenceKey) {
       setPreferences(DEFAULT_PREFERENCES);
+      setPreferenceStatus(null);
       return;
     }
     try {
@@ -53,7 +62,28 @@ export function PrivyAccountCenter() {
     } catch {
       setPreferences(DEFAULT_PREFERENCES);
     }
-  }, [preferenceKey]);
+    if (!identityToken) return;
+    let cancelled = false;
+    void loadNotificationPreferences(identityToken)
+      .then((saved) => {
+        if (cancelled) return;
+        setPreferences(saved);
+        window.localStorage.setItem(preferenceKey, JSON.stringify(saved));
+        setPreferenceStatus(saved.updatedAt ? "Preferences synced to your account." : null);
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setPreferenceStatus(
+            error instanceof Error
+              ? error.message
+              : "Account preferences could not be loaded.",
+          );
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [identityToken, preferenceKey]);
 
   const provisionWallet = useCallback(async () => {
     if (!user || hasWallet || walletSetup === "creating") return;
@@ -97,14 +127,38 @@ export function PrivyAccountCenter() {
     }
   }, [hasWallet]);
 
-  function updatePreference(name: keyof NotificationPreferences, checked: boolean) {
+  async function updatePreference(
+    name: "agreementActivity" | "deadlineReminders",
+    checked: boolean,
+  ) {
     if (!preferenceKey) return;
     const next = { ...preferences, [name]: checked };
     setPreferences(next);
+    setPreferenceStatus(identityToken ? "Saving preferences..." : "Saved on this device.");
     try {
       window.localStorage.setItem(preferenceKey, JSON.stringify(next));
     } catch {
       // The UI still reflects the choice for this session if storage is unavailable.
+    }
+    if (!identityToken) return;
+    const write = ++preferenceWrite.current;
+    try {
+      const saved = await saveNotificationPreferences(identityToken, next);
+      if (write !== preferenceWrite.current) return;
+      setPreferences(saved);
+      window.localStorage.setItem(preferenceKey, JSON.stringify(saved));
+      setPreferenceStatus(
+        saved.agreementActivity || saved.deadlineReminders
+          ? "Preferences synced to your account with a consent timestamp."
+          : "Email notifications are turned off for this account.",
+      );
+    } catch (error) {
+      if (write !== preferenceWrite.current) return;
+      setPreferenceStatus(
+        error instanceof Error
+          ? error.message
+          : "Preferences are saved locally but could not be synced.",
+      );
     }
   }
 
@@ -251,7 +305,9 @@ export function PrivyAccountCenter() {
             type="checkbox"
             checked={preferences.agreementActivity}
             disabled={!email}
-            onChange={(event) => updatePreference("agreementActivity", event.target.checked)}
+            onChange={(event) =>
+              void updatePreference("agreementActivity", event.target.checked)
+            }
           />
           Agreement invitations, funding, claims, responses, and rulings
         </label>
@@ -260,14 +316,26 @@ export function PrivyAccountCenter() {
             type="checkbox"
             checked={preferences.deadlineReminders}
             disabled={!email}
-            onChange={(event) => updatePreference("deadlineReminders", event.target.checked)}
+            onChange={(event) =>
+              void updatePreference("deadlineReminders", event.target.checked)
+            }
           />
           Upcoming claim, response, and arbiter deadlines
         </label>
         <p className="notification-boundary">
-          Preferences are saved on this device for now. Email delivery is not active until the
-          server-side chain monitor and email service are connected.
+          Preferences follow your verified account. Direct invitation and claim emails are
+          available when delivery is configured; automatic deadline reminders still require the
+          chain monitor.
         </p>
+        {preferenceStatus && (
+          <p
+            className={
+              preferenceStatus.includes("could not") ? "tx-error" : "field-help"
+            }
+          >
+            {preferenceStatus}
+          </p>
+        )}
       </div>
     </section>
   );

@@ -15,11 +15,13 @@ production identity, custody, privacy, or communications design.
 - Privy identity tokens are verified against the app's public JWKS before proposals are discovered
   by landlord, tenant, or arbiter email across browser sessions.
 - Agreement-activity and deadline-reminder preferences are collected per authenticated user.
+- Notification preferences and their consent timestamp are persisted against the verified Privy
+  account, with device-local storage retained only as an offline fallback.
 
-The preference values are currently device-local. Invitation and deduction-claim email delivery is
-available when the server-side email provider is configured; Gmail and copy-email fallbacks remain
-available without it. Automated event indexing, deadline reminders, and unsubscribe handling are
-still future work.
+Invitation and deduction-claim email delivery is available when the server-side email provider is
+configured; Gmail and copy-email fallbacks remain available without it. Repeated identical claim
+notices are deduplicated before provider delivery. Automated event indexing, deadline reminders,
+and unsubscribe handling are still future work.
 
 The proposal form collects landlord, tenant, and optional arbiter email identities. The landlord is
 the signed-in account. Tenant and arbiter wallet addresses are recorded when the invited parties
@@ -48,16 +50,15 @@ webhook signing secret, or email-provider API key must remain server-side.
 Email delivery needs a server-side service; it must not be implemented by putting an email API key
 in this Vite client. The minimum credible service should:
 
-1. Persist notification consent state and consent timestamps in the server-side database. Proposal
-   access is already recovered from a verified Privy identity token and email match.
-2. Require verified Privy identity tokens before accepting profile or preference changes.
-3. Index OpenEscrow events from the configured deployment block and map affected wallet addresses
+1. Index OpenEscrow events from the configured deployment block and map affected wallet addresses
    to opted-in accounts.
-4. Send idempotent messages for invitations, funding, claims, responses, rulings, and withdrawals.
-5. Run scheduled deadline checks with a durable record preventing duplicate reminders.
-6. Include unsubscribe and preference-management links and honor changes immediately.
-7. Avoid putting evidence URIs, tenancy details, or unnecessary wallet data in email.
-8. Monitor failed deliveries, chain reorganizations, RPC outages, and delayed event processing.
+2. Extend idempotent delivery beyond invitations and claims to funding, responses, rulings, and
+   withdrawals.
+3. Run scheduled deadline checks with a durable record preventing duplicate reminders.
+4. Include unsubscribe links in messages; authenticated in-app preference changes are already
+   honored immediately.
+5. Avoid putting evidence URIs, tenancy details, or unnecessary wallet data in email.
+6. Monitor failed deliveries, chain reorganizations, RPC outages, and delayed event processing.
 
 Before real participants are invited, counsel and the pilot partner must approve consent language,
 retention, deletion, access controls, incident response, and the legal status of email notices.
