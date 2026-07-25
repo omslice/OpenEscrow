@@ -15,8 +15,7 @@ import type { Agreement } from "../lib/useAgreement";
 import { useAccount, useReadContract } from "wagmi";
 import { jurisdictionLabel, readJurisdiction } from "../lib/jurisdictions";
 import { roleLabel, useInviteRole } from "../lib/inviteContext";
-import type { NegotiationAccess, NegotiationRecord } from "../lib/negotiations";
-import { AgreementOnchainActivity } from "./AgreementOnchainActivity";
+import type { NegotiationRecord } from "../lib/negotiations";
 
 function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | null {
   switch (agreement.phase) {
@@ -61,12 +60,10 @@ function PartyIdentity({
 export function AgreementDashboard({
   id,
   agreement,
-  negotiationAccess,
   participantRecord,
 }: {
   id: bigint;
   agreement: Agreement;
-  negotiationAccess?: NegotiationAccess | null;
   participantRecord?: NegotiationRecord | null;
 }) {
   const now = useNow();
@@ -305,11 +302,6 @@ export function AgreementDashboard({
           </span>
         </div>
       )}
-      <AgreementOnchainActivity
-        agreementId={id}
-        isParty={Boolean(actualRole)}
-        negotiationAccess={negotiationAccess}
-      />
       <details className="technical-details">
         <summary>Accounting details</summary>
         <div className="dashboard-row">

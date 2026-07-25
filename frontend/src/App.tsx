@@ -3,7 +3,11 @@ import { useIdentityToken } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
 import { Layout, type AppNotification } from "./components/Layout";
 import { CreateAgreementForm } from "./components/CreateAgreementForm";
-import { AgreementCard } from "./components/AgreementCard";
+import {
+  AgreementCard,
+  type AgreementFocusRequest,
+  type AgreementPanel,
+} from "./components/AgreementCard";
 import { useTrackedAgreements } from "./lib/useTrackedAgreements";
 import { useDiscoverAgreements } from "./lib/useDiscoverAgreements";
 import { TestFunds } from "./components/TestFunds";
@@ -34,6 +38,38 @@ import "./App.css";
 
 type WorkspaceTab = "overview" | "proposals" | "agreements";
 type SavedProposal = { access: NegotiationAccess; record: NegotiationRecord };
+
+function panelForAgreementAction(action: string): AgreementPanel | null {
+  if (
+    action === "deduction_claim_submitted" ||
+    action === "deduction_claim_amended" ||
+    action === "claim_notification_prepared" ||
+    action === "claim_notification_sent" ||
+    action === "claim_response_submitted" ||
+    action === "arbiter_ruling_submitted" ||
+    action === "claim_period_started" ||
+    action === "claim_period_ended" ||
+    action === "timeout_executed"
+  ) {
+    return "claims";
+  }
+  if (
+    action === "operations_reserve_paid" ||
+    action === "agreement_funded" ||
+    action === "tenant_share_funded" ||
+    action === "withdrawal_completed" ||
+    action === "posted_onchain"
+  ) {
+    return "funds";
+  }
+  if (
+    action === "record_snapshot_anchored" ||
+    action === "activity_hash_published"
+  ) {
+    return "record";
+  }
+  return null;
+}
 
 function isSameAgreementFamily(left: SavedProposal, right: SavedProposal): boolean {
   if (left.access.role !== right.access.role) return false;
@@ -80,6 +116,12 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   const [isFinding, setIsFinding] = useState(false);
   const [isChangingRole, setIsChangingRole] = useState(false);
   const [savedProposals, setSavedProposals] = useState<SavedProposal[]>([]);
+  const [agreementPanels, setAgreementPanels] = useState<
+    Record<string, AgreementPanel>
+  >({});
+  const [agreementFocusRequests, setAgreementFocusRequests] = useState<
+    Record<string, AgreementFocusRequest>
+  >({});
   const participantAgreementIds = savedProposals.flatMap(({ record }) =>
     record.onchainAgreementId ? [BigInt(record.onchainAgreementId)] : [],
   );
@@ -301,37 +343,40 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
 
   function openProposalNotification(item: SavedProposal, action: string) {
     const agreementId = item.record.onchainAgreementId;
-    const isAgreementAction =
-      Boolean(agreementId) &&
-      (action === "deduction_claim_submitted" ||
-      action === "deduction_claim_amended" ||
-      action === "claim_notification_prepared" ||
-      action === "claim_response_submitted" ||
-      action === "arbiter_ruling_submitted" ||
-      action === "claim_period_started" ||
-      action === "claim_period_ended");
-    if (isAgreementAction && agreementId) {
+    const requestedPanel =
+      panelForAgreementAction(action) ||
+      (agreementId && item.record.status === "finalized" ? "summary" : null);
+    if (agreementId && requestedPanel) {
       addId(BigInt(agreementId));
       setProposalAccess(null);
       setTab("agreements");
+      setAgreementPanels((current) => ({
+        ...current,
+        [agreementId]: requestedPanel,
+      }));
+      const targetId =
+        action === "deduction_claim_submitted" ||
+        action === "deduction_claim_amended" ||
+        action === "claim_notification_prepared"
+          ? `agreement-${agreementId}-claim`
+          : action === "claim_response_submitted"
+            ? `agreement-${agreementId}-response`
+            : action === "arbiter_ruling_submitted"
+              ? `agreement-${agreementId}-resolution`
+              : `agreement-${agreementId}-panel-${requestedPanel}`;
+      setAgreementFocusRequests((current) => ({
+        ...current,
+        [agreementId]: {
+          targetId,
+          nonce: (current[agreementId]?.nonce || 0) + 1,
+        },
+      }));
+      return;
     } else {
       openSavedProposal(item);
     }
-    const actionTarget =
-      agreementId &&
-      (action === "deduction_claim_submitted" ||
-        action === "deduction_claim_amended" ||
-        action === "claim_notification_prepared")
-        ? `agreement-${agreementId}-claim`
-        : agreementId && action === "claim_response_submitted"
-          ? `agreement-${agreementId}-response`
-          : agreementId && action === "arbiter_ruling_submitted"
-            ? `agreement-${agreementId}-resolution`
-            : agreementId && isAgreementAction
-              ? `agreement-${agreementId}`
-              : null;
     scrollToNotificationTarget(
-      actionTarget || (item.access.role === "landlord" ? "proposal-builder" : "proposal-review-title"),
+      item.access.role === "landlord" ? "proposal-builder" : "proposal-review-title",
       item.access.role === "landlord" ? "proposal-builder" : "proposal-review-title",
     );
   }
@@ -341,7 +386,17 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     addId(BigInt(agreementId));
     setProposalAccess(null);
     setTab("agreements");
-    scrollToNotificationTarget(`agreement-${agreementId}`, "demo-workspace");
+    setAgreementPanels((current) => ({
+      ...current,
+      [agreementId]: "record",
+    }));
+    setAgreementFocusRequests((current) => ({
+      ...current,
+      [agreementId]: {
+        targetId: `agreement-${agreementId}-panel-record`,
+        nonce: (current[agreementId]?.nonce || 0) + 1,
+      },
+    }));
   }
 
   function closeProposalReview() {
@@ -388,18 +443,18 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
       ? {
           overview: "Overview",
           proposals: "Proposals",
-          agreements: "Agreements & deductions",
+          agreements: "Agreements",
         }
       : workspaceRole === "tenant"
         ? {
             overview: "Overview",
-            proposals: "Invitations & proposals",
-            agreements: "Deposits & claims",
+            proposals: "Proposals",
+            agreements: "Deposits",
           }
         : {
             overview: "Overview",
-            proposals: "Invitations & reviews",
-            agreements: "Agreements & rulings",
+            proposals: "Reviews",
+            agreements: "Cases",
           };
 
   function renderDiscoveryCard(scope: "proposals" | "agreements") {
@@ -557,6 +612,14 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
               onRemove={() => removeId(id)}
               negotiationAccess={proposal?.access}
               participantRecord={proposal?.record}
+              activePanel={agreementPanels[id.toString()]}
+              focusRequest={agreementFocusRequests[id.toString()]}
+              onPanelChange={(panel) =>
+                setAgreementPanels((current) => ({
+                  ...current,
+                  [id.toString()]: panel,
+                }))
+              }
             />
           );
         })}
@@ -792,10 +855,16 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
         </nav>
       )}
 
-      {workspaceRole && tab === "overview" && renderOverview()}
+      {workspaceRole && (
+        <div hidden={tab !== "overview"}>{renderOverview()}</div>
+      )}
 
-      {workspaceRole && tab === "proposals" && (
-        <div className="workspace-panel" aria-label={workspaceTabLabels.proposals}>
+      {workspaceRole && (
+        <div
+          className="workspace-panel"
+          aria-label={workspaceTabLabels.proposals}
+          hidden={tab !== "proposals"}
+        >
           {proposalAccess ? (
             <>
               <button className="btn btn-ghost review-back" onClick={closeProposalReview}>

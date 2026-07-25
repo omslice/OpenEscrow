@@ -1,7 +1,14 @@
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useAccount } from "wagmi";
 import { useAgreement } from "../lib/useAgreement";
-import { ZERO_ADDRESS } from "../contracts/config";
+import {
+  Phase,
+  ZERO_ADDRESS,
+  phaseLabel,
+} from "../contracts/config";
 import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
 import { AgreementDashboard } from "./AgreementDashboard";
+import { AgreementOnchainActivity } from "./AgreementOnchainActivity";
 import { ArbiterActions } from "./ArbiterActions";
 import { TenantFundAction } from "./TenantFundAction";
 import { ClaimSection } from "./ClaimSection";
@@ -14,19 +21,88 @@ import { NextAction } from "./NextAction";
 import { ProposalActions } from "./ProposalActions";
 import { AgreementNoticeCenter } from "./AgreementNoticeCenter";
 import type { NegotiationAccess, NegotiationRecord } from "../lib/negotiations";
+import "./AgreementCard.css";
+
+export type AgreementPanel = "summary" | "funds" | "claims" | "record";
+export type AgreementFocusRequest = {
+  targetId: string;
+  nonce: number;
+};
+
+const PANELS: AgreementPanel[] = ["summary", "funds", "claims", "record"];
+const PANEL_LABELS: Record<AgreementPanel, string> = {
+  summary: "Summary",
+  funds: "Funds & withdrawals",
+  claims: "Claims & resolution",
+  record: "Record",
+};
+
+function defaultPanelForAgreement(
+  agreement: NonNullable<ReturnType<typeof useAgreement>["agreement"]>,
+): AgreementPanel {
+  if (agreement.phase === Phase.Proposed || agreement.phase === Phase.ReadyToFund) {
+    return "funds";
+  }
+  if (
+    agreement.phase === Phase.ClaimOpen ||
+    agreement.phase === Phase.Disputed ||
+    (agreement.phase === Phase.Active &&
+      agreement.claimWindowStart > 0n &&
+      BigInt(Math.floor(Date.now() / 1_000)) >= agreement.claimWindowStart)
+  ) {
+    return "claims";
+  }
+  if (
+    agreement.phase === Phase.Closed &&
+    (agreement.tenantWithdrawable > 0n || agreement.landlordWithdrawable > 0n)
+  ) {
+    return "funds";
+  }
+  if (agreement.phase === Phase.Cancelled) return "record";
+  return "summary";
+}
 
 export function AgreementCard({
   id,
   onRemove,
   negotiationAccess,
   participantRecord,
+  activePanel,
+  onPanelChange,
+  focusRequest,
 }: {
   id: bigint;
   onRemove?: () => void;
   negotiationAccess?: NegotiationAccess | null;
   participantRecord?: NegotiationRecord | null;
+  activePanel?: AgreementPanel;
+  onPanelChange?: (panel: AgreementPanel) => void;
+  focusRequest?: AgreementFocusRequest;
 }) {
   const { agreement, exists, isLoading, error, refetch } = useAgreement(id);
+  const { address } = useAccount();
+  const [localPanel, setLocalPanel] = useState<AgreementPanel | null>(null);
+  const tabRefs = useRef<Partial<Record<AgreementPanel, HTMLButtonElement | null>>>({});
+  const handledFocusNonce = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!focusRequest || isLoading || error || !exists || !agreement) return;
+    if (handledFocusNonce.current === focusRequest.nonce) return;
+    const target =
+      document.getElementById(focusRequest.targetId) ||
+      document.getElementById(`agreement-${id.toString()}`);
+    if (!target) return;
+    handledFocusNonce.current = focusRequest.nonce;
+    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    target?.focus({ preventScroll: true });
+  }, [
+    agreement,
+    error,
+    exists,
+    focusRequest,
+    id,
+    isLoading,
+  ]);
 
   if (isLoading) return <div className="card">Loading agreement #{id.toString()}...</div>;
   if (error || !exists || !agreement) {
@@ -42,73 +118,231 @@ export function AgreementCard({
     );
   }
 
+  const selectedPanel =
+    activePanel || localPanel || defaultPanelForAgreement(agreement);
+  const agreementKey = id.toString();
+  const normalizedAddress = address?.toLowerCase();
+  const isAgreementParty =
+    Boolean(negotiationAccess) ||
+    normalizedAddress === agreement.landlord.toLowerCase() ||
+    normalizedAddress === agreement.tenant.toLowerCase() ||
+    (agreement.arbiter !== ZERO_ADDRESS &&
+      normalizedAddress === agreement.arbiter.toLowerCase());
+
   // Every action component calls this on success so the dashboard reflects the
   // new state immediately, instead of waiting up to 5s for the next poll.
   const onRefetch = () => void refetch();
 
+  function selectPanel(panel: AgreementPanel, focusTab = false) {
+    setLocalPanel(panel);
+    onPanelChange?.(panel);
+    if (focusTab) {
+      window.requestAnimationFrame(() => tabRefs.current[panel]?.focus());
+    }
+  }
+
+  function handleTabKeyDown(event: KeyboardEvent<HTMLButtonElement>) {
+    const currentIndex = PANELS.indexOf(selectedPanel);
+    let nextIndex = currentIndex;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % PANELS.length;
+    else if (event.key === "ArrowLeft") {
+      nextIndex = (currentIndex - 1 + PANELS.length) % PANELS.length;
+    } else if (event.key === "Home") nextIndex = 0;
+    else if (event.key === "End") nextIndex = PANELS.length - 1;
+    else return;
+    event.preventDefault();
+    selectPanel(PANELS[nextIndex], true);
+  }
+
   return (
-    <div className="card agreement-card" id={`agreement-${id.toString()}`} tabIndex={-1}>
-      <AgreementDashboard
-        id={id}
-        agreement={agreement}
-        negotiationAccess={negotiationAccess}
-        participantRecord={participantRecord}
-      />
-      <AgreementNoticeCenter agreement={agreement} />
-      <NextAction agreement={agreement} />
-      {(ARBITER_UI_ENABLED || agreement.arbiter !== ZERO_ADDRESS) && (
-        <ArbiterActions id={id} agreement={agreement} onRefetch={onRefetch} />
-      )}
-      <ProposalActions id={id} agreement={agreement} onRefetch={onRefetch} />
-      <TenantFundAction
-        id={id}
-        agreement={agreement}
-        negotiationAccess={negotiationAccess}
-        participantRecord={participantRecord}
-        onRefetch={onRefetch}
-      />
-      <ClaimSection id={id} agreement={agreement} onRefetch={onRefetch} negotiationAccess={negotiationAccess} />
-      <ResponseSection id={id} agreement={agreement} onRefetch={onRefetch} negotiationAccess={negotiationAccess} />
-      <DisputeResolutionSection id={id} agreement={agreement} onRefetch={onRefetch} negotiationAccess={negotiationAccess} />
-      {(ARBITER_UI_ENABLED || agreement.arbiter !== ZERO_ADDRESS) && (
-        <ArbiterReplacementSection id={id} agreement={agreement} onRefetch={onRefetch} />
-      )}
-      <TimeoutSection
-        id={id}
-        agreement={agreement}
-        negotiationAccess={negotiationAccess}
-        onRefetch={onRefetch}
-      />
-      <WithdrawSection
-        id={id}
-        agreement={agreement}
-        negotiationAccess={negotiationAccess}
-        onRefetch={onRefetch}
-      />
-      {participantRecord && (
-        <details className="agreement-activity">
-          <summary>Recent agreement activity</summary>
-          <ol className="activity-timeline">
-            {[...participantRecord.events]
-              .reverse()
-              .slice(0, 8)
-              .map((event) => (
-                <li key={event.id}>
-                  <time dateTime={event.createdAt}>
-                    {new Date(event.createdAt).toLocaleString()}
-                  </time>
-                  <strong>{event.actorRole}</strong>
-                  <span>{event.summary}</span>
-                </li>
-              ))}
-          </ol>
-        </details>
-      )}
-      {onRemove && (
-        <button className="btn btn-ghost small" onClick={onRemove}>
-          Stop tracking this agreement
-        </button>
-      )}
-    </div>
+    <article
+      className="card agreement-card"
+      id={`agreement-${agreementKey}`}
+      tabIndex={-1}
+      aria-labelledby={`agreement-${agreementKey}-title`}
+    >
+      <header className="agreement-card-header">
+        <div>
+          <span className="eyebrow">Finalized agreement</span>
+          <h2 id={`agreement-${agreementKey}-title`}>Agreement #{agreementKey}</h2>
+        </div>
+        <span className={`phase-badge phase-${agreement.phase}`}>
+          {phaseLabel[agreement.phase]}
+        </span>
+      </header>
+
+      <div
+        className="agreement-panel-tabs"
+        role="tablist"
+        aria-label={`Agreement #${agreementKey} sections`}
+      >
+        {PANELS.map((panel) => {
+          const isSelected = selectedPanel === panel;
+          return (
+            <button
+              key={panel}
+              ref={(element) => {
+                tabRefs.current[panel] = element;
+              }}
+              type="button"
+              role="tab"
+              id={`agreement-${agreementKey}-tab-${panel}`}
+              aria-selected={isSelected}
+              aria-controls={`agreement-${agreementKey}-panel-${panel}`}
+              tabIndex={isSelected ? 0 : -1}
+              className={isSelected ? "active" : ""}
+              onClick={() => selectPanel(panel)}
+              onKeyDown={handleTabKeyDown}
+            >
+              {PANEL_LABELS[panel]}
+            </button>
+          );
+        })}
+      </div>
+
+      <section
+        className="agreement-panel agreement-summary-panel"
+        id={`agreement-${agreementKey}-panel-summary`}
+        role="tabpanel"
+        aria-labelledby={`agreement-${agreementKey}-tab-summary`}
+        tabIndex={0}
+        hidden={selectedPanel !== "summary"}
+      >
+          <AgreementDashboard
+            id={id}
+            agreement={agreement}
+            participantRecord={participantRecord}
+          />
+          <AgreementNoticeCenter agreement={agreement} />
+          <NextAction agreement={agreement} />
+      </section>
+
+      <section
+        className="agreement-panel"
+        id={`agreement-${agreementKey}-panel-funds`}
+        role="tabpanel"
+        aria-labelledby={`agreement-${agreementKey}-tab-funds`}
+        tabIndex={0}
+        hidden={selectedPanel !== "funds"}
+      >
+          <div className="agreement-panel-heading">
+            <span className="eyebrow">Funding and payouts</span>
+            <h3>Funds &amp; withdrawals</h3>
+            <p>Fund the approved deposit, review available balances, or withdraw an allocation.</p>
+          </div>
+          {(ARBITER_UI_ENABLED || agreement.arbiter !== ZERO_ADDRESS) && (
+            <ArbiterActions id={id} agreement={agreement} onRefetch={onRefetch} />
+          )}
+          <ProposalActions id={id} agreement={agreement} onRefetch={onRefetch} />
+          <TenantFundAction
+            id={id}
+            agreement={agreement}
+            negotiationAccess={negotiationAccess}
+            participantRecord={participantRecord}
+            onRefetch={onRefetch}
+          />
+          <WithdrawSection
+            id={id}
+            agreement={agreement}
+            negotiationAccess={negotiationAccess}
+            onRefetch={onRefetch}
+          />
+      </section>
+
+      <section
+        className="agreement-panel"
+        id={`agreement-${agreementKey}-panel-claims`}
+        role="tabpanel"
+        aria-labelledby={`agreement-${agreementKey}-tab-claims`}
+        tabIndex={0}
+        hidden={selectedPanel !== "claims"}
+      >
+          <div className="agreement-panel-heading">
+            <span className="eyebrow">Move-out workflow</span>
+            <h3>Claims &amp; resolution</h3>
+            <p>Submit or review deductions, respond, resolve disputes, and complete deadlines.</p>
+          </div>
+          <ClaimSection
+            id={id}
+            agreement={agreement}
+            onRefetch={onRefetch}
+            negotiationAccess={negotiationAccess}
+          />
+          <ResponseSection
+            id={id}
+            agreement={agreement}
+            onRefetch={onRefetch}
+            negotiationAccess={negotiationAccess}
+          />
+          <DisputeResolutionSection
+            id={id}
+            agreement={agreement}
+            onRefetch={onRefetch}
+            negotiationAccess={negotiationAccess}
+          />
+          {(ARBITER_UI_ENABLED || agreement.arbiter !== ZERO_ADDRESS) && (
+            <ArbiterReplacementSection
+              id={id}
+              agreement={agreement}
+              onRefetch={onRefetch}
+            />
+          )}
+          <TimeoutSection
+            id={id}
+            agreement={agreement}
+            negotiationAccess={negotiationAccess}
+            onRefetch={onRefetch}
+          />
+      </section>
+
+      <section
+        className="agreement-panel"
+        id={`agreement-${agreementKey}-panel-record`}
+        role="tabpanel"
+        aria-labelledby={`agreement-${agreementKey}-tab-record`}
+        tabIndex={0}
+        hidden={selectedPanel !== "record"}
+      >
+          <div className="agreement-panel-heading">
+            <span className="eyebrow">Audit trail</span>
+            <h3>Agreement record</h3>
+            <p>
+              Review timestamped lifecycle activity and publish or verify privacy-safe onchain
+              receipts.
+            </p>
+          </div>
+          <AgreementOnchainActivity
+            agreementId={id}
+            isParty={isAgreementParty}
+            negotiationAccess={negotiationAccess}
+          />
+          {participantRecord ? (
+            <div className="agreement-activity">
+              <h4>Recent agreement activity</h4>
+              <ol className="activity-timeline">
+                {[...participantRecord.events]
+                  .reverse()
+                  .slice(0, 12)
+                  .map((event) => (
+                    <li key={event.id}>
+                      <time dateTime={event.createdAt}>
+                        {new Date(event.createdAt).toLocaleString()}
+                      </time>
+                      <strong>{event.actorRole}</strong>
+                      <span>{event.summary}</span>
+                    </li>
+                  ))}
+              </ol>
+            </div>
+          ) : (
+            <p className="hint">No offchain activity record is linked to this agreement.</p>
+          )}
+          {onRemove && (
+            <button className="btn btn-ghost small" onClick={onRemove}>
+              Stop tracking this agreement
+            </button>
+          )}
+      </section>
+    </article>
   );
 }
