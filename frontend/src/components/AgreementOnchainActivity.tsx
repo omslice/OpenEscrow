@@ -7,6 +7,7 @@ import {
 } from "../contracts/config";
 import { formatTimestamp, shortAddr } from "../lib/format";
 import type { NegotiationAccess } from "../lib/negotiations";
+import { ActivityProofVerifier } from "./ActivityProofVerifier";
 import { PrivateActivityPublisher } from "./PrivateActivityPublisher";
 
 type ActivityItem = {
@@ -111,6 +112,7 @@ export function AgreementOnchainActivity({
           onPublished={() => void refresh()}
         />
       )}
+      <ActivityProofVerifier agreementId={agreementId} />
       {(items.length > 0 || error) && (
         <details className="technical-details onchain-activity">
           <summary>Onchain record receipts ({items.length})</summary>

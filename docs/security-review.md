@@ -1,8 +1,12 @@
 # OpenEscrow — Security Review
 
-**Scope:** `contracts/OpenEscrow.sol` as deployed to Base Sepolia at
-`0x4365f7B9632d083F1a03D57AE56a0e6d239ef62F`, plus the OpenZeppelin v5.1.0
-library code it depends on (`SafeERC20`, `ReentrancyGuard`, `Address`).
+**Scope:** the `contracts/OpenEscrow.sol` source and OpenZeppelin v5.1.0 library code it depends on
+(`SafeERC20`, `ReentrancyGuard`, `Address`). The historical first review referenced the now-retired
+Base Sepolia deployment at `0x4365f7B9632d083F1a03D57AE56a0e6d239ef62F`. The reviewed and
+regression-tested source was redeployed at the currently configured testnet address
+`0x83faBc39c4FcccB6a4e42c568E9750D1a24FF11f` after the 2026-07-24 addendum. The separate
+`OperationsReserve`, mock-token, and `AgreementActivityRegistry` contracts have automated tests
+but are not covered by the original line-by-line review described below.
 **Method:** manual line-by-line review (access control matrix, state-machine transition
 completeness, arithmetic/overflow analysis, external-call/reentrancy analysis, timestamp
 sensitivity, economic/griefing vectors) plus automated static analysis (Slither 0.11.5).
@@ -174,6 +178,14 @@ an external audit.
 The review also corrected a getter test that claimed to verify nonexistent-agreement behavior
 without calling the getter. `getAgreement` now explicitly reverts `AgreementDoesNotExist`, matching
 the test name, the rest of the read API, and frontend expectations.
+
+## Frontend dependency check — 2026-07-25
+
+`npm audit --omit=dev` reports ten moderate `uuid` advisories in transitive MetaMask connector
+dependencies pulled through Privy/wagmi. The suggested forced remediation would downgrade
+`@privy-io/react-auth` across a breaking boundary, so it was not applied automatically. No high or
+critical advisory was reported. This should be rechecked when Privy/wagmi publish a compatible
+dependency update and is another reason the current build remains testnet-only.
 
 ## Disclaimer
 

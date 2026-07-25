@@ -38,12 +38,17 @@ type TenantFundActionProps = {
   onRefetch?: () => void;
 };
 
-function useReserveRecordRecovery(negotiationAccess?: NegotiationAccess | null) {
+function useTenantReceiptRecovery(
+  negotiationAccess: NegotiationAccess | null | undefined,
+  kind: "reserve" | "funding",
+) {
+  const { address } = useAccount();
   const access =
     negotiationAccess?.role === "tenant" ? negotiationAccess : null;
-  const storageKey = access
-    ? `openescrow:pending-reserve-receipt:${access.proposalId}`
+  const storageKey = access && address
+    ? `openescrow:pending-${kind}-receipt:${access.proposalId}:${address.toLowerCase()}`
     : null;
+  const label = kind === "reserve" ? "reserve payment" : "deposit funding";
   const [pendingTransaction, setPendingTransaction] = useState<`0x${string}` | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
 
@@ -64,17 +69,19 @@ function useReserveRecordRecovery(negotiationAccess?: NegotiationAccess | null) 
     setRecordError(null);
     if (storageKey) window.localStorage.setItem(storageKey, transactionHash);
     try {
-      await negotiationAction(access, {
-        type: "operations_reserve_paid",
-        transactionHash,
-      });
+      await negotiationAction(
+        access,
+        kind === "reserve"
+          ? { type: "operations_reserve_paid", transactionHash }
+          : { type: "agreement_funded", transactionHash },
+      );
       setPendingTransaction(null);
       if (storageKey) window.localStorage.removeItem(storageKey);
     } catch (cause) {
       setRecordError(
         cause instanceof Error
-          ? `The reserve payment succeeded, but its activity record still needs to be saved: ${cause.message}`
-          : "The reserve payment succeeded, but its activity record still needs to be saved.",
+          ? `The ${label} succeeded, but its activity record still needs to be saved: ${cause.message}`
+          : `The ${label} succeeded, but its activity record still needs to be saved.`,
       );
     }
   }
@@ -87,7 +94,7 @@ function useReserveRecordRecovery(negotiationAccess?: NegotiationAccess | null) 
         type="button"
         onClick={() => void record(pendingTransaction)}
       >
-        Retry saving reserve receipt
+        Retry saving {kind === "reserve" ? "reserve" : "funding"} receipt
       </button>
     </div>
   );
@@ -158,7 +165,8 @@ function StandardTenantFundAction({
   onRefetch,
 }: TenantFundActionProps) {
   const { address } = useAccount();
-  const reserveRecord = useReserveRecordRecovery(negotiationAccess);
+  const reserveRecord = useTenantReceiptRecovery(negotiationAccess, "reserve");
+  const fundingRecord = useTenantReceiptRecovery(negotiationAccess, "funding");
   const isTenant = address?.toLowerCase() === agreement.tenant.toLowerCase();
   const { needed, tokenLabel } = fundingDetails(agreement);
   const reserveRequired = participantRecord?.terms.operationsReserve === "5";
@@ -327,10 +335,14 @@ function StandardTenantFundAction({
           functionName="tenantAcceptAndFund"
           args={[id]}
           label="Accept and fund"
-          onSuccess={onRefetch}
+          onSuccess={(transactionHash) => {
+            void fundingRecord.record(transactionHash);
+            onRefetch?.();
+          }}
         />
       )}
       {reserveRecord.recovery}
+      {fundingRecord.recovery}
     </div>
   );
 }
@@ -357,7 +369,8 @@ function SponsoredTenantFundAction({
   onRefetch,
 }: TenantFundActionProps) {
   const { address } = useAccount();
-  const reserveRecord = useReserveRecordRecovery(negotiationAccess);
+  const reserveRecord = useTenantReceiptRecovery(negotiationAccess, "reserve");
+  const fundingRecord = useTenantReceiptRecovery(negotiationAccess, "funding");
   const publicClient = usePublicClient();
   const { sendTransaction } = useSendTransaction();
   const [step, setStep] = useState<
@@ -600,7 +613,7 @@ function SponsoredTenantFundAction({
           `Approve ${formatUSDC(needed)} ${tokenLabel} before funding the agreement.`,
         );
       }
-      await sendSponsored(
+      const transactionHash = await sendSponsored(
         OPEN_ESCROW_ADDRESS,
         encodeFunctionData({
           abi: OpenEscrowABI,
@@ -609,6 +622,7 @@ function SponsoredTenantFundAction({
         }),
         750_000n,
       );
+      await fundingRecord.record(transactionHash);
       onRefetch?.();
     } catch (caught) {
       setTransactionError(sponsoredErrorMessage(caught));
@@ -687,6 +701,7 @@ function SponsoredTenantFundAction({
         </button>
       )}
       {reserveRecord.recovery}
+      {fundingRecord.recovery}
       {transactionError && <p className="tx-error">{transactionError}</p>}
     </div>
   );

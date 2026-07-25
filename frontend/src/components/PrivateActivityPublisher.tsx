@@ -134,13 +134,14 @@ export function PrivateActivityPublisher({
   negotiationAccess?: NegotiationAccess | null;
   onPublished: () => void;
 }) {
+  const { address } = useAccount();
   const [activityType, setActivityType] = useState<1 | 2 | 3 | 4>(1);
   const [content, setContent] = useState("");
   const [proof, setProof] = useState<ActivityProof | null>(null);
   const [pendingRecord, setPendingRecord] = useState<ActivityReceiptAction | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
-  const pendingRecordKey = negotiationAccess
-    ? `openescrow:pending-activity-receipt:${negotiationAccess.proposalId}`
+  const pendingRecordKey = negotiationAccess && address
+    ? `openescrow:pending-activity-receipt:${negotiationAccess.proposalId}:${negotiationAccess.role}:${address.toLowerCase()}`
     : null;
   const trimmedContent = content.trim();
   const canonical = useMemo(

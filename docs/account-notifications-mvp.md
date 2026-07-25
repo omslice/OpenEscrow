@@ -20,8 +20,18 @@ production identity, custody, privacy, or communications design.
 
 Invitation and deduction-claim email delivery is available when the server-side email provider is
 configured; Gmail and copy-email fallbacks remain available without it. Repeated identical claim
-notices are deduplicated before provider delivery. Automated event indexing, deadline reminders,
-and unsubscribe handling are still future work.
+notices are deduplicated before provider delivery. Users who explicitly enable agreement-activity
+email also receive privacy-minimal notices for finalization, funding, claim amendments, tenant
+responses, and arbiter rulings. These messages omit evidence pointers, tenancy details, amounts,
+and private notes. Automated event indexing, deadline reminders, withdrawal notices, and
+unsubscribe-link handling are still future work.
+
+For transaction-backed proposal actions, the browser keeps a narrowly scoped pending receipt after
+the chain confirms but before the D1 activity record succeeds. Finalization, the operations reserve,
+record anchors, and privacy-safe activity receipts survive a refresh and can be retried; their
+storage keys are scoped to the proposal, role where applicable, and active wallet. Claim, response,
+and ruling screens retain a retry during the current session. Server-side transaction actions are
+idempotent by transaction hash, preventing a retry from duplicating the event timeline.
 
 The proposal form collects landlord, tenant, and optional arbiter email identities. The landlord is
 the signed-in account. Tenant and arbiter wallet addresses are recorded when the invited parties
@@ -52,8 +62,8 @@ in this Vite client. The minimum credible service should:
 
 1. Index OpenEscrow events from the configured deployment block and map affected wallet addresses
    to opted-in accounts.
-2. Extend idempotent delivery beyond invitations and claims to funding, responses, rulings, and
-   withdrawals.
+2. Extend the current idempotent action-triggered delivery to indexed onchain withdrawals and
+   other transitions that can happen without a D1 action request.
 3. Run scheduled deadline checks with a durable record preventing duplicate reminders.
 4. Include unsubscribe links in messages; authenticated in-app preference changes are already
    honored immediately.

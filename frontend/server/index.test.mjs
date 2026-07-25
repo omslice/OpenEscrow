@@ -356,6 +356,75 @@ test("the landlord is notified when all required approvals make a proposal ready
   }
 });
 
+test("opted-in agreement activity email is privacy-minimal and idempotent", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  await db
+    .prepare(
+      `INSERT INTO notification_preferences
+       (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+       VALUES (?, ?, 1, 0, ?, ?)`,
+    )
+    .bind(
+      "did:privy:test-landlord",
+      "landlord@example.com",
+      new Date().toISOString(),
+      new Date().toISOString(),
+    )
+    .run();
+
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push({
+      headers: options.headers,
+      body: JSON.parse(options.body),
+    });
+    return Response.json({ id: `activity-message-${deliveries.length}` });
+  };
+  try {
+    const action = {
+      type: "agreement_funded",
+      transactionHash: `0x${"8".repeat(64)}`,
+    };
+    const funded = await jsonResponse(
+      await act(db, created.record.id, created.access.tenant, action, {
+        RESEND_API_KEY: "test-resend-key",
+        NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      }),
+    );
+    assert.equal(deliveries.length, 1);
+    assert.deepEqual(deliveries[0].body.to, ["landlord@example.com"]);
+    assert.match(deliveries[0].body.subject, /funded/);
+    assert.doesNotMatch(deliveries[0].body.text, /1200|ipfs|invoice|tenant@example/i);
+    assert.equal(
+      funded.events.filter((event) => event.action === "agreement_funded").length,
+      1,
+    );
+    assert.equal(
+      funded.events.filter(
+        (event) => event.action === "agreement_activity_notification_sent",
+      ).length,
+      1,
+    );
+
+    const retry = await jsonResponse(
+      await act(db, created.record.id, created.access.tenant, action, {
+        RESEND_API_KEY: "test-resend-key",
+        NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      }),
+    );
+    assert.equal(deliveries.length, 1);
+    assert.equal(
+      retry.events.filter((event) => event.action === "agreement_funded").length,
+      1,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("landlord revisions reset approvals and role capabilities are enforced", async () => {
   const db = new TestD1();
   const created = await create(db);
@@ -409,6 +478,23 @@ test("documented claim, tenant decision, and email attempts are included in the 
   );
   assert.equal(reservePaid.events.at(-1).action, "operations_reserve_paid");
   assert.match(reservePaid.events.at(-1).summary, /separate \$5 testUSDC/);
+  const funded = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "agreement_funded",
+      transactionHash: `0x${"9".repeat(64)}`,
+    }),
+  );
+  assert.equal(funded.events.at(-1).action, "agreement_funded");
+  const fundedRetry = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "agreement_funded",
+      transactionHash: `0x${"9".repeat(64)}`,
+    }),
+  );
+  assert.equal(
+    fundedRetry.events.filter((event) => event.action === "agreement_funded").length,
+    1,
+  );
 
   const mismatchedClaim = await act(db, created.record.id, created.access.landlord, {
     type: "claim_submitted",
@@ -461,7 +547,14 @@ test("documented claim, tenant decision, and email attempts are included in the 
     { DB: db },
   );
   assert.equal(claimReport.status, 200);
-  assert.match(await claimReport.text(), /Replacement of the tenant-damaged door/);
+  const claimReportHtml = await claimReport.text();
+  assert.match(claimReportHtml, /Replacement of the tenant-damaged door/);
+  assert.match(claimReportHtml, /Lena Landlord/);
+  assert.match(claimReportHtml, /Terry Tenant/);
+  assert.match(claimReportHtml, /tenant@example\.com/);
+  assert.match(claimReportHtml, /0x1111111111111111111111111111111111111111/);
+  assert.match(claimReportHtml, /Recorded transaction receipts/);
+  assert.match(claimReportHtml, new RegExp(`0x${"9".repeat(64)}`));
   const claimSnapshot = await jsonResponse(
     await worker.fetch(
       request(
@@ -565,6 +658,19 @@ test("documented claim, tenant decision, and email attempts are included in the 
     ),
   );
   assert.notEqual(snapshotAfterActivity.hash, snapshotAfterAnchor.hash);
+  const evidenceReport = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}/report?token=${created.access.tenant}`,
+    ),
+    { DB: db },
+  );
+  const evidenceReportHtml = await evidenceReport.text();
+  assert.equal(evidenceReport.status, 200);
+  assert.match(evidenceReportHtml, /Onchain evidence receipts/);
+  assert.match(evidenceReportHtml, new RegExp(`0x${"f".repeat(64)}`));
+  assert.match(evidenceReportHtml, new RegExp(`0x${"1".repeat(64)}`));
+  assert.match(evidenceReportHtml, new RegExp(`0x${"2".repeat(64)}`));
+  assert.match(evidenceReportHtml, /BaseScan receipt/);
 
   const email = await worker.fetch(
     request("/api/notifications/claim", "POST", {

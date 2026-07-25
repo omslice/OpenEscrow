@@ -1479,7 +1479,11 @@ a.btn.disabled {
 
 .onchain-record-tools,
 .private-activity-publisher,
-.private-proof-success {
+.private-proof-success,
+.activity-proof-verifier,
+.proof-verification-success,
+.record-snapshot-verifier,
+.proof-verification-warning {
   display: grid;
   gap: 12px;
 }
@@ -1503,6 +1507,44 @@ a.btn.disabled {
 .private-proof-success a {
   color: var(--accent);
   font-weight: 700;
+}
+
+.activity-proof-verifier label,
+.record-snapshot-verifier label {
+  margin: 0;
+}
+
+.proof-verification-success {
+  border: 1px solid color-mix(in srgb, var(--success) 55%, var(--border));
+  border-radius: 9px;
+  padding: 12px;
+  background: color-mix(in srgb, var(--success) 9%, var(--surface));
+}
+
+.proof-verification-success span {
+  color: var(--muted);
+}
+
+.proof-verification-success code {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.proof-verification-success a {
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.proof-verification-warning {
+  border: 1px solid var(--warning-border);
+  border-radius: 9px;
+  padding: 12px;
+  background: var(--warning-bg);
+}
+
+.proof-verification-warning code {
+  overflow-wrap: anywhere;
+  font-size: 12px;
 }
 
 .receipt-recovery {

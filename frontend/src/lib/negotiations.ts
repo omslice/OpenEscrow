@@ -376,6 +376,7 @@ export type NegotiationAction =
     | { type: "invitation_prepared"; invitedRole: InviteRole; method: "gmail" | "copy" }
     | { type: "finalize"; agreementId: string; transactionHash: string }
     | { type: "operations_reserve_paid"; transactionHash: string }
+    | { type: "agreement_funded"; transactionHash: string }
     | {
         type: "record_snapshot_anchored";
         snapshotHash: string;

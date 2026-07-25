@@ -14,6 +14,7 @@ import {
   type NegotiationAccess,
 } from "../lib/negotiations";
 import { TxButton } from "./TxButton";
+import { RecordSnapshotVerifier } from "./RecordSnapshotVerifier";
 
 type AnchorProps = {
   access: NegotiationAccess;
@@ -28,7 +29,7 @@ function useAnchorRecovery(
   address?: `0x${string}`,
 ) {
   const storageKey = address
-    ? `openescrow:pending-anchor:${access.proposalId}:${snapshot.hash}:${address.toLowerCase()}`
+    ? `openescrow:pending-anchor:${access.proposalId}:${access.role}:${snapshot.hash}:${address.toLowerCase()}`
     : null;
   const [pendingTransaction, setPendingTransaction] = useState<`0x${string}` | null>(null);
 
@@ -364,6 +365,10 @@ export function RecordSnapshotControls({
           />
         </div>
       )}
+      <RecordSnapshotVerifier
+        proposalId={access.proposalId}
+        agreementId={agreementId}
+      />
       {status && (
         <p className={status.includes("could not") ? "tx-error" : "tx-success"}>{status}</p>
       )}

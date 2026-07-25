@@ -14,7 +14,13 @@ This contract cannot know or enforce anything about real tenancy law. Every item
 
 4. **Permitted deduction categories.** The contract has no concept of what a claim is *for* — `claimedAmount` and `evidenceURI` are unstructured. Legitimate deduction categories (unpaid rent, damage beyond normal wear, cleaning) versus impermissible ones are entirely a matter for the arbiter's off-chain judgment. There is no on-chain guardrail preventing a claim for something a court would reject outright.
 
-5. **Evidence and itemization requirements.** One `evidenceURI` per claim (overwritten on amendment, full history preserved only in event logs). No structured itemization (list of specific damages with individual costs), no minimum evidence requirement enforced by the contract. Whether this is sufficient for a claim to be taken seriously — by the arbiter, or later by a court — is outside the contract's scope.
+5. **Evidence and itemization requirements.** The contract still has one `evidenceURI` and one
+   aggregate amount per claim (overwritten on amendment, with full history preserved only in event
+   logs). The current app and printable report capture structured category, description, and amount
+   line items off-chain, and require their total to equal the onchain claim amount, but the contract
+   cannot enforce or independently recover those line items. No minimum evidence quality is
+   enforced. Whether this is sufficient for an arbiter or court remains outside the contract's
+   scope.
 
 6. **Arbiter authority and enforceability.** The "arbiter" here is a wallet address the two parties pick; nothing establishes them as a licensed mediator, arbitrator, or any legally recognized dispute-resolution role. Their ruling is enforced *only* to the extent it moves tokens already in the contract — it carries no independent legal weight, isn't binding outside the contract, and there's no vetting of who's allowed to serve as one. If the product intends for arbiter rulings to be legally meaningful (e.g. admissible, or a substitute for small-claims proceedings), that requires a real legal/process framework this spec does not attempt to provide.
 

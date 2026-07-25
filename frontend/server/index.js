@@ -457,9 +457,10 @@ async function serialize(db, row) {
     if (
       event.action === "revision_approved" &&
       typeof event.metadata?.name === "string" &&
+      event.metadata.name.trim() &&
       (event.actorRole === "tenant" || event.actorRole === "arbiter")
     ) {
-      participantNames[`${event.actorRole}Name`] = event.metadata.name.trim() || null;
+      participantNames[`${event.actorRole}Name`] = event.metadata.name.trim();
     }
   }
   return {
@@ -608,6 +609,83 @@ async function sendLandlordReadyNotification(request, env, row) {
   return sent.ok && result.id ? result.id : null;
 }
 
+async function sendOptedInAgreementActivityEmails(request, env, row, eventType) {
+  if (!env.RESEND_API_KEY || !env.NOTIFICATION_FROM_EMAIL) return [];
+  const notification = {
+    finalize: {
+      recipients: [
+        ["tenant", row.tenant_email],
+        ["arbiter", row.arbiter_email],
+      ],
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} finalized`,
+      text: "The approved proposal was finalized on Base Sepolia.",
+    },
+    agreement_funded: {
+      recipients: [["landlord", row.landlord_email]],
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} funded`,
+      text: "The tenant accepted the finalized terms and funded the refundable deposit.",
+    },
+    claim_amended: {
+      recipients: [["tenant", row.tenant_email]],
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} claim amended`,
+      text: "The landlord amended the deduction claim. Review the updated line items and documentation in OpenEscrow.",
+    },
+    claim_response: {
+      recipients: [
+        ["landlord", row.landlord_email],
+        ["arbiter", row.arbiter_email],
+      ],
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} claim response`,
+      text: "The tenant responded to the deduction claim. Review the recorded decision and next step in OpenEscrow.",
+    },
+    arbiter_ruling: {
+      recipients: [
+        ["landlord", row.landlord_email],
+        ["tenant", row.tenant_email],
+      ],
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} ruling recorded`,
+      text: "The appointed arbiter recorded a ruling. Review the allocation and transaction receipt in OpenEscrow.",
+    },
+  }[eventType];
+  if (!notification) return [];
+
+  const appUrl = new URL(request.url).origin;
+  const results = [];
+  for (const [recipientRole, email] of notification.recipients) {
+    if (!email) continue;
+    const preferences = await env.DB
+      .prepare(
+        "SELECT agreement_activity FROM notification_preferences WHERE lower(email) = lower(?) AND consented_at IS NOT NULL",
+      )
+      .bind(email)
+      .first();
+    if (Number(preferences?.agreement_activity) !== 1) continue;
+    try {
+      const sent = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${env.RESEND_API_KEY}`,
+          "content-type": "application/json",
+          "idempotency-key": `agreement-${row.id}-${eventType}-${recipientRole}-${row.updated_at}`,
+        },
+        body: JSON.stringify({
+          from: env.NOTIFICATION_FROM_EMAIL,
+          to: [email],
+          subject: notification.subject,
+          text: `${notification.text}\n\nOpen your signed-in dashboard: ${appUrl}\n\nThis email intentionally omits evidence, tenancy details, and private notes.`,
+        }),
+      });
+      const result = await sent.json().catch(() => ({}));
+      if (sent.ok && result.id) {
+        results.push({ recipientRole, email, messageId: result.id });
+      }
+    } catch {
+      // Continue delivering to other opted-in parties when one provider request fails.
+    }
+  }
+  return results;
+}
+
 async function applyAction(request, env, id) {
   const db = env.DB;
   const body = await request.json();
@@ -618,6 +696,7 @@ async function applyAction(request, env, id) {
   const transactionEventByAction = {
     finalize: "posted_onchain",
     operations_reserve_paid: "operations_reserve_paid",
+    agreement_funded: "agreement_funded",
     record_snapshot_anchored: "record_snapshot_anchored",
     activity_hash_published: "activity_hash_published",
     claim_submitted: "deduction_claim_submitted",
@@ -794,6 +873,30 @@ async function applyAction(request, env, id) {
         `Paid the separate $5 testUSDC network and document-storage reserve in transaction ${transactionHash}.`,
         revision,
         { amount: "5", token: "testUSDC", transactionHash },
+      ),
+    );
+  } else if (body.type === "agreement_funded") {
+    if (role !== "tenant") {
+      return json({ error: "Only the tenant may record the deposit funding transaction." }, 403);
+    }
+    if (row.status !== "finalized") {
+      return json({ error: "The agreement must be finalized before its deposit is funded." }, 409);
+    }
+    const transactionHash = cleanText(body.transactionHash, 100);
+    if (!/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+      return json({ error: "The deposit funding transaction is invalid." }, 400);
+    }
+    statements.push(
+      db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "agreement_funded",
+        `Accepted the finalized agreement and funded the refundable security deposit in transaction ${transactionHash}.`,
+        revision,
+        { transactionHash },
       ),
     );
   } else if (body.type === "record_snapshot_anchored") {
@@ -1044,6 +1147,49 @@ async function applyAction(request, env, id) {
       } catch {
         // Approval must still succeed if the optional email provider is unavailable.
       }
+    }
+  }
+  if (
+    body.type === "finalize" ||
+    body.type === "agreement_funded" ||
+    body.type === "claim_amended" ||
+    body.type === "claim_response" ||
+    body.type === "arbiter_ruling"
+  ) {
+    try {
+      const deliveries = await sendOptedInAgreementActivityEmails(
+        request,
+        env,
+        updated,
+        body.type,
+      );
+      if (deliveries.length) {
+        const notifiedAt = new Date().toISOString();
+        await db.batch([
+          db
+            .prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?")
+            .bind(notifiedAt, id),
+          ...deliveries.map((delivery) =>
+            eventStatement(
+              db,
+              id,
+              notifiedAt,
+              "system",
+              "agreement_activity_notification_sent",
+              `Sent the ${body.type.replaceAll("_", " ")} notice to the opted-in ${delivery.recipientRole}.`,
+              updated.revision,
+              {
+                eventType: body.type,
+                recipientRole: delivery.recipientRole,
+                messageId: delivery.messageId,
+              },
+            ),
+          ),
+        ]);
+        updated = await rowFor(db, id);
+      }
+    } catch {
+      // The recorded agreement action must not fail if optional email delivery is unavailable.
     }
   }
   return json(await serialize(db, updated));
@@ -1361,19 +1507,54 @@ async function report(db, id, token) {
 </table>`;
     })
     .join("");
+  const onchainEvidence = record.events
+    .filter(
+      (event) =>
+        event.action === "record_snapshot_anchored" ||
+        event.action === "activity_hash_published",
+    )
+    .map((event) => {
+      const metadata = event.metadata || {};
+      const hash =
+        event.action === "record_snapshot_anchored"
+          ? metadata.snapshotHash
+          : metadata.contentHash;
+      const label =
+        event.action === "record_snapshot_anchored"
+          ? "Agreement snapshot"
+          : `Activity type ${escapeHtml(metadata.activityType || "unknown")}`;
+      const transactionHash = metadata.transactionHash || "";
+      const receipt = /^0x[a-fA-F0-9]{64}$/.test(transactionHash)
+        ? `<a href="https://sepolia.basescan.org/tx/${escapeHtml(transactionHash)}">BaseScan receipt</a>`
+        : "Not recorded";
+      return `<tr><td>${escapeHtml(event.createdAt)}</td><td>${escapeHtml(event.actorRole)}</td><td>${label}</td><td class="hash">${escapeHtml(hash || "Not recorded")}</td><td>${receipt}</td></tr>`;
+    })
+    .join("");
+  const transactionReceipts = record.events
+    .filter((event) => /^0x[a-fA-F0-9]{64}$/.test(event.metadata?.transactionHash || ""))
+    .map((event) => {
+      const transactionHash = event.metadata.transactionHash;
+      const action = event.action
+        .split("_")
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ");
+      return `<tr><td>${escapeHtml(event.createdAt)}</td><td>${escapeHtml(event.actorRole)}</td><td>${escapeHtml(action)}</td><td class="hash">${escapeHtml(transactionHash)}</td><td><a href="https://sepolia.basescan.org/tx/${escapeHtml(transactionHash)}">BaseScan receipt</a></td></tr>`;
+    })
+    .join("");
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>OpenEscrow proposal ${escapeHtml(record.id)} record</title>
-<style>body{font:15px/1.5 system-ui,sans-serif;color:#191826;max-width:900px;margin:40px auto;padding:0 24px}h1{margin-bottom:0}.meta{color:#666}table{border-collapse:collapse;width:100%;margin:20px 0}th,td{text-align:left;vertical-align:top;border:1px solid #ddd;padding:9px}th{background:#f5f3fb}@media print{button{display:none}body{margin:0}}</style>
+<style>body{font:15px/1.5 system-ui,sans-serif;color:#191826;max-width:900px;margin:40px auto;padding:0 24px}h1{margin-bottom:0}.meta{color:#666}.hash{font:12px/1.45 ui-monospace,monospace;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;margin:20px 0}th,td{text-align:left;vertical-align:top;border:1px solid #ddd;padding:9px}th{background:#f5f3fb}a{color:#5637a8}@media print{button{display:none}body{margin:0}}</style>
 </head><body>
 <button onclick="window.print()">Print or save as PDF</button>
 <h1>OpenEscrow agreement record</h1>
 <p class="meta">Proposal ${escapeHtml(record.id)} · revision ${record.revision} · status ${escapeHtml(record.status)}<br>Generated ${escapeHtml(new Date().toISOString())}</p>
 <h2>Parties</h2><table>
-<tr><th>Landlord</th><td>${escapeHtml(record.landlordEmail)}</td></tr>
-<tr><th>Tenant</th><td>${escapeHtml(record.tenantEmail)}</td></tr>
-<tr><th>Arbiter</th><td>${escapeHtml(record.arbiterEmail || "Not appointed")}</td></tr>
-</table>
+<thead><tr><th>Role</th><th>Name</th><th>Email</th><th>Approval wallet</th></tr></thead><tbody>
+<tr><th>Landlord</th><td>${escapeHtml(record.landlordName || "Not provided")}</td><td>${escapeHtml(record.landlordEmail)}</td><td>${record.onchainAgreementId ? `See onchain agreement #${escapeHtml(record.onchainAgreementId)}` : "Recorded at finalization"}</td></tr>
+<tr><th>Tenant</th><td>${escapeHtml(record.tenantName || "Not provided")}</td><td>${escapeHtml(record.tenantEmail)}</td><td class="hash">${escapeHtml(record.tenantWallet || "Not yet approved")}</td></tr>
+<tr><th>Arbiter</th><td>${escapeHtml(record.arbiterName || (record.arbiterEmail ? "Not provided" : "Not appointed"))}</td><td>${escapeHtml(record.arbiterEmail || "Not appointed")}</td><td class="hash">${escapeHtml(record.arbiterWallet || (record.arbiterEmail ? "Not yet approved" : "Not appointed"))}</td></tr>
+</tbody></table>
 <h2>Current terms</h2><table>
 <tr><th>Refundable deposit</th><td>${escapeHtml(terms.deposit)} ${terms.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</td></tr>
 <tr><th>Network &amp; storage reserve</th><td>${escapeHtml(terms.operationsReserve || "0")} testUSDC (separate, non-refundable)</td></tr>
@@ -1387,8 +1568,10 @@ async function report(db, id, token) {
 <p>Tenant: ${record.tenantApproved ? "approved" : "not approved"} · Arbiter: ${record.arbiterEmail ? (record.arbiterApproved ? "approved" : "not approved") : "not appointed"}</p>
 <h2>Revision snapshots</h2>${revisionSnapshots}
 ${claimBreakdowns ? `<h2>Itemized deduction claims</h2>${claimBreakdowns}` : ""}
+${transactionReceipts ? `<h2>Recorded transaction receipts</h2><table><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Transaction hash</th><th>Explorer</th></tr></thead><tbody>${transactionReceipts}</tbody></table>` : ""}
+${onchainEvidence ? `<h2>Onchain evidence receipts</h2><table><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Evidence</th><th>Hash</th><th>Transaction</th></tr></thead><tbody>${onchainEvidence}</tbody></table>` : ""}
 <h2>Timestamped activity</h2><table><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th></tr></thead><tbody>${timeline}</tbody></table>
-<p class="meta">This MVP record is platform-stored and has not yet been cryptographically anchored onchain.</p>
+<p class="meta">The readable record is platform-stored. Transaction hashes recorded by the app should be checked using their BaseScan links. The onchain evidence table lists snapshot or activity hashes separately anchored to Base Sepolia; a hash proves integrity only when checked against the corresponding private source material.</p>
 </body></html>`;
   return new Response(html, {
     headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },

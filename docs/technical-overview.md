@@ -41,7 +41,9 @@ decision receipt. The readable content is never sent to the server; the user can
 JSON proof that can later reproduce the public hash. Registry receipts are polled into both the
 agreement dashboard and the wallet-scoped notification bell. The D1 record stores only the
 activity type, content hash, and transaction receipt so the printable timeline can reference the
-onchain action without retaining the private plaintext.
+onchain action without retaining the private plaintext. The dashboard can verify a downloaded
+proof locally by reconstructing the canonical envelope, recomputing its hash, and confirming the
+matching registry event in the referenced Base Sepolia transaction.
 
 ### Frontend
 
@@ -94,7 +96,7 @@ The inequality is deliberate: anyone can send the token directly to the contract
 
 ## Claims and evidence
 
-A claim includes:
+A contract claim includes:
 
 - Claimed amount
 - Nonzero content hash
@@ -104,6 +106,11 @@ A claim includes:
 - Submitter address
 
 The landlord may amend once, downward only, before the tenant responds. An amendment never resets the response deadline.
+
+The app separately captures structured deduction line items in the D1 negotiation record and
+printable report. It validates that their total equals the aggregate onchain claim amount. These
+off-chain line items improve documentation but are not contract state and do not remove the need
+for privacy-safe, legally sufficient supporting evidence.
 
 The contract cannot determine whether evidence is truthful or legally sufficient. That remains the arbiter's responsibility and, ultimately, a jurisdiction-specific legal question.
 

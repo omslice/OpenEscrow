@@ -26,6 +26,8 @@ The Base Sepolia testnet MVP implements the complete technical lifecycle:
 - If the arbiter misses the deadline, the disputed balance defaults to the tenant.
 - The tenant dashboard shows onchain custody, a deliberately accelerated 20%-per-day demo value,
   deduction/dispute alerts, deadlines, and resolution status. The demo value is not real yield.
+- Agreement parties can anchor canonical record snapshots and privacy-safe activity hashes in the
+  separate Base Sepolia activity registry, download private proofs, and verify them locally.
 - Tenant and landlord withdraw credited balances using pull payments.
 
 The current source includes:
@@ -41,7 +43,7 @@ The current source includes:
 
 ### Verification snapshot
 
-- 136 Foundry tests
+- 151 Foundry tests
 - 512 runs per fuzz test
 - 256 stateful invariant runs at depth 128
 - Frontend lint, TypeScript compilation, and production build
@@ -62,8 +64,8 @@ The testnet MVP deliberately excludes the earlier factory/module design.
 | Disputes | Disputed funds remain locked until ruling or timeout |
 | Evidence | Public hash, opaque URI, type, timestamp, submitter |
 | Administration | No owner, pause key, upgrade proxy, or privileged resolver |
-| Yield | Not included |
-| Fees | None |
+| Yield | Test-only accelerated ytUSDC accounting; no production strategy |
+| Fees | No escrow fee; separate fixed 5 testUSDC pilot operations reserve |
 
 See [`docs/technical-overview.md`](docs/technical-overview.md) and [`docs/protocol-flow.md`](docs/protocol-flow.md).
 
