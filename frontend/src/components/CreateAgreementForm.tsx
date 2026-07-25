@@ -12,11 +12,10 @@ import {
   YIELD_USDC_ADDRESS,
   chain,
 } from "../contracts/config";
-import { parseUSDC } from "../lib/format";
+import { formatUSDC, parseUSDC } from "../lib/format";
 import {
   CALIFORNIA_POLICY,
   GENERIC_TEST_POLICY,
-  JURISDICTIONS,
   isJurisdictionCode,
   rememberJurisdiction,
   type JurisdictionCode,
@@ -44,6 +43,7 @@ import {
   type NegotiationRecord,
 } from "../lib/negotiations";
 import { AgreementCard } from "./AgreementCard";
+import { AddressAutocomplete } from "./AddressAutocomplete";
 
 const DAY = 24 * 60 * 60;
 const MAX_PERIOD_DAYS = MAX_PERIOD_SECONDS / DAY;
@@ -56,7 +56,6 @@ type ProposalField =
   | "arbiterEmail"
   | "propertyAddress"
   | "deposit"
-  | "monthlyRent"
   | "claimWindowStart"
   | "claimDays"
   | "responseDays"
@@ -105,12 +104,112 @@ function percentToBps(value: string): number {
   return Math.round(Number(value) * 100);
 }
 
-function tenantDepositAmount(total: string, bps: number): string {
-  const amount = Number(total);
-  if (!Number.isFinite(amount)) return "0";
-  return (amount * bps / 10000).toLocaleString(undefined, {
-    maximumFractionDigits: 6,
+function rebalanceShares(
+  currentShares: number[],
+  changedIndex: number,
+  requestedBps: number,
+): number[] {
+  const count = currentShares.length;
+  if (count <= 1) return count === 1 ? [10000] : [];
+
+  const next = Array.from({ length: count }, (_, index) =>
+    Number.isInteger(currentShares[index]) && currentShares[index] > 0
+      ? currentShares[index]
+      : 1,
+  );
+  const changedBps = Math.min(
+    10000 - (count - 1),
+    Math.max(1, Number.isFinite(requestedBps) ? Math.round(requestedBps) : 1),
+  );
+  next[changedIndex] = changedBps;
+
+  const otherIndexes = next.map((_, index) => index).filter((index) => index !== changedIndex);
+  const remaining = 10000 - changedBps;
+  const distributable = remaining - otherIndexes.length;
+  const weightTotal = otherIndexes.reduce((total, index) => total + next[index], 0);
+  const allocations = otherIndexes.map((index) => {
+    const exact = weightTotal > 0
+      ? (distributable * next[index]) / weightTotal
+      : distributable / otherIndexes.length;
+    return { index, value: 1 + Math.floor(exact), fraction: exact - Math.floor(exact) };
   });
+  let leftover = remaining - allocations.reduce((total, item) => total + item.value, 0);
+  for (const item of allocations.slice().sort((a, b) => b.fraction - a.fraction || a.index - b.index)) {
+    if (leftover <= 0) break;
+    allocations.find((allocation) => allocation.index === item.index)!.value += 1;
+    leftover -= 1;
+  }
+  allocations.forEach((item) => {
+    next[item.index] = item.value;
+  });
+  return next;
+}
+
+function tenantFundingBreakdown(
+  deposit: string,
+  reserve: string,
+  bps: number,
+  tenantCount: number,
+  tenantIndex: number,
+) {
+  try {
+    const depositUnits = parseUSDC(deposit || "0");
+    const reserveUnits = parseUSDC(reserve || "0");
+    const depositShare = (depositUnits * BigInt(bps)) / 10000n;
+    const count = BigInt(Math.max(tenantCount, 1));
+    const baseReserve = reserveUnits / count;
+    const remainder = reserveUnits % count;
+    const reserveShare = baseReserve + (BigInt(tenantIndex) < remainder ? 1n : 0n);
+    return {
+      deposit: formatUSDC(depositShare),
+      reserve: formatUSDC(reserveShare),
+      total: formatUSDC(depositShare + reserveShare),
+    };
+  } catch {
+    return { deposit: "0", reserve: "0", total: "0" };
+  }
+}
+
+function tokenLabel(tokenChoice: "plain" | "yield") {
+  return tokenChoice === "yield" ? "ytUSDC" : "testUSDC";
+}
+
+function totalFundingAmount(deposit: string, reserve: string) {
+  try {
+    return formatUSDC(parseUSDC(deposit || "0") + parseUSDC(reserve || "0"));
+  } catch {
+    return "0";
+  }
+}
+
+function TenantFundingDue({
+  deposit,
+  reserve,
+  bps,
+  tenantCount,
+  tenantIndex,
+  tokenChoice,
+}: {
+  deposit: string;
+  reserve: string;
+  bps: number;
+  tenantCount: number;
+  tenantIndex: number;
+  tokenChoice: "plain" | "yield";
+}) {
+  const amounts = tenantFundingBreakdown(
+    deposit,
+    reserve,
+    bps,
+    tenantCount,
+    tenantIndex,
+  );
+  return (
+    <small>
+      Deposit {amounts.deposit} + reserve {amounts.reserve} ={" "}
+      <strong>{amounts.total} {tokenLabel(tokenChoice)} total</strong>
+    </small>
+  );
 }
 
 function inviteContent(
@@ -168,16 +267,12 @@ function AgreementForm({
   const [primaryTenantShareBps, setPrimaryTenantShareBps] = useState(10000);
   const [tenantShareDraft, setTenantShareDraft] = useState<Record<string, number>>({});
   const [deposit, setDeposit] = useState("100");
-  const [monthlyRent, setMonthlyRent] = useState("100");
-  const [smallLandlordException, setSmallLandlordException] = useState(false);
-  const [tenantIsServiceMember, setTenantIsServiceMember] = useState(false);
-  const [operationsReserve, setOperationsReserve] = useState<string>(CALIFORNIA_POLICY.operationsReserve);
+  const operationsReserve = GENERIC_TEST_POLICY.operationsReserve;
   const [tokenChoice, setTokenChoice] = useState<"plain" | "yield">("plain");
   const [claimWindowStart, setClaimWindowStart] = useState(defaultClaimWindowStart);
-  const [claimDays, setClaimDays] = useState<string>(CALIFORNIA_POLICY.claimDays);
-  const [responseDays, setResponseDays] = useState<string>(CALIFORNIA_POLICY.responseDays);
-  const [arbiterDays, setArbiterDays] = useState<string>(CALIFORNIA_POLICY.arbiterDays);
-  const [jurisdiction, setJurisdiction] = useState<JurisdictionCode>(CALIFORNIA_POLICY.jurisdiction);
+  const [claimDays, setClaimDays] = useState<string>(GENERIC_TEST_POLICY.claimDays);
+  const [responseDays, setResponseDays] = useState<string>(GENERIC_TEST_POLICY.responseDays);
+  const [arbiterDays, setArbiterDays] = useState<string>(GENERIC_TEST_POLICY.arbiterDays);
   const [draft, setDraft] = useState<NegotiationRecord | null>(null);
   const [accessBundle, setAccessBundle] = useState<CreatedNegotiation["access"] | null>(null);
   const [revisionSummary, setRevisionSummary] = useState("");
@@ -194,7 +289,7 @@ function AgreementForm({
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isEditingRevision, setIsEditingRevision] = useState(false);
   const [proposalStep, setProposalStep] = useState<ProposalStep>("participants");
-  const submittedJurisdiction = useRef<JurisdictionCode>(CALIFORNIA_POLICY.jurisdiction);
+  const submittedJurisdiction = useRef<JurisdictionCode>(GENERIC_TEST_POLICY.jurisdiction);
   const handledReceipt = useRef<`0x${string}` | null>(null);
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
@@ -207,7 +302,6 @@ function AgreementForm({
         (draft.tenants.some((tenant) => tenant.approved) ||
           (draft.arbiterEmail && draft.arbiterApproved)),
     ) && !isEditingRevision;
-  const isCalifornia = jurisdiction === CALIFORNIA_POLICY.jurisdiction;
 
   const landlordAccess = useMemo<NegotiationAccess | null>(
     () =>
@@ -268,10 +362,8 @@ function AgreementForm({
   }, [landlordAccess, pendingFinalizationKey, saveFinalizationRecord]);
 
   function applyTerms(record: NegotiationRecord) {
-    const recordJurisdiction = isJurisdictionCode(record.terms.jurisdiction)
-      ? record.terms.jurisdiction
-      : CALIFORNIA_POLICY.jurisdiction;
-    const recordIsCalifornia = recordJurisdiction === CALIFORNIA_POLICY.jurisdiction;
+    const isLegacyCalifornia =
+      record.terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction;
     setTenantName(record.tenantName || "");
     setTenantEmail(record.tenantEmail);
     setArbiterName(record.arbiterName || "");
@@ -284,26 +376,17 @@ function AgreementForm({
       ),
     );
     setDeposit(record.terms.deposit);
-    setMonthlyRent(record.terms.monthlyRent || record.terms.deposit);
-    setSmallLandlordException(record.terms.smallLandlordException === true);
-    setTenantIsServiceMember(record.terms.tenantIsServiceMember === true);
-    setOperationsReserve(
-      recordIsCalifornia
-        ? CALIFORNIA_POLICY.operationsReserve
-        : GENERIC_TEST_POLICY.operationsReserve,
-    );
     setTokenChoice(record.terms.tokenChoice);
     setClaimWindowStart(record.terms.claimWindowStart);
     setClaimDays(
-      recordIsCalifornia ? CALIFORNIA_POLICY.claimDays : record.terms.claimDays,
+      isLegacyCalifornia ? GENERIC_TEST_POLICY.claimDays : record.terms.claimDays,
     );
     setResponseDays(
-      recordIsCalifornia ? CALIFORNIA_POLICY.responseDays : record.terms.responseDays,
+      isLegacyCalifornia ? GENERIC_TEST_POLICY.responseDays : record.terms.responseDays,
     );
     setArbiterDays(
-      recordIsCalifornia ? CALIFORNIA_POLICY.arbiterDays : record.terms.arbiterDays,
+      isLegacyCalifornia ? GENERIC_TEST_POLICY.arbiterDays : record.terms.arbiterDays,
     );
-    setJurisdiction(recordJurisdiction);
     setProposalStep(
       record.status === "ready" || record.status === "finalized"
         ? "review"
@@ -377,17 +460,15 @@ function AgreementForm({
 
   function currentTerms(): AgreementTerms {
     return {
-      jurisdiction,
-      policyVersion: isCalifornia
-        ? CALIFORNIA_POLICY.version
-        : GENERIC_TEST_POLICY.version,
+      jurisdiction: GENERIC_TEST_POLICY.jurisdiction,
+      policyVersion: GENERIC_TEST_POLICY.version,
       tokenChoice,
       propertyAddress: propertyAddress.trim(),
       deposit,
-      operationsReserve,
-      monthlyRent,
-      smallLandlordException,
-      tenantIsServiceMember,
+      operationsReserve: GENERIC_TEST_POLICY.operationsReserve,
+      monthlyRent: "",
+      smallLandlordException: false,
+      tenantIsServiceMember: false,
       electronicDeliveryConsent: true,
       claimWindowStart,
       claimDays,
@@ -476,48 +557,6 @@ function AgreementForm({
       }
     } catch {
       return { field: "deposit", message: "Invalid deposit amount." };
-    }
-    if (isCalifornia) {
-      let depositAmount: number;
-      let rentAmount: number;
-      try {
-        depositAmount = Number(parseUSDC(deposit));
-        rentAmount = Number(parseUSDC(monthlyRent));
-      } catch {
-        return { field: "monthlyRent", message: "Enter a valid monthly rent." };
-      }
-      if (rentAmount <= 0) {
-        return { field: "monthlyRent", message: "Monthly rent must be greater than zero." };
-      }
-      const depositMultiplier =
-        smallLandlordException && !tenantIsServiceMember ? 2 : 1;
-      if (depositAmount > rentAmount * depositMultiplier) {
-        return {
-          field: "deposit",
-          message:
-            depositMultiplier === 2
-              ? "California limits this qualifying small-landlord deposit to two months' rent."
-              : "California generally limits a residential security deposit to one month's rent.",
-        };
-      }
-      if (
-        operationsReserve !== CALIFORNIA_POLICY.operationsReserve ||
-        claimDays !== CALIFORNIA_POLICY.claimDays ||
-        responseDays !== CALIFORNIA_POLICY.responseDays ||
-        arbiterDays !== CALIFORNIA_POLICY.arbiterDays
-      ) {
-        return {
-          message:
-            "The California policy values changed unexpectedly. Reload before saving this proposal.",
-        };
-      }
-    } else if (
-      jurisdiction !== GENERIC_TEST_POLICY.jurisdiction ||
-      operationsReserve !== GENERIC_TEST_POLICY.operationsReserve
-    ) {
-      return {
-        message: "The non-specific test policy is invalid. Reload before saving this proposal.",
-      };
     }
     for (const [days, label, field] of [
       [claimDays, "Claim period", "claimDays"],
@@ -893,6 +932,39 @@ function AgreementForm({
     );
   }
 
+  function rebalancePendingTenantShares(changedIndex: number, requestedBps: number) {
+    const nextShares = rebalanceShares(
+      [primaryTenantShareBps, ...pendingTenants.map((tenant) => tenant.depositShareBps)],
+      changedIndex,
+      requestedBps,
+    );
+    setPrimaryTenantShareBps(nextShares[0]);
+    setPendingTenants((current) =>
+      current.map((tenant, index) => ({
+        ...tenant,
+        depositShareBps: nextShares[index + 1],
+      })),
+    );
+  }
+
+  function rebalanceSavedTenantShares(tenantId: string, requestedBps: number) {
+    if (!draft) return;
+    const changedIndex = draft.tenants.findIndex((tenant) => tenant.id === tenantId);
+    if (changedIndex < 0) return;
+    const nextShares = rebalanceShares(
+      draft.tenants.map(
+        (tenant) => tenantShareDraft[tenant.id] ?? tenant.depositShareBps,
+      ),
+      changedIndex,
+      requestedBps,
+    );
+    setTenantShareDraft(
+      Object.fromEntries(
+        draft.tenants.map((tenant, index) => [tenant.id, nextShares[index]]),
+      ),
+    );
+  }
+
   async function saveTenantShares() {
     if (!landlordAccess || !draft) return;
     const shares = draft.tenants.map((tenant) => ({
@@ -1089,13 +1161,15 @@ function AgreementForm({
     }
 
     const nowSec = Math.floor(Date.now() / 1000);
-    const startSec = Math.floor(new Date(claimWindowStart).getTime() / 1000);
+    const startSec = Math.floor(new Date(draft.terms.claimWindowStart).getTime() / 1000);
     if (startSec < nowSec) return setFormError("The expected possession-return date must still be in the future.");
     if (startSec - nowSec > MAX_CLAIM_WINDOW_OFFSET_SECONDS) {
       return setFormError("The expected possession-return date is too far in the future.");
     }
 
-    submittedJurisdiction.current = jurisdiction;
+    submittedJurisdiction.current = isJurisdictionCode(draft.terms.jurisdiction)
+      ? draft.terms.jurisdiction
+      : GENERIC_TEST_POLICY.jurisdiction;
     writeContract({
       address: OPEN_ESCROW_ADDRESS,
       abi: OpenEscrowABI,
@@ -1106,12 +1180,12 @@ function AgreementForm({
         tenantWallets,
         draft.tenants.map((tenant) => tenant.depositShareBps),
         hasArbiter ? arbiterWallet : ZERO_ADDRESS,
-        tokenChoice === "yield" ? YIELD_USDC_ADDRESS : USDC_ADDRESS,
-        parseUSDC(deposit),
+        draft.terms.tokenChoice === "yield" ? YIELD_USDC_ADDRESS : USDC_ADDRESS,
+        parseUSDC(draft.terms.deposit),
         BigInt(startSec),
-        BigInt(Number(claimDays) * DAY),
-        BigInt(Number(responseDays) * DAY),
-        BigInt(Number(arbiterDays) * DAY),
+        BigInt(Number(draft.terms.claimDays) * DAY),
+        BigInt(Number(draft.terms.responseDays) * DAY),
+        BigInt(Number(draft.terms.arbiterDays) * DAY),
       ],
     });
   }
@@ -1413,8 +1487,8 @@ function AgreementForm({
           <div>
             <h3 id="deposit-split-title">Tenant deposit ownership split</h3>
             <p className="hint">
-              Shares start equally divided. Every tenant approves this split as part of the
-              proposal, and the percentages must total 100%.
+              Shares start equally divided. Editing one percentage automatically rebalances the
+              others so the total stays at exactly 100%. Every tenant approves the split.
             </p>
           </div>
           <strong>
@@ -1443,10 +1517,14 @@ function AgreementForm({
               <label>
                 <span>
                   <strong>{tenantName || tenantEmail || "Primary tenant"}</strong>
-                  <small>
-                    Owes {tenantDepositAmount(deposit, primaryTenantShareBps)}{" "}
-                    {tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}
-                  </small>
+                  <TenantFundingDue
+                    deposit={deposit}
+                    reserve={operationsReserve}
+                    bps={primaryTenantShareBps}
+                    tenantCount={pendingTenants.length + 1}
+                    tenantIndex={0}
+                    tokenChoice={tokenChoice}
+                  />
                 </span>
                 <span className="percentage-input">
                   <input
@@ -1456,7 +1534,10 @@ function AgreementForm({
                     step="0.01"
                     value={sharePercent(primaryTenantShareBps)}
                     onChange={(event) =>
-                      setPrimaryTenantShareBps(percentToBps(event.target.value))
+                      rebalancePendingTenantShares(
+                        0,
+                        percentToBps(event.target.value),
+                      )
                     }
                   />
                   %
@@ -1466,10 +1547,14 @@ function AgreementForm({
                 <label key={tenant.email}>
                   <span>
                     <strong>{tenant.name}</strong>
-                    <small>
-                      Owes {tenantDepositAmount(deposit, tenant.depositShareBps)}{" "}
-                      {tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}
-                    </small>
+                    <TenantFundingDue
+                      deposit={deposit}
+                      reserve={operationsReserve}
+                      bps={tenant.depositShareBps}
+                      tenantCount={pendingTenants.length + 1}
+                      tenantIndex={index + 1}
+                      tokenChoice={tokenChoice}
+                    />
                   </span>
                   <span className="percentage-input">
                     <input
@@ -1478,16 +1563,12 @@ function AgreementForm({
                       max="100"
                       step="0.01"
                       value={sharePercent(tenant.depositShareBps)}
-                      onChange={(event) => {
-                        const nextBps = percentToBps(event.target.value);
-                        setPendingTenants((current) =>
-                          current.map((item, itemIndex) =>
-                            itemIndex === index
-                              ? { ...item, depositShareBps: nextBps }
-                              : item,
-                          ),
-                        );
-                      }}
+                      onChange={(event) =>
+                        rebalancePendingTenantShares(
+                          index + 1,
+                          percentToBps(event.target.value),
+                        )
+                      }
                     />
                     %
                   </span>
@@ -1495,18 +1576,18 @@ function AgreementForm({
               ))}
             </>
           ) : (
-            draft.tenants.map((tenant) => (
+            draft.tenants.map((tenant, index) => (
               <label key={tenant.id}>
                 <span>
                   <strong>{tenant.name || tenant.email}</strong>
-                  <small>
-                    Owes{" "}
-                    {tenantDepositAmount(
-                      deposit,
-                      tenantShareDraft[tenant.id] ?? tenant.depositShareBps,
-                    )}{" "}
-                    {tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}
-                  </small>
+                  <TenantFundingDue
+                    deposit={deposit}
+                    reserve={operationsReserve}
+                    bps={tenantShareDraft[tenant.id] ?? tenant.depositShareBps}
+                    tenantCount={draft.tenants.length}
+                    tenantIndex={index}
+                    tokenChoice={tokenChoice}
+                  />
                 </span>
                 <span className="percentage-input">
                   <input
@@ -1519,10 +1600,10 @@ function AgreementForm({
                       tenantShareDraft[tenant.id] ?? tenant.depositShareBps,
                     )}
                     onChange={(event) =>
-                      setTenantShareDraft((current) => ({
-                        ...current,
-                        [tenant.id]: percentToBps(event.target.value),
-                      }))
+                      rebalanceSavedTenantShares(
+                        tenant.id,
+                        percentToBps(event.target.value),
+                      )
                     }
                   />
                   %
@@ -1544,102 +1625,39 @@ function AgreementForm({
         )}
       </section>
 
-      <label id="proposal-terms">
-        Rental property address
-        <input
+      <div id="proposal-terms">
+        <AddressAutocomplete
           value={propertyAddress}
-          onChange={(event) => {
-            setPropertyAddress(event.target.value);
+          onChange={(next) => {
+            setPropertyAddress(next);
             clearFieldIssue("propertyAddress");
           }}
-          placeholder="123 Main Street, City, CA 90000"
-          autoComplete="street-address"
           disabled={approvedTermsLocked}
-          data-proposal-field="propertyAddress"
-          aria-invalid={invalidField === "propertyAddress"}
+          invalid={invalidField === "propertyAddress"}
         />
-      </label>
+      </div>
       <p className="field-help">
         This identifies which rental and security deposit the proposal covers. It remains in the
         private agreement record and is not written directly to the public blockchain.
       </p>
 
-      <label>
-        Jurisdiction policy
-        <select
-          value={jurisdiction}
-          disabled={approvedTermsLocked}
-          onChange={(event) => {
-            const next = event.target.value as JurisdictionCode;
-            setJurisdiction(next);
-            setOperationsReserve("0");
-            if (next === CALIFORNIA_POLICY.jurisdiction) {
-              setClaimDays(CALIFORNIA_POLICY.claimDays);
-              setResponseDays(CALIFORNIA_POLICY.responseDays);
-              setArbiterDays(CALIFORNIA_POLICY.arbiterDays);
-            } else {
-              setClaimDays(GENERIC_TEST_POLICY.claimDays);
-              setResponseDays(GENERIC_TEST_POLICY.responseDays);
-              setArbiterDays(GENERIC_TEST_POLICY.arbiterDays);
-            }
-          }}
-        >
-          {JURISDICTIONS.map((option) => (
-            <option key={option.code} value={option.code}>{option.label}</option>
-          ))}
-        </select>
-      </label>
-      {isCalifornia ? (
-      <section className="jurisdiction-notice california-policy" aria-labelledby="california-policy-title">
+      <section className="jurisdiction-notice generic-test-policy" aria-labelledby="generic-policy-title">
         <div className="california-policy-heading">
           <div>
-            <strong id="california-policy-title">California policy profile</strong>
-            <small>{CALIFORNIA_POLICY.version}</small>
+            <strong id="generic-policy-title">Non-specific test jurisdiction</strong>
+            <small>{GENERIC_TEST_POLICY.version}</small>
           </div>
-          <span className="policy-lock">Locked</span>
+          <span className="policy-test">Test only</span>
         </div>
         <p>
-          This pilot is limited to California residential tenancies. Statewide timing and
-          documentation rules are fixed in the proposal and revalidated by the server.
+          This build uses one generic profile for contract and lifecycle testing. It does not
+          encode any state or local law, and it does not validate legal compliance.
         </p>
-        <ul>
-          <li>The statutory accounting and refund period is 21 calendar days after the tenant vacates.</li>
-          <li>Move-in, pre-repair, and post-repair photographs are required when applicable.</li>
-          <li>Deductions are limited to California-authorized purposes and reasonable amounts.</li>
-          <li>Itemization and supporting documentation must accompany a deduction claim.</li>
-          <li>The tenant keeps the right to request a pre-move-out inspection during the final 14 days.</li>
-        </ul>
         <p className="field-help">
-          OpenEscrow encodes safeguards; it does not determine whether a particular deduction is
-          lawful or replace advice from a California housing lawyer.{" "}
-          <a href={CALIFORNIA_POLICY.statuteUrl} target="_blank" rel="noreferrer">
-            Civil Code § 1950.5
-          </a>
-          {" · "}
-          <a href={CALIFORNIA_POLICY.guideUrl} target="_blank" rel="noreferrer">
-            California DRE guidance
-          </a>
+          Timing fields remain editable and become part of the parties&apos; approved record.
+          Do not use this profile with real funds or a real tenancy.
         </p>
       </section>
-      ) : (
-        <section className="jurisdiction-notice generic-test-policy" aria-labelledby="generic-policy-title">
-          <div className="california-policy-heading">
-            <div>
-              <strong id="generic-policy-title">Non-specific test policy</strong>
-              <small>{GENERIC_TEST_POLICY.version}</small>
-            </div>
-            <span className="policy-test">Test only</span>
-          </div>
-          <p>
-            This profile is for contract and lifecycle testing where no real jurisdiction is
-            being represented. It does not encode state law or validate legal compliance.
-          </p>
-          <p className="field-help">
-            Timing fields remain editable and become part of the parties&apos; approved record.
-            Do not use this profile with real funds or a real tenancy.
-          </p>
-        </section>
-      )}
 
       <fieldset className="token-choice">
         <legend>Deposit test token</legend>
@@ -1652,54 +1670,6 @@ function AgreementForm({
           <span><strong>ytUSDC ⓘ</strong><small>Yield-test shares · 20%/day accelerated demo</small></span>
         </label>
       </fieldset>
-      {isCalifornia && (
-      <>
-      <label>
-        Monthly rent (used for California deposit limit)
-        <input
-          value={monthlyRent}
-          onChange={(event) => {
-            setMonthlyRent(event.target.value);
-            clearFieldIssue("monthlyRent");
-          }}
-          type="number"
-          min="0"
-          step="0.000001"
-          disabled={approvedTermsLocked}
-          data-proposal-field="monthlyRent"
-          aria-invalid={invalidField === "monthlyRent"}
-        />
-      </label>
-      <fieldset className="california-deposit-exception">
-        <legend>California deposit-cap facts</legend>
-        <label>
-          <input
-            type="checkbox"
-            checked={smallLandlordException}
-            disabled={approvedTermsLocked}
-            onChange={(event) => setSmallLandlordException(event.target.checked)}
-          />
-          <span>
-            The landlord is a natural person or qualifying family-owned LLC and owns no more than
-            two rental properties totaling no more than four units.
-          </span>
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={tenantIsServiceMember}
-            disabled={approvedTermsLocked}
-            onChange={(event) => setTenantIsServiceMember(event.target.checked)}
-          />
-          <span>The prospective tenant is a service member.</span>
-        </label>
-        <p className="field-help">
-          The default cap is one month’s rent. A qualifying small landlord may use a two-month cap,
-          except for a service member. These facts become part of the approved record.
-        </p>
-      </fieldset>
-      </>
-      )}
       <label>
         Deposit amount ({tokenChoice === "yield" ? "ytUSDC shares" : "testUSDC"})
         <input
@@ -1723,21 +1693,21 @@ function AgreementForm({
         </div>
         <div>
           <span>Testnet network &amp; storage reserve</span>
-          <strong>$5 testUSDC total · split evenly between tenants</strong>
+          <strong>
+            {operationsReserve} {tokenLabel(tokenChoice)} total · split evenly between tenants
+          </strong>
         </div>
         <div className="cost-total">
           <span>Tenants provide in total</span>
           <strong>
-            {tokenChoice === "yield"
-              ? `${deposit || "0"} ytUSDC + $5 testUSDC reserve`
-              : `${(Number(deposit || 0) + 5).toLocaleString(undefined, { maximumFractionDigits: 6 })} testUSDC`}
+            {totalFundingAmount(deposit, operationsReserve)} {tokenLabel(tokenChoice)}
           </strong>
         </div>
         <p>
           Each tenant pays the approved deposit percentage shown above plus an equal share of the
-          separate $5 testnet reserve. The reserve is not refundable deposit principal. California
-          treatment of any real tenant-paid operations charge requires legal review before a
-          production deployment.
+          separate {operationsReserve} {tokenLabel(tokenChoice)} testnet reserve. The reserve uses
+          the selected token but is not refundable deposit principal. This test profile does not
+          determine the legal treatment of any real tenant-paid charge.
         </p>
       </section>
       <label>
@@ -1755,9 +1725,8 @@ function AgreementForm({
         />
       </label>
       <p className="field-help">
-        {isCalifornia
-          ? "California’s 21-day period runs after the tenant vacates, not merely when a fixed lease date passes. Confirm this expected date before onchain finalization; an early or late move-out requires a new approved proposal in this version."
-          : "This is the test lifecycle start date. It is not calculated from or validated against any jurisdiction’s law."}
+        This is the test lifecycle start date. It is not calculated from or validated against any
+        jurisdiction&apos;s law.
       </p>
       {claimWindowHasPassed && (
         <p className="field-validation-error" role="alert">
@@ -1766,7 +1735,7 @@ function AgreementForm({
         </p>
       )}
       <label>
-        {isCalifornia ? "California accounting and refund period" : "Test deduction window"}
+        Test deduction window
         <input
           value={claimDays}
           onChange={(event) => {
@@ -1775,15 +1744,13 @@ function AgreementForm({
           }}
           type="number"
           min="1"
-          disabled={isCalifornia || approvedTermsLocked}
+          disabled={approvedTermsLocked}
           data-proposal-field="claimDays"
           aria-invalid={invalidField === "claimDays"}
         />
       </label>
       <p className="field-help">
-        {isCalifornia
-          ? "Locked at 21 calendar days under Civil Code § 1950.5(h)."
-          : "Editable test timing. This value does not represent a legal deadline."}
+        Editable test timing. This value does not represent a legal deadline.
       </p>
       <label>
         OpenEscrow tenant response period
@@ -1795,15 +1762,13 @@ function AgreementForm({
           }}
           type="number"
           min="1"
-          disabled={isCalifornia || approvedTermsLocked}
+          disabled={approvedTermsLocked}
           data-proposal-field="responseDays"
           aria-invalid={invalidField === "responseDays"}
         />
       </label>
       <p className="field-help">
-        {isCalifornia
-          ? "Locked at 7 days as a California pilot workflow rule; this is not a statutory deadline."
-          : "Editable test timing for the tenant’s approve-or-dispute step."}
+        Editable test timing for the tenant&apos;s approve-or-dispute step.
       </p>
       {ARBITER_UI_ENABLED && (showArbiter || Boolean(draft?.arbiterEmail)) && (
         <>
@@ -1817,15 +1782,13 @@ function AgreementForm({
               }}
               type="number"
               min="1"
-              disabled={isCalifornia || approvedTermsLocked}
+              disabled={approvedTermsLocked}
               data-proposal-field="arbiterDays"
               aria-invalid={invalidField === "arbiterDays"}
             />
           </label>
           <p className="field-help">
-            {isCalifornia
-              ? "Locked at 7 days as a California pilot workflow rule; this is not a statutory deadline."
-              : "Editable test timing for the optional arbiter’s ruling step."}
+            Editable test timing for the optional arbiter&apos;s ruling step.
           </p>
         </>
       )}
@@ -2000,7 +1963,7 @@ function AgreementForm({
             )}
           </div>
           <div className="tenant-invite-list">
-            {draft.tenants.map((tenant) => (
+            {draft.tenants.map((tenant, index) => (
               <div className="tenant-invite-row" key={tenant.id}>
                 {editingTenantId === tenant.id ? (
                   <div className="tenant-edit-fields">
@@ -2031,9 +1994,15 @@ function AgreementForm({
                   <div>
                     <strong>{tenant.name || "Tenant"}</strong>
                     <span>{tenant.email}</span>
-                    <small>
-                      {`${sharePercent(tenant.depositShareBps)}% of deposit · equal share of $5 reserve`}
-                    </small>
+                    <small>{sharePercent(tenant.depositShareBps)}% deposit ownership</small>
+                    <TenantFundingDue
+                      deposit={draft.terms.deposit}
+                      reserve={draft.terms.operationsReserve}
+                      bps={tenant.depositShareBps}
+                      tenantCount={draft.tenants.length}
+                      tenantIndex={index}
+                      tokenChoice={draft.terms.tokenChoice}
+                    />
                   </div>
                 )}
                 <div className="invite-actions tenant-management-actions">
