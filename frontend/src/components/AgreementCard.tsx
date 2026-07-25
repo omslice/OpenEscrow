@@ -11,8 +11,17 @@ import { ArbiterReplacementSection } from "./ArbiterReplacementSection";
 import { NextAction } from "./NextAction";
 import { ProposalActions } from "./ProposalActions";
 import { AgreementNoticeCenter } from "./AgreementNoticeCenter";
+import type { NegotiationAccess } from "../lib/negotiations";
 
-export function AgreementCard({ id, onRemove }: { id: bigint; onRemove?: () => void }) {
+export function AgreementCard({
+  id,
+  onRemove,
+  negotiationAccess,
+}: {
+  id: bigint;
+  onRemove?: () => void;
+  negotiationAccess?: NegotiationAccess | null;
+}) {
   const { agreement, exists, isLoading, error, refetch } = useAgreement(id);
 
   if (isLoading) return <div className="card">Loading agreement #{id.toString()}...</div>;
@@ -41,9 +50,9 @@ export function AgreementCard({ id, onRemove }: { id: bigint; onRemove?: () => v
       <ArbiterActions id={id} agreement={agreement} onRefetch={onRefetch} />
       <ProposalActions id={id} agreement={agreement} onRefetch={onRefetch} />
       <TenantFundAction id={id} agreement={agreement} onRefetch={onRefetch} />
-      <ClaimSection id={id} agreement={agreement} onRefetch={onRefetch} />
-      <ResponseSection id={id} agreement={agreement} onRefetch={onRefetch} />
-      <DisputeResolutionSection id={id} agreement={agreement} onRefetch={onRefetch} />
+      <ClaimSection id={id} agreement={agreement} onRefetch={onRefetch} negotiationAccess={negotiationAccess} />
+      <ResponseSection id={id} agreement={agreement} onRefetch={onRefetch} negotiationAccess={negotiationAccess} />
+      <DisputeResolutionSection id={id} agreement={agreement} onRefetch={onRefetch} negotiationAccess={negotiationAccess} />
       <ArbiterReplacementSection id={id} agreement={agreement} onRefetch={onRefetch} />
       <TimeoutSection id={id} agreement={agreement} onRefetch={onRefetch} />
       <WithdrawSection id={id} agreement={agreement} onRefetch={onRefetch} />

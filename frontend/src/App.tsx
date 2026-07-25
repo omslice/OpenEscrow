@@ -8,6 +8,7 @@ import { useDiscoverAgreements } from "./lib/useDiscoverAgreements";
 import { TestFunds } from "./components/TestFunds";
 import { PublicIntro } from "./components/PublicIntro";
 import { AccountCenter } from "./components/AccountCenter";
+import { AgreementNegotiation } from "./components/AgreementNegotiation";
 import { isJurisdictionCode, rememberJurisdiction } from "./lib/jurisdictions";
 import {
   clearInviteRole,
@@ -16,6 +17,10 @@ import {
   useInviteRole,
   useWorkspaceRole,
 } from "./lib/inviteContext";
+import {
+  captureNegotiationAccessFromUrl,
+  readNegotiationAccess,
+} from "./lib/negotiations";
 import "./App.css";
 
 type Tab = "create" | "track";
@@ -29,6 +34,12 @@ function App() {
   const [scanMessage, setScanMessage] = useState<string | null>(null);
   const inviteRole = useInviteRole();
   const workspaceRole = useWorkspaceRole();
+  const [proposalAccess] = useState(() => {
+    const captured = captureNegotiationAccessFromUrl();
+    if (captured) return captured;
+    const proposalId = new URLSearchParams(window.location.search).get("proposal");
+    return proposalId ? readNegotiationAccess(proposalId) : null;
+  });
   const startDemo = () => {
     setTab(workspaceRole === "landlord" ? "create" : "track");
     window.requestAnimationFrame(() => {
@@ -67,9 +78,9 @@ function App() {
           <span className="eyebrow">{roleLabel[inviteRole]} invitation · role locked</span>
           <h2 id="invite-landing-title">You are joining as the {inviteRole}.</h2>
           <p>
-            Continue with the Google account that received this invitation, or connect the wallet
-            that should act as the {inviteRole}. Roles are assigned per agreement and verified
-            against the connected wallet onchain.
+            Continue with the Google account that received this invitation. You can review the
+            landlord’s saved terms, propose changes, and approve the current revision as the{" "}
+            {inviteRole}. This invitation does not provide landlord proposal tools.
           </p>
           <button className="btn btn-ghost" onClick={clearInviteRole}>
             This invitation is for someone else
@@ -115,7 +126,7 @@ function App() {
       {workspaceRole && (
         <nav className="tabs" id="demo-workspace">
           <button className={tab === "track" ? "tab active" : "tab"} onClick={() => setTab("track")}>
-            Deposit dashboard
+            {proposalAccess ? "Agreement review" : "Deposit dashboard"}
           </button>
           {workspaceRole === "landlord" && !inviteRole && (
             <button className={tab === "create" ? "tab active" : "tab"} onClick={() => setTab("create")}>
@@ -133,12 +144,16 @@ function App() {
         </nav>
       )}
 
-      {workspaceRole && <TestFunds />}
+      {workspaceRole && !proposalAccess && <TestFunds />}
 
       {workspaceRole === "landlord" && !inviteRole && tab === "create" && <CreateAgreementForm />}
 
       {workspaceRole && tab === "track" && (
         <div>
+          {proposalAccess ? (
+            <AgreementNegotiation access={proposalAccess} />
+          ) : (
+            <>
           <div className="card">
             <h2>Find agreements involving you</h2>
             <p className="hint">
@@ -199,6 +214,8 @@ function App() {
           {ids.map((id) => (
             <AgreementCard key={id.toString()} id={id} onRemove={() => removeId(id)} />
           ))}
+            </>
+          )}
         </div>
       )}
       {!workspaceRole && (

@@ -8,7 +8,8 @@
     "build": "tsc -b && vite build",
     "build:sites": "npm run build && node prepare-sites.mjs",
     "lint": "oxlint",
-    "check": "npm run lint && npm run build",
+    "check": "npm run lint && npm run test:server && npm run build",
+    "test:server": "node --test server/index.test.mjs",
     "e2e:live": "node e2e-full-flow.mjs",
     "preview": "vite preview"
   },

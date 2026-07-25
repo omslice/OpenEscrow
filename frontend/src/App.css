@@ -956,6 +956,185 @@ a.btn.disabled {
   border-width: 2px;
 }
 
+.proposal-builder-heading,
+.negotiation-heading,
+.record-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+}
+
+.proposal-builder-heading h2,
+.negotiation-heading h2,
+.record-header h3 {
+  margin: 4px 0 0;
+}
+
+.negotiation-status {
+  flex: 0 0 auto;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: var(--accent-bg);
+  color: var(--text-h);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.status-ready,
+.status-finalized {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+}
+
+.invite-gate,
+.onchain-ready {
+  display: grid;
+  gap: 4px;
+  margin: 18px 0 0;
+  border: 1px dashed var(--accent-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  background: var(--accent-bg);
+}
+
+.invite-gate span,
+.onchain-ready p {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.proposal-review-controls,
+.negotiation-response {
+  margin-top: 22px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+
+.participant-grid,
+.approval-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 16px 0;
+}
+
+.participant-grid > div,
+.approval {
+  display: grid;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 11px 12px;
+  background: var(--surface);
+  overflow-wrap: anywhere;
+}
+
+.participant-grid span,
+.approval span {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.approval-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.approval.approved {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+  background: color-mix(in srgb, var(--success) 8%, var(--surface));
+}
+
+.negotiation-terms {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1px;
+  overflow: hidden;
+  margin: 18px 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--border);
+}
+
+.negotiation-terms > div {
+  display: grid;
+  grid-template-columns: minmax(115px, 0.8fr) 1.2fr;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--surface);
+}
+
+.negotiation-terms dt {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.negotiation-terms dd {
+  margin: 0;
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.record-header {
+  margin-top: 20px;
+}
+
+.activity-timeline {
+  display: grid;
+  gap: 0;
+  margin: 14px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.activity-timeline li {
+  display: grid;
+  grid-template-columns: minmax(145px, 0.65fr) minmax(70px, 0.35fr) 2fr;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding: 10px 0;
+  font-size: 13px;
+}
+
+.activity-timeline time {
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-timeline strong {
+  text-transform: capitalize;
+}
+
+.onchain-ready h3 {
+  margin: 2px 0;
+}
+
+.evidence-upload,
+.claim-notice-actions {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 12px;
+  background: var(--surface);
+}
+
+.evidence-upload label {
+  margin: 0;
+}
+
+.finalized-agreement-workspace {
+  margin-top: 24px;
+  border-top: 1px solid var(--border);
+  padding-top: 20px;
+}
+
+.finalized-agreement-workspace > .agreement-card {
+  margin: 12px 0 0;
+}
+
 @media (max-width: 680px) {
   .app-header {
     align-items: flex-start;
@@ -992,5 +1171,23 @@ a.btn.disabled {
 
   .account-grid {
     grid-template-columns: 1fr;
+  }
+
+  .proposal-builder-heading,
+  .negotiation-heading,
+  .record-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .participant-grid,
+  .approval-grid,
+  .negotiation-terms {
+    grid-template-columns: 1fr;
+  }
+
+  .activity-timeline li {
+    grid-template-columns: 1fr;
+    gap: 3px;
   }
 }

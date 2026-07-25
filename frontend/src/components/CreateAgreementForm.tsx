@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { decodeEventLog, isAddress } from "viem";
 import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
@@ -15,13 +15,28 @@ import {
 import { parseUSDC } from "../lib/format";
 import {
   JURISDICTIONS,
-  jurisdictionLabel,
   rememberJurisdiction,
   type JurisdictionCode,
 } from "../lib/jurisdictions";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import { useTrackedAgreements } from "../lib/useTrackedAgreements";
-import { buildInviteUrl, type InviteRole } from "../lib/inviteContext";
+import type { InviteRole } from "../lib/inviteContext";
+import {
+  buildNegotiationInviteUrl,
+  clearLandlordBundle,
+  createNegotiation,
+  loadNegotiation,
+  negotiationAction,
+  negotiationReportUrl,
+  readLandlordBundle,
+  rememberLandlordBundle,
+  storeNegotiationAccess,
+  type AgreementTerms,
+  type CreatedNegotiation,
+  type NegotiationAccess,
+  type NegotiationRecord,
+} from "../lib/negotiations";
+import { AgreementCard } from "./AgreementCard";
 
 const DAY = 24 * 60 * 60;
 const MAX_PERIOD_DAYS = MAX_PERIOD_SECONDS / DAY;
@@ -37,20 +52,26 @@ function validatePeriodDays(days: string, label: string): string | null {
   return null;
 }
 
-function inviteContent(email: string, role: InviteRole) {
-  const inviteUrl = buildInviteUrl(role);
-  const subject = "You have been invited to OpenEscrow";
+function inviteContent(
+  email: string,
+  role: InviteRole,
+  proposalId: string,
+  token: string,
+) {
+  const inviteUrl = buildNegotiationInviteUrl(role, proposalId, token);
+  const subject = `Review OpenEscrow agreement proposal ${proposalId}`;
   const body = [
-    `You have been invited to participate in an OpenEscrow security-deposit agreement as the ${role}.`,
+    `You have been invited to review an OpenEscrow security-deposit proposal as the ${role}.`,
     "",
-    `Create or sign in to your OpenEscrow account here: ${inviteUrl}`,
+    `Review the landlord's terms, propose changes, or approve the current revision here: ${inviteUrl}`,
     "",
-    "OpenEscrow will create an EVM wallet for you when you sign up with Google, or you can connect your own wallet. For this MVP, copy that wallet address from your account and send it back to the landlord so it can be mapped to this agreement.",
+    "Your invitation is locked to the role named above. OpenEscrow can create an EVM wallet when you sign in with Google, or you can connect your own wallet.",
+    "",
+    "Every proposal, requested change, approval, invitation action, and finalization is added to a timestamped running record.",
     "",
     "This is a Base Sepolia testnet demonstration. Do not send real funds.",
   ].join("\n");
   return {
-    subject,
     body,
     gmailUrl: `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
   };
@@ -62,8 +83,6 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
 
   const [tenantEmail, setTenantEmail] = useState("");
   const [arbiterEmail, setArbiterEmail] = useState("");
-  const [tenantWallet, setTenantWallet] = useState("");
-  const [arbiterWallet, setArbiterWallet] = useState("");
   const [deposit, setDeposit] = useState("100");
   const [tokenChoice, setTokenChoice] = useState<"plain" | "yield">("plain");
   const [claimWindowStart, setClaimWindowStart] = useState("");
@@ -71,14 +90,60 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
   const [responseDays, setResponseDays] = useState("7");
   const [arbiterDays, setArbiterDays] = useState("7");
   const [jurisdiction, setJurisdiction] = useState<JurisdictionCode>("testnet-generic");
+  const [draft, setDraft] = useState<NegotiationRecord | null>(null);
+  const [accessBundle, setAccessBundle] = useState<CreatedNegotiation["access"] | null>(null);
+  const [revisionSummary, setRevisionSummary] = useState("");
   const [createdId, setCreatedId] = useState<bigint | null>(null);
   const [formError, setFormError] = useState<string | null>(null);
-  const [copiedInvite, setCopiedInvite] = useState<"tenant" | "arbiter" | null>(null);
+  const [formMessage, setFormMessage] = useState<string | null>(null);
+  const [copiedInvite, setCopiedInvite] = useState<InviteRole | null>(null);
+  const [isSavingDraft, setIsSavingDraft] = useState(false);
   const submittedJurisdiction = useRef<JurisdictionCode>("testnet-generic");
   const handledReceipt = useRef<`0x${string}` | null>(null);
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { data: receipt, isLoading: isMining } = useWaitForTransactionReceipt({ hash });
+
+  const landlordAccess = useMemo<NegotiationAccess | null>(
+    () =>
+      draft && accessBundle
+        ? { proposalId: draft.id, role: "landlord", token: accessBundle.landlord }
+        : null,
+    [draft, accessBundle],
+  );
+
+  function applyTerms(record: NegotiationRecord) {
+    setTenantEmail(record.tenantEmail);
+    setArbiterEmail(record.arbiterEmail || "");
+    setDeposit(record.terms.deposit);
+    setTokenChoice(record.terms.tokenChoice);
+    setClaimWindowStart(record.terms.claimWindowStart);
+    setClaimDays(record.terms.claimDays);
+    setResponseDays(record.terms.responseDays);
+    setArbiterDays(record.terms.arbiterDays);
+    if (JURISDICTIONS.some((item) => item.code === record.terms.jurisdiction)) {
+      setJurisdiction(record.terms.jurisdiction as JurisdictionCode);
+    }
+  }
+
+  useEffect(() => {
+    const saved = readLandlordBundle();
+    if (!saved) return;
+    const access: NegotiationAccess = {
+      proposalId: saved.proposalId,
+      role: "landlord",
+      token: saved.access.landlord,
+    };
+    loadNegotiation(access)
+      .then((record) => {
+        setDraft(record);
+        setAccessBundle(saved.access);
+        applyTerms(record);
+      })
+      .catch(() => {
+        clearLandlordBundle();
+      });
+  }, []);
 
   useEffect(() => {
     if (!receipt || handledReceipt.current === receipt.transactionHash) return;
@@ -92,88 +157,183 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
           setCreatedId(id);
           rememberJurisdiction(id, submittedJurisdiction.current);
           addId(id);
-          const url = new URL(window.location.href);
-          url.searchParams.set("id", id.toString());
-          url.searchParams.set("jurisdiction", submittedJurisdiction.current);
-          window.history.replaceState(null, "", url.toString());
+          if (landlordAccess) {
+            void negotiationAction(landlordAccess, {
+              type: "finalize",
+              agreementId: id.toString(),
+              transactionHash: receipt.transactionHash,
+            }).then(setDraft);
+          }
           break;
         }
       } catch {
-        // not this event, ignore
+        // Ignore logs emitted by other contracts in the transaction.
       }
     }
-  }, [receipt, addId]);
+  }, [receipt, addId, landlordAccess]);
 
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setFormError(null);
-    setCreatedId(null);
+  function currentTerms(): AgreementTerms {
+    return {
+      jurisdiction,
+      tokenChoice,
+      deposit,
+      claimWindowStart,
+      claimDays,
+      responseDays,
+      arbiterDays,
+    };
+  }
 
+  function validateDraft(): string | null {
     if (ACCOUNT_AUTH_ENABLED && !landlordEmail) {
-      return setFormError("The landlord must link a verified email before proposing an agreement.");
+      return "The landlord must link a verified email before creating a proposal.";
     }
-    if (!address) return setFormError("Connect the landlord wallet before proposing an agreement.");
-    if (!EMAIL_PATTERN.test(tenantEmail)) return setFormError("Enter a valid tenant email.");
-    const hasArbiter = arbiterEmail.trim() !== "" || arbiterWallet.trim() !== "";
+    if (!EMAIL_PATTERN.test(tenantEmail)) return "Enter a valid tenant email.";
+    const hasArbiter = arbiterEmail.trim() !== "";
     if (hasArbiter && !EMAIL_PATTERN.test(arbiterEmail)) {
-      return setFormError("Enter a valid arbiter email, or leave both arbiter fields blank.");
+      return "Enter a valid arbiter email, or leave it blank.";
     }
     if (hasArbiter && tenantEmail.toLowerCase() === arbiterEmail.toLowerCase()) {
-      return setFormError("Tenant and arbiter must use different emails.");
+      return "Tenant and arbiter must use different emails.";
     }
     if (
       tenantEmail.toLowerCase() === landlordEmail.toLowerCase() ||
       (hasArbiter && arbiterEmail.toLowerCase() === landlordEmail.toLowerCase())
     ) {
-      return setFormError("Landlord, tenant, and arbiter must use different emails.");
+      return "Landlord, tenant, and arbiter must use different emails.";
     }
-    if (!tenantWallet) return setFormError("The tenant wallet must be resolved before finalizing.");
-    if (hasArbiter && (!arbiterEmail || !arbiterWallet)) {
-      return setFormError("Provide both an arbiter email and wallet, or leave both blank.");
+    if (!claimWindowStart) return "Expected lease expiration is required.";
+    const nowSec = Math.floor(Date.now() / 1000);
+    const startSec = Math.floor(new Date(claimWindowStart).getTime() / 1000);
+    if (!Number.isFinite(startSec) || startSec <= nowSec) {
+      return "Expected lease expiration must be in the future.";
     }
-    if (!isAddress(tenantWallet)) return setFormError("The mapped tenant wallet is not valid.");
-    if (hasArbiter && !isAddress(arbiterWallet)) {
-      return setFormError("The mapped arbiter wallet is not valid.");
+    if (startSec - nowSec > MAX_CLAIM_WINDOW_OFFSET_SECONDS) {
+      return "Expected lease expiration is too far in the future.";
     }
-    if (hasArbiter && tenantWallet.toLowerCase() === arbiterWallet.toLowerCase()) {
-      return setFormError("Tenant and arbiter must be different addresses.");
-    }
-    if (
-      address &&
-      (tenantWallet.toLowerCase() === address.toLowerCase() ||
-        (hasArbiter && arbiterWallet.toLowerCase() === address.toLowerCase()))
-    ) {
-      return setFormError("Tenant and arbiter must both be different from your connected (landlord) address.");
-    }
-    if (!claimWindowStart) return setFormError("Claim window start date is required.");
-
-    let depositRaw: bigint;
     try {
-      depositRaw = parseUSDC(deposit);
+      if (parseUSDC(deposit) <= 0n) return "Deposit must be greater than zero.";
     } catch {
-      return setFormError("Invalid deposit amount.");
+      return "Invalid deposit amount.";
     }
-    if (depositRaw <= 0n) return setFormError("Deposit must be greater than zero.");
-
     for (const [days, label] of [
       [claimDays, "Claim period"],
       [responseDays, "Response period"],
       [arbiterDays, "Arbiter ruling period"],
     ] as const) {
-      const err = validatePeriodDays(days, label);
-      if (err) return setFormError(err);
+      const validation = validatePeriodDays(days, label);
+      if (validation) return validation;
+    }
+    return null;
+  }
+
+  async function saveDraft() {
+    setFormError(null);
+    setFormMessage(null);
+    const validation = validateDraft();
+    if (validation) return setFormError(validation);
+
+    setIsSavingDraft(true);
+    try {
+      if (!draft) {
+        const created = await createNegotiation({
+          landlordEmail,
+          tenantEmail,
+          arbiterEmail: arbiterEmail.trim() || null,
+          terms: currentTerms(),
+        });
+        setDraft(created.record);
+        setAccessBundle(created.access);
+        const access: NegotiationAccess = {
+          proposalId: created.record.id,
+          role: "landlord",
+          token: created.access.landlord,
+        };
+        storeNegotiationAccess(access, true);
+        rememberLandlordBundle(created);
+        setFormMessage("Proposal saved. Invitations are now unlocked for this exact revision.");
+      } else {
+        if (!landlordAccess) throw new Error("The landlord proposal access is unavailable.");
+        if (revisionSummary.trim().length < 8) {
+          throw new Error("Describe what changed before publishing a new revision.");
+        }
+        const updated = await negotiationAction(landlordAccess, {
+          type: "revise",
+          summary: revisionSummary.trim(),
+          terms: currentTerms(),
+        });
+        setDraft(updated);
+        setRevisionSummary("");
+        setFormMessage(`Revision ${updated.revision} published. Prior approvals were reset.`);
+      }
+    } catch (saveError) {
+      setFormError(saveError instanceof Error ? saveError.message : "The proposal could not be saved.");
+    } finally {
+      setIsSavingDraft(false);
+    }
+  }
+
+  function inviteFor(role: InviteRole) {
+    if (!draft || !accessBundle) return null;
+    const token = role === "tenant" ? accessBundle.tenant : accessBundle.arbiter;
+    const email = role === "tenant" ? draft.tenantEmail : draft.arbiterEmail;
+    return token && email ? inviteContent(email, role, draft.id, token) : null;
+  }
+
+  function recordInvitation(role: InviteRole, method: "gmail" | "copy") {
+    if (!landlordAccess) return;
+    void negotiationAction(landlordAccess, {
+      type: "invitation_prepared",
+      invitedRole: role,
+      method,
+    }).then(setDraft);
+  }
+
+  async function copyInvite(role: InviteRole) {
+    const invitation = inviteFor(role);
+    if (!invitation) return;
+    await navigator.clipboard.writeText(invitation.body);
+    setCopiedInvite(role);
+    recordInvitation(role, "copy");
+  }
+
+  function openInvite(role: InviteRole) {
+    const invitation = inviteFor(role);
+    if (!invitation) return;
+    window.open(invitation.gmailUrl, "_blank", "noopener,noreferrer");
+    recordInvitation(role, "gmail");
+  }
+
+  function finalizeOnchain() {
+    setFormError(null);
+    setCreatedId(null);
+    if (!draft || draft.status !== "ready") {
+      return setFormError("The tenant and optional arbiter must approve the current revision first.");
+    }
+    if (!address) return setFormError("Connect the landlord wallet before finalizing.");
+    const tenantWallet = draft.tenantWallet || "";
+    const arbiterWallet = draft.arbiterWallet || "";
+    const hasArbiter = Boolean(draft.arbiterEmail);
+    if (!isAddress(tenantWallet)) return setFormError("The tenant must approve with a valid wallet.");
+    if (hasArbiter && !isAddress(arbiterWallet)) {
+      return setFormError("The arbiter must approve with a valid wallet.");
+    }
+    if (tenantWallet.toLowerCase() === address.toLowerCase()) {
+      return setFormError("The landlord and tenant wallets must be different.");
+    }
+    if (hasArbiter && arbiterWallet.toLowerCase() === address.toLowerCase()) {
+      return setFormError("The landlord and arbiter wallets must be different.");
+    }
+    if (hasArbiter && tenantWallet.toLowerCase() === arbiterWallet.toLowerCase()) {
+      return setFormError("The tenant and arbiter wallets must be different.");
     }
 
     const nowSec = Math.floor(Date.now() / 1000);
     const startSec = Math.floor(new Date(claimWindowStart).getTime() / 1000);
-    if (startSec < nowSec) return setFormError("Claim window start must be in the future.");
+    if (startSec < nowSec) return setFormError("The lease expiration must still be in the future.");
     if (startSec - nowSec > MAX_CLAIM_WINDOW_OFFSET_SECONDS) {
-      return setFormError("Claim window start is too far in the future.");
+      return setFormError("The lease expiration is too far in the future.");
     }
-
-    const claimPeriod = BigInt(Number(claimDays) * DAY);
-    const responsePeriod = BigInt(Number(responseDays) * DAY);
-    const arbiterPeriod = BigInt(Number(arbiterDays) * DAY);
 
     submittedJurisdiction.current = jurisdiction;
     writeContract({
@@ -183,234 +343,241 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
       account: address,
       chain,
       args: [
-        tenantWallet as `0x${string}`,
-        hasArbiter ? (arbiterWallet as `0x${string}`) : ZERO_ADDRESS,
+        tenantWallet,
+        hasArbiter ? arbiterWallet : ZERO_ADDRESS,
         tokenChoice === "yield" ? YIELD_USDC_ADDRESS : USDC_ADDRESS,
-        depositRaw,
+        parseUSDC(deposit),
         BigInt(startSec),
-        claimPeriod,
-        responsePeriod,
-        arbiterPeriod,
+        BigInt(Number(claimDays) * DAY),
+        BigInt(Number(responseDays) * DAY),
+        BigInt(Number(arbiterDays) * DAY),
       ],
     });
   }
 
   return (
-    <form className="card" onSubmit={submit}>
-      <h2>Propose a new agreement</h2>
+    <section className="card proposal-builder">
+      <div className="proposal-builder-heading">
+        <div>
+          <span className="eyebrow">Landlord-initiated workflow</span>
+          <h2>{draft ? `Agreement proposal ${draft.id}` : "Set up a new agreement proposal"}</h2>
+        </div>
+        {draft && <span className={`negotiation-status status-${draft.status}`}>Revision {draft.revision}</span>}
+      </div>
       <p className="hint">
-        You are the landlord. Invite the tenant by email and optionally nominate an arbiter. Each
-        email is matched to the wallet created for their OpenEscrow account, or to a wallet they
-        connect themselves.
+        Set the complete proposal first. Tenant and optional arbiter invitations stay locked until
+        it is saved, so invitees always receive terms they can review, change, and approve.
       </p>
 
       <div className="participant-summary">
         <span>Landlord email</span>
         <strong>{landlordEmail || "Link Google in your account settings first"}</strong>
-        <small>The active wallet is used as the onchain landlord.</small>
+        <small>The active wallet becomes the onchain landlord after approvals.</small>
       </div>
-
-      <label>
-        Jurisdiction context
-        <select
-          value={jurisdiction}
-          onChange={(e) => setJurisdiction(e.target.value as JurisdictionCode)}
-        >
-          {JURISDICTIONS.map((option) => (
-            <option key={option.code} value={option.code}>
-              {option.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <p className="jurisdiction-notice">
-        Research context only: this selection is saved off-chain and shared in the agreement link.
-        It has not been legally reviewed and does not change the contract's deadlines, claim rules,
-        or enforceability.
-      </p>
 
       <label>
         Tenant email
         <input
           value={tenantEmail}
-          onChange={(e) => setTenantEmail(e.target.value)}
+          onChange={(event) => setTenantEmail(event.target.value)}
           placeholder="tenant@example.com"
           type="email"
           autoComplete="email"
+          disabled={Boolean(draft)}
         />
       </label>
       <label>
         Arbiter email (optional)
         <input
           value={arbiterEmail}
-          onChange={(e) => setArbiterEmail(e.target.value)}
+          onChange={(event) => setArbiterEmail(event.target.value)}
           placeholder="arbiter@example.com"
           type="email"
           autoComplete="email"
+          disabled={Boolean(draft)}
         />
       </label>
-      <div className="invite-actions">
-        <a
-          className={`btn btn-secondary${EMAIL_PATTERN.test(tenantEmail) ? "" : " disabled"}`}
-          href={EMAIL_PATTERN.test(tenantEmail) ? inviteContent(tenantEmail, "tenant").gmailUrl : undefined}
-          target="_blank"
-          rel="noreferrer"
-          aria-disabled={!EMAIL_PATTERN.test(tenantEmail)}
-        >
-          Open tenant invite in Gmail
-        </a>
-        <button
-          className="btn btn-secondary"
-          type="button"
-          disabled={!EMAIL_PATTERN.test(tenantEmail)}
-          onClick={async () => {
-            await navigator.clipboard.writeText(inviteContent(tenantEmail, "tenant").body);
-            setCopiedInvite("tenant");
-          }}
-        >
-          {copiedInvite === "tenant" ? "Tenant invite copied" : "Copy tenant invite"}
-        </button>
-        {arbiterEmail.trim() !== "" && (
-          <>
-            <a
-              className={`btn btn-secondary${EMAIL_PATTERN.test(arbiterEmail) ? "" : " disabled"}`}
-              href={EMAIL_PATTERN.test(arbiterEmail) ? inviteContent(arbiterEmail, "arbiter").gmailUrl : undefined}
-              target="_blank"
-              rel="noreferrer"
-              aria-disabled={!EMAIL_PATTERN.test(arbiterEmail)}
-            >
-              Open arbiter invite in Gmail
-            </a>
-            <button
-              className="btn btn-secondary"
-              type="button"
-              disabled={!EMAIL_PATTERN.test(arbiterEmail)}
-              onClick={async () => {
-                await navigator.clipboard.writeText(inviteContent(arbiterEmail, "arbiter").body);
-                setCopiedInvite("arbiter");
-              }}
-            >
-              {copiedInvite === "arbiter" ? "Arbiter invite copied" : "Copy arbiter invite"}
-            </button>
-          </>
-        )}
-      </div>
-      <p className="field-help">
-        Gmail opens in a new tab, and the copy option works without a desktop mail app. Automatic
-        sending and wallet matching remain a server-side milestone.
-      </p>
-      <details className="participant-resolution">
-        <summary>Participant wallet resolution — temporary MVP step</summary>
-        <p className="hint">
-          Automatic email invitations and account-to-wallet matching require the invitation
-          service now being built. Until it is connected, enter the wallets supplied by the
-          tenant and, if used, the arbiter to finalize this draft onchain.
-        </p>
-        <label>
-          Tenant wallet mapped to {tenantEmail || "tenant email"}
-          <input
-            value={tenantWallet}
-            onChange={(e) => setTenantWallet(e.target.value)}
-            placeholder="0x..."
-          />
-        </label>
-        <label>
-          Arbiter wallet mapped to {arbiterEmail || "optional arbiter email"}
-          <input
-            value={arbiterWallet}
-            onChange={(e) => setArbiterWallet(e.target.value)}
-            placeholder="0x..."
-          />
-        </label>
+      {draft && (
         <p className="field-help">
-          Leave both arbiter fields blank to proceed without one. If a dispute later occurs, the
-          landlord and tenant may mutually appoint an arbiter before the fixed ruling deadline;
-          otherwise the disputed balance defaults to the tenant when the deadline expires.
+          Party emails are locked once invitations exist. Start a separate proposal to change the parties.
         </p>
-      </details>
+      )}
+
+      <label>
+        Jurisdiction context
+        <select value={jurisdiction} onChange={(event) => setJurisdiction(event.target.value as JurisdictionCode)}>
+          {JURISDICTIONS.map((option) => (
+            <option key={option.code} value={option.code}>{option.label}</option>
+          ))}
+        </select>
+      </label>
+      <p className="jurisdiction-notice">
+        Research context only. It has not been legally reviewed and does not change enforceability.
+      </p>
+
       <fieldset className="token-choice">
         <legend>Deposit test token</legend>
         <label title="Plain freely mintable test token. Its displayed value does not grow.">
-          <input
-            type="radio"
-            name="deposit-token"
-            checked={tokenChoice === "plain"}
-            onChange={() => setTokenChoice("plain")}
-          />
-          <span>
-            <strong>testUSDC</strong>
-            <small>Plain test token · stable demo value</small>
-          </span>
+          <input type="radio" name="deposit-token" checked={tokenChoice === "plain"} onChange={() => setTokenChoice("plain")} />
+          <span><strong>testUSDC</strong><small>Plain test token · stable demo value</small></span>
         </label>
-        <label title="Freely mintable test shares whose displayed testUSDC value grows 20% per day. No real assets or redemption.">
-          <input
-            type="radio"
-            name="deposit-token"
-            checked={tokenChoice === "yield"}
-            onChange={() => setTokenChoice("yield")}
-          />
-          <span>
-            <strong>ytUSDC ⓘ</strong>
-            <small>Yield-test shares · 20%/day accelerated demo</small>
-          </span>
+        <label title="Freely mintable test shares whose displayed testUSDC value grows 20% per day.">
+          <input type="radio" name="deposit-token" checked={tokenChoice === "yield"} onChange={() => setTokenChoice("yield")} />
+          <span><strong>ytUSDC ⓘ</strong><small>Yield-test shares · 20%/day accelerated demo</small></span>
         </label>
       </fieldset>
       <label>
         Deposit amount ({tokenChoice === "yield" ? "ytUSDC shares" : "testUSDC"})
-        <input value={deposit} onChange={(e) => setDeposit(e.target.value)} type="number" min="0" step="0.000001" />
+        <input value={deposit} onChange={(event) => setDeposit(event.target.value)} type="number" min="0" step="0.000001" />
       </label>
       <label>
         Expected lease expiration / claim window start
-        <input
-          value={claimWindowStart}
-          onChange={(e) => setClaimWindowStart(e.target.value)}
-          type="datetime-local"
-        />
+        <input value={claimWindowStart} onChange={(event) => setClaimWindowStart(event.target.value)} type="datetime-local" />
       </label>
-      <p className="field-help">
-        For this demo, the claim window opens when the lease is expected to expire. Actual legal
-        deadlines may depend on move-out, possession, and the selected jurisdiction.
-      </p>
+      <p className="field-help">The claim window opens when the lease is expected to expire.</p>
       <label>
-        Claim period (days the landlord has to submit a claim once the window opens)
-        <input value={claimDays} onChange={(e) => setClaimDays(e.target.value)} type="number" min="1" />
+        Claim period (days the landlord has to submit a claim)
+        <input value={claimDays} onChange={(event) => setClaimDays(event.target.value)} type="number" min="1" />
       </label>
       <label>
-        Response period (days the tenant has to respond once a claim is submitted)
-        <input value={responseDays} onChange={(e) => setResponseDays(e.target.value)} type="number" min="1" />
+        Response period (days the tenant has to respond)
+        <input value={responseDays} onChange={(event) => setResponseDays(event.target.value)} type="number" min="1" />
       </label>
       <label>
-        Arbiter ruling period (days the arbiter has to rule once a dispute is created)
-        <input value={arbiterDays} onChange={(e) => setArbiterDays(e.target.value)} type="number" min="1" />
+        Arbiter ruling period (days the optional arbiter has to rule)
+        <input value={arbiterDays} onChange={(event) => setArbiterDays(event.target.value)} type="number" min="1" />
       </label>
 
-      <button className="btn btn-primary" type="submit" disabled={!isConnected || isPending || isMining}>
-        {isPending ? "Confirm in wallet..." : isMining ? "Mining..." : "Finalize agreement onchain"}
-      </button>
+      {draft && (
+        <label>
+          Revision note
+          <textarea
+            value={revisionSummary}
+            onChange={(event) => setRevisionSummary(event.target.value)}
+            placeholder="Summarize what changed and why. Publishing a revision resets prior approvals."
+            rows={3}
+          />
+        </label>
+      )}
+      <div className="button-row">
+        <button className="btn btn-primary" type="button" disabled={isSavingDraft} onClick={() => void saveDraft()}>
+          {isSavingDraft ? "Saving..." : draft ? "Publish revised proposal" : "Save proposal for review"}
+        </button>
+        {draft && (
+          <button
+            className="btn btn-ghost"
+            type="button"
+            onClick={() => {
+              clearLandlordBundle();
+              setDraft(null);
+              setAccessBundle(null);
+              setRevisionSummary("");
+              setFormMessage("Ready to create a separate proposal.");
+            }}
+          >
+            Start another proposal
+          </button>
+        )}
+      </div>
 
-      {formError && <p className="tx-error">{formError}</p>}
-      {error && <p className="tx-error">{error.message.split("\n")[0]}</p>}
-      {createdId !== null && (
-        <div className="tx-success">
-          <p>
-            Created agreement #{createdId.toString()}. Share this link with the tenant
-            {arbiterEmail ? " and arbiter" : ""}; opening it takes them straight to the deposit
-            dashboard.
-          </p>
-          <p>
-            Jurisdiction context: {jurisdictionLabel(submittedJurisdiction.current)} (off-chain).
-          </p>
-          <p><strong>Tenant agreement link</strong></p>
-          <code>{buildInviteUrl("tenant", createdId, submittedJurisdiction.current)}</code>
-          {arbiterEmail && (
-            <>
-              <p><strong>Arbiter agreement link</strong></p>
-              <code>{buildInviteUrl("arbiter", createdId, submittedJurisdiction.current)}</code>
-            </>
-          )}
+      {!draft && (
+        <div className="invite-gate">
+          <strong>Invitations unlock after the proposal is saved.</strong>
+          <span>The tenant and optional arbiter will receive this exact revision for review.</span>
         </div>
       )}
-    </form>
+
+      {draft && (
+        <section className="proposal-review-controls">
+          <div className="record-header">
+            <div>
+              <h3>Invite parties to review revision {draft.revision}</h3>
+              <p className="hint">Each link is role-locked and opens this saved proposal—not the landlord’s creation tools.</p>
+            </div>
+            {landlordAccess && (
+              <a className="btn btn-ghost small" href={negotiationReportUrl(landlordAccess)} target="_blank" rel="noreferrer">
+                Open timestamped report
+              </a>
+            )}
+          </div>
+          <div className="invite-actions">
+            <button className="btn btn-secondary" type="button" onClick={() => openInvite("tenant")}>Open tenant invite in Gmail</button>
+            <button className="btn btn-secondary" type="button" onClick={() => void copyInvite("tenant")}>
+              {copiedInvite === "tenant" ? "Tenant invite copied" : "Copy tenant invite"}
+            </button>
+            {draft.arbiterEmail && (
+              <>
+                <button className="btn btn-secondary" type="button" onClick={() => openInvite("arbiter")}>Open arbiter invite in Gmail</button>
+                <button className="btn btn-secondary" type="button" onClick={() => void copyInvite("arbiter")}>
+                  {copiedInvite === "arbiter" ? "Arbiter invite copied" : "Copy arbiter invite"}
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="approval-grid">
+            <div className={draft.tenantApproved ? "approval approved" : "approval"}>
+              <strong>Tenant</strong><span>{draft.tenantApproved ? "Approved current revision" : "Awaiting approval"}</span>
+            </div>
+            {draft.arbiterEmail && (
+              <div className={draft.arbiterApproved ? "approval approved" : "approval"}>
+                <strong>Arbiter</strong><span>{draft.arbiterApproved ? "Approved current revision" : "Awaiting approval"}</span>
+              </div>
+            )}
+          </div>
+
+          <div className="record-header">
+            <div><h3>Running agreement record</h3><p className="hint">All proposal actions are timestamped and append-only.</p></div>
+            {landlordAccess && (
+              <button className="btn btn-ghost small" type="button" onClick={() => void loadNegotiation(landlordAccess).then(setDraft)}>
+                Refresh
+              </button>
+            )}
+          </div>
+          <ol className="activity-timeline">
+            {draft.events.map((event) => (
+              <li key={event.id}>
+                <time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time>
+                <strong>{event.actorRole}</strong>
+                <span>{event.summary}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+      )}
+
+      {draft?.status === "ready" && (
+        <section className="onchain-ready">
+          <span className="eyebrow">All required approvals recorded</span>
+          <h3>Ready for onchain finalization</h3>
+          <p>
+            The approved tenant wallet{draft.arbiterEmail ? " and arbiter wallet are" : " is"} mapped
+            automatically from the approval actions. This transaction creates the testnet agreement.
+          </p>
+          <button className="btn btn-primary" type="button" disabled={!isConnected || isPending || isMining} onClick={finalizeOnchain}>
+            {isPending ? "Confirm in wallet..." : isMining ? "Mining..." : "Finalize approved agreement onchain"}
+          </button>
+        </section>
+      )}
+
+      {draft && draft.status === "draft" && (
+        <p className="role-pending">Onchain finalization stays locked until the tenant and optional arbiter approve the current revision.</p>
+      )}
+      {draft?.status === "finalized" && (
+        <>
+          <p className="tx-success">This proposal is finalized as onchain agreement #{draft.onchainAgreementId}.</p>
+          {draft.onchainAgreementId && landlordAccess && (
+            <div className="finalized-agreement-workspace">
+              <AgreementCard id={BigInt(draft.onchainAgreementId)} negotiationAccess={landlordAccess} />
+            </div>
+          )}
+        </>
+      )}
+      {formMessage && <p className="tx-success">{formMessage}</p>}
+      {formError && <p className="tx-error">{formError}</p>}
+      {error && <p className="tx-error">{error.message.split("\n")[0]}</p>}
+      {createdId !== null && <p className="tx-success">Created and recorded onchain agreement #{createdId.toString()}.</p>}
+    </section>
   );
 }
 
@@ -421,9 +588,5 @@ function PrivyCreateAgreementForm() {
 }
 
 export function CreateAgreementForm() {
-  return ACCOUNT_AUTH_ENABLED ? (
-    <PrivyCreateAgreementForm />
-  ) : (
-    <AgreementForm landlordEmail="" />
-  );
+  return ACCOUNT_AUTH_ENABLED ? <PrivyCreateAgreementForm /> : <AgreementForm landlordEmail="" />;
 }

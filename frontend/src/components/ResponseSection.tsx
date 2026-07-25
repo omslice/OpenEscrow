@@ -4,6 +4,10 @@ import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../cont
 import { formatUSDC, parseUSDC } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
+import {
+  negotiationAction,
+  type NegotiationAccess,
+} from "../lib/negotiations";
 
 type Mode = "accept" | "partial" | "dispute";
 
@@ -11,14 +15,17 @@ export function ResponseSection({
   id,
   agreement,
   onRefetch,
+  negotiationAccess,
 }: {
   id: bigint;
   agreement: Agreement;
   onRefetch?: () => void;
+  negotiationAccess?: NegotiationAccess | null;
 }) {
   const { address } = useAccount();
   const [mode, setMode] = useState<Mode>("accept");
   const [partialAmount, setPartialAmount] = useState("");
+  const [note, setNote] = useState("");
 
   const isTenant = address?.toLowerCase() === agreement.tenant.toLowerCase();
   if (!isTenant || agreement.phase !== Phase.ClaimOpen) return null;
@@ -69,14 +76,39 @@ export function ResponseSection({
           />
         </label>
       )}
+      <label>
+        Tenant response note (optional)
+        <textarea
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          placeholder="Briefly explain your approval or the reason for your dispute."
+          rows={3}
+        />
+      </label>
       <TxButton
         address={OPEN_ESCROW_ADDRESS}
         abi={OpenEscrowABI}
         functionName="respondToClaim"
         args={[id, accepted >= 0n ? accepted : 0n]}
-        label="Submit response"
+        label={
+          mode === "accept"
+            ? "Approve deduction"
+            : mode === "dispute"
+              ? "Dispute deduction"
+              : "Approve partial amount and dispute remainder"
+        }
         disabled={!validAmount}
-        onSuccess={onRefetch}
+        onSuccess={(transactionHash) => {
+          onRefetch?.();
+          if (!negotiationAccess || negotiationAccess.role !== "tenant") return;
+          void negotiationAction(negotiationAccess, {
+            type: "claim_response",
+            decision: mode === "accept" ? "approve" : mode,
+            acceptedAmount: formatUSDC(accepted),
+            note: note.trim(),
+            transactionHash,
+          });
+        }}
       />
     </div>
   );

@@ -11,7 +11,7 @@ interface TxButtonProps {
   label: string;
   disabled?: boolean;
   className?: string;
-  onSuccess?: () => void;
+  onSuccess?: (transactionHash: `0x${string}`) => void;
 }
 
 /** One button = one contract write, with pending/mining/error surfaced inline. */
@@ -33,7 +33,7 @@ export function TxButton({
   useEffect(() => {
     if (isSuccess && hash && notifiedHash.current !== hash) {
       notifiedHash.current = hash;
-      onSuccess?.();
+      onSuccess?.(hash);
     }
   }, [hash, isSuccess, onSuccess]);
 
@@ -42,6 +42,7 @@ export function TxButton({
   return (
     <div className="tx-button">
       <button
+        type="button"
         className={className ?? "btn btn-primary"}
         disabled={disabled || busy || !account}
         onClick={() => {

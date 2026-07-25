@@ -5,18 +5,25 @@ import { formatUSDC, parseUSDC } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
 import { EvidenceList } from "./EvidenceList";
+import {
+  negotiationAction,
+  type NegotiationAccess,
+} from "../lib/negotiations";
 
 export function DisputeResolutionSection({
   id,
   agreement,
   onRefetch,
+  negotiationAccess,
 }: {
   id: bigint;
   agreement: Agreement;
   onRefetch?: () => void;
+  negotiationAccess?: NegotiationAccess | null;
 }) {
   const { address } = useAccount();
   const [award, setAward] = useState("");
+  const [note, setNote] = useState("");
 
   const isArbiter = address?.toLowerCase() === agreement.arbiter.toLowerCase();
   if (!isArbiter || agreement.phase !== Phase.Disputed) return null;
@@ -43,6 +50,15 @@ export function DisputeResolutionSection({
         Award to landlord (ytUSDC shares, max {formatUSDC(disputed)})
         <input value={award} onChange={(e) => setAward(e.target.value)} type="number" min="0" step="0.000001" />
       </label>
+      <label>
+        Ruling note
+        <textarea
+          value={note}
+          onChange={(event) => setNote(event.target.value)}
+          placeholder="Briefly explain how the submitted documentation supports this allocation."
+          rows={3}
+        />
+      </label>
       <div className="button-row">
         <button className="btn btn-ghost" onClick={() => setAward("0")}>
           Set to 0 (all to tenant)
@@ -58,7 +74,16 @@ export function DisputeResolutionSection({
         args={[id, awardRaw ?? 0n]}
         label="Submit ruling"
         disabled={!valid}
-        onSuccess={onRefetch}
+        onSuccess={(transactionHash) => {
+          onRefetch?.();
+          if (!negotiationAccess || negotiationAccess.role !== "arbiter" || awardRaw === null) return;
+          void negotiationAction(negotiationAccess, {
+            type: "arbiter_ruling",
+            awardToLandlord: formatUSDC(awardRaw),
+            note: note.trim(),
+            transactionHash,
+          });
+        }}
       />
     </div>
   );
