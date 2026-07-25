@@ -23,6 +23,7 @@ function Terms({ record }: { record: NegotiationRecord }) {
   return (
     <dl className="negotiation-terms">
       <div><dt>Deposit</dt><dd>{terms.deposit} {terms.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</dd></div>
+      <div><dt>Network &amp; storage reserve</dt><dd>{terms.operationsReserve || "0"} testUSDC · separate and non-refundable</dd></div>
       <div><dt>Lease expiration</dt><dd>{new Date(terms.claimWindowStart).toLocaleString()}</dd></div>
       <div><dt>Claim period</dt><dd>{terms.claimDays} days</dd></div>
       <div><dt>Tenant response</dt><dd>{terms.responseDays} days</dd></div>

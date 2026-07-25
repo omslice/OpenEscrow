@@ -109,6 +109,7 @@ function AgreementForm({
   const [arbiterName, setArbiterName] = useState("");
   const [arbiterEmail, setArbiterEmail] = useState("");
   const [deposit, setDeposit] = useState("100");
+  const [operationsReserve, setOperationsReserve] = useState("5");
   const [tokenChoice, setTokenChoice] = useState<"plain" | "yield">("plain");
   const [claimWindowStart, setClaimWindowStart] = useState("");
   const [claimDays, setClaimDays] = useState("30");
@@ -148,6 +149,7 @@ function AgreementForm({
     setArbiterName(record.arbiterName || "");
     setArbiterEmail(record.arbiterEmail || "");
     setDeposit(record.terms.deposit);
+    setOperationsReserve(record.terms.operationsReserve || "5");
     setTokenChoice(record.terms.tokenChoice);
     setClaimWindowStart(record.terms.claimWindowStart);
     setClaimDays(record.terms.claimDays);
@@ -220,6 +222,7 @@ function AgreementForm({
       jurisdiction,
       tokenChoice,
       deposit,
+      operationsReserve,
       claimWindowStart,
       claimDays,
       responseDays,
@@ -637,6 +640,29 @@ function AgreementForm({
           aria-invalid={invalidField === "deposit"}
         />
       </label>
+      <section className="cost-breakdown" aria-label="Agreement funding breakdown">
+        <div>
+          <span>Refundable security deposit</span>
+          <strong>{deposit || "0"} {tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</strong>
+        </div>
+        <div>
+          <span>OpenEscrow network &amp; storage reserve</span>
+          <strong>{operationsReserve} testUSDC</strong>
+        </div>
+        <div className="cost-total">
+          <span>Tenant provides at funding</span>
+          <strong>
+            {tokenChoice === "yield"
+              ? `${deposit || "0"} ytUSDC + ${operationsReserve} testUSDC`
+              : `${(Number(deposit || 0) + Number(operationsReserve)).toLocaleString(undefined, { maximumFractionDigits: 6 })} testUSDC`}
+          </strong>
+        </div>
+        <p>
+          The $5 reserve is a separate, non-refundable pilot service charge for sponsored Base
+          transactions and encrypted document storage. It is never included in the landlord’s
+          deductible security-deposit balance.
+        </p>
+      </section>
       <label>
         Expected lease expiration / claim window start
         <input

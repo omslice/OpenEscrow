@@ -85,6 +85,8 @@ function validTerms(terms) {
     (terms.tokenChoice === "plain" || terms.tokenChoice === "yield") &&
     typeof terms.deposit === "string" &&
     Number(terms.deposit) > 0 &&
+    typeof terms.operationsReserve === "string" &&
+    Number(terms.operationsReserve) === 5 &&
     typeof terms.claimWindowStart === "string" &&
     !Number.isNaN(new Date(terms.claimWindowStart).getTime()) &&
     [terms.claimDays, terms.responseDays, terms.arbiterDays].every(
@@ -620,6 +622,30 @@ async function applyAction(request, env, id) {
         revision,
       ),
     );
+  } else if (body.type === "operations_reserve_paid") {
+    if (role !== "tenant") {
+      return json({ error: "Only the tenant may record the operations reserve payment." }, 403);
+    }
+    if (row.status !== "finalized") {
+      return json({ error: "The agreement must be finalized before the reserve is paid." }, 409);
+    }
+    const transactionHash = cleanText(body.transactionHash, 100);
+    if (!/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+      return json({ error: "The operations reserve transaction is invalid." }, 400);
+    }
+    statements.push(
+      db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "operations_reserve_paid",
+        `Paid the separate $5 testUSDC network and document-storage reserve in transaction ${transactionHash}.`,
+        revision,
+        { amount: "5", token: "testUSDC", transactionHash },
+      ),
+    );
   } else if (body.type === "claim_submitted") {
     if (role !== "landlord") {
       return json({ error: "Only the landlord may submit a deduction claim." }, 403);
@@ -979,7 +1005,8 @@ async function report(db, id, token) {
     .map((event) => {
       const snapshot = event.metadata.terms;
       return `<h3>Revision ${event.revision}</h3><p class="meta">${escapeHtml(event.createdAt)}</p><table>
-<tr><th>Deposit</th><td>${escapeHtml(snapshot.deposit)} ${snapshot.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</td></tr>
+<tr><th>Refundable deposit</th><td>${escapeHtml(snapshot.deposit)} ${snapshot.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</td></tr>
+<tr><th>Network &amp; storage reserve</th><td>${escapeHtml(snapshot.operationsReserve || "0")} testUSDC (separate, non-refundable)</td></tr>
 <tr><th>Lease expiration</th><td>${escapeHtml(snapshot.claimWindowStart)}</td></tr>
 <tr><th>Claim period</th><td>${escapeHtml(snapshot.claimDays)} days</td></tr>
 <tr><th>Response period</th><td>${escapeHtml(snapshot.responseDays)} days</td></tr>
@@ -1002,7 +1029,8 @@ async function report(db, id, token) {
 <tr><th>Arbiter</th><td>${escapeHtml(record.arbiterEmail || "Not appointed")}</td></tr>
 </table>
 <h2>Current terms</h2><table>
-<tr><th>Deposit</th><td>${escapeHtml(terms.deposit)} ${terms.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</td></tr>
+<tr><th>Refundable deposit</th><td>${escapeHtml(terms.deposit)} ${terms.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</td></tr>
+<tr><th>Network &amp; storage reserve</th><td>${escapeHtml(terms.operationsReserve || "0")} testUSDC (separate, non-refundable)</td></tr>
 <tr><th>Lease expiration</th><td>${escapeHtml(terms.claimWindowStart)}</td></tr>
 <tr><th>Claim period</th><td>${escapeHtml(terms.claimDays)} days</td></tr>
 <tr><th>Response period</th><td>${escapeHtml(terms.responseDays)} days</td></tr>

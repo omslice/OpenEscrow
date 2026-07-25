@@ -22,6 +22,13 @@ This spec supersedes the flow described in `protocol-flow.md` and `technical-ove
    *displayed testUSDC value* grows linearly at 20% per day. This is experimental accounting only:
    no underlying asset, redemption, real yield, or monetary value.
 
+**Operations-reserve addendum (2026-07-25):** decision 8 still governs the core `OpenEscrow`
+contract: no fee is taken from deposit principal and the deposit invariant is unchanged. New
+email-negotiated proposals separately disclose a fixed 5 testUSDC pilot service reserve, paid to an
+independent `OperationsReserve` contract before deposit funding. It covers the product's sponsored
+transactions and document-storage budget, has a separate onchain receipt, and is never deductible
+or refundable as part of the security deposit.
+
 ## 0. Scope lock (as given)
 
 Base Sepolia only · two allowlisted test tokens (plain and yield-test shares) · one shared contract · optional,

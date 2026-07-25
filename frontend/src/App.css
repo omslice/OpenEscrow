@@ -899,6 +899,43 @@
   color: var(--text);
 }
 
+.cost-breakdown {
+  display: grid;
+  gap: 8px;
+  margin: -2px 0 18px;
+  padding: 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  background: var(--accent-bg);
+}
+
+.cost-breakdown > div {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.cost-breakdown strong {
+  color: var(--text-h);
+  text-align: right;
+}
+
+.cost-breakdown .cost-total {
+  margin-top: 2px;
+  padding-top: 9px;
+  border-top: 1px solid var(--accent-border);
+  font-size: 14px;
+}
+
+.cost-breakdown p {
+  margin: 2px 0 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 .test-funds-stack {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -939,6 +976,29 @@
   border-top: 1px dashed var(--border);
   padding-top: 16px;
   margin-top: 16px;
+}
+
+.funding-reserve-summary {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 5px 16px;
+  margin: 12px 0;
+  padding: 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--accent-bg);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.funding-reserve-summary strong {
+  color: var(--text-h);
+  text-align: right;
+}
+
+.funding-reserve-summary small {
+  grid-column: 1 / -1;
+  margin-top: 3px;
 }
 
 .next-action {

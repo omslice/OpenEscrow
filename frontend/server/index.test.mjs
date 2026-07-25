@@ -74,6 +74,7 @@ const terms = {
   jurisdiction: "us-ca",
   tokenChoice: "plain",
   deposit: "1200",
+  operationsReserve: "5",
   claimWindowStart: "2027-07-01T12:00",
   claimDays: "30",
   responseDays: "7",
@@ -341,6 +342,15 @@ test("documented claim, tenant decision, and email attempts are included in the 
   const db = new TestD1();
   const created = await create(db);
   await finalizeWithoutArbiter(db, created);
+
+  const reservePaid = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "operations_reserve_paid",
+      transactionHash: `0x${"e".repeat(64)}`,
+    }),
+  );
+  assert.equal(reservePaid.events.at(-1).action, "operations_reserve_paid");
+  assert.match(reservePaid.events.at(-1).summary, /separate \$5 testUSDC/);
 
   const claimed = await jsonResponse(
     await act(db, created.record.id, created.access.landlord, {

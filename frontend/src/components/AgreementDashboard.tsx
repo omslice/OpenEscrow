@@ -1,5 +1,8 @@
 import {
   MockUSDCABI,
+  OPEN_ESCROW_ADDRESS,
+  OPERATIONS_RESERVE_ADDRESS,
+  OperationsReserveABI,
   Phase,
   YIELD_USDC_ADDRESS,
   ZERO_ADDRESS,
@@ -83,6 +86,17 @@ export function AgreementDashboard({
         ? agreement.landlordWithdrawable
         : 0n;
   const jurisdiction = readJurisdiction(id);
+  const reserveRequired = participantRecord?.terms.operationsReserve === "5";
+  const reservePayment = useReadContract({
+    address: OPERATIONS_RESERVE_ADDRESS,
+    abi: OperationsReserveABI,
+    functionName: "paid",
+    args: [OPEN_ESCROW_ADDRESS, id, agreement.tenant],
+    query: {
+      enabled: reserveRequired,
+      refetchInterval: 5000,
+    },
+  });
   const currentValue = useReadContract({
     address: agreement.token,
     abi: MockUSDCABI,
@@ -160,6 +174,16 @@ export function AgreementDashboard({
           <strong>{formatUSDC(agreement.locked)} shares</strong>
         </div>
       </div>
+      {reserveRequired && (
+        <div className="dashboard-row">
+          <span className="label">Network &amp; storage reserve</span>
+          <strong>
+            {reservePayment.data === true
+              ? "$5 testUSDC paid separately"
+              : "$5 testUSDC due before funding"}
+          </strong>
+        </div>
+      )}
       <div className="dashboard-row">
         <span className="label">Your role for this agreement</span>
         <strong>{actualRole ? roleLabel[actualRole] : "Not a party with this wallet"}</strong>

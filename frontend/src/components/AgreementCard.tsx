@@ -51,7 +51,13 @@ export function AgreementCard({
       <NextAction agreement={agreement} />
       <ArbiterActions id={id} agreement={agreement} onRefetch={onRefetch} />
       <ProposalActions id={id} agreement={agreement} onRefetch={onRefetch} />
-      <TenantFundAction id={id} agreement={agreement} onRefetch={onRefetch} />
+      <TenantFundAction
+        id={id}
+        agreement={agreement}
+        negotiationAccess={negotiationAccess}
+        participantRecord={participantRecord}
+        onRefetch={onRefetch}
+      />
       <ClaimSection id={id} agreement={agreement} onRefetch={onRefetch} negotiationAccess={negotiationAccess} />
       <ResponseSection id={id} agreement={agreement} onRefetch={onRefetch} negotiationAccess={negotiationAccess} />
       <DisputeResolutionSection id={id} agreement={agreement} onRefetch={onRefetch} negotiationAccess={negotiationAccess} />

@@ -7,6 +7,7 @@ export interface AgreementTerms {
   jurisdiction: string;
   tokenChoice: "plain" | "yield";
   deposit: string;
+  operationsReserve: string;
   claimWindowStart: string;
   claimDays: string;
   responseDays: string;
@@ -333,6 +334,7 @@ export async function negotiationAction(
       }
     | { type: "invitation_prepared"; invitedRole: InviteRole; method: "gmail" | "copy" }
     | { type: "finalize"; agreementId: string; transactionHash: string }
+    | { type: "operations_reserve_paid"; transactionHash: string }
     | {
         type: "claim_submitted";
         amount: string;

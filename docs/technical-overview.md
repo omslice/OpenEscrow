@@ -13,10 +13,18 @@ The contract has:
 - One immutable ERC-20 token address
 - No owner or administrator
 - No proxy or upgrade path
-- No protocol fee
+- No fee deducted from or accounted as part of the escrowed deposit
 - No external rules or yield module
 - Per-agreement landlord, tenant, and arbiter roles
 - Pull-based tenant and landlord withdrawals
+
+### `OperationsReserve.sol`
+
+New proposals disclose a separate, fixed 5 testUSDC pilot reserve. The tenant pays it to the
+`OperationsReserve` contract before funding, and the payment produces its own onchain receipt.
+It is not held by `OpenEscrow`, is not refundable deposit principal, and can never become part of a
+landlord deduction claim. The testnet amount is intended to model sponsored Base transactions,
+retries, and encrypted document-storage costs; it is not a validated production price.
 
 ### Frontend
 
@@ -94,7 +102,9 @@ The contract cannot determine whether evidence is truthful or legally sufficient
 
 ## Security model
 
-The contract uses OpenZeppelin `SafeERC20` and `ReentrancyGuard`. Token calls occur only during funding and withdrawal.
+The contracts use OpenZeppelin `SafeERC20` and `ReentrancyGuard`. The core escrow token calls occur
+only during funding and withdrawal; the separate operations-reserve contract handles only reserve
+collection and treasury withdrawal.
 
 The primary residual risks are:
 

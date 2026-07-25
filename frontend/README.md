@@ -9,10 +9,12 @@ Public demo: https://openescrow-demo.omrigross.chatgpt.site
 ## Deployed addresses (Base Sepolia, chain id 84532)
 
 - `OpenEscrow`: see `src/contracts/config.ts` for the active deployment.
+- `OperationsReserve` (separate 5 testUSDC pilot service reserve): `0xf0aa0C72d240b86E7AaE328912CF8737069a0f5d`
 - `MockUSDC` (test token, freely mintable): `0xE129b23BD89904D363ba226eE52deC74185D7789` (unchanged)
 - `MockYieldUSDC` (freely mintable yield-test shares): `0x2746034FF16371A65c133016470f85535992dabC`
 
-See `../script/DeployOpenEscrow.s.sol` and `../script/DeployMockUSDC.s.sol` if you need to redeploy;
+See `../script/DeployOpenEscrow.s.sol`, `../script/DeployOperationsReserve.s.sol`, and
+`../script/DeployMockUSDC.s.sol` if you need to redeploy;
 update `src/contracts/config.ts` (address *and* `DEPLOYMENT_BLOCK`) with the new values afterward.
 
 ## Running locally
@@ -61,7 +63,8 @@ npm run e2e:live
 ## What's here vs. what isn't
 
 Implemented: choose plain or yield-test token -> propose with optional arbiter ->
-arbiter accept/decline/renominate -> tenant approve+fund -> claim submit/amend ->
+arbiter accept/decline/renominate -> tenant pays the separate operations reserve and funds ->
+claim submit/amend ->
 tenant respond (accept/partial/dispute) -> arbiter resolve -> permissionless timeout triggers ->
 pull-based withdraw, mutual-consent arbiter replacement, plus a live deadline countdown and an
 evidence trail view. The optional account layer supports Google authentication, automatically
