@@ -247,7 +247,14 @@ function AgreementNegotiationView({
           Open timestamped report
         </a>
       </div>
-      <RecordSnapshotControls access={access} />
+      <RecordSnapshotControls
+        access={access}
+        agreementId={
+          record.status === "finalized" && record.onchainAgreementId
+            ? BigInt(record.onchainAgreementId)
+            : undefined
+        }
+      />
       <ol className="activity-timeline">
         {record.events.map((event) => (
           <li key={event.id}>

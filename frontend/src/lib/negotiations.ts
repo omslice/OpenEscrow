@@ -379,6 +379,11 @@ export async function negotiationAction(
     | { type: "finalize"; agreementId: string; transactionHash: string }
     | { type: "operations_reserve_paid"; transactionHash: string }
     | {
+        type: "record_snapshot_anchored";
+        snapshotHash: string;
+        transactionHash: string;
+      }
+    | {
         type: "claim_submitted";
         amount: string;
         category: string;

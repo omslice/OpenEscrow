@@ -480,6 +480,23 @@ test("documented claim, tenant decision, and email attempts are included in the 
     ),
   );
   assert.notEqual(responseSnapshot.hash, claimSnapshot.hash);
+  const anchored = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "record_snapshot_anchored",
+      snapshotHash: responseSnapshot.hash,
+      transactionHash: `0x${"f".repeat(64)}`,
+    }),
+  );
+  assert.equal(anchored.events.at(-1).action, "record_snapshot_anchored");
+  const snapshotAfterAnchor = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}/snapshot?token=${created.access.tenant}`,
+      ),
+      { DB: db },
+    ),
+  );
+  assert.equal(snapshotAfterAnchor.hash, responseSnapshot.hash);
 
   const email = await worker.fetch(
     request("/api/notifications/claim", "POST", {

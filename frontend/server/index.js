@@ -771,6 +771,31 @@ async function applyAction(request, env, id) {
         { amount: "5", token: "testUSDC", transactionHash },
       ),
     );
+  } else if (body.type === "record_snapshot_anchored") {
+    if (row.status !== "finalized") {
+      return json({ error: "Finalize the agreement before anchoring its record." }, 409);
+    }
+    const snapshotHash = cleanText(body.snapshotHash, 100);
+    const transactionHash = cleanText(body.transactionHash, 100);
+    if (
+      !/^0x[a-fA-F0-9]{64}$/.test(snapshotHash) ||
+      !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)
+    ) {
+      return json({ error: "The record-anchor receipt is incomplete." }, 400);
+    }
+    statements.push(
+      db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "record_snapshot_anchored",
+        `Anchored agreement record snapshot ${snapshotHash} onchain in transaction ${transactionHash}.`,
+        revision,
+        { snapshotHash, transactionHash },
+      ),
+    );
   } else if (body.type === "claim_submitted") {
     if (role !== "landlord") {
       return json({ error: "Only the landlord may submit a deduction claim." }, 403);
@@ -1183,7 +1208,6 @@ async function snapshot(db, id, token) {
     status: record.status,
     revision: record.revision,
     createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
     parties: {
       landlord: {
         name: record.landlordName,
@@ -1211,15 +1235,17 @@ async function snapshot(db, id, token) {
       agreementId: record.onchainAgreementId,
       finalizationTransactionHash: record.onchainTxHash,
     },
-    events: record.events.map((event) => ({
-      id: event.id,
-      createdAt: event.createdAt,
-      actorRole: event.actorRole,
-      action: event.action,
-      summary: event.summary,
-      revision: event.revision,
-      metadata: event.metadata,
-    })),
+    events: record.events
+      .filter((event) => event.action !== "record_snapshot_anchored")
+      .map((event) => ({
+        id: event.id,
+        createdAt: event.createdAt,
+        actorRole: event.actorRole,
+        action: event.action,
+        summary: event.summary,
+        revision: event.revision,
+        metadata: event.metadata,
+      })),
   };
   const canonical = stableJson(snapshotRecord);
   const hash = `0x${await hashToken(canonical)}`;

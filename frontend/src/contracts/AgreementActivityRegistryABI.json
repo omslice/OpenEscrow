@@ -1,0 +1,241 @@
+[
+  {
+    "type": "constructor",
+    "inputs": [
+      {
+        "name": "escrow",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "ACTIVITY_DECISION",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "ACTIVITY_DOCUMENT",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "ACTIVITY_NOTE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "ACTIVITY_NOTICE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint8",
+        "internalType": "uint8"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "ESCROW",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "contract OpenEscrow"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "anchorSnapshot",
+    "inputs": [
+      {
+        "name": "agreementId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "snapshotHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "anchoredBy",
+    "inputs": [
+      {
+        "name": "agreementId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "snapshotHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      },
+      {
+        "name": "party",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "publishActivity",
+    "inputs": [
+      {
+        "name": "agreementId",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "activityType",
+        "type": "uint8",
+        "internalType": "uint8"
+      },
+      {
+        "name": "contentHash",
+        "type": "bytes32",
+        "internalType": "bytes32"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "event",
+    "name": "ActivityPublished",
+    "inputs": [
+      {
+        "name": "agreementId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "activityType",
+        "type": "uint8",
+        "indexed": true,
+        "internalType": "uint8"
+      },
+      {
+        "name": "party",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "contentHash",
+        "type": "bytes32",
+        "indexed": false,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "timestamp",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "RecordSnapshotAnchored",
+    "inputs": [
+      {
+        "name": "agreementId",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "snapshotHash",
+        "type": "bytes32",
+        "indexed": true,
+        "internalType": "bytes32"
+      },
+      {
+        "name": "party",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "timestamp",
+        "type": "uint64",
+        "indexed": false,
+        "internalType": "uint64"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "error",
+    "name": "InvalidActivityType",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidHash",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "NotAgreementParty",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "SnapshotAlreadyAnchored",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ZeroAddress",
+    "inputs": []
+  }
+]

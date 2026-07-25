@@ -16,6 +16,7 @@ import { useAccount, useReadContract } from "wagmi";
 import { jurisdictionLabel, readJurisdiction } from "../lib/jurisdictions";
 import { roleLabel, useInviteRole } from "../lib/inviteContext";
 import type { NegotiationRecord } from "../lib/negotiations";
+import { AgreementOnchainActivity } from "./AgreementOnchainActivity";
 
 function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | null {
   switch (agreement.phase) {
@@ -263,6 +264,7 @@ export function AgreementDashboard({
           </span>
         </div>
       )}
+      <AgreementOnchainActivity agreementId={id} />
       <details className="technical-details">
         <summary>Accounting details</summary>
         <div className="dashboard-row">

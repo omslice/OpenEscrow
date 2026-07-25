@@ -10,10 +10,12 @@ Public demo: https://openescrow-demo.omrigross.chatgpt.site
 
 - `OpenEscrow`: see `src/contracts/config.ts` for the active deployment.
 - `OperationsReserve` (separate 5 testUSDC pilot service reserve): `0xf0aa0C72d240b86E7AaE328912CF8737069a0f5d`
+- `AgreementActivityRegistry` (party-authorized record hashes): `0xC004dF4C43146FE55e5761EA1BB3C14f01161951`
 - `MockUSDC` (test token, freely mintable): `0xE129b23BD89904D363ba226eE52deC74185D7789` (unchanged)
 - `MockYieldUSDC` (freely mintable yield-test shares): `0x2746034FF16371A65c133016470f85535992dabC`
 
-See `../script/DeployOpenEscrow.s.sol`, `../script/DeployOperationsReserve.s.sol`, and
+See `../script/DeployOpenEscrow.s.sol`, `../script/DeployOperationsReserve.s.sol`,
+`../script/DeployAgreementActivityRegistry.s.sol`, and
 `../script/DeployMockUSDC.s.sol` if you need to redeploy;
 update `src/contracts/config.ts` (address *and* `DEPLOYMENT_BLOCK`) with the new values afterward.
 

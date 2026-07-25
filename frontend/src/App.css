@@ -1408,6 +1408,42 @@ a.btn.disabled {
   font-size: 12px;
 }
 
+.snapshot-anchor {
+  display: grid;
+  gap: 8px;
+  border-top: 1px solid var(--border);
+  padding-top: 12px;
+}
+
+.snapshot-anchor p {
+  margin: 0;
+}
+
+.onchain-activity-item {
+  display: grid;
+  grid-template-columns: minmax(180px, 1fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  border-top: 1px solid var(--border);
+  padding: 10px 0;
+}
+
+.onchain-activity-item div {
+  display: grid;
+  gap: 2px;
+}
+
+.onchain-activity-item span,
+.onchain-activity-item code {
+  color: var(--text);
+  font-size: 12px;
+}
+
+.onchain-activity-item a {
+  color: var(--accent);
+  font-weight: 700;
+}
+
 .onchain-ready h3 {
   margin: 2px 0;
 }
@@ -1561,5 +1597,9 @@ a.btn.disabled {
   .activity-timeline li {
     grid-template-columns: 1fr;
     gap: 3px;
+  }
+
+  .onchain-activity-item {
+    grid-template-columns: 1fr;
   }
 }

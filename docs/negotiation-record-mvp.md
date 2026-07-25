@@ -25,9 +25,10 @@ tenant responses, and arbiter rulings are timestamped by the server.
 Every role-specific link can open a printable report containing the parties, current terms,
 revision snapshots, approval state, itemized deduction tables, and event timeline. The record is
 also exportable as canonical JSON: object keys are deterministically ordered and the server returns
-the SHA-256 hash of the exact canonical bytes. The hash is ready for the separate onchain anchor
-registry; until a party submits that anchor transaction, the off-chain event stream is not itself
-immutable or independently notarized.
+the SHA-256 hash of the exact canonical bytes. After onchain finalization, the landlord, tenant, or
+current arbiter can submit that hash to the separate `AgreementActivityRegistry`; the app shows the
+party address, timestamp, and Base Sepolia transaction receipt. Until a party submits that anchor,
+the off-chain event stream is not itself immutable or independently notarized.
 
 ## External services
 

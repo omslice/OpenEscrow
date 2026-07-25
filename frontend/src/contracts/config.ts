@@ -3,6 +3,7 @@ import { baseSepolia } from "wagmi/chains";
 import OpenEscrowABIJson from "./OpenEscrowABI.json";
 import MockUSDCABIJson from "./MockUSDCABI.json";
 import OperationsReserveABIJson from "./OperationsReserveABI.json";
+import AgreementActivityRegistryABIJson from "./AgreementActivityRegistryABI.json";
 
 // Base Sepolia deployment (see broadcast/*/84532/run-latest.json for tx receipts).
 // Redeployed 2026-07-24 after the independent review addendum in
@@ -12,6 +13,8 @@ export const OPEN_ESCROW_ADDRESS = "0x83faBc39c4FcccB6a4e42c568E9750D1a24FF11f" 
 export const USDC_ADDRESS = "0xE129b23BD89904D363ba226eE52deC74185D7789" as const;
 export const YIELD_USDC_ADDRESS = "0x2746034FF16371A65c133016470f85535992dabC" as const;
 export const OPERATIONS_RESERVE_ADDRESS = "0xf0aa0C72d240b86E7AaE328912CF8737069a0f5d" as const;
+export const AGREEMENT_ACTIVITY_REGISTRY_ADDRESS =
+  "0xC004dF4C43146FE55e5761EA1BB3C14f01161951" as const;
 export const OPERATIONS_RESERVE_AMOUNT = 5_000_000n;
 export const USDC_DECIMALS = 6;
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
@@ -19,6 +22,7 @@ export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as cons
 // Block OpenEscrow was deployed at (broadcast/DeployOpenEscrow.s.sol/84532/run-latest.json) -
 // bounds event-log scans so "discover my agreements" doesn't have to search from genesis.
 export const DEPLOYMENT_BLOCK = 44584931n;
+export const ACTIVITY_REGISTRY_DEPLOYMENT_BLOCK = 44596729n;
 
 export const chain = baseSepolia;
 
@@ -35,6 +39,8 @@ export const MAX_CLAIM_WINDOW_OFFSET_SECONDS = 3650 * 24 * 60 * 60;
 export const OpenEscrowABI = OpenEscrowABIJson as unknown as Abi;
 export const MockUSDCABI = MockUSDCABIJson as unknown as Abi;
 export const OperationsReserveABI = OperationsReserveABIJson as unknown as Abi;
+export const AgreementActivityRegistryABI =
+  AgreementActivityRegistryABIJson as unknown as Abi;
 
 // Mirrors contracts/OpenEscrow.sol Phase enum ordering exactly.
 export const Phase = {

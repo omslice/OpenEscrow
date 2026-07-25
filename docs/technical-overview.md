@@ -26,6 +26,15 @@ It is not held by `OpenEscrow`, is not refundable deposit principal, and can nev
 landlord deduction claim. The testnet amount is intended to model sponsored Base transactions,
 retries, and encrypted document-storage costs; it is not a validated production price.
 
+### `AgreementActivityRegistry.sol`
+
+This separate, no-custody contract is bound to the active `OpenEscrow` deployment. The landlord,
+tenant, or current arbiter may independently anchor the SHA-256 hash of a canonical agreement
+record or publish a typed activity hash. It stores no names, emails, notes, document pointers, or
+evidence content, and it cannot move escrowed funds. An anchor proves that a party wallet attested
+to exact bytes at a particular block time; it does not prove the underlying content is true or
+legally sufficient.
+
 ### Frontend
 
 The React frontend talks directly to Base Sepolia through wagmi and viem. It stores tracked agreement IDs in the browser and can discover agreements by scanning bounded event-log ranges from the deployment block.
