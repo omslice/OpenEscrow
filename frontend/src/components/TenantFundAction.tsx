@@ -83,6 +83,16 @@ function StandardTenantFundAction({
       refetchInterval: 4000,
     },
   });
+  const { data: balance, refetch: refetchBalance } = useReadContract({
+    address: agreement.token,
+    abi: MockUSDCABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: {
+      enabled: !!address && agreement.phase === Phase.ReadyToFund,
+      refetchInterval: 4000,
+    },
+  });
   const { writeContract: approve, data: approveHash, isPending: approving } =
     useWriteContract();
   const { isLoading: approveMining, isSuccess: approveConfirmed } =
@@ -93,6 +103,8 @@ function StandardTenantFundAction({
   }, [approveConfirmed, refetchAllowance]);
 
   if (agreement.phase !== Phase.ReadyToFund || !isTenant) return null;
+  const currentBalance = typeof balance === "bigint" ? balance : 0n;
+  const hasBalance = currentBalance >= needed;
   const hasAllowance = typeof allowance === "bigint" && allowance >= needed;
 
   return (
@@ -102,7 +114,17 @@ function StandardTenantFundAction({
         needed={needed}
         tokenLabel={tokenLabel}
       />
-      {!hasAllowance ? (
+      {!hasBalance ? (
+        <TxButton
+          address={agreement.token}
+          abi={MockUSDCABI}
+          functionName="mint"
+          args={[address, needed - currentBalance]}
+          label={`Get required ${tokenLabel}`}
+          className="btn btn-primary"
+          onSuccess={() => void refetchBalance()}
+        />
+      ) : !hasAllowance ? (
         <button
           className="btn btn-primary"
           disabled={approving || approveMining}
@@ -121,7 +143,7 @@ function StandardTenantFundAction({
             ? "Confirm in wallet..."
             : approveMining
               ? "Mining..."
-              : `1. Approve ${formatUSDC(needed)} ${tokenLabel}`}
+              : `Approve ${formatUSDC(needed)} ${tokenLabel}`}
         </button>
       ) : (
         <TxButton
@@ -129,7 +151,7 @@ function StandardTenantFundAction({
           abi={OpenEscrowABI}
           functionName="tenantAcceptAndFund"
           args={[id]}
-          label="2. Accept and fund"
+          label="Accept and fund"
           onSuccess={onRefetch}
         />
       )}
@@ -139,6 +161,9 @@ function StandardTenantFundAction({
 
 function sponsoredErrorMessage(caught: unknown) {
   const message = caught instanceof Error ? caught.message : "";
+  if (/0xe450d38c|insufficient balance/i.test(message)) {
+    return "This wallet does not have enough of the agreement's selected test token. Claim the required balance, then try again.";
+  }
   if (
     /intrinsic gas too low/i.test(message) ||
     /JSON is not a valid request object/i.test(message)
@@ -156,7 +181,7 @@ function SponsoredTenantFundAction({
   const { address } = useAccount();
   const publicClient = usePublicClient();
   const { sendTransaction } = useSendTransaction();
-  const [step, setStep] = useState<"idle" | "approving" | "funding">("idle");
+  const [step, setStep] = useState<"idle" | "minting" | "approving" | "funding">("idle");
   const [transactionError, setTransactionError] = useState<string | null>(null);
   const isTenant = address?.toLowerCase() === agreement.tenant.toLowerCase();
   const { needed, tokenLabel } = fundingDetails(agreement);
@@ -170,8 +195,20 @@ function SponsoredTenantFundAction({
       refetchInterval: 4000,
     },
   });
+  const { data: balance, refetch: refetchBalance } = useReadContract({
+    address: agreement.token,
+    abi: MockUSDCABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: {
+      enabled: !!address && agreement.phase === Phase.ReadyToFund,
+      refetchInterval: 4000,
+    },
+  });
 
   if (agreement.phase !== Phase.ReadyToFund || !isTenant || !address) return null;
+  const currentBalance = typeof balance === "bigint" ? balance : 0n;
+  const hasBalance = currentBalance >= needed;
   const hasAllowance = typeof allowance === "bigint" && allowance >= needed;
 
   async function sendSponsored(
@@ -208,10 +245,49 @@ function SponsoredTenantFundAction({
     }
   }
 
+  async function mintMissingDeposit() {
+    setTransactionError(null);
+    setStep("minting");
+    try {
+      const latest = await refetchBalance();
+      const latestBalance = typeof latest.data === "bigint" ? latest.data : 0n;
+      const missing = needed > latestBalance ? needed - latestBalance : 0n;
+      if (missing === 0n) return;
+      await sendSponsored(
+        agreement.token,
+        encodeFunctionData({
+          abi: MockUSDCABI,
+          functionName: "mint",
+          args: [address, missing],
+        }),
+        150_000n,
+      );
+      await refetchBalance();
+    } catch (caught) {
+      setTransactionError(sponsoredErrorMessage(caught));
+    } finally {
+      setStep("idle");
+    }
+  }
+
   async function fundDeposit() {
     setTransactionError(null);
     setStep("funding");
     try {
+      const [latestBalance, latestAllowance] = await Promise.all([
+        refetchBalance(),
+        refetchAllowance(),
+      ]);
+      if (typeof latestBalance.data !== "bigint" || latestBalance.data < needed) {
+        throw new Error(
+          `This wallet needs ${formatUSDC(needed)} ${tokenLabel} before it can fund the agreement.`,
+        );
+      }
+      if (typeof latestAllowance.data !== "bigint" || latestAllowance.data < needed) {
+        throw new Error(
+          `Approve ${formatUSDC(needed)} ${tokenLabel} before funding the agreement.`,
+        );
+      }
       await sendSponsored(
         OPEN_ESCROW_ADDRESS,
         encodeFunctionData({
@@ -237,7 +313,17 @@ function SponsoredTenantFundAction({
         tokenLabel={tokenLabel}
         sponsored
       />
-      {!hasAllowance ? (
+      {!hasBalance ? (
+        <button
+          className="btn btn-primary"
+          disabled={step !== "idle"}
+          onClick={() => void mintMissingDeposit()}
+        >
+          {step === "minting"
+            ? "Claiming required test tokens..."
+            : `Get required ${tokenLabel}—gas covered`}
+        </button>
+      ) : !hasAllowance ? (
         <button
           className="btn btn-primary"
           disabled={step !== "idle"}
@@ -245,7 +331,7 @@ function SponsoredTenantFundAction({
         >
           {step === "approving"
             ? "Approving with gas covered..."
-            : `1. Approve ${formatUSDC(needed)} ${tokenLabel}`}
+            : `Approve ${formatUSDC(needed)} ${tokenLabel}`}
         </button>
       ) : (
         <button
@@ -253,7 +339,7 @@ function SponsoredTenantFundAction({
           disabled={step !== "idle"}
           onClick={() => void fundDeposit()}
         >
-          {step === "funding" ? "Funding with gas covered..." : "2. Accept and fund"}
+          {step === "funding" ? "Funding with gas covered..." : "Accept and fund"}
         </button>
       )}
       {transactionError && <p className="tx-error">{transactionError}</p>}
