@@ -157,9 +157,8 @@ const WALLET_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const DEDUCTION_CATEGORY_LABEL = {
   "10": "Unpaid rent",
   "11": "Damage beyond ordinary wear",
-  "12": "Cleaning",
-  "13": "Utilities or other unpaid charges",
-  "14": "Other documented deduction",
+  "12": "Cleaning needed to restore move-in cleanliness",
+  "13": "Lease-authorized restoration or replacement of landlord property",
 };
 const PRIVY_APP_ID = "cmrzdp7ss00670cju098baqsr";
 const ACCOUNT_ACCESS_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
@@ -220,25 +219,75 @@ function deductionItemsMatchAmount(items, amount) {
   );
 }
 
+const CALIFORNIA_DEDUCTION_CATEGORIES = new Set(
+  Object.values(DEDUCTION_CATEGORY_LABEL),
+);
+
+function validCaliforniaClaim(items, confirmations, evidenceUri, evidenceHash) {
+  const hasConditionBasedDeduction = items.some((item) =>
+    [
+      DEDUCTION_CATEGORY_LABEL["11"],
+      DEDUCTION_CATEGORY_LABEL["12"],
+      DEDUCTION_CATEGORY_LABEL["13"],
+    ].includes(item.category),
+  );
+  return (
+    items.every((item) => CALIFORNIA_DEDUCTION_CATEGORIES.has(item.category)) &&
+    confirmations &&
+    confirmations.itemizedStatement === true &&
+    confirmations.supportingDocuments === true &&
+    (!hasConditionBasedDeduction ||
+      (confirmations.moveInPhotos === true &&
+        confirmations.preRepairPhotos === true &&
+        confirmations.postRepairPhotos === true)) &&
+    Boolean(evidenceUri) &&
+    /^0x[a-fA-F0-9]{64}$/.test(evidenceHash)
+  );
+}
+
 function normalizeEmail(value) {
   return cleanText(value, 254).toLowerCase();
 }
 
+const CALIFORNIA_POLICY = Object.freeze({
+  version: "ca-civ-1950.5-2026.1",
+  jurisdiction: "us-ca",
+  claimDays: "21",
+  responseDays: "7",
+  arbiterDays: "7",
+  operationsReserve: "0",
+});
+
 function validTerms(terms) {
+  const deposit = tokenMicros(terms?.deposit);
+  const monthlyRent = tokenMicros(terms?.monthlyRent);
+  const smallLandlordException = terms?.smallLandlordException === true;
+  const tenantIsServiceMember = terms?.tenantIsServiceMember === true;
+  const maximumDeposit =
+    monthlyRent === null
+      ? null
+      : monthlyRent * BigInt(smallLandlordException && !tenantIsServiceMember ? 2 : 1);
   return (
     terms &&
     typeof terms === "object" &&
-    typeof terms.jurisdiction === "string" &&
+    terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
+    terms.policyVersion === CALIFORNIA_POLICY.version &&
     (terms.tokenChoice === "plain" || terms.tokenChoice === "yield") &&
-    typeof terms.deposit === "string" &&
-    Number(terms.deposit) > 0 &&
-    typeof terms.operationsReserve === "string" &&
-    Number(terms.operationsReserve) === 5 &&
+    deposit !== null &&
+    deposit > 0n &&
+    monthlyRent !== null &&
+    monthlyRent > 0n &&
+    maximumDeposit !== null &&
+    deposit <= maximumDeposit &&
+    typeof terms.smallLandlordException === "boolean" &&
+    typeof terms.tenantIsServiceMember === "boolean" &&
+    terms.electronicDeliveryConsent === true &&
+    terms.operationsReserve === CALIFORNIA_POLICY.operationsReserve &&
     typeof terms.claimWindowStart === "string" &&
     !Number.isNaN(new Date(terms.claimWindowStart).getTime()) &&
-    [terms.claimDays, terms.responseDays, terms.arbiterDays].every(
-      (value) => typeof value === "string" && Number(value) > 0,
-    )
+    terms.claimDays === CALIFORNIA_POLICY.claimDays &&
+    terms.responseDays === CALIFORNIA_POLICY.responseDays &&
+    terms.arbiterDays === CALIFORNIA_POLICY.arbiterDays
   );
 }
 
@@ -1720,6 +1769,7 @@ async function applyAction(request, env, id) {
     const note = cleanText(body.note, 1000);
     const evidenceUri = cleanText(body.evidenceUri, 500);
     const evidenceHash = cleanText(body.evidenceHash, 100);
+    const californiaConfirmations = body.californiaConfirmations;
     const transactionHash = cleanText(body.transactionHash, 100);
     if (
       !amount ||
@@ -1727,6 +1777,7 @@ async function applyAction(request, env, id) {
       !items ||
       !deductionItemsMatchAmount(items, amount) ||
       items.some((item) => tokenMicros(item.amount) === 0n) ||
+      !validCaliforniaClaim(items, californiaConfirmations, evidenceUri, evidenceHash) ||
       !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)
     ) {
       return json({ error: "The recorded deduction claim is incomplete." }, 400);
@@ -1741,7 +1792,17 @@ async function applyAction(request, env, id) {
         "deduction_claim_submitted",
         `Submitted an itemized ${amount}-share deduction claim with ${items.length} line item${items.length === 1 ? "" : "s"} (${category})${note ? `: ${note}` : "."}${evidenceUri ? ` Evidence: ${evidenceUri}.` : ""}`,
         revision,
-        { amount, category, items, note, evidenceUri, evidenceHash, transactionHash },
+        {
+          amount,
+          category,
+          items,
+          note,
+          evidenceUri,
+          evidenceHash,
+          californiaConfirmations,
+          transactionHash,
+          policyVersion: CALIFORNIA_POLICY.version,
+        },
       ),
     );
   } else if (body.type === "claim_notification_prepared") {
@@ -1770,11 +1831,13 @@ async function applyAction(request, env, id) {
     const note = cleanText(body.note, 1000);
     const evidenceUri = cleanText(body.evidenceUri, 500);
     const evidenceHash = cleanText(body.evidenceHash, 100);
+    const californiaConfirmations = body.californiaConfirmations;
     const transactionHash = cleanText(body.transactionHash, 100);
     if (
       !amount ||
       !items ||
       !deductionItemsMatchAmount(items, amount) ||
+      !validCaliforniaClaim(items, californiaConfirmations, evidenceUri, evidenceHash) ||
       !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)
     ) {
       return json({ error: "The recorded claim amendment is incomplete." }, 400);
@@ -1789,7 +1852,16 @@ async function applyAction(request, env, id) {
         "deduction_claim_amended",
         `Amended the itemized deduction claim to ${amount} shares across ${items.length} line item${items.length === 1 ? "" : "s"}${note ? `: ${note}` : "."}${evidenceUri ? ` Evidence: ${evidenceUri}.` : ""}`,
         revision,
-        { amount, items, note, evidenceUri, evidenceHash, transactionHash },
+        {
+          amount,
+          items,
+          note,
+          evidenceUri,
+          evidenceHash,
+          californiaConfirmations,
+          transactionHash,
+          policyVersion: CALIFORNIA_POLICY.version,
+        },
       ),
     );
   } else if (body.type === "claim_response") {
@@ -2448,12 +2520,14 @@ async function report(db, id, token) {
       const snapshot = event.metadata.terms;
       return `<h3>Revision ${event.revision}</h3><p class="meta">${escapeHtml(event.createdAt)}</p><table>
 <tr><th>Refundable deposit</th><td>${escapeHtml(snapshot.deposit)} ${snapshot.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</td></tr>
-<tr><th>Network &amp; storage reserve</th><td>${escapeHtml(snapshot.operationsReserve || "0")} testUSDC (separate, non-refundable)</td></tr>
-<tr><th>Lease expiration</th><td>${escapeHtml(snapshot.claimWindowStart)}</td></tr>
-<tr><th>Claim period</th><td>${escapeHtml(snapshot.claimDays)} days</td></tr>
-<tr><th>Response period</th><td>${escapeHtml(snapshot.responseDays)} days</td></tr>
-<tr><th>Arbiter ruling period</th><td>${escapeHtml(snapshot.arbiterDays)} days</td></tr>
-<tr><th>Jurisdiction context</th><td>${escapeHtml(snapshot.jurisdiction)}</td></tr>
+<tr><th>Monthly rent used for cap</th><td>${escapeHtml(snapshot.monthlyRent || "Not recorded")}</td></tr>
+<tr><th>Tenant-paid platform fee</th><td>$0</td></tr>
+<tr><th>Expected possession returned</th><td>${escapeHtml(snapshot.claimWindowStart)}</td></tr>
+<tr><th>California accounting/refund period</th><td>${escapeHtml(snapshot.claimDays)} calendar days (locked)</td></tr>
+<tr><th>OpenEscrow response period</th><td>${escapeHtml(snapshot.responseDays)} days (locked pilot rule)</td></tr>
+<tr><th>OpenEscrow arbiter period</th><td>${escapeHtml(snapshot.arbiterDays)} days (locked pilot rule)</td></tr>
+<tr><th>Jurisdiction</th><td>California residential tenancy</td></tr>
+<tr><th>Policy profile</th><td>${escapeHtml(snapshot.policyVersion || "Legacy proposal")}</td></tr>
 </table>`;
     })
     .join("");
@@ -2519,12 +2593,16 @@ ${tenantPartyRows}
 </tbody></table>
 <h2>Current terms</h2><table>
 <tr><th>Refundable deposit</th><td>${escapeHtml(terms.deposit)} ${terms.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</td></tr>
-<tr><th>Network &amp; storage reserve</th><td>${escapeHtml(terms.operationsReserve || "0")} testUSDC (separate, non-refundable)</td></tr>
-<tr><th>Lease expiration</th><td>${escapeHtml(terms.claimWindowStart)}</td></tr>
-<tr><th>Claim period</th><td>${escapeHtml(terms.claimDays)} days</td></tr>
-<tr><th>Response period</th><td>${escapeHtml(terms.responseDays)} days</td></tr>
-<tr><th>Arbiter ruling period</th><td>${escapeHtml(terms.arbiterDays)} days</td></tr>
-<tr><th>Jurisdiction context</th><td>${escapeHtml(terms.jurisdiction)}</td></tr>
+<tr><th>Monthly rent used for cap</th><td>${escapeHtml(terms.monthlyRent || "Not recorded")}</td></tr>
+<tr><th>Tenant-paid platform fee</th><td>$0</td></tr>
+<tr><th>Expected possession returned</th><td>${escapeHtml(terms.claimWindowStart)}</td></tr>
+<tr><th>California accounting/refund period</th><td>${escapeHtml(terms.claimDays)} calendar days (locked)</td></tr>
+<tr><th>OpenEscrow response period</th><td>${escapeHtml(terms.responseDays)} days (locked pilot rule)</td></tr>
+<tr><th>OpenEscrow arbiter period</th><td>${escapeHtml(terms.arbiterDays)} days (locked pilot rule)</td></tr>
+<tr><th>Jurisdiction</th><td>California residential tenancy</td></tr>
+<tr><th>Policy profile</th><td>${escapeHtml(terms.policyVersion || "Legacy proposal")}</td></tr>
+<tr><th>Deposit-cap facts</th><td>${terms.smallLandlordException ? "Qualifying small-landlord exception asserted" : "Standard one-month cap"}${terms.tenantIsServiceMember ? " · tenant is a service member" : ""}</td></tr>
+<tr><th>Electronic record and return consent</th><td>${terms.electronicDeliveryConsent ? "Included in the approved proposal" : "Not recorded"}</td></tr>
 </table>
 <h2>Approval state</h2>
 <p>${tenantApprovalState} · Arbiter: ${record.arbiterEmail ? (record.arbiterApproved ? "approved" : "not approved") : "not appointed"}</p>

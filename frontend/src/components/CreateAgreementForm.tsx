@@ -14,6 +14,7 @@ import {
 } from "../contracts/config";
 import { parseUSDC } from "../lib/format";
 import {
+  CALIFORNIA_POLICY,
   JURISDICTIONS,
   rememberJurisdiction,
   type JurisdictionCode,
@@ -48,6 +49,7 @@ type ProposalField =
   | "tenantEmail"
   | "arbiterEmail"
   | "deposit"
+  | "monthlyRent"
   | "claimWindowStart"
   | "claimDays"
   | "responseDays"
@@ -112,13 +114,16 @@ function AgreementForm({
   const [arbiterName, setArbiterName] = useState("");
   const [arbiterEmail, setArbiterEmail] = useState("");
   const [deposit, setDeposit] = useState("100");
-  const [operationsReserve, setOperationsReserve] = useState("5");
+  const [monthlyRent, setMonthlyRent] = useState("100");
+  const [smallLandlordException, setSmallLandlordException] = useState(false);
+  const [tenantIsServiceMember, setTenantIsServiceMember] = useState(false);
+  const [operationsReserve, setOperationsReserve] = useState<string>(CALIFORNIA_POLICY.operationsReserve);
   const [tokenChoice, setTokenChoice] = useState<"plain" | "yield">("plain");
   const [claimWindowStart, setClaimWindowStart] = useState("");
-  const [claimDays, setClaimDays] = useState("30");
-  const [responseDays, setResponseDays] = useState("7");
-  const [arbiterDays, setArbiterDays] = useState("7");
-  const [jurisdiction, setJurisdiction] = useState<JurisdictionCode>("testnet-generic");
+  const [claimDays, setClaimDays] = useState<string>(CALIFORNIA_POLICY.claimDays);
+  const [responseDays, setResponseDays] = useState<string>(CALIFORNIA_POLICY.responseDays);
+  const [arbiterDays, setArbiterDays] = useState<string>(CALIFORNIA_POLICY.arbiterDays);
+  const [jurisdiction, setJurisdiction] = useState<JurisdictionCode>(CALIFORNIA_POLICY.jurisdiction);
   const [draft, setDraft] = useState<NegotiationRecord | null>(null);
   const [accessBundle, setAccessBundle] = useState<CreatedNegotiation["access"] | null>(null);
   const [revisionSummary, setRevisionSummary] = useState("");
@@ -134,7 +139,7 @@ function AgreementForm({
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isEditingRevision, setIsEditingRevision] = useState(false);
-  const submittedJurisdiction = useRef<JurisdictionCode>("testnet-generic");
+  const submittedJurisdiction = useRef<JurisdictionCode>(CALIFORNIA_POLICY.jurisdiction);
   const handledReceipt = useRef<`0x${string}` | null>(null);
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
@@ -212,15 +217,16 @@ function AgreementForm({
     setArbiterName(record.arbiterName || "");
     setArbiterEmail(record.arbiterEmail || "");
     setDeposit(record.terms.deposit);
-    setOperationsReserve(record.terms.operationsReserve || "5");
+    setMonthlyRent(record.terms.monthlyRent || record.terms.deposit);
+    setSmallLandlordException(record.terms.smallLandlordException === true);
+    setTenantIsServiceMember(record.terms.tenantIsServiceMember === true);
+    setOperationsReserve(CALIFORNIA_POLICY.operationsReserve);
     setTokenChoice(record.terms.tokenChoice);
     setClaimWindowStart(record.terms.claimWindowStart);
-    setClaimDays(record.terms.claimDays);
-    setResponseDays(record.terms.responseDays);
-    setArbiterDays(record.terms.arbiterDays);
-    if (JURISDICTIONS.some((item) => item.code === record.terms.jurisdiction)) {
-      setJurisdiction(record.terms.jurisdiction as JurisdictionCode);
-    }
+    setClaimDays(CALIFORNIA_POLICY.claimDays);
+    setResponseDays(CALIFORNIA_POLICY.responseDays);
+    setArbiterDays(CALIFORNIA_POLICY.arbiterDays);
+    setJurisdiction(CALIFORNIA_POLICY.jurisdiction);
   }
 
   useEffect(() => {
@@ -294,9 +300,14 @@ function AgreementForm({
   function currentTerms(): AgreementTerms {
     return {
       jurisdiction,
+      policyVersion: CALIFORNIA_POLICY.version,
       tokenChoice,
       deposit,
       operationsReserve,
+      monthlyRent,
+      smallLandlordException,
+      tenantIsServiceMember,
+      electronicDeliveryConsent: true,
       claimWindowStart,
       claimDays,
       responseDays,
@@ -339,7 +350,7 @@ function AgreementForm({
     if (!claimWindowStart) {
       return {
         field: "claimWindowStart",
-        message: "Expected lease expiration is required.",
+        message: "Expected possession-return date is required.",
       };
     }
     const nowSec = Math.floor(Date.now() / 1000);
@@ -348,13 +359,13 @@ function AgreementForm({
       return {
         field: "claimWindowStart",
         message:
-          "The saved lease-expiration date has passed. Choose a future date before publishing this revision.",
+          "The saved possession-return date has passed. Choose a future date before publishing this revision.",
       };
     }
     if (startSec - nowSec > MAX_CLAIM_WINDOW_OFFSET_SECONDS) {
       return {
         field: "claimWindowStart",
-        message: "Expected lease expiration is too far in the future.",
+        message: "Expected possession-return date is too far in the future.",
       };
     }
     try {
@@ -363,6 +374,40 @@ function AgreementForm({
       }
     } catch {
       return { field: "deposit", message: "Invalid deposit amount." };
+    }
+    let depositAmount: number;
+    let rentAmount: number;
+    try {
+      depositAmount = Number(parseUSDC(deposit));
+      rentAmount = Number(parseUSDC(monthlyRent));
+    } catch {
+      return { field: "monthlyRent", message: "Enter a valid monthly rent." };
+    }
+    if (rentAmount <= 0) {
+      return { field: "monthlyRent", message: "Monthly rent must be greater than zero." };
+    }
+    const depositMultiplier =
+      smallLandlordException && !tenantIsServiceMember ? 2 : 1;
+    if (depositAmount > rentAmount * depositMultiplier) {
+      return {
+        field: "deposit",
+        message:
+          depositMultiplier === 2
+            ? "California limits this qualifying small-landlord deposit to two months' rent."
+            : "California generally limits a residential security deposit to one month's rent.",
+      };
+    }
+    if (
+      jurisdiction !== CALIFORNIA_POLICY.jurisdiction ||
+      operationsReserve !== CALIFORNIA_POLICY.operationsReserve ||
+      claimDays !== CALIFORNIA_POLICY.claimDays ||
+      responseDays !== CALIFORNIA_POLICY.responseDays ||
+      arbiterDays !== CALIFORNIA_POLICY.arbiterDays
+    ) {
+      return {
+        message:
+          "The California policy values changed unexpectedly. Reload before saving this proposal.",
+      };
     }
     for (const [days, label, field] of [
       [claimDays, "Claim period", "claimDays"],
@@ -631,9 +676,9 @@ function AgreementForm({
 
     const nowSec = Math.floor(Date.now() / 1000);
     const startSec = Math.floor(new Date(claimWindowStart).getTime() / 1000);
-    if (startSec < nowSec) return setFormError("The lease expiration must still be in the future.");
+    if (startSec < nowSec) return setFormError("The expected possession-return date must still be in the future.");
     if (startSec - nowSec > MAX_CLAIM_WINDOW_OFFSET_SECONDS) {
-      return setFormError("The lease expiration is too far in the future.");
+      return setFormError("The expected possession-return date is too far in the future.");
     }
 
     submittedJurisdiction.current = jurisdiction;
@@ -781,10 +826,10 @@ function AgreementForm({
       )}
 
       <label>
-        Jurisdiction context
+        Jurisdiction policy
         <select
           value={jurisdiction}
-          disabled={approvedTermsLocked}
+          disabled
           onChange={(event) => setJurisdiction(event.target.value as JurisdictionCode)}
         >
           {JURISDICTIONS.map((option) => (
@@ -792,9 +837,37 @@ function AgreementForm({
           ))}
         </select>
       </label>
-      <p className="jurisdiction-notice">
-        Research context only. It has not been legally reviewed and does not change enforceability.
-      </p>
+      <section className="jurisdiction-notice california-policy" aria-labelledby="california-policy-title">
+        <div className="california-policy-heading">
+          <div>
+            <strong id="california-policy-title">California policy profile</strong>
+            <small>{CALIFORNIA_POLICY.version}</small>
+          </div>
+          <span className="policy-lock">Locked</span>
+        </div>
+        <p>
+          This pilot is limited to California residential tenancies. Statewide timing and
+          documentation rules are fixed in the proposal and revalidated by the server.
+        </p>
+        <ul>
+          <li>The statutory accounting and refund period is 21 calendar days after the tenant vacates.</li>
+          <li>Move-in, pre-repair, and post-repair photographs are required when applicable.</li>
+          <li>Deductions are limited to California-authorized purposes and reasonable amounts.</li>
+          <li>Itemization and supporting documentation must accompany a deduction claim.</li>
+          <li>The tenant keeps the right to request a pre-move-out inspection during the final 14 days.</li>
+        </ul>
+        <p className="field-help">
+          OpenEscrow encodes safeguards; it does not determine whether a particular deduction is
+          lawful or replace advice from a California housing lawyer.{" "}
+          <a href={CALIFORNIA_POLICY.statuteUrl} target="_blank" rel="noreferrer">
+            Civil Code § 1950.5
+          </a>
+          {" · "}
+          <a href={CALIFORNIA_POLICY.guideUrl} target="_blank" rel="noreferrer">
+            California DRE guidance
+          </a>
+        </p>
+      </section>
 
       <fieldset className="token-choice">
         <legend>Deposit test token</legend>
@@ -806,6 +879,50 @@ function AgreementForm({
           <input type="radio" name="deposit-token" checked={tokenChoice === "yield"} disabled={approvedTermsLocked} onChange={() => setTokenChoice("yield")} />
           <span><strong>ytUSDC ⓘ</strong><small>Yield-test shares · 20%/day accelerated demo</small></span>
         </label>
+      </fieldset>
+      <label>
+        Monthly rent (used for California deposit limit)
+        <input
+          value={monthlyRent}
+          onChange={(event) => {
+            setMonthlyRent(event.target.value);
+            clearFieldIssue("monthlyRent");
+          }}
+          type="number"
+          min="0"
+          step="0.000001"
+          disabled={approvedTermsLocked}
+          data-proposal-field="monthlyRent"
+          aria-invalid={invalidField === "monthlyRent"}
+        />
+      </label>
+      <fieldset className="california-deposit-exception">
+        <legend>California deposit-cap facts</legend>
+        <label>
+          <input
+            type="checkbox"
+            checked={smallLandlordException}
+            disabled={approvedTermsLocked}
+            onChange={(event) => setSmallLandlordException(event.target.checked)}
+          />
+          <span>
+            The landlord is a natural person or qualifying family-owned LLC and owns no more than
+            two rental properties totaling no more than four units.
+          </span>
+        </label>
+        <label>
+          <input
+            type="checkbox"
+            checked={tenantIsServiceMember}
+            disabled={approvedTermsLocked}
+            onChange={(event) => setTenantIsServiceMember(event.target.checked)}
+          />
+          <span>The prospective tenant is a service member.</span>
+        </label>
+        <p className="field-help">
+          The default cap is one month’s rent. A qualifying small landlord may use a two-month cap,
+          except for a service member. These facts become part of the approved record.
+        </p>
       </fieldset>
       <label>
         Deposit amount ({tokenChoice === "yield" ? "ytUSDC shares" : "testUSDC"})
@@ -829,25 +946,25 @@ function AgreementForm({
           <strong>{deposit || "0"} {tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</strong>
         </div>
         <div>
-          <span>OpenEscrow network &amp; storage reserve</span>
-          <strong>{operationsReserve} testUSDC</strong>
+          <span>Tenant-paid platform or operations fee</span>
+          <strong>$0 · prohibited by this profile</strong>
         </div>
         <div className="cost-total">
           <span>Tenant provides at funding</span>
           <strong>
             {tokenChoice === "yield"
-              ? `${deposit || "0"} ytUSDC + ${operationsReserve} testUSDC`
-              : `${(Number(deposit || 0) + Number(operationsReserve)).toLocaleString(undefined, { maximumFractionDigits: 6 })} testUSDC`}
+              ? `${deposit || "0"} ytUSDC`
+              : `${Number(deposit || 0).toLocaleString(undefined, { maximumFractionDigits: 6 })} testUSDC`}
           </strong>
         </div>
         <p>
-          The $5 reserve is a separate, non-refundable pilot service charge for sponsored Base
-          transactions and encrypted document storage. It is never included in the landlord’s
-          deductible security-deposit balance.
+          This standalone California profile does not charge the tenant a non-refundable network
+          or storage fee. Whoever deploys the software must fund its own gas sponsorship and
+          storage, or require parties to pay their own network costs.
         </p>
       </section>
       <label>
-        Expected lease expiration / claim window start
+        Expected date tenant vacates / possession is returned
         <input
           value={claimWindowStart}
           onChange={(event) => {
@@ -860,15 +977,19 @@ function AgreementForm({
           aria-invalid={invalidField === "claimWindowStart" || claimWindowHasPassed}
         />
       </label>
-      <p className="field-help">The claim window opens when the lease is expected to expire.</p>
+      <p className="field-help">
+        California’s 21-day period runs after the tenant vacates, not merely when a fixed lease
+        date passes. Confirm this expected date before onchain finalization; an early or late
+        move-out requires a new approved proposal in this version.
+      </p>
       {claimWindowHasPassed && (
         <p className="field-validation-error" role="alert">
-          This saved date has passed. Select a future lease-expiration date before publishing a
+          This saved date has passed. Select a future possession-return date before publishing a
           revision or finalizing onchain.
         </p>
       )}
       <label>
-        Claim period (days the landlord has to submit a claim)
+        California accounting and refund period
         <input
           value={claimDays}
           onChange={(event) => {
@@ -877,13 +998,14 @@ function AgreementForm({
           }}
           type="number"
           min="1"
-          disabled={approvedTermsLocked}
+          disabled
           data-proposal-field="claimDays"
           aria-invalid={invalidField === "claimDays"}
         />
       </label>
+      <p className="field-help">Locked at 21 calendar days under Civil Code § 1950.5(h).</p>
       <label>
-        Response period (days the tenant has to respond)
+        OpenEscrow tenant response period
         <input
           value={responseDays}
           onChange={(event) => {
@@ -892,13 +1014,16 @@ function AgreementForm({
           }}
           type="number"
           min="1"
-          disabled={approvedTermsLocked}
+          disabled
           data-proposal-field="responseDays"
           aria-invalid={invalidField === "responseDays"}
         />
       </label>
+      <p className="field-help">
+        Locked at 7 days as a California pilot workflow rule; this is not a statutory deadline.
+      </p>
       <label>
-        Arbiter ruling period (days the optional arbiter has to rule)
+        OpenEscrow arbiter ruling period
         <input
           value={arbiterDays}
           onChange={(event) => {
@@ -907,11 +1032,14 @@ function AgreementForm({
           }}
           type="number"
           min="1"
-          disabled={approvedTermsLocked}
+          disabled
           data-proposal-field="arbiterDays"
           aria-invalid={invalidField === "arbiterDays"}
         />
       </label>
+      <p className="field-help">
+        Locked at 7 days as a California pilot workflow rule; this is not a statutory deadline.
+      </p>
 
       {draft && draft.status !== "finalized" ? (
         <section className="revision-publisher" aria-labelledby="revision-publisher-title">

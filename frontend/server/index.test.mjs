@@ -103,11 +103,16 @@ class TestR2 {
 
 const terms = {
   jurisdiction: "us-ca",
+  policyVersion: "ca-civ-1950.5-2026.1",
   tokenChoice: "plain",
   deposit: "1200",
-  operationsReserve: "5",
+  operationsReserve: "0",
+  monthlyRent: "1200",
+  smallLandlordException: false,
+  tenantIsServiceMember: false,
+  electronicDeliveryConsent: true,
   claimWindowStart: "2027-07-01T12:00",
-  claimDays: "30",
+  claimDays: "21",
   responseDays: "7",
   arbiterDays: "7",
 };
@@ -685,11 +690,17 @@ test("landlord revisions reset approvals and role capabilities are enforced", as
       wallet: "0x1111111111111111111111111111111111111111",
     }),
   );
+  const lockedPolicyRevision = await act(db, id, created.access.landlord, {
+    type: "revise",
+    summary: "Attempted to change the locked tenant response period.",
+    terms: { ...terms, responseDays: "10" },
+  });
+  assert.equal(lockedPolicyRevision.status, 400);
   const revised = await jsonResponse(
     await act(db, id, created.access.landlord, {
       type: "revise",
-      summary: "Extended the tenant response period to ten days.",
-      terms: { ...terms, responseDays: "10" },
+      summary: "Reduced the security deposit after tenant review.",
+      terms: { ...terms, deposit: "1100" },
     }),
   );
   assert.equal(revised.revision, 2);
@@ -745,7 +756,7 @@ test("documented claim, tenant decision, and email attempts are included in the 
     category: "Itemized deductions",
     items: [
       {
-        category: "Damage beyond ordinary wear",
+        category: "11",
         description: "Replacement of the tenant-damaged door",
         amount: "299",
       },
@@ -753,6 +764,13 @@ test("documented claim, tenant decision, and email attempts are included in the 
     note: "",
     evidenceUri: "ipfs://bafy-test-invoice",
     evidenceHash: `0x${"b".repeat(64)}`,
+    californiaConfirmations: {
+      itemizedStatement: true,
+      supportingDocuments: true,
+      moveInPhotos: true,
+      preRepairPhotos: true,
+      postRepairPhotos: true,
+    },
     transactionHash: `0x${"c".repeat(64)}`,
   });
   assert.equal(mismatchedClaim.status, 400);
@@ -764,19 +782,26 @@ test("documented claim, tenant decision, and email attempts are included in the 
       category: "Damage beyond ordinary wear",
       items: [
         {
-          category: "Damage beyond ordinary wear",
+          category: "11",
           description: "Replacement of the tenant-damaged door",
           amount: "225",
         },
         {
-          category: "Utilities or other unpaid charges",
-          description: "Final water bill",
+          category: "13",
+          description: "Lease-authorized replacement of a missing fixture",
           amount: "75",
         },
       ],
       note: "Invoice covers replacement of the damaged fixture.",
       evidenceUri: "ipfs://bafy-test-invoice",
       evidenceHash: `0x${"b".repeat(64)}`,
+      californiaConfirmations: {
+        itemizedStatement: true,
+        supportingDocuments: true,
+        moveInPhotos: true,
+        preRepairPhotos: true,
+        postRepairPhotos: true,
+      },
       transactionHash: `0x${"c".repeat(64)}`,
     }),
   );

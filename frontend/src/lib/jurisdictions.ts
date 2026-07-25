@@ -1,18 +1,20 @@
 export const JURISDICTIONS = [
-  { code: "testnet-generic", label: "Generic testnet - no jurisdiction selected" },
-  { code: "us-ca", label: "United States - California" },
-  { code: "us-ny", label: "United States - New York" },
-  { code: "us-tx", label: "United States - Texas" },
-  { code: "us-fl", label: "United States - Florida" },
-  { code: "us-other", label: "United States - another state or district" },
-  { code: "ca-other", label: "Canada - province or territory" },
-  { code: "gb-ew", label: "United Kingdom - England and Wales" },
-  { code: "gb-sct", label: "United Kingdom - Scotland" },
-  { code: "gb-nir", label: "United Kingdom - Northern Ireland" },
-  { code: "other", label: "Another jurisdiction" },
+  { code: "us-ca", label: "California residential tenancy" },
 ] as const;
 
 export type JurisdictionCode = (typeof JURISDICTIONS)[number]["code"];
+
+export const CALIFORNIA_POLICY = {
+  version: "ca-civ-1950.5-2026.1",
+  jurisdiction: "us-ca" as const,
+  claimDays: "21",
+  responseDays: "7",
+  arbiterDays: "7",
+  operationsReserve: "0",
+  statuteUrl:
+    "https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CIV&sectionNum=1950.5.",
+  guideUrl: "https://www.dre.ca.gov/publications/ResourceGuidebook/gb10_movingout.html",
+} as const;
 
 const STORAGE_PREFIX = "openescrow:jurisdiction:";
 
@@ -30,7 +32,7 @@ export function rememberJurisdiction(id: bigint, code: JurisdictionCode): void {
 }
 
 export function readJurisdiction(id: bigint): JurisdictionCode {
-  if (typeof window === "undefined") return "testnet-generic";
+  if (typeof window === "undefined") return "us-ca";
   const stored = window.localStorage.getItem(`${STORAGE_PREFIX}${id.toString()}`);
-  return stored && isJurisdictionCode(stored) ? stored : "testnet-generic";
+  return stored && isJurisdictionCode(stored) ? stored : "us-ca";
 }

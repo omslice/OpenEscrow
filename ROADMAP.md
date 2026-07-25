@@ -25,14 +25,15 @@ This roadmap is organized around evidence and release gates rather than speculat
 
 **Status: not started**
 
-- [ ] Select one jurisdiction and intended user segment
+- [x] Select California residential tenancies as the first jurisdiction and user segment
 - [ ] Retain qualified legal counsel
 - [ ] Resolve Category A in [`docs/open-questions.md`](docs/open-questions.md)
 - [ ] Identify a mediation, legal-aid, housing, or property-management partner
 - [ ] Define evidence privacy, access, and retention
 - [ ] Define user disclosures and informed consent
 - [ ] Decide whether blockchain custody is legally permissible and operationally useful
-- [ ] Convert statutory requirements into a reviewed jurisdiction policy profile
+- [x] Encode a versioned California policy profile in the proposal, server validation, and claim checklist
+- [ ] Have California housing counsel review and approve the encoded policy profile
 
 **Exit criterion:** counsel and the pilot partner approve a written workflow that maps applicable law to product behavior.
 

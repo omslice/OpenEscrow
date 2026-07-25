@@ -259,9 +259,9 @@ export function AgreementDashboard({
         }
       />
       <div className="dashboard-row">
-        <span className="label">Jurisdiction context</span>
+        <span className="label">Jurisdiction policy</span>
         <span>
-          {jurisdictionLabel(jurisdiction)} <small className="offchain-label">off-chain</small>
+          {jurisdictionLabel(jurisdiction)} <small className="offchain-label">CA profile</small>
         </span>
       </div>
       {agreement.claimedAmount > 0n && (
@@ -272,7 +272,7 @@ export function AgreementDashboard({
       )}
       {agreement.claimWindowStart > 0n && (
         <div className="dashboard-row">
-          <span className="label">Claim window opens</span>
+          <span className="label">Expected possession return / 21-day period begins</span>
           <span>{formatTimestamp(agreement.claimWindowStart)}</span>
         </div>
       )}

@@ -24,12 +24,22 @@ function Terms({ record }: { record: NegotiationRecord }) {
   return (
     <dl className="negotiation-terms">
       <div><dt>Deposit</dt><dd>{terms.deposit} {terms.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</dd></div>
-      <div><dt>Network &amp; storage reserve</dt><dd>{terms.operationsReserve || "0"} testUSDC · separate and non-refundable</dd></div>
-      <div><dt>Lease expiration</dt><dd>{new Date(terms.claimWindowStart).toLocaleString()}</dd></div>
-      <div><dt>Claim period</dt><dd>{terms.claimDays} days</dd></div>
-      <div><dt>Tenant response</dt><dd>{terms.responseDays} days</dd></div>
-      <div><dt>Arbiter ruling</dt><dd>{terms.arbiterDays} days</dd></div>
-      <div><dt>Jurisdiction context</dt><dd>{jurisdictionLabel(terms.jurisdiction as JurisdictionCode)}</dd></div>
+      <div><dt>Monthly rent used for cap</dt><dd>{terms.monthlyRent || "Legacy proposal: not recorded"}</dd></div>
+      <div><dt>Tenant-paid platform fee</dt><dd>$0</dd></div>
+      <div><dt>Expected possession returned</dt><dd>{new Date(terms.claimWindowStart).toLocaleString()}</dd></div>
+      <div><dt>California accounting/refund period</dt><dd>{terms.claimDays} calendar days · locked</dd></div>
+      <div><dt>Tenant response</dt><dd>{terms.responseDays} days · OpenEscrow policy</dd></div>
+      <div><dt>Arbiter ruling</dt><dd>{terms.arbiterDays} days · OpenEscrow policy</dd></div>
+      <div><dt>Jurisdiction</dt><dd>{jurisdictionLabel(terms.jurisdiction as JurisdictionCode)}</dd></div>
+      <div><dt>Policy profile</dt><dd>{terms.policyVersion || "Legacy proposal"}</dd></div>
+      <div>
+        <dt>California deposit-cap facts</dt>
+        <dd>
+          {terms.smallLandlordException ? "Qualifying small-landlord exception asserted" : "Standard one-month cap"}
+          {terms.tenantIsServiceMember ? " · tenant is a service member" : ""}
+        </dd>
+      </div>
+      <div><dt>Electronic record and return consent</dt><dd>{terms.electronicDeliveryConsent ? "Included in this approval" : "Not recorded"}</dd></div>
     </dl>
   );
 }

@@ -5,9 +5,14 @@ export type NegotiationStatus = "draft" | "ready" | "finalized";
 
 export interface AgreementTerms {
   jurisdiction: string;
+  policyVersion?: string;
   tokenChoice: "plain" | "yield";
   deposit: string;
   operationsReserve: string;
+  monthlyRent?: string;
+  smallLandlordException?: boolean;
+  tenantIsServiceMember?: boolean;
+  electronicDeliveryConsent?: boolean;
   claimWindowStart: string;
   claimDays: string;
   responseDays: string;
@@ -18,6 +23,14 @@ export interface DeductionLineItem {
   category: string;
   description: string;
   amount: string;
+}
+
+export interface CaliforniaClaimConfirmations {
+  itemizedStatement: true;
+  supportingDocuments: true;
+  moveInPhotos?: true;
+  preRepairPhotos?: true;
+  postRepairPhotos?: true;
 }
 
 export interface NotificationPreferences {
@@ -444,6 +457,7 @@ export type NegotiationAction =
         note: string;
         evidenceUri: string;
         evidenceHash: string;
+        californiaConfirmations: CaliforniaClaimConfirmations;
         transactionHash: string;
       }
     | {
@@ -453,6 +467,7 @@ export type NegotiationAction =
         note: string;
         evidenceUri: string;
         evidenceHash: string;
+        californiaConfirmations: CaliforniaClaimConfirmations;
         transactionHash: string;
       }
     | { type: "claim_notification_prepared"; method: "gmail" | "copy" }
