@@ -28,7 +28,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
         },
         embeddedWallets: {
           ethereum: {
-            createOnLogin: "users-without-wallets",
+            // Provision explicitly after authentication so a slow Privy request cannot
+            // trap the entire app inside its blocking "Creating your wallet" modal.
+            createOnLogin: "off",
           },
         },
         defaultChain: baseSepolia,

@@ -1,6 +1,13 @@
 import { useEffect } from "react";
 import { useAccount, useReadContract, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
-import { MockUSDCABI, OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, YIELD_USDC_ADDRESS } from "../contracts/config";
+import {
+  MockUSDCABI,
+  OpenEscrowABI,
+  OPEN_ESCROW_ADDRESS,
+  Phase,
+  YIELD_USDC_ADDRESS,
+  chain,
+} from "../contracts/config";
 import { formatUSDC } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
@@ -60,6 +67,8 @@ export function TenantFundAction({
               address: agreement.token,
               abi: MockUSDCABI,
               functionName: "approve",
+              account: address,
+              chain,
               args: [OPEN_ESCROW_ADDRESS, needed],
             })
           }

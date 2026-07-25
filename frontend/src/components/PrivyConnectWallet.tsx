@@ -38,7 +38,7 @@ export function PrivyConnectWallet() {
       ) : address ? (
         <span className="address-badge" title={address}>{shortAddr(address)}</span>
       ) : (
-        <span className="chain-badge">Creating wallet...</span>
+        <span className="chain-badge">Setting up wallet...</span>
       )}
       <button className="btn btn-ghost" onClick={() => logout()}>
         Sign out

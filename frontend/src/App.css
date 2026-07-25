@@ -612,6 +612,80 @@
   flex-wrap: wrap;
 }
 
+.invitation-tab-note {
+  align-self: center;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 0 0.75rem;
+}
+
+.invite-role-notice {
+  align-items: flex-start;
+  background: #f3e9ff;
+  border: 1px solid #d7b8f7;
+  border-radius: 16px;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  padding: 1rem;
+}
+
+.invite-landing-notice {
+  border-color: #d7b8f7;
+  box-shadow: inset 5px 0 0 #9a55d4;
+}
+
+.invite-landing-notice h2 {
+  margin: 0.35rem 0 0.5rem;
+}
+
+.invite-landing-notice p {
+  margin: 0 0 0.75rem;
+}
+
+.invite-role-notice h3 {
+  margin: 0.25rem 0 0.5rem;
+}
+
+.invite-role-notice p {
+  margin: 0.35rem 0;
+}
+
+.invite-role-actions {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.wallet-setup-state {
+  margin-bottom: 0.75rem;
+}
+
+.role-mismatch,
+.role-pending {
+  margin: 0.75rem 0;
+  padding: 0.75rem;
+}
+
+.role-pending {
+  background: #f3e9ff;
+  border: 1px solid #d7b8f7;
+  border-radius: 12px;
+}
+
+@media (max-width: 720px) {
+  .invite-role-notice {
+    flex-direction: column;
+  }
+
+  .invite-role-actions {
+    width: 100%;
+  }
+}
+
 .token-choice {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

@@ -11,6 +11,7 @@ import { useNow } from "../lib/useNow";
 import type { Agreement } from "../lib/useAgreement";
 import { useAccount, useReadContract } from "wagmi";
 import { jurisdictionLabel, readJurisdiction } from "../lib/jurisdictions";
+import { inviteRoleLabel, useInviteRole } from "../lib/inviteContext";
 
 function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | null {
   switch (agreement.phase) {
@@ -30,6 +31,15 @@ export function AgreementDashboard({ id, agreement }: { id: bigint; agreement: A
   const deadline = nextDeadline(agreement);
   const { address } = useAccount();
   const normalized = address?.toLowerCase();
+  const inviteRole = useInviteRole();
+  const actualRole =
+    normalized === agreement.landlord.toLowerCase()
+      ? "landlord"
+      : normalized === agreement.tenant.toLowerCase()
+        ? "tenant"
+        : normalized === agreement.arbiter.toLowerCase()
+          ? "arbiter"
+          : null;
   const availableToYou =
     normalized === agreement.tenant.toLowerCase()
       ? agreement.tenantWithdrawable
@@ -114,6 +124,23 @@ export function AgreementDashboard({ id, agreement }: { id: bigint; agreement: A
           <strong>{formatUSDC(agreement.locked)} shares</strong>
         </div>
       </div>
+      <div className="dashboard-row">
+        <span className="label">Your role for this agreement</span>
+        <strong>{actualRole ? inviteRoleLabel[actualRole] : "Not a party with this wallet"}</strong>
+      </div>
+      {inviteRole && actualRole && inviteRole !== actualRole && (
+        <p className="tx-error role-mismatch">
+          This link invited you as the {inviteRole}, but the connected wallet is registered as the{" "}
+          {actualRole}. Sign out and use the {inviteRole}'s Google account or connected wallet.
+        </p>
+      )}
+      {inviteRole && !actualRole && (
+        <p className="role-pending">
+          This is a {inviteRoleLabel[inviteRole].toLowerCase()} invite, but the connected wallet is
+          not assigned to this agreement. Send the wallet shown in your account panel to the
+          landlord, or ask the landlord for the agreement link created after your wallet was added.
+        </p>
+      )}
       {agreement.phase === Phase.Closed && (
         <div className="dashboard-row">
           <span className="label">Closed as</span>

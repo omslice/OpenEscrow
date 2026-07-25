@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
-import { useWaitForTransactionReceipt, useWriteContract } from "wagmi";
+import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import type { Abi } from "viem";
+import { chain } from "../contracts/config";
 
 interface TxButtonProps {
   address: `0x${string}`;
@@ -24,6 +25,7 @@ export function TxButton({
   className,
   onSuccess,
 }: TxButtonProps) {
+  const { address: account } = useAccount();
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
   const { isLoading: isMining, isSuccess } = useWaitForTransactionReceipt({ hash });
   const notifiedHash = useRef<`0x${string}` | undefined>(undefined);
@@ -41,11 +43,12 @@ export function TxButton({
     <div className="tx-button">
       <button
         className={className ?? "btn btn-primary"}
-        disabled={disabled || busy}
+        disabled={disabled || busy || !account}
         onClick={() => {
+          if (!account) return;
           notifiedHash.current = undefined;
           reset();
-          writeContract({ address, abi, functionName, args });
+          writeContract({ address, abi, functionName, args, account, chain });
         }}
       >
         {isPending ? "Confirm in wallet..." : isMining ? "Mining..." : label}

@@ -9,6 +9,7 @@ import { TestFunds } from "./components/TestFunds";
 import { PublicIntro } from "./components/PublicIntro";
 import { AccountCenter } from "./components/AccountCenter";
 import { isJurisdictionCode, rememberJurisdiction } from "./lib/jurisdictions";
+import { clearInviteRole, inviteRoleLabel, useInviteRole } from "./lib/inviteContext";
 import "./App.css";
 
 type Tab = "create" | "track";
@@ -20,6 +21,7 @@ function App() {
   const { discover, isScanning, scanError } = useDiscoverAgreements();
   const [manualId, setManualId] = useState("");
   const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const inviteRole = useInviteRole();
   const startDemo = () => {
     setTab("create");
     window.requestAnimationFrame(() => {
@@ -46,18 +48,42 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (inviteRole) setTab("track");
+  }, [inviteRole]);
+
   return (
     <Layout>
       <PublicIntro onStart={startDemo} />
+      {inviteRole && (
+        <section className="card invite-landing-notice" aria-labelledby="invite-landing-title">
+          <span className="eyebrow">{inviteRoleLabel[inviteRole]} invitation</span>
+          <h2 id="invite-landing-title">You are joining as the {inviteRole}.</h2>
+          <p>
+            Continue with the Google account that received this invitation, or connect the wallet
+            that should act as the {inviteRole}. Roles are assigned per agreement and verified
+            against the connected wallet onchain.
+          </p>
+          <button className="btn btn-ghost" onClick={clearInviteRole}>
+            Exit invitation mode
+          </button>
+        </section>
+      )}
       <AccountCenter />
 
       <nav className="tabs" id="demo-workspace">
         <button className={tab === "track" ? "tab active" : "tab"} onClick={() => setTab("track")}>
           Deposit dashboard
         </button>
-        <button className={tab === "create" ? "tab active" : "tab"} onClick={() => setTab("create")}>
-          Propose new agreement
-        </button>
+        {inviteRole ? (
+          <span className="invitation-tab-note">
+            {inviteRoleLabel[inviteRole]} invitation mode
+          </span>
+        ) : (
+          <button className={tab === "create" ? "tab active" : "tab"} onClick={() => setTab("create")}>
+            Propose new agreement
+          </button>
+        )}
       </nav>
 
       <TestFunds />

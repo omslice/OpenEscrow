@@ -10,6 +10,7 @@ import {
   OPEN_ESCROW_ADDRESS,
   USDC_ADDRESS,
   YIELD_USDC_ADDRESS,
+  chain,
 } from "../contracts/config";
 import { parseUSDC } from "../lib/format";
 import {
@@ -20,6 +21,7 @@ import {
 } from "../lib/jurisdictions";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import { useTrackedAgreements } from "../lib/useTrackedAgreements";
+import { buildInviteUrl, type InviteRole } from "../lib/inviteContext";
 
 const DAY = 24 * 60 * 60;
 const MAX_PERIOD_DAYS = MAX_PERIOD_SECONDS / DAY;
@@ -35,8 +37,8 @@ function validatePeriodDays(days: string, label: string): string | null {
   return null;
 }
 
-function inviteContent(email: string, role: "tenant" | "arbiter") {
-  const inviteUrl = `${window.location.origin}/?invite=${role}`;
+function inviteContent(email: string, role: InviteRole) {
+  const inviteUrl = buildInviteUrl(role);
   const subject = "You have been invited to OpenEscrow";
   const body = [
     `You have been invited to participate in an OpenEscrow security-deposit agreement as the ${role}.`,
@@ -110,6 +112,7 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
     if (ACCOUNT_AUTH_ENABLED && !landlordEmail) {
       return setFormError("The landlord must link a verified email before proposing an agreement.");
     }
+    if (!address) return setFormError("Connect the landlord wallet before proposing an agreement.");
     if (!EMAIL_PATTERN.test(tenantEmail)) return setFormError("Enter a valid tenant email.");
     const hasArbiter = arbiterEmail.trim() !== "" || arbiterWallet.trim() !== "";
     if (hasArbiter && !EMAIL_PATTERN.test(arbiterEmail)) {
@@ -177,6 +180,8 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
       address: OPEN_ESCROW_ADDRESS,
       abi: OpenEscrowABI,
       functionName: "createAgreementWithToken",
+      account: address,
+      chain,
       args: [
         tenantWallet as `0x${string}`,
         hasArbiter ? (arbiterWallet as `0x${string}`) : ZERO_ADDRESS,
@@ -395,7 +400,14 @@ function AgreementForm({ landlordEmail }: { landlordEmail: string }) {
           <p>
             Jurisdiction context: {jurisdictionLabel(submittedJurisdiction.current)} (off-chain).
           </p>
-          <code>{window.location.href}</code>
+          <p><strong>Tenant agreement link</strong></p>
+          <code>{buildInviteUrl("tenant", createdId, submittedJurisdiction.current)}</code>
+          {arbiterEmail && (
+            <>
+              <p><strong>Arbiter agreement link</strong></p>
+              <code>{buildInviteUrl("arbiter", createdId, submittedJurisdiction.current)}</code>
+            </>
+          )}
         </div>
       )}
     </form>
