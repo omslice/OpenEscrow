@@ -1,0 +1,168 @@
+.proposal-builder .proposal-workflow-tabs {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin: 20px 0;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 88%, var(--bg));
+}
+
+.proposal-builder .proposal-workflow-tabs [role="tab"] {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  gap: 8px;
+  align-items: center;
+  min-height: 48px;
+  padding: 8px 10px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.proposal-builder .proposal-workflow-tabs [role="tab"] > span {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.proposal-builder .proposal-workflow-tabs [role="tab"] strong {
+  color: inherit;
+  font-size: 13px;
+  line-height: 1.25;
+}
+
+.proposal-builder .proposal-workflow-tabs [role="tab"] small {
+  display: none;
+}
+
+.proposal-builder .proposal-workflow-tabs [role="tab"]:hover {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  color: var(--text-h);
+}
+
+.proposal-builder .proposal-workflow-tabs [role="tab"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.proposal-builder .proposal-workflow-tabs [role="tab"][aria-selected="true"] {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--text-h);
+  box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+}
+
+.proposal-builder
+  .proposal-workflow-tabs
+  [role="tab"][aria-selected="true"]
+  > span {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-on);
+}
+
+.proposal-builder .proposal-step-panel {
+  min-height: 360px;
+  padding-top: 6px;
+}
+
+.proposal-builder .proposal-step-panel[hidden] {
+  display: none !important;
+}
+
+.proposal-builder .proposal-step-panel:focus {
+  outline: none;
+}
+
+.proposal-step-heading {
+  margin: 6px 0 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.proposal-step-heading h3 {
+  margin: 4px 0 5px;
+  color: var(--text-h);
+  font-size: 22px;
+}
+
+.proposal-step-heading p {
+  max-width: 680px;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.proposal-party-management {
+  margin: 20px 0;
+  padding-top: 4px;
+}
+
+.proposal-step-actions {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.proposal-step-actions:has(.btn:only-child) {
+  justify-content: flex-start;
+}
+
+@media (max-width: 680px) {
+  .proposal-builder .proposal-workflow-tabs {
+    grid-template-columns: repeat(3, minmax(92px, 1fr));
+    overflow-x: auto;
+    padding: 5px;
+  }
+
+  .proposal-builder .proposal-workflow-tabs [role="tab"] {
+    grid-template-columns: 24px 1fr;
+    min-height: 44px;
+    padding: 7px;
+  }
+
+  .proposal-builder .proposal-workflow-tabs [role="tab"] > span {
+    width: 22px;
+    height: 22px;
+    font-size: 11px;
+  }
+
+  .proposal-builder .proposal-workflow-tabs [role="tab"] strong {
+    display: none;
+  }
+
+  .proposal-builder .proposal-workflow-tabs [role="tab"] small {
+    display: block;
+    color: inherit;
+    font-size: 11px;
+    font-weight: 750;
+  }
+
+  .proposal-builder .proposal-step-panel {
+    min-height: 0;
+  }
+
+  .proposal-step-actions {
+    align-items: stretch;
+    flex-direction: column-reverse;
+  }
+
+  .proposal-step-actions .btn {
+    width: 100%;
+  }
+}

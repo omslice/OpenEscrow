@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { decodeEventLog, isAddress } from "viem";
 import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
@@ -44,6 +51,7 @@ import {
 } from "../lib/negotiations";
 import { AgreementCard } from "./AgreementCard";
 import { AddressAutocomplete } from "./AddressAutocomplete";
+import "./CreateAgreementFormTabs.css";
 
 const DAY = 24 * 60 * 60;
 const MAX_PERIOD_DAYS = MAX_PERIOD_SECONDS / DAY;
@@ -56,6 +64,7 @@ type ProposalField =
   | "arbiterEmail"
   | "propertyAddress"
   | "deposit"
+  | "depositShares"
   | "claimWindowStart"
   | "claimDays"
   | "responseDays"
@@ -68,6 +77,29 @@ type ProposalValidationIssue = {
 };
 
 type ProposalStep = "participants" | "terms" | "review";
+
+const PROPOSAL_STEPS: Array<{
+  id: ProposalStep;
+  label: string;
+  shortLabel: string;
+}> = [
+  { id: "participants", label: "Parties & property", shortLabel: "Parties" },
+  { id: "terms", label: "Deposit terms", shortLabel: "Terms" },
+  { id: "review", label: "Review & approvals", shortLabel: "Review" },
+];
+
+function proposalStepForField(field?: ProposalField): ProposalStep {
+  if (!field || field === "revisionSummary") return "review";
+  if (
+    field === "tenantName" ||
+    field === "tenantEmail" ||
+    field === "arbiterEmail" ||
+    field === "propertyAddress"
+  ) {
+    return "participants";
+  }
+  return "terms";
+}
 
 function validatePeriodDays(days: string, label: string): string | null {
   const n = Number(days);
@@ -533,7 +565,10 @@ function AgreementForm({
         shares.some((share) => !Number.isInteger(share) || share <= 0) ||
         shares.reduce((total, share) => total + share, 0) !== 10000
       ) {
-        return { message: "Tenant deposit shares must be positive and total exactly 100%." };
+        return {
+          field: "depositShares",
+          message: "Tenant deposit shares must be positive and total exactly 100%.",
+        };
       }
     }
     const nowSec = Math.floor(Date.now() / 1000);
@@ -579,12 +614,15 @@ function AgreementForm({
     setFormMessage(null);
     setFormError(issue.message);
     setInvalidField(issue.field || null);
+    setProposalStep(proposalStepForField(issue.field));
     window.requestAnimationFrame(() => {
-      const target = issue.field
-        ? document.querySelector<HTMLElement>(`[data-proposal-field="${issue.field}"]`)
-        : document.getElementById("proposal-form-feedback");
-      target?.focus({ preventScroll: true });
-      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      window.requestAnimationFrame(() => {
+        const target = issue.field
+          ? document.querySelector<HTMLElement>(`[data-proposal-field="${issue.field}"]`)
+          : document.getElementById("proposal-form-feedback");
+        target?.focus({ preventScroll: true });
+        target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
     });
   }
 
@@ -930,6 +968,7 @@ function AgreementForm({
         finalizedAgreementId ? ` #${finalizedAgreementId}` : ""
       } remains unchanged; cancel it from its Manage proposal section before it is funded.`,
     );
+    setProposalStep("participants");
   }
 
   function rebalancePendingTenantShares(changedIndex: number, requestedBps: number) {
@@ -1192,14 +1231,29 @@ function AgreementForm({
 
   function goToProposalStep(step: ProposalStep) {
     setProposalStep(step);
-    const targetId =
-      step === "participants"
-        ? "proposal-participants"
-        : step === "terms"
-          ? "proposal-terms"
-          : "proposal-review";
     window.requestAnimationFrame(() => {
-      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById(`proposal-panel-${step}`)?.focus({ preventScroll: true });
+    });
+  }
+
+  function handleProposalTabKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+    currentStep: ProposalStep,
+  ) {
+    const currentIndex = PROPOSAL_STEPS.findIndex((step) => step.id === currentStep);
+    let nextIndex = currentIndex;
+    if (event.key === "ArrowRight") nextIndex = (currentIndex + 1) % PROPOSAL_STEPS.length;
+    if (event.key === "ArrowLeft") {
+      nextIndex = (currentIndex - 1 + PROPOSAL_STEPS.length) % PROPOSAL_STEPS.length;
+    }
+    if (event.key === "Home") nextIndex = 0;
+    if (event.key === "End") nextIndex = PROPOSAL_STEPS.length - 1;
+    if (nextIndex === currentIndex) return;
+    event.preventDefault();
+    const nextStep = PROPOSAL_STEPS[nextIndex].id;
+    setProposalStep(nextStep);
+    window.requestAnimationFrame(() => {
+      document.getElementById(`proposal-tab-${nextStep}`)?.focus();
     });
   }
 
@@ -1216,48 +1270,44 @@ function AgreementForm({
         Set the complete proposal first. Tenant invitations stay locked until it is saved, so
         invitees always receive terms they can review, change, and approve.
       </p>
-      <nav className="proposal-workflow-tabs" aria-label="Proposal sections">
-        {([
-          ["participants", "1. Parties"],
-          ["terms", "2. Property & terms"],
-          ["review", "3. Review & finalize"],
-        ] as const).map(([step, label]) => (
+      <div
+        className="proposal-workflow-tabs"
+        role="tablist"
+        aria-label="Agreement proposal sections"
+      >
+        {PROPOSAL_STEPS.map((step, index) => (
           <button
-            className={proposalStep === step ? "active" : ""}
+            className={proposalStep === step.id ? "active" : ""}
             type="button"
-            key={step}
-            onClick={() => goToProposalStep(step)}
+            role="tab"
+            id={`proposal-tab-${step.id}`}
+            aria-controls={`proposal-panel-${step.id}`}
+            aria-selected={proposalStep === step.id}
+            tabIndex={proposalStep === step.id ? 0 : -1}
+            key={step.id}
+            onClick={() => goToProposalStep(step.id)}
+            onKeyDown={(event) => handleProposalTabKeyDown(event, step.id)}
           >
-            {label}
+            <span aria-hidden="true">{index + 1}</span>
+            <strong>{step.label}</strong>
+            <small>{step.shortLabel}</small>
           </button>
         ))}
-      </nav>
-      {draft?.status === "ready" && (
-        <section className="onchain-ready primary-finalization" id="proposal-finalize">
-          <span className="eyebrow">All required approvals recorded</span>
-          <h3>Finalize this approved proposal onchain</h3>
-          <p>
-            This is the only finalization action. It creates the Base Sepolia agreement using the
-            exact participant, property, deposit-split, timing, and token terms everyone approved.
-          </p>
-          <button
-            className="btn btn-primary"
-            type="button"
-            disabled={!isConnected || isPending || isMining}
-            onClick={finalizeOnchain}
-          >
-            {isPending
-              ? "Confirm in wallet..."
-              : isMining
-                ? "Finalizing onchain..."
-                : "Finalize approved proposal onchain"}
-          </button>
-          {!isConnected && (
-            <p className="field-help">Connect the landlord wallet to enable finalization.</p>
-          )}
-        </section>
-      )}
+      </div>
 
+      <section
+        className="proposal-step-panel"
+        role="tabpanel"
+        id="proposal-panel-participants"
+        aria-labelledby="proposal-tab-participants"
+        tabIndex={0}
+        hidden={proposalStep !== "participants"}
+      >
+      <div className="proposal-step-heading">
+        <span className="eyebrow">Step 1 of 3</span>
+        <h3>Parties &amp; property</h3>
+        <p>Identify the landlord, every tenant, and the rental this one proposal covers.</p>
+      </div>
       <div className="participant-summary" id="proposal-participants">
         <span>Landlord</span>
         <strong>{landlordName || "Name from linked account"}</strong>
@@ -1482,7 +1532,150 @@ function AgreementForm({
         </section>
       )}
 
-      <section className="deposit-split" aria-labelledby="deposit-split-title">
+      {draft && (
+        <section className="proposal-party-management" aria-labelledby="manage-tenants-title">
+          <div className="record-header">
+            <div>
+              <h3 id="manage-tenants-title">Manage tenants</h3>
+              <p className="hint">
+                Names and emails stay editable until finalization. Each saved change resets
+                approvals and is added to the running record.
+              </p>
+            </div>
+          </div>
+          <div className="tenant-invite-list">
+            {draft.tenants.map((tenant) => (
+              <div className="tenant-invite-row" key={tenant.id}>
+                {editingTenantId === tenant.id ? (
+                  <div className="tenant-edit-fields">
+                    <label>
+                      Tenant first and last name
+                      <input
+                        value={editingTenantName}
+                        onChange={(event) => setEditingTenantName(event.target.value)}
+                        autoComplete="name"
+                      />
+                    </label>
+                    <label>
+                      Tenant email
+                      <input
+                        value={editingTenantEmail}
+                        onChange={(event) => setEditingTenantEmail(event.target.value)}
+                        type="email"
+                        pattern="[^\s@]+@[^\s@]+\.[^\s@]+"
+                        autoComplete="email"
+                      />
+                    </label>
+                    <small>
+                      Saving updates this proposal, records the change, and resets all approvals.
+                      Changing the email also invalidates the prior invite.
+                    </small>
+                  </div>
+                ) : (
+                  <div>
+                    <strong>{tenant.name || "Tenant"}</strong>
+                    <span>{tenant.email}</span>
+                    <small>{sharePercent(tenant.depositShareBps)}% deposit ownership</small>
+                  </div>
+                )}
+                <div className="invite-actions tenant-management-actions">
+                  {editingTenantId === tenant.id ? (
+                    <>
+                      <button
+                        className="btn btn-primary"
+                        type="button"
+                        disabled={isSavingDraft}
+                        onClick={() => void saveTenantEdit()}
+                      >
+                        Save tenant
+                      </button>
+                      <button
+                        className="btn btn-ghost"
+                        type="button"
+                        disabled={isSavingDraft}
+                        onClick={() => setEditingTenantId(null)}
+                      >
+                        Cancel
+                      </button>
+                    </>
+                  ) : (
+                    draft.status !== "finalized" && (
+                      <>
+                        <button
+                          className="btn btn-ghost"
+                          type="button"
+                          disabled={isSavingDraft}
+                          title="Editing records a new revision and requires every party to approve again."
+                          onClick={() => beginTenantEdit(tenant.id)}
+                        >
+                          Edit tenant ⓘ
+                        </button>
+                        <button
+                          className="btn btn-ghost danger"
+                          type="button"
+                          disabled={isSavingDraft || draft.tenants.length === 1}
+                          title={
+                            draft.tenants.length === 1
+                              ? "Add a replacement tenant before removing the only tenant."
+                              : "Removing a tenant invalidates their access, records the action, and resets every approval."
+                          }
+                          onClick={() => void removeTenant(tenant.id)}
+                        >
+                          Remove
+                        </button>
+                      </>
+                    )
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <AddressAutocomplete
+        value={propertyAddress}
+        onChange={(next) => {
+          setPropertyAddress(next);
+          clearFieldIssue("propertyAddress");
+        }}
+        disabled={approvedTermsLocked}
+        invalid={invalidField === "propertyAddress"}
+      />
+      <p className="field-help">
+        This identifies which rental and security deposit the proposal covers. It remains in the
+        private agreement record and is not written directly to the public blockchain.
+      </p>
+      <div className="proposal-step-actions">
+        <button
+          className="btn btn-primary"
+          type="button"
+          onClick={() => goToProposalStep("terms")}
+        >
+          Continue to deposit terms
+        </button>
+      </div>
+      </section>
+
+      <section
+        className="proposal-step-panel"
+        role="tabpanel"
+        id="proposal-panel-terms"
+        aria-labelledby="proposal-tab-terms"
+        tabIndex={0}
+        hidden={proposalStep !== "terms"}
+      >
+      <div className="proposal-step-heading">
+        <span className="eyebrow">Step 2 of 3</span>
+        <h3>Deposit terms</h3>
+        <p>Set ownership, token, total funding, and the test lifecycle timing.</p>
+      </div>
+      <section
+        className="deposit-split"
+        aria-labelledby="deposit-split-title"
+        data-proposal-field="depositShares"
+        tabIndex={-1}
+      >
         <div className="record-header">
           <div>
             <h3 id="deposit-split-title">Tenant deposit ownership split</h3>
@@ -1624,22 +1817,6 @@ function AgreementForm({
           </button>
         )}
       </section>
-
-      <div id="proposal-terms">
-        <AddressAutocomplete
-          value={propertyAddress}
-          onChange={(next) => {
-            setPropertyAddress(next);
-            clearFieldIssue("propertyAddress");
-          }}
-          disabled={approvedTermsLocked}
-          invalid={invalidField === "propertyAddress"}
-        />
-      </div>
-      <p className="field-help">
-        This identifies which rental and security deposit the proposal covers. It remains in the
-        private agreement record and is not written directly to the public blockchain.
-      </p>
 
       <section className="jurisdiction-notice generic-test-policy" aria-labelledby="generic-policy-title">
         <div className="california-policy-heading">
@@ -1793,6 +1970,63 @@ function AgreementForm({
         </>
       )}
 
+      <div className="proposal-step-actions">
+        <button
+          className="btn btn-ghost"
+          type="button"
+          onClick={() => goToProposalStep("participants")}
+        >
+          Back to parties &amp; property
+        </button>
+        <button
+          className="btn btn-primary"
+          type="button"
+          onClick={() => goToProposalStep("review")}
+        >
+          Continue to review
+        </button>
+      </div>
+      </section>
+
+      <section
+        className="proposal-step-panel"
+        role="tabpanel"
+        id="proposal-panel-review"
+        aria-labelledby="proposal-tab-review"
+        tabIndex={0}
+        hidden={proposalStep !== "review"}
+      >
+      <div className="proposal-step-heading">
+        <span className="eyebrow">Step 3 of 3</span>
+        <h3>Review &amp; approvals</h3>
+        <p>Save or publish this revision, invite tenants, track approvals, and finalize once ready.</p>
+      </div>
+      {draft?.status === "ready" && (
+        <section className="onchain-ready primary-finalization" id="proposal-finalize">
+          <span className="eyebrow">All required approvals recorded</span>
+          <h3>Finalize this approved proposal onchain</h3>
+          <p>
+            This is the only finalization action. It creates the Base Sepolia agreement using the
+            exact participant, property, deposit-split, timing, and token terms everyone approved.
+          </p>
+          <button
+            className="btn btn-primary"
+            type="button"
+            disabled={!isConnected || isPending || isMining}
+            onClick={finalizeOnchain}
+          >
+            {isPending
+              ? "Confirm in wallet..."
+              : isMining
+                ? "Finalizing onchain..."
+                : "Finalize approved proposal onchain"}
+          </button>
+          {!isConnected && (
+            <p className="field-help">Connect the landlord wallet to enable finalization.</p>
+          )}
+        </section>
+      )}
+
       {draft && draft.status !== "finalized" ? (
         <section className="revision-publisher" aria-labelledby="revision-publisher-title">
           {approvedTermsLocked ? (
@@ -1809,7 +2043,10 @@ function AgreementForm({
                   className="btn btn-secondary"
                   type="button"
                   title="Any published edit creates a new revision, cancels current approvals, and requires every tenant and the optional arbiter to approve again."
-                  onClick={() => setIsEditingRevision(true)}
+                  onClick={() => {
+                    setIsEditingRevision(true);
+                    goToProposalStep("terms");
+                  }}
                 >
                   Edit terms ⓘ
                 </button>
@@ -1965,68 +2202,20 @@ function AgreementForm({
           <div className="tenant-invite-list">
             {draft.tenants.map((tenant, index) => (
               <div className="tenant-invite-row" key={tenant.id}>
-                {editingTenantId === tenant.id ? (
-                  <div className="tenant-edit-fields">
-                    <label>
-                      Tenant first and last name
-                      <input
-                        value={editingTenantName}
-                        onChange={(event) => setEditingTenantName(event.target.value)}
-                        autoComplete="name"
-                      />
-                    </label>
-                    <label>
-                      Tenant email
-                      <input
-                        value={editingTenantEmail}
-                        onChange={(event) => setEditingTenantEmail(event.target.value)}
-                        type="email"
-                        pattern="[^\s@]+@[^\s@]+\.[^\s@]+"
-                        autoComplete="email"
-                      />
-                    </label>
-                    <small>
-                      Saving updates the one active proposal, records the change, and resets all
-                      approvals. Changing the email also invalidates the prior invite.
-                    </small>
-                  </div>
-                ) : (
-                  <div>
-                    <strong>{tenant.name || "Tenant"}</strong>
-                    <span>{tenant.email}</span>
-                    <small>{sharePercent(tenant.depositShareBps)}% deposit ownership</small>
-                    <TenantFundingDue
-                      deposit={draft.terms.deposit}
-                      reserve={draft.terms.operationsReserve}
-                      bps={tenant.depositShareBps}
-                      tenantCount={draft.tenants.length}
-                      tenantIndex={index}
-                      tokenChoice={draft.terms.tokenChoice}
-                    />
-                  </div>
-                )}
-                <div className="invite-actions tenant-management-actions">
-                  {editingTenantId === tenant.id ? (
-                    <>
-                      <button
-                        className="btn btn-primary"
-                        type="button"
-                        disabled={isSavingDraft}
-                        onClick={() => void saveTenantEdit()}
-                      >
-                        Save tenant
-                      </button>
-                      <button
-                        className="btn btn-ghost"
-                        type="button"
-                        disabled={isSavingDraft}
-                        onClick={() => setEditingTenantId(null)}
-                      >
-                        Cancel
-                      </button>
-                    </>
-                  ) : (
-                    <>
+                <div>
+                  <strong>{tenant.name || "Tenant"}</strong>
+                  <span>{tenant.email}</span>
+                  <small>{sharePercent(tenant.depositShareBps)}% deposit ownership</small>
+                  <TenantFundingDue
+                    deposit={draft.terms.deposit}
+                    reserve={draft.terms.operationsReserve}
+                    bps={tenant.depositShareBps}
+                    tenantCount={draft.tenants.length}
+                    tenantIndex={index}
+                    tokenChoice={draft.terms.tokenChoice}
+                  />
+                </div>
+                <div className="invite-actions">
                   <button
                     className="btn btn-secondary"
                     type="button"
@@ -2055,34 +2244,6 @@ function AgreementForm({
                   >
                     {copiedInvite === tenant.id ? "Invite copied" : "Copy invite"}
                   </button>
-                      {draft.status !== "finalized" && (
-                        <>
-                          <button
-                            className="btn btn-ghost"
-                            type="button"
-                            disabled={isSavingDraft}
-                            title="Editing keeps one active proposal, writes an audit event, and requires every party to approve the new revision."
-                            onClick={() => beginTenantEdit(tenant.id)}
-                          >
-                            Edit tenant ⓘ
-                          </button>
-                          <button
-                            className="btn btn-ghost danger"
-                            type="button"
-                            disabled={isSavingDraft || draft.tenants.length === 1}
-                            title={
-                              draft.tenants.length === 1
-                                ? "Add a replacement tenant before removing the only tenant."
-                                : "Removing a tenant invalidates their access, records the action, and resets every approval."
-                            }
-                            onClick={() => void removeTenant(tenant.id)}
-                          >
-                            Remove
-                          </button>
-                        </>
-                      )}
-                    </>
-                  )}
                 </div>
               </div>
             ))}
@@ -2197,6 +2358,16 @@ function AgreementForm({
       {createdId !== null && (
         <p className="tx-success">Created onchain agreement #{createdId.toString()}.</p>
       )}
+      <div className="proposal-step-actions">
+        <button
+          className="btn btn-ghost"
+          type="button"
+          onClick={() => goToProposalStep("terms")}
+        >
+          Back to deposit terms
+        </button>
+      </div>
+      </section>
     </section>
   );
 }
