@@ -4,10 +4,6 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
       <div className="intro-copy">
         <p className="eyebrow">Open-source public-interest prototype</p>
         <h2 id="public-intro-title">Rental deposits, protected by default.</h2>
-        <p className="intro-lede">
-          Financial inclusion is optional: tenants can use email-based onboarding and choose a
-          yield-bearing deposit option, while anyone can still connect their own wallet.
-        </p>
         <div className="intro-actions">
           <button className="btn btn-primary" onClick={onStart}>
             Try the testnet demo
@@ -18,20 +14,24 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
         </div>
       </div>
 
-      <div className="principle-card">
-        <span className="eyebrow">The default</span>
-        <strong>The tenant keeps the deposit.</strong>
-        <p>A landlord receives only the amount the tenant accepts or the arbiter awards.</p>
-      </div>
-
       <ol className="how-it-works" id="how-it-works">
         <li>
-          <span>01</span>
-          <strong>Agree &amp; fund</strong>
-          <p>Both parties agree to the deposit terms, and the deposit is funded.</p>
+          <span className="step-number">01</span>
+          <div className="how-it-works-heading">
+            <strong>Agree &amp; fund</strong>
+            <details className="yield-option">
+              <summary>Earn yield?</summary>
+              <span className="yield-option-copy" role="tooltip">
+                All parties can optionally agree to hold the deposit in a yield-bearing stablecoin
+                so tenants earn yield in proportion to their approved deposit shares. This testnet
+                demo uses a simulated token with no real value.
+              </span>
+            </details>
+          </div>
+          <p>All parties agree to the deposit terms, and the deposit is funded.</p>
         </li>
         <li>
-          <span>02</span>
+          <span className="step-number">02</span>
           <strong>Claim &amp; review</strong>
           <p>
             At move-out, the landlord can submit deductions with supporting documents. The
@@ -39,7 +39,7 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
           </p>
         </li>
         <li>
-          <span>03</span>
+          <span className="step-number">03</span>
           <strong>Release or resolve</strong>
           <p>
             Unclaimed funds are returned to the tenant. Disputes follow the applicable local

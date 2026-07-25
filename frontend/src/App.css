@@ -238,7 +238,7 @@
 
 .public-intro {
   display: grid;
-  grid-template-columns: minmax(0, 1.5fr) minmax(240px, 0.7fr);
+  grid-template-columns: 1fr;
   gap: 20px;
   margin-bottom: 28px;
   padding: 32px;
@@ -256,12 +256,6 @@
   letter-spacing: -0.045em;
 }
 
-.intro-lede {
-  max-width: 640px;
-  color: var(--text);
-  font-size: 16px;
-}
-
 .intro-actions {
   display: flex;
   gap: 10px;
@@ -275,27 +269,6 @@
   text-decoration: none;
 }
 
-.principle-card {
-  align-self: stretch;
-  padding: 20px;
-  border: 1px solid var(--accent-border);
-  border-radius: 12px;
-  background: var(--accent-bg);
-}
-
-.principle-card strong,
-.principle-card p {
-  display: block;
-}
-
-.principle-card strong {
-  margin: 8px 0;
-  color: var(--text-h);
-  font-size: 21px;
-  line-height: 1.2;
-}
-
-.principle-card p,
 .how-it-works p {
   color: var(--text);
   font-size: 13px;
@@ -316,12 +289,12 @@
   border-top: 1px solid var(--border);
 }
 
-.how-it-works span,
 .how-it-works strong {
   display: block;
 }
 
-.how-it-works span {
+.how-it-works .step-number {
+  display: block;
   color: var(--accent);
   font-family: var(--mono);
   font-size: 11px;
@@ -330,6 +303,70 @@
 .how-it-works strong {
   margin: 4px 0;
   color: var(--text-h);
+}
+
+.how-it-works-heading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+
+.how-it-works-heading strong {
+  margin: 0;
+}
+
+.yield-option {
+  position: relative;
+}
+
+.yield-option summary {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 3px 8px;
+  border: 1px solid var(--accent-border);
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  cursor: help;
+  font-size: 11px;
+  font-weight: 800;
+  list-style: none;
+}
+
+.yield-option summary::-webkit-details-marker {
+  display: none;
+}
+
+.yield-option summary:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.yield-option-copy {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 7px);
+  left: 0;
+  display: none;
+  width: min(300px, calc(100vw - 64px));
+  padding: 10px 12px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  background: var(--bg);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 28%);
+  color: var(--text-h);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+}
+
+.yield-option:hover .yield-option-copy,
+.yield-option:focus-within .yield-option-copy,
+.yield-option[open] .yield-option-copy {
+  display: block;
 }
 
 .intro-boundary {
@@ -2380,6 +2417,13 @@ a.btn.disabled {
 
   .how-it-works {
     grid-template-columns: 1fr;
+  }
+
+  .yield-option-copy {
+    right: auto;
+    left: 50%;
+    width: min(300px, calc(100vw - 48px));
+    transform: translateX(-50%);
   }
 
   .account-entry,
