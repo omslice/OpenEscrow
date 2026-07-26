@@ -139,6 +139,9 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     useState<NegotiationAccess | null>(
       initialCapturedAccess?.role === "landlord" ? initialCapturedAccess : null,
     );
+  const [isProposalComposerOpen, setIsProposalComposerOpen] = useState(
+    initialCapturedAccess?.role === "landlord",
+  );
   const inviteRole = useInviteRole();
   const workspaceRole = useWorkspaceRole();
   const [proposalAccess, setProposalAccess] = useState<NegotiationAccess | null>(() => {
@@ -160,6 +163,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     if (initialCapturedAccess?.role !== "landlord") return;
     selectWorkspaceRole("landlord");
     setTab("proposals");
+    setIsProposalComposerOpen(true);
   }, [initialCapturedAccess]);
   const startDemo = () => {
     setTab("overview");
@@ -322,6 +326,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   function openSavedProposal(item: SavedProposal) {
     if (item.access.role === "landlord") {
       setActiveLandlordAccess(item.access);
+      setIsProposalComposerOpen(true);
       setTab("proposals");
       window.requestAnimationFrame(() => {
         document.getElementById("proposal-builder")?.scrollIntoView({ behavior: "smooth" });
@@ -505,7 +510,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           <strong>No active proposals found.</strong>
           <span>
             {workspaceRole === "landlord"
-              ? "Start a proposal above or refresh after another party responds."
+              ? "Use Start a new proposal below, or refresh after another party responds."
               : "Accepted invitations and proposals awaiting your review will appear here."}
           </span>
         </div>
@@ -776,6 +781,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
               onClick={() => {
                 selectWorkspaceRole("landlord");
                 setActiveLandlordAccess(null);
+                setIsProposalComposerOpen(false);
                 setTab("overview");
                 setIsChangingRole(false);
               }}
@@ -874,14 +880,6 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             </>
           ) : (
             <>
-              {workspaceRole === "landlord" && !inviteRole && (
-                <CreateAgreementForm
-                  key={activeLandlordAccess?.proposalId || "latest-landlord-proposal"}
-                  initialAccess={activeLandlordAccess}
-                />
-              )}
-              {workspaceRole === "tenant" && !inviteRole && <TenantLandlordInvite />}
-              {renderDiscoveryCard("proposals")}
               <section className="workspace-section-heading">
                 <span className="eyebrow">Current records</span>
                 <h2>
@@ -895,6 +893,53 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                 </p>
               </section>
               {renderSavedProposalCards()}
+              {workspaceRole === "landlord" && !inviteRole && (
+                <section className="proposal-composer-launcher">
+                  {!isProposalComposerOpen ? (
+                    <button
+                      className="btn btn-primary"
+                      type="button"
+                      onClick={() => {
+                        setActiveLandlordAccess(null);
+                        setIsProposalComposerOpen(true);
+                        window.requestAnimationFrame(() => {
+                          document
+                            .getElementById("proposal-builder")
+                            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                        });
+                      }}
+                    >
+                      Start a new proposal
+                    </button>
+                  ) : (
+                    <>
+                      <div className="proposal-composer-toolbar">
+                        <span>
+                          {activeLandlordAccess
+                            ? "Editing the selected proposal"
+                            : "Creating a new proposal"}
+                        </span>
+                        <button
+                          className="btn btn-ghost small"
+                          type="button"
+                          onClick={() => {
+                            setActiveLandlordAccess(null);
+                            setIsProposalComposerOpen(false);
+                          }}
+                        >
+                          Close proposal editor
+                        </button>
+                      </div>
+                      <CreateAgreementForm
+                        key={activeLandlordAccess?.proposalId || "new-landlord-proposal"}
+                        initialAccess={activeLandlordAccess}
+                      />
+                    </>
+                  )}
+                </section>
+              )}
+              {workspaceRole === "tenant" && !inviteRole && <TenantLandlordInvite />}
+              {renderDiscoveryCard("proposals")}
             </>
           )}
         </div>

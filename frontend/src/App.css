@@ -1913,6 +1913,27 @@ a.btn.disabled {
   color: var(--text);
 }
 
+.proposal-composer-launcher {
+  display: grid;
+  gap: 12px;
+  justify-items: start;
+  margin: 24px 0;
+}
+
+.proposal-composer-toolbar {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--surface));
+  color: var(--text-h);
+  font-weight: 700;
+}
+
 .workspace-empty {
   display: grid;
   gap: 5px;
@@ -2395,6 +2416,15 @@ a.btn.disabled {
 
   .workspace-discovery .btn,
   .compact-manual-tracker .button-row {
+    width: 100%;
+  }
+
+  .proposal-composer-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .proposal-composer-toolbar .btn {
     width: 100%;
   }
 
