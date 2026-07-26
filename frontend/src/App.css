@@ -630,6 +630,74 @@
   background: var(--surface);
 }
 
+.account-workspace-disclosure {
+  padding: 0;
+  overflow: hidden;
+}
+
+.account-workspace-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 18px 20px;
+  cursor: pointer;
+  list-style: none;
+}
+
+.account-workspace-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.account-workspace-disclosure > summary > span:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.account-workspace-disclosure > summary strong {
+  color: var(--text-h);
+  font-size: 18px;
+}
+
+.account-workspace-disclosure > summary small {
+  color: var(--muted);
+}
+
+.disclosure-cue {
+  flex: 0 0 auto;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.disclosure-cue::before {
+  content: "Manage";
+}
+
+.account-workspace-disclosure[open] .disclosure-cue::before {
+  content: "Hide";
+}
+
+.account-workspace-content {
+  display: grid;
+  gap: 20px;
+  padding: 0 20px 20px;
+  border-top: 1px solid var(--border);
+}
+
+.account-workspace-content .active-role-summary {
+  padding-top: 20px;
+}
+
+.account-center-embedded {
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+  background: transparent;
+}
+
 .account-center-heading {
   display: flex;
   align-items: flex-start;
@@ -2224,6 +2292,38 @@ a.btn.disabled {
   display: grid;
   gap: 3px;
   min-width: 0;
+}
+
+.funding-party-name {
+  display: flex !important;
+  align-items: center;
+  gap: 8px !important;
+}
+
+.party-role-badge {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  padding: 3px 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.party-role-badge.tenant {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+  background: var(--success-bg);
+  color: var(--success);
+}
+
+.party-role-badge.landlord {
+  border-color: var(--warning-border);
+  background: var(--warning-bg);
+  color: var(--warning);
 }
 
 .funding-party-row span,

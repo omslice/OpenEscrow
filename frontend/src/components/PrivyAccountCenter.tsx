@@ -24,7 +24,7 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   deadlineReminders: false,
 };
 
-export function PrivyAccountCenter() {
+export function PrivyAccountCenter({ embedded = false }: { embedded?: boolean }) {
   const { ready, authenticated, user, linkGoogle, linkWallet, logout } = usePrivy();
   const { identityToken } = useIdentityToken();
   const { ready: walletsReady, wallets } = useWallets();
@@ -165,7 +165,10 @@ export function PrivyAccountCenter() {
   if (!ready || !authenticated || !user) return null;
 
   return (
-    <section className="card account-center" aria-labelledby="account-center-title">
+    <section
+      className={`account-center${embedded ? " account-center-embedded" : " card"}`}
+      aria-labelledby="account-center-title"
+    >
       <div className="account-center-heading">
         <div>
           <span className="eyebrow">Account and wallet</span>

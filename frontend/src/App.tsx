@@ -837,23 +837,36 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     <Layout notifications={notifications}>
       <PublicIntro onStart={startDemo} />
       {!inviteRole && workspaceRole && !isChangingRole && (
-        <section className="card active-role-summary" id="role-workspace">
-          <div>
-            <span className="eyebrow">Active workspace role</span>
-            <h2>{roleLabel[workspaceRole]} workspace</h2>
-            <p>
-              Existing agreement roles are fixed by their participant record. This setting only
-              controls which account tools are shown.
-            </p>
+        <details className="card account-workspace-disclosure" id="role-workspace">
+          <summary>
+            <span>
+              <span className="eyebrow">Account and workspace</span>
+              <strong>{roleLabel[workspaceRole]} workspace</strong>
+              <small>Wallets, email preferences, and workspace settings</small>
+            </span>
+            <span className="disclosure-cue" aria-hidden="true" />
+          </summary>
+          <div className="account-workspace-content">
+            <div className="active-role-summary">
+              <div>
+                <span className="eyebrow">Active workspace role</span>
+                <h2>{roleLabel[workspaceRole]} workspace</h2>
+                <p>
+                  Existing agreement roles are fixed by their participant record. This setting
+                  only controls which account tools are shown.
+                </p>
+              </div>
+              <button
+                className="btn btn-ghost small"
+                type="button"
+                onClick={() => setIsChangingRole(true)}
+              >
+                Change workspace role
+              </button>
+            </div>
+            <AccountCenter embedded />
           </div>
-          <button
-            className="btn btn-ghost small"
-            type="button"
-            onClick={() => setIsChangingRole(true)}
-          >
-            Change workspace role
-          </button>
-        </section>
+        </details>
       )}
       {!inviteRole && (!workspaceRole || isChangingRole) && (
         <section className="card role-selector" id="role-workspace" aria-labelledby="role-selector-title">
@@ -918,7 +931,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           )}
         </section>
       )}
-      <AccountCenter />
+      {(inviteRole || !workspaceRole || isChangingRole) && <AccountCenter />}
 
       {workspaceRole && (
         <nav

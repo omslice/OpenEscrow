@@ -72,7 +72,10 @@ export function FundingLedger({
             return (
               <article className="funding-party-row" key={wallet}>
                 <div>
-                  <strong>{identity.name}</strong>
+                  <div className="funding-party-name">
+                    <strong>{identity.name}</strong>
+                    <b className="party-role-badge tenant">Tenant</b>
+                  </div>
                   {identity.email && <span>{identity.email}</span>}
                   <small>{shortAddr(wallet)}</small>
                 </div>
@@ -95,7 +98,10 @@ export function FundingLedger({
           })}
           <article className="funding-party-row landlord-claim-row">
             <div>
-              <strong>{participantRecord?.landlordName || "Landlord"}</strong>
+              <div className="funding-party-name">
+                <strong>{participantRecord?.landlordName || "Landlord"}</strong>
+                <b className="party-role-badge landlord">Landlord</b>
+              </div>
               {participantRecord?.landlordEmail && (
                 <span>{participantRecord.landlordEmail}</span>
               )}
