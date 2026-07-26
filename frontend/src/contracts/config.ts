@@ -6,12 +6,12 @@ import OperationsReserveABIJson from "./OperationsReserveABI.json";
 import AgreementActivityRegistryABIJson from "./AgreementActivityRegistryABI.json";
 
 // Base Sepolia deployment (see deployments/base-sepolia-latest.json for receipts).
-// Redeployed 2026-07-25 for multi-tenant ownership and partial funding. Earlier
-// addresses run superseded bytecode and should be treated as retired.
-export const OPEN_ESCROW_ADDRESS = "0x1886b3322ea37134209fa40dfd592f2aaf14c329" as const;
+// Redeployed 2026-07-25 with multi-tenant claim consensus and terminal-phase
+// withdrawal locks. Earlier addresses run superseded bytecode and are retired.
+export const OPEN_ESCROW_ADDRESS = "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99" as const;
 export const USDC_ADDRESS = "0xE129b23BD89904D363ba226eE52deC74185D7789" as const;
 export const YIELD_USDC_ADDRESS = "0x2746034FF16371A65c133016470f85535992dabC" as const;
-export const OPERATIONS_RESERVE_ADDRESS = "0xbAC6ae3f3Fdb9f4650E2c3166Ad9b918C7e4eac7" as const;
+export const OPERATIONS_RESERVE_ADDRESS = "0x5d2E9c429F9d117c7b028c8f0f67d37252aDceC0" as const;
 export const AGREEMENT_ACTIVITY_REGISTRY_ADDRESS =
   "0xC004dF4C43146FE55e5761EA1BB3C14f01161951" as const;
 export const OPERATIONS_RESERVE_AMOUNT = 5_000_000n;
@@ -20,7 +20,7 @@ export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as cons
 
 // Block OpenEscrow was deployed at (broadcast/DeployOpenEscrow.s.sol/84532/run-latest.json) -
 // bounds event-log scans so "discover my agreements" doesn't have to search from genesis.
-export const DEPLOYMENT_BLOCK = 44621905n;
+export const DEPLOYMENT_BLOCK = 44628650n;
 export const ACTIVITY_REGISTRY_DEPLOYMENT_BLOCK = 44596729n;
 
 export const chain = baseSepolia;

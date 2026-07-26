@@ -1,15 +1,15 @@
 ﻿{
     "network":  "base-sepolia",
     "chainId":  84532,
-    "sourceCommit":  "95d61eb4c556ba4c0d6df9cb6aa150dba7eb9b0f",
-    "exportedAtUtc":  "2026-07-25T21:25:58Z",
+    "sourceCommit":  "64a9fb70a677621f1747bba20b273059296a2521",
+    "exportedAtUtc":  "2026-07-26T00:27:57.4252388Z",
     "openEscrow":  {
-                       "address":  "0x1886b3322ea37134209fa40dfd592f2aaf14c329",
-                       "transactionHash":  "0x192f8d9e8c29ae5b2510a4d1c0957f34790d020956420ded00bc1bceb8993b74"
+                       "address":  "0xf18bfdbfd3ff84c603cbdf895d2a96ac7260ae99",
+                       "transactionHash":  "0x4d9de3d37a8a7b72cbada81dbab8c3c04e0aa917f783474d717f3ada99009ec5"
                    },
     "operationsReserve":  {
-                              "address":  "0xbac6ae3f3fdb9f4650e2c3166ad9b918c7e4eac7",
-                              "transactionHash":  "0x7054e786cf16cf391b146f1efc267b74ecb61e4a736980562a83f9f3f4d68f50"
+                              "address":  "0x5d2e9c429f9d117c7b028c8f0f67d37252adcec0",
+                              "transactionHash":  "0x508969e92f5d092a120c463a6079f3c3a2af2ba339908dbdd1f630e6fee74fb9"
                           },
     "tokens":  {
                    "plain":  "0xE129b23BD89904D363ba226eE52deC74185D7789",

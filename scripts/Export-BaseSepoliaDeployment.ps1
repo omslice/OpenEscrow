@@ -20,10 +20,14 @@ if ([int64]$broadcast.chain -ne 84532) {
 }
 
 $escrowTransactions = @($broadcast.transactions | Where-Object {
-    $_.contractName -eq "OpenEscrow" -and $_.contractAddress
+    $_.transactionType -eq "CREATE" -and
+    $_.contractName -eq "OpenEscrow" -and
+    $_.contractAddress
 })
 $reserveTransactions = @($broadcast.transactions | Where-Object {
-    $_.contractName -eq "OperationsReserve" -and $_.contractAddress
+    $_.transactionType -eq "CREATE" -and
+    $_.contractName -eq "OperationsReserve" -and
+    $_.contractAddress
 })
 
 if ($escrowTransactions.Count -ne 1 -or $reserveTransactions.Count -ne 1) {
