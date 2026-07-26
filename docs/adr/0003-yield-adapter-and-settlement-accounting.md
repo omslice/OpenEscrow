@@ -2,9 +2,9 @@
 
 ## Status
 
-Prototype implemented locally for post-MVP evaluation. The interface, allocation library, isolated
-`YieldEscrowV2Prototype`, mock adapter, and tests are not wired into or deployed with the current
-OpenEscrow contract.
+Prototype and Base Sepolia Aave StataToken adapter implemented locally for post-MVP evaluation.
+The interface, allocation library, isolated `YieldEscrowV2Prototype`, adapter, and tests are not
+wired into or deployed with the current OpenEscrow contract.
 
 ## Context
 
@@ -95,13 +95,19 @@ The isolated prototype now demonstrates:
 - pull-based USDC withdrawals; and
 - gain, loss, rounding, malicious-reporting, retry, isolation, fuzz, and stateful invariant tests.
 
-The next contract milestone is an external-protocol adapter spike plus emergency-liquidity and
-strategy-failure handling. Evidence manifests, arbiter replacement, and production compliance
+The external-protocol adapter spike now pins and verifies the official Aave V3 Base Sepolia USDC
+StataToken V2 deployment. Adapter and escrow capacity checks expose paused deposits and unavailable
+redemption liquidity as explicit retryable failures. See
+[`docs/aave-base-sepolia-adapter.md`](../aave-base-sepolia-adapter.md) for addresses, fork validation,
+and residual risks.
+
+The next contract milestone is exposure caps, emergency strategy migration, adapter governance, and
+operational monitoring. Evidence manifests, arbiter replacement, and production compliance
 integration remain separate required workstreams.
 
 ## Deferred decisions
 
-- Exact Aave Base market and fixed-share wrapper addresses.
+- Production/mainnet Aave market and fixed-share wrapper approval.
 - Settlement timing relative to the lease end and statutory claim window.
 - Who pays entry/exit gas and any protocol or onramp fees.
 - Emergency strategy migration and governance model.

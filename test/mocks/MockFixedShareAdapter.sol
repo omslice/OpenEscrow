@@ -38,6 +38,8 @@ contract MockFixedShareAdapter is IDepositAssetAdapter {
     IERC20 public immutable SETTLEMENT_ASSET;
     MockFixedShareToken public immutable RECEIPT_ASSET;
     uint256 public assetsPerShare = ONE;
+    uint256 public depositCapacity = type(uint256).max;
+    uint256 public redemptionCapacity = type(uint256).max;
     bool public misreportDeposit;
     bool public misreportRedemption;
 
@@ -59,12 +61,29 @@ contract MockFixedShareAdapter is IDepositAssetAdapter {
         assetsPerShare = newAssetsPerShare;
     }
 
+    function setDepositCapacity(uint256 newCapacity) external {
+        depositCapacity = newCapacity;
+    }
+
+    function setRedemptionCapacity(uint256 newCapacity) external {
+        redemptionCapacity = newCapacity;
+    }
+
     function setMisreportDeposit(bool enabled) external {
         misreportDeposit = enabled;
     }
 
     function setMisreportRedemption(bool enabled) external {
         misreportRedemption = enabled;
+    }
+
+    function maxDeposit(address) external view returns (uint256 settlementAssets) {
+        return depositCapacity;
+    }
+
+    function maxRedeem(address owner) external view returns (uint256 receiptShares) {
+        uint256 balance = RECEIPT_ASSET.balanceOf(owner);
+        return balance < redemptionCapacity ? balance : redemptionCapacity;
     }
 
     function deposit(uint256 assets, address receiver) external returns (uint256 receiptShares) {

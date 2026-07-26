@@ -14,6 +14,15 @@ interface IDepositAssetAdapter {
     /// @notice The fixed, non-rebasing share token used for internal accounting.
     function receiptAsset() external view returns (address);
 
+    /// @notice Maximum settlement assets currently accepted for `receiver`.
+    /// @dev A zero value means deposits are temporarily unavailable.
+    function maxDeposit(address receiver) external view returns (uint256 settlementAssets);
+
+    /// @notice Maximum receipt shares currently redeemable by `owner`.
+    /// @dev This may be lower than the owner's balance during a pause or a
+    ///      strategy-liquidity shortage.
+    function maxRedeem(address owner) external view returns (uint256 receiptShares);
+
     /// @notice Deposits settlement assets and sends receipt shares to `receiver`.
     /// @dev The adapter pulls `assets` from msg.sender. A successful call must
     ///      not leave unaccounted settlement assets in the adapter.

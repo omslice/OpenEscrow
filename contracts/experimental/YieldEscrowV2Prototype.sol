@@ -144,6 +144,8 @@ contract YieldEscrowV2Prototype is ReentrancyGuard {
     error DepositMismatch();
     error RedemptionMismatch();
     error MinimumAssetsNotMet();
+    error StrategyDepositUnavailable(uint256 availableAssets, uint256 requiredAssets);
+    error StrategyRedemptionUnavailable(uint256 availableShares, uint256 requiredShares);
     error InvalidTenantShares();
     error TenantAlreadyFunded();
     error FundingWindowClosed();
@@ -345,6 +347,10 @@ contract YieldEscrowV2Prototype is ReentrancyGuard {
 
         bool outcomeResolved = agreement.phase == Phase.ResolvedPendingStrategy;
         uint256 receiptShares = agreement.receiptShares;
+        uint256 availableShares = ADAPTER.maxRedeem(address(this));
+        if (availableShares < receiptShares) {
+            revert StrategyRedemptionUnavailable(availableShares, receiptShares);
+        }
         uint256 receiptBefore = RECEIPT_ASSET.balanceOf(address(this));
         uint256 settlementBefore = SETTLEMENT_ASSET.balanceOf(address(this));
 
@@ -529,6 +535,10 @@ contract YieldEscrowV2Prototype is ReentrancyGuard {
     }
 
     function _depositStrategy(uint256 principal) internal returns (uint256 receiptShares) {
+        uint256 availableAssets = ADAPTER.maxDeposit(address(this));
+        if (availableAssets < principal) {
+            revert StrategyDepositUnavailable(availableAssets, principal);
+        }
         uint256 settlementBefore = SETTLEMENT_ASSET.balanceOf(address(this));
         uint256 receiptBefore = RECEIPT_ASSET.balanceOf(address(this));
 
