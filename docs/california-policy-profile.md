@@ -1,10 +1,12 @@
 # California residential policy profile
 
-OpenEscrow currently supports one compliance-configured jurisdiction:
-California residential tenancies governed by California Civil Code section
-1950.5. The profile is a software safeguard for a testnet prototype. It is not
-legal advice, a legal opinion, or a guarantee that a particular agreement,
-deduction, notice, or return complies with law.
+OpenEscrow retains this legacy compliance-configured profile for California
+residential tenancies governed by California Civil Code section 1950.5. New
+proposals now use the implemented nationwide registry documented in
+[`us-jurisdiction-profiles.md`](./us-jurisdiction-profiles.md). This legacy
+profile remains readable for existing records but is not accepted for new
+proposals. Neither profile is legal advice, a legal opinion, or a guarantee that
+a particular agreement, deduction, notice, or return complies with law.
 
 Policy version: `ca-civ-1950.5-2026.1`
 

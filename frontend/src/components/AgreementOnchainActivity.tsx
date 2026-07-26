@@ -112,7 +112,7 @@ export function AgreementOnchainActivity({
           onPublished={() => void refresh()}
         />
       )}
-      <ActivityProofVerifier agreementId={agreementId} />
+      {isParty && <ActivityProofVerifier agreementId={agreementId} />}
       {(items.length > 0 || error) && (
         <details className="technical-details onchain-activity">
           <summary>Onchain record receipts ({items.length})</summary>

@@ -3,6 +3,13 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
 import worker from "./index.js";
+import { US_JURISDICTION_PROFILES } from "../shared/us-jurisdiction-profiles.js";
+import {
+  buildComplianceSnapshot,
+  calculateDeadline,
+  evaluateCompliance,
+  normalizeAddressResolution,
+} from "../shared/us-compliance-engine.js";
 
 test("the packaged D1 migration applies cleanly", () => {
   const database = new DatabaseSync(":memory:");
@@ -22,6 +29,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0003_private_evidence_and_notifications.sql",
     "0004_tenant_deposit_shares.sql",
     "0005_encrypted_evidence.sql",
+    "0006_compliance_source_monitor.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -38,6 +46,7 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.ok(tables.includes("notification_deliveries"));
   assert.ok(tables.includes("notification_unsubscribe_tokens"));
   assert.ok(tables.includes("scheduled_job_runs"));
+  assert.ok(tables.includes("compliance_source_checks"));
 });
 
 class Statement {
@@ -139,6 +148,233 @@ const genericTerms = {
   responseDays: "10",
   arbiterDays: "14",
 };
+
+const newYorkAddressResolution = {
+  provider: "photon-openstreetmap",
+  providerFeatureId: "W:987",
+  label: "11 Broadway, New York, NY 10004",
+  countryCode: "US",
+  stateCode: "NY",
+  city: "New York",
+  county: "New York County",
+  postalCode: "10004",
+  latitude: 40.7047,
+  longitude: -74.0137,
+};
+const newYorkProfile = US_JURISDICTION_PROFILES.find(
+  (profile) => profile.postalCode === "NY",
+);
+const newYorkComplianceFacts = {
+  housingProgram: "housing-choice-voucher",
+  propertyType: "standard-residential",
+  tenancyType: "fixed-term",
+  unitCount: 12,
+  ownerOccupied: false,
+  furnished: false,
+  assistanceAnimalAccommodation: false,
+  scraQualifiedTermination: false,
+};
+const newYorkResearchTerms = {
+  ...terms,
+  jurisdiction: "us-ny",
+  policyVersion: newYorkProfile.version,
+  propertyAddress: newYorkAddressResolution.label,
+  addressResolution: newYorkAddressResolution,
+  complianceFacts: newYorkComplianceFacts,
+  complianceSnapshot: buildComplianceSnapshot(
+    newYorkProfile,
+    newYorkAddressResolution,
+    { facts: newYorkComplianceFacts },
+  ),
+  claimDays: "14",
+};
+
+test("the implemented registry covers every state and the District of Columbia", () => {
+  assert.equal(US_JURISDICTION_PROFILES.length, 51);
+  assert.equal(new Set(US_JURISDICTION_PROFILES.map((profile) => profile.code)).size, 51);
+  assert.ok(US_JURISDICTION_PROFILES.every((profile) => profile.deadlines.length >= 1));
+  assert.ok(US_JURISDICTION_PROFILES.every((profile) => profile.requirements.length >= 6));
+  assert.ok(
+    US_JURISDICTION_PROFILES.every(
+      (profile) => profile.researchStatus === "implemented-research",
+    ),
+  );
+  assert.ok(
+    US_JURISDICTION_PROFILES.every(
+      (profile) =>
+        profile.statuteUrl.startsWith("https://") &&
+        profile.statuteCitation.length >= 8 &&
+        profile.version.endsWith("rules-2026-07-26.v2"),
+    ),
+  );
+  assert.ok(US_JURISDICTION_PROFILES.every((profile) => profile.legalReviewRequired));
+  assert.ok(
+    US_JURISDICTION_PROFILES.every(
+      (profile) => profile.depositCap.summary === profile.depositCapSummary,
+    ),
+  );
+  assert.equal(
+    US_JURISDICTION_PROFILES.find((profile) => profile.postalCode === "CO")
+      .depositCap.months,
+    2,
+  );
+  assert.equal(
+    US_JURISDICTION_PROFILES.find((profile) => profile.postalCode === "MN")
+      .depositCap.kind,
+    "manual",
+  );
+  assert.equal(
+    US_JURISDICTION_PROFILES.find((profile) => profile.postalCode === "SD")
+      .defaultClaimDays,
+    "21",
+  );
+  assert.equal(
+    US_JURISDICTION_PROFILES.find((profile) => profile.postalCode === "VT")
+      .deadlines.find((deadlineRule) => deadlineRule.id === "seasonal-return").days,
+    60,
+  );
+  assert.equal(newYorkResearchTerms.complianceSnapshot.schema, "openescrow.us-compliance-profile.v3");
+  assert.ok(
+    newYorkResearchTerms.complianceSnapshot.overlays.some(
+      (overlay) =>
+        overlay.id === "federal-hcv-security-deposit" &&
+        overlay.applicability === "applies",
+    ),
+  );
+  assert.equal(
+    newYorkResearchTerms.complianceSnapshot.overlays.some(
+      (overlay) => overlay.id === "federal-scra-lease-termination",
+    ),
+    false,
+  );
+  const illinoisProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "IL",
+  );
+  const chicagoSnapshot = buildComplianceSnapshot(
+    illinoisProfile,
+    {
+      ...newYorkAddressResolution,
+      providerFeatureId: "R:chicago",
+      label: "121 North LaSalle Street, Chicago, IL 60602",
+      stateCode: "IL",
+      city: "Chicago",
+      county: "Cook County",
+      postalCode: "60602",
+      latitude: 41.8838,
+      longitude: -87.6317,
+    },
+    {
+      facts: {
+        ...newYorkComplianceFacts,
+        housingProgram: "conventional",
+      },
+    },
+  );
+  assert.equal(chicagoSnapshot.localCoverage, "reviewed-overlay-applied");
+  assert.ok(
+    chicagoSnapshot.overlays.some(
+      (overlay) => overlay.id === "local-il-chicago-rlto",
+    ),
+  );
+});
+
+test("the compliance evaluator schedules all statewide profiles deterministically", () => {
+  for (const profile of US_JURISDICTION_PROFILES) {
+    const evaluated = evaluateCompliance(profile, {
+      address: {
+        provider: "photon-openstreetmap",
+        providerFeatureId: `R:${profile.postalCode}`,
+        label: `1 Main Street, Test City, ${profile.postalCode} 00000`,
+        countryCode: "US",
+        stateCode: profile.postalCode,
+        city: "Test City",
+        county: "Test County",
+        postalCode: "00000",
+        latitude: 38,
+        longitude: -97,
+      },
+      facts: {
+        landlordClaimsDeposit: false,
+        qualifyingCondemnation: false,
+        qualifyingDisplacement: false,
+      },
+      events: {
+        possessionReturnedAt: "2027-01-02T12:00:00Z",
+        tenancyTerminatedAt: "2027-01-02T12:00:00Z",
+        statutoryClockStartedAt: "2027-01-02T12:00:00Z",
+      },
+    });
+    assert.equal(evaluated.jurisdiction, profile.code);
+    assert.equal(evaluated.profileVersion, profile.version);
+    assert.equal(evaluated.address.stateCode, profile.postalCode);
+    assert.ok(evaluated.deadlines.length >= 1);
+  }
+  assert.equal(
+    calculateDeadline("2027-01-08T12:00:00Z", 1, "business"),
+    "2027-01-11T12:00:00.000Z",
+  );
+  const profileAddress = (postalCode) => ({
+    provider: "photon-openstreetmap",
+    providerFeatureId: `R:${postalCode}:combined`,
+    label: `1 Main Street, Test City, ${postalCode} 00000`,
+    countryCode: "US",
+    stateCode: postalCode,
+    city: "Test City",
+    county: "Test County",
+    postalCode: "00000",
+    latitude: 38,
+    longitude: -97,
+  });
+  const connecticut = evaluateCompliance(
+    US_JURISDICTION_PROFILES.find((profile) => profile.postalCode === "CT"),
+    {
+      address: profileAddress("CT"),
+      events: {
+        tenancyTerminatedAt: "2027-01-01T12:00:00Z",
+        forwardingAddressReceivedAt: "2027-01-10T12:00:00Z",
+      },
+    },
+  );
+  assert.equal(
+    connecticut.combinedDeadlines[0].dueAt,
+    "2027-01-25T12:00:00.000Z",
+  );
+  const westVirginia = evaluateCompliance(
+    US_JURISDICTION_PROFILES.find((profile) => profile.postalCode === "WV"),
+    {
+      address: profileAddress("WV"),
+      events: {
+        tenancyTerminatedAt: "2027-01-01T12:00:00Z",
+        replacementTenantPossessionAt: "2027-01-10T12:00:00Z",
+      },
+    },
+  );
+  assert.equal(
+    westVirginia.combinedDeadlines[0].dueAt,
+    "2027-02-24T12:00:00.000Z",
+  );
+});
+
+test("address resolution rejects incomplete or non-US geocoder records", () => {
+  assert.equal(normalizeAddressResolution({ stateCode: "CA" }), null);
+  assert.equal(
+    normalizeAddressResolution({
+      providerFeatureId: "W:1",
+      label: "1 Main Street, Toronto",
+      countryCode: "CA",
+      stateCode: "ON",
+      latitude: 43.6,
+      longitude: -79.3,
+    }),
+    null,
+  );
+  assert.equal(
+    evaluateCompliance(newYorkProfile, {
+      address: { ...newYorkAddressResolution, stateCode: "NJ" },
+    }),
+    null,
+  );
+});
 
 function request(path, method = "GET", body) {
   return new Request(`https://openescrow.example${path}`, {
@@ -313,6 +549,232 @@ test("new proposals reject California policy terms", async () => {
   assert.match((await response.json()).error, /incomplete or invalid/);
 });
 
+test("address-routed compliance profiles require their exact version and deadline", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
+        tenantEmail: "tenant@example.com",
+        arbiterName: "",
+        arbiterEmail: null,
+        terms: newYorkResearchTerms,
+      }),
+      { DB: db },
+    ),
+  );
+  assert.equal(created.record.terms.jurisdiction, "us-ny");
+  assert.equal(created.record.terms.claimDays, "14");
+
+  const invalid = await worker.fetch(
+    request("/api/negotiations", "POST", {
+      landlordName: "Lena Landlord",
+      landlordEmail: "landlord@example.com",
+      tenantName: "Terry Tenant",
+      tenantEmail: "tenant@example.com",
+      arbiterName: "",
+      arbiterEmail: null,
+      terms: { ...newYorkResearchTerms, claimDays: "30" },
+    }),
+    { DB: db },
+  );
+  assert.equal(invalid.status, 400);
+
+  const mismatchedAddress = await worker.fetch(
+    request("/api/negotiations", "POST", {
+      landlordName: "Lena Landlord",
+      landlordEmail: "landlord@example.com",
+      tenantName: "Terry Tenant",
+      tenantEmail: "tenant@example.com",
+      arbiterName: "",
+      arbiterEmail: null,
+      terms: {
+        ...newYorkResearchTerms,
+        addressResolution: {
+          ...newYorkResearchTerms.addressResolution,
+          stateCode: "CA",
+        },
+      },
+    }),
+    { DB: db },
+  );
+  assert.equal(mismatchedAddress.status, 400);
+
+  const editedAfterSelection = await worker.fetch(
+    request("/api/negotiations", "POST", {
+      landlordName: "Lena Landlord",
+      landlordEmail: "landlord@example.com",
+      tenantName: "Terry Tenant",
+      tenantEmail: "tenant@example.com",
+      arbiterName: "",
+      arbiterEmail: null,
+      terms: {
+        ...newYorkResearchTerms,
+        propertyAddress: "A manually edited address",
+      },
+    }),
+    { DB: db },
+  );
+  assert.equal(editedAfterSelection.status, 400);
+
+  const tamperedSnapshot = await worker.fetch(
+    request("/api/negotiations", "POST", {
+      landlordName: "Lena Landlord",
+      landlordEmail: "landlord@example.com",
+      tenantName: "Terry Tenant",
+      tenantEmail: "tenant@example.com",
+      arbiterName: "",
+      arbiterEmail: null,
+      terms: {
+        ...newYorkResearchTerms,
+        complianceSnapshot: {
+          ...newYorkResearchTerms.complianceSnapshot,
+          deadlines: [],
+        },
+      },
+    }),
+    { DB: db },
+  );
+  assert.equal(tamperedSnapshot.status, 400);
+});
+
+test("actual compliance events require confirmation by the other agreement side", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
+        tenantEmail: "tenant@example.com",
+        arbiterName: "",
+        arbiterEmail: null,
+        terms: newYorkResearchTerms,
+      }),
+      { DB: db },
+    ),
+  );
+  await finalizeWithoutArbiter(db, created);
+  const occurredAt = new Date().toISOString();
+  const proposed = await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "propose_compliance_event",
+      eventName: "possessionReturnedAt",
+      occurredAt,
+      note: "Keys and possession returned.",
+    }),
+  );
+  const proposalEvent = proposed.events.at(-1);
+  assert.equal(proposalEvent.action, "compliance_event_proposed");
+
+  const selfConfirmation = await act(
+    db,
+    created.record.id,
+    created.access.landlord,
+    {
+      type: "confirm_compliance_event",
+      proposalEventId: proposalEvent.id,
+    },
+  );
+  assert.equal(selfConfirmation.status, 409);
+
+  const confirmed = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "confirm_compliance_event",
+      proposalEventId: proposalEvent.id,
+    }),
+  );
+  assert.equal(confirmed.events.at(-1).action, "compliance_event_confirmed");
+  assert.equal(
+    confirmed.events.at(-1).metadata.occurredAt,
+    new Date(occurredAt).toISOString(),
+  );
+});
+
+test("confirmed compliance events activate privacy-minimal deadline reminders", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
+        tenantEmail: "tenant@example.com",
+        arbiterName: "",
+        arbiterEmail: null,
+        terms: newYorkResearchTerms,
+      }),
+      { DB: db },
+    ),
+  );
+  await finalizeWithoutArbiter(db, created);
+  const occurredAt = new Date();
+  const proposed = await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "propose_compliance_event",
+      eventName: "possessionReturnedAt",
+      occurredAt: occurredAt.toISOString(),
+    }),
+  );
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "confirm_compliance_event",
+      proposalEventId: proposed.events.at(-1).id,
+    }),
+  );
+  const preferenceTime = occurredAt.toISOString();
+  await db
+    .prepare(
+      `INSERT INTO notification_preferences
+       (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+       VALUES (?, ?, 0, 1, ?, ?)`,
+    )
+    .bind(
+      "did:privy:compliance-landlord",
+      "landlord@example.com",
+      preferenceTime,
+      preferenceTime,
+    )
+    .run();
+
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `compliance-${deliveries.length}` });
+  };
+  try {
+    const waits = [];
+    await worker.scheduled(
+      {
+        scheduledTime: occurredAt.getTime() + 11 * 24 * 60 * 60 * 1000,
+      },
+      {
+        DB: db,
+        RESEND_API_KEY: "test-resend-key",
+        NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+        PUBLIC_APP_URL: "https://openescrow.example/",
+      },
+      {
+        waitUntil(promise) {
+          waits.push(promise);
+        },
+      },
+    );
+    await Promise.all(waits);
+    const complianceDelivery = deliveries.find((delivery) =>
+      /compliance deadline/i.test(delivery.subject),
+    );
+    assert.ok(complianceDelivery);
+    assert.deepEqual(complianceDelivery.to, ["landlord@example.com"]);
+    assert.doesNotMatch(complianceDelivery.text, /Broadway|1200|New York County/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("legacy California records stay readable and exportable but cannot be finalized", async () => {
   const db = new TestD1();
   const created = await create(db);
@@ -452,6 +914,11 @@ test("address suggestions validate same-origin queries, normalize Photon results
       label: "123 Main Street, Los Angeles, California, 90001, United States",
       latitude: 34.0522,
       longitude: -118.2437,
+      countryCode: "US",
+      stateCode: "CA",
+      city: "Los Angeles",
+      county: null,
+      postalCode: "90001",
     });
     assert.equal(firstBody.attribution.label, "© OpenStreetMap contributors");
     assert.equal(first.headers.get("x-openescrow-cache"), "MISS");
@@ -535,9 +1002,22 @@ test("tenant names and email addresses are validated before a proposal is saved"
   assert.match((await incompleteName.json()).error, /first and last name/);
 });
 
-test("a verified Privy identity can discover its landlord proposals across browser sessions", async () => {
+test("verified Privy accounts discover finalized landlord and tenant agreements", async () => {
   const db = new TestD1();
   const created = await create(db);
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+  await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "finalize",
+      agreementId: "0",
+      transactionHash: transactionHash(12),
+    }),
+  );
   const appId = "test-privy-app";
   const kid = "test-key";
   const keyPair = await crypto.subtle.generateKey(
@@ -551,6 +1031,12 @@ test("a verified Privy identity can discover its landlord proposals across brows
     appId,
     kid,
     "landlord@example.com",
+  );
+  const tenantIdentityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "tenant@example.com",
   );
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input) => {
@@ -588,6 +1074,33 @@ test("a verified Privy identity can discover its landlord proposals across brows
       ),
     );
     assert.equal(recovered.landlordEmail, "landlord@example.com");
+    assert.equal(recovered.status, "finalized");
+    assert.equal(recovered.onchainAgreementId, "0");
+
+    const tenantDiscovery = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/negotiations/discover", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": tenantIdentityToken,
+          },
+          body: JSON.stringify({ role: "tenant" }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(tenantDiscovery.accesses.length, 1);
+    const tenantRecord = await jsonResponse(
+      await worker.fetch(
+        request(
+          `/api/negotiations/${created.record.id}?token=${tenantDiscovery.accesses[0].token}`,
+        ),
+        { DB: db },
+      ),
+    );
+    assert.equal(tenantRecord.status, "finalized");
+    assert.equal(tenantRecord.onchainAgreementId, "0");
 
     const savedPreferences = await jsonResponse(
       await worker.fetch(
@@ -674,6 +1187,8 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     assert.equal(readiness.email.provider, "resend");
     assert.equal(readiness.evidence.contentTypeValidation, true);
     assert.equal(readiness.recordIntegrity.lifecycleStateGuards, true);
+    assert.equal(readiness.complianceSources.configured, false);
+    assert.ok(readiness.complianceSources.total >= 57);
     assert.equal(
       readiness.recordIntegrity.transactionReceiptVerification,
       true,
@@ -721,6 +1236,63 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     assert.equal(webhookResponse.provider, "webhook");
     assert.equal(deliveries.at(-1).url, "https://mailer.example/send");
     assert.equal(deliveries.at(-1).authorization, "Bearer webhook-secret");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("the scheduled compliance monitor baselines a rotating official-source batch", async () => {
+  const db = new TestD1();
+  const originalFetch = globalThis.fetch;
+  const checkedUrls = [];
+  globalThis.fetch = async (input) => {
+    checkedUrls.push(String(input));
+    return new Response(`<html><body>${String(input)}</body></html>`, {
+      status: 200,
+      headers: {
+        "content-type": "text/html",
+        etag: `"source-${checkedUrls.length}"`,
+      },
+    });
+  };
+  try {
+    const waits = [];
+    await worker.scheduled(
+      { scheduledTime: Date.parse("2027-07-02T12:00:00.000Z") },
+      {
+        DB: db,
+        COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+      },
+      {
+        waitUntil(promise) {
+          waits.push(promise);
+        },
+      },
+    );
+    await Promise.all(waits);
+    assert.equal(checkedUrls.length, 4);
+    const counts = await db
+      .prepare(
+        `SELECT COUNT(*) AS total,
+                SUM(CASE WHEN status = 'unchanged' THEN 1 ELSE 0 END) AS baselined
+         FROM compliance_source_checks`,
+      )
+      .first();
+    assert.ok(Number(counts.total) >= 57);
+    assert.equal(Number(counts.baselined), 4);
+
+    const readiness = await jsonResponse(
+      await worker.fetch(request("/api/system/readiness"), {
+        DB: db,
+        COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+      }),
+    );
+    assert.equal(readiness.complianceSources.configured, true);
+    assert.equal(readiness.complianceSources.tracked, counts.total);
+    assert.equal(
+      readiness.complianceSources.lastRunAt,
+      "2027-07-02T12:00:00.000Z",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -2267,6 +2839,17 @@ test("documented claim, tenant decision, and email attempts are included in the 
   assert.match(claimReportHtml, /0x1111111111111111111111111111111111111111/);
   assert.match(claimReportHtml, /Recorded transaction receipts/);
   assert.match(claimReportHtml, new RegExp(`0x${"9".repeat(64)}`));
+  const downloadedReport = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}/report?token=${created.access.tenant}&download=1`,
+    ),
+    { DB: db },
+  );
+  assert.equal(downloadedReport.status, 200);
+  assert.match(
+    downloadedReport.headers.get("content-disposition"),
+    /attachment; filename="openescrow-.*-complete-record\.html"/,
+  );
   const claimSnapshot = await jsonResponse(
     await worker.fetch(
       request(
@@ -2930,6 +3513,67 @@ test("configured receipt verification accepts only the expected Base Sepolia agr
     assert.equal(verified.metadata.transactionHash, transactionHash(50));
     assert.equal(verified.metadata.blockNumber, "0x2a");
     assert.equal(verified.metadata.chainId, 84532);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("receipt verification falls back when the official public RPC is rate limited", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+  const originalFetch = globalThis.fetch;
+  const requestedUrls = [];
+  globalThis.fetch = async (url, options) => {
+    requestedUrls.push(String(url));
+    const rpcRequest = JSON.parse(options.body);
+    assert.equal(rpcRequest.method, "eth_getTransactionReceipt");
+    if (String(url) === "https://sepolia.base.org/") {
+      return new Response("rate limited", { status: 429 });
+    }
+    assert.equal(String(url), "https://base-sepolia-rpc.publicnode.com/");
+    return Response.json({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        status: "0x1",
+        blockNumber: "0x2b",
+        logs: [
+          {
+            address: "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99",
+            topics: [
+              "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6",
+              `0x${BigInt(43).toString(16).padStart(64, "0")}`,
+            ],
+          },
+        ],
+      },
+    });
+  };
+  try {
+    const finalized = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.landlord,
+        {
+          type: "finalize",
+          agreementId: "43",
+          transactionHash: transactionHash(51),
+        },
+        { VERIFY_TRANSACTION_RECEIPTS: "true" },
+      ),
+    );
+    assert.equal(finalized.status, "finalized");
+    assert.deepEqual(requestedUrls, [
+      "https://sepolia.base.org/",
+      "https://base-sepolia-rpc.publicnode.com/",
+    ]);
   } finally {
     globalThis.fetch = originalFetch;
   }

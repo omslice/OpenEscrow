@@ -30,8 +30,9 @@ The Base Sepolia testnet MVP implements the complete technical lifecycle:
 - If the arbiter misses the deadline, the disputed balance defaults to the tenant.
 - The tenant dashboard shows onchain custody, a deliberately accelerated 20%-per-day demo value,
   deduction/dispute alerts, deadlines, and resolution status. The demo value is not real yield.
-- Agreement parties can anchor canonical record snapshots and privacy-safe activity hashes in the
-  separate Base Sepolia activity registry, download private proofs, and verify them locally.
+- Agreement parties can download a complete timestamped report, preserve an AES-256-GCM encrypted
+  canonical record with a separate verification key, anchor its SHA-256 hash in the Base Sepolia
+  activity registry, and verify the encrypted record locally against current agreement parties.
 - Supporting PDFs and images can be encrypted in a party-authorized private vault or stored as
   encrypted IPFS ciphertext while a content hash supplies the integrity receipt.
 - Opted-in accounts receive provider-neutral, idempotent action and deadline notices with

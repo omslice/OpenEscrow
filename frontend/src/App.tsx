@@ -29,7 +29,6 @@ import {
   discoverNegotiationsForAccount,
   listNegotiationAccesses,
   loadNegotiation,
-  negotiationReportUrl,
   readNegotiationAccess,
   type NegotiationAccess,
   type NegotiationRecord,
@@ -134,9 +133,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     record.onchainAgreementId ? [BigInt(record.onchainAgreementId)] : [],
   );
   const displayedIds = ACCOUNT_AUTH_ENABLED
-    ? ids.filter((id) =>
-        participantAgreementIds.some((participantId) => participantId === id),
-      )
+    ? participantAgreementIds
     : ids;
   const notificationAgreementIds = ACCOUNT_AUTH_ENABLED
     ? participantAgreementIds
@@ -309,13 +306,19 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
       setSavedRecords(records);
       setSavedProposals(proposals);
 
-      let onchainCount = 0;
-      if (address) {
+      const accountAgreementIds = records.flatMap(({ record }) =>
+        record.status === "finalized" && record.onchainAgreementId
+          ? [BigInt(record.onchainAgreementId)]
+          : [],
+      );
+      accountAgreementIds.forEach(addId);
+      let onchainCount = accountAgreementIds.length;
+      if (!ACCOUNT_AUTH_ENABLED && address) {
         const found = await discover(address);
         found.forEach(addId);
         onchainCount = found.length;
       }
-      const skipped = loaded.length - proposals.length;
+      const skipped = loaded.filter((result) => result.status === "rejected").length;
       setScanMessage(
         `Found ${proposals.length} saved proposal(s) and ${onchainCount} onchain agreement(s).${
           skipped ? ` ${skipped} unavailable saved link(s) were skipped.` : ""
@@ -483,10 +486,10 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     return (
       <section className="card workspace-discovery">
         <div>
-          <span className="eyebrow">Onchain workspace</span>
-          <h2>Find finalized agreements associated with this account</h2>
+          <span className="eyebrow">Account deposits</span>
+          <h2>Active security deposit agreements</h2>
           <p className="hint">
-            OpenEscrow scans Base Sepolia for agreements involving your connected wallet.
+            Finalized agreements associated with this signed-in account load automatically.
           </p>
         </div>
         <button
@@ -494,9 +497,9 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           disabled={isScanning || isFinding}
           onClick={() => void findProposalsAndAgreements()}
         >
-          {isScanning || isFinding ? "Searching..." : "Find my agreements"}
+          {isScanning || isFinding ? "Refreshing..." : "Refresh deposits"}
         </button>
-        {!address && (
+        {!ACCOUNT_AUTH_ENABLED && !address && (
           <p className="field-help">
             Connect your wallet to scan for finalized onchain agreements.
           </p>
@@ -624,8 +627,8 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           <span className="eyebrow">Audit trail</span>
           <h2>Proposal and agreement record</h2>
           <p>
-            Review timestamped actions, export reports, and verify privacy-safe
-            onchain receipts without cluttering the active workspace.
+            Download the complete timestamped report, preserve an encrypted evidence copy,
+            and verify its integrity hash onchain.
           </p>
         </div>
         {savedRecords.length === 0 && unlinkedAgreementIds.length === 0 && (
@@ -672,29 +675,14 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                   <span className={`negotiation-status status-${item.record.status}`}>
                     {item.record.status} · revision {item.record.revision}
                   </span>
-                  <a
-                    className="btn btn-ghost small"
-                    href={negotiationReportUrl(item.access)}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    Open report
-                  </a>
                 </div>
               </header>
               <RecordSnapshotControls
                 access={item.access}
                 agreementId={agreementId ? BigInt(agreementId) : undefined}
               />
-              {agreementId && (
-                <AgreementOnchainActivity
-                  agreementId={BigInt(agreementId)}
-                  isParty
-                  negotiationAccess={item.access}
-                />
-              )}
-              <div className="agreement-activity">
-                <h4>Timestamped activity</h4>
+              <details className="technical-details agreement-activity">
+                <summary>View timestamped activity ({item.record.events.length})</summary>
                 <ol className="activity-timeline">
                   {[...item.record.events].reverse().map((event) => (
                     <li key={event.id}>
@@ -708,7 +696,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                     </li>
                   ))}
                 </ol>
-              </div>
+              </details>
             </article>
           );
         })}
@@ -737,18 +725,30 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     return (
       <div className="workspace-overview">
         <section className="workspace-welcome">
-          <span className="eyebrow">{roleLabel[workspaceRole!]} workspace</span>
-          <h2>
-            {workspaceRole === "landlord"
-              ? "Manage proposals, deposits, and deductions"
-              : workspaceRole === "tenant"
-                ? "Review invitations and monitor your deposits"
-                : "Review invitations and open disputes"}
-          </h2>
-          <p>
-            Start with anything requiring action, or jump directly to the part of the
-            agreement lifecycle you need.
-          </p>
+          <div>
+            <span className="eyebrow">{roleLabel[workspaceRole!]} workspace</span>
+            <h2>
+              {workspaceRole === "landlord"
+                ? "Manage proposals, deposits, and deductions"
+                : workspaceRole === "tenant"
+                  ? "Review invitations and monitor your deposits"
+                  : "Review invitations and open disputes"}
+            </h2>
+            <p>
+              Start with anything requiring action, or jump directly to the part of the
+              agreement lifecycle you need.
+            </p>
+          </div>
+          <button
+            className="refresh-icon-button overview-refresh"
+            type="button"
+            aria-label="Refresh overview counts and agreements"
+            title="Refresh overview"
+            disabled={isScanning || isFinding}
+            onClick={() => void findProposalsAndAgreements()}
+          >
+            <span aria-hidden="true">↻</span>
+          </button>
         </section>
         <div className="workspace-stat-grid">
           <button
@@ -829,6 +829,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             <b aria-hidden="true">→</b>
           </button>
         </div>
+        {workspaceRole === "tenant" && !inviteRole && <TenantLandlordInvite />}
       </div>
     );
   }
@@ -842,29 +843,16 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             <span>
               <span className="eyebrow">Account and workspace</span>
               <strong>{roleLabel[workspaceRole]} workspace</strong>
-              <small>Wallets, email preferences, and workspace settings</small>
+              <small>Identity, wallet, email preferences, and workspace tools</small>
             </span>
             <span className="disclosure-cue" aria-hidden="true" />
           </summary>
           <div className="account-workspace-content">
-            <div className="active-role-summary">
-              <div>
-                <span className="eyebrow">Active workspace role</span>
-                <h2>{roleLabel[workspaceRole]} workspace</h2>
-                <p>
-                  Existing agreement roles are fixed by their participant record. This setting
-                  only controls which account tools are shown.
-                </p>
-              </div>
-              <button
-                className="btn btn-ghost small"
-                type="button"
-                onClick={() => setIsChangingRole(true)}
-              >
-                Change workspace role
-              </button>
-            </div>
-            <AccountCenter embedded />
+            <AccountCenter
+              embedded
+              workspaceRole={roleLabel[workspaceRole]}
+              onChangeWorkspaceRole={() => setIsChangingRole(true)}
+            />
           </div>
         </details>
       )}
@@ -1061,7 +1049,6 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                   )}
                 </section>
               )}
-              {workspaceRole === "tenant" && !inviteRole && <TenantLandlordInvite />}
             </>
           )}
         </div>

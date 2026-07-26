@@ -106,6 +106,7 @@ for the public deployment or a controlled pilot.
 RESEND_API_KEY=re_replace_with_your_key
 NOTIFICATION_FROM_EMAIL=OpenEscrow <notifications@notify.your-domain.example>
 PUBLIC_APP_URL=https://openescrow-demo.omrigross.chatgpt.site/
+COMPLIANCE_SOURCE_MONITOR_ENABLED=true
 ```
 
 Do not put `RESEND_API_KEY` in a `VITE_` variable, in Git, or in a browser-visible settings file.
@@ -120,6 +121,9 @@ The Worker already exports its scheduled notification job. Add one hosted Cron T
 
 This checks every fifteen minutes. The job refuses to run more than once every ten minutes, and
 each logical notice has an idempotency key, so repeated checks do not create duplicate email.
+When the compliance monitor is enabled, the same trigger starts at most one rotating
+official-source batch per day. Source monitoring stores signatures and status metadata in D1;
+it does not change an agreement or compliance profile automatically.
 
 If the Sites dashboard does not expose Cron Triggers, add the trigger from the underlying
 Cloudflare Worker dashboard after deployment. Normal homepage traffic also performs a safe

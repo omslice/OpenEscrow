@@ -22,10 +22,20 @@ import {
 import { formatUSDC, parseUSDC } from "../lib/format";
 import {
   CALIFORNIA_POLICY,
+  DEFAULT_COMPLIANCE_FACTS,
   GENERIC_TEST_POLICY,
+  addressResolutionMatchesProfile,
+  buildComplianceSnapshot,
   isJurisdictionCode,
+  jurisdictionProfile,
+  jurisdictionProfileForPostalCode,
+  normalizeComplianceFacts,
+  normalizeAddressResolution,
   rememberJurisdiction,
+  type AddressResolution,
+  type ComplianceFacts,
   type JurisdictionCode,
+  type USJurisdictionProfile,
 } from "../lib/jurisdictions";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
@@ -49,7 +59,7 @@ import {
   type NegotiationRecord,
 } from "../lib/negotiations";
 import { agreementReference } from "../lib/displayIds";
-import { AddressAutocomplete } from "./AddressAutocomplete";
+import { AddressAutocomplete, type AddressSuggestion } from "./AddressAutocomplete";
 import "./CreateAgreementFormTabs.css";
 
 const DAY = 24 * 60 * 60;
@@ -62,6 +72,7 @@ type ProposalField =
   | "tenantEmail"
   | "arbiterEmail"
   | "propertyAddress"
+  | "monthlyRent"
   | "deposit"
   | "depositShares"
   | "claimWindowStart"
@@ -295,9 +306,16 @@ function AgreementForm({
   const [arbiterName, setArbiterName] = useState("");
   const [arbiterEmail, setArbiterEmail] = useState("");
   const [propertyAddress, setPropertyAddress] = useState("");
+  const [selectedJurisdiction, setSelectedJurisdiction] =
+    useState<USJurisdictionProfile | null>(null);
+  const [addressResolution, setAddressResolution] = useState<AddressResolution | null>(null);
+  const [complianceFacts, setComplianceFacts] = useState<ComplianceFacts>({
+    ...DEFAULT_COMPLIANCE_FACTS,
+  });
   const [primaryTenantShareBps, setPrimaryTenantShareBps] = useState(10000);
   const [tenantShareDraft, setTenantShareDraft] = useState<Record<string, number>>({});
   const [deposit, setDeposit] = useState("100");
+  const [monthlyRent, setMonthlyRent] = useState("");
   const operationsReserve = GENERIC_TEST_POLICY.operationsReserve;
   const [tokenChoice, setTokenChoice] = useState<"plain" | "yield">("plain");
   const [claimWindowStart, setClaimWindowStart] = useState(defaultClaimWindowStart);
@@ -333,6 +351,14 @@ function AgreementForm({
         (draft.tenants.some((tenant) => tenant.approved) ||
           (draft.arbiterEmail && draft.arbiterApproved)),
     ) && !isEditingRevision;
+  const compliancePreview =
+    selectedJurisdiction && addressResolution
+      ? buildComplianceSnapshot(
+          selectedJurisdiction,
+          addressResolution,
+          complianceFacts,
+        )
+      : null;
 
   const landlordAccess = useMemo<NegotiationAccess | null>(
     () =>
@@ -394,19 +420,27 @@ function AgreementForm({
 
   function applyTerms(record: NegotiationRecord) {
     const isLegacyCalifornia =
-      record.terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction;
+      record.terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
+      record.terms.policyVersion === CALIFORNIA_POLICY.version;
+    const savedProfile = jurisdictionProfile(record.terms.jurisdiction);
+    setSelectedJurisdiction(
+      savedProfile?.version === record.terms.policyVersion ? savedProfile : null,
+    );
     setTenantName(record.tenantName || "");
     setTenantEmail(record.tenantEmail);
     setArbiterName(record.arbiterName || "");
     setArbiterEmail(record.arbiterEmail || "");
     setShowArbiter(Boolean(record.arbiterEmail));
     setPropertyAddress(record.terms.propertyAddress || "");
+    setAddressResolution(normalizeAddressResolution(record.terms.addressResolution));
+    setComplianceFacts(normalizeComplianceFacts(record.terms.complianceFacts));
     setTenantShareDraft(
       Object.fromEntries(
         record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
       ),
     );
     setDeposit(record.terms.deposit);
+    setMonthlyRent(record.terms.monthlyRent || "");
     setTokenChoice(record.terms.tokenChoice);
     setClaimWindowStart(record.terms.claimWindowStart);
     setClaimDays(
@@ -490,19 +524,26 @@ function AgreementForm({
   ]);
 
   function currentTerms(): AgreementTerms {
+    const policy = selectedJurisdiction;
     return {
-      jurisdiction: GENERIC_TEST_POLICY.jurisdiction,
-      policyVersion: GENERIC_TEST_POLICY.version,
+      jurisdiction: policy?.code ?? GENERIC_TEST_POLICY.jurisdiction,
+      policyVersion: policy?.version ?? GENERIC_TEST_POLICY.version,
       tokenChoice,
       propertyAddress: propertyAddress.trim(),
+      addressResolution,
+      complianceFacts,
+      complianceSnapshot:
+        policy && addressResolution
+          ? buildComplianceSnapshot(policy, addressResolution, complianceFacts)
+          : null,
       deposit,
       operationsReserve: GENERIC_TEST_POLICY.operationsReserve,
-      monthlyRent: "",
+      monthlyRent,
       smallLandlordException: false,
       tenantIsServiceMember: false,
       electronicDeliveryConsent: true,
       claimWindowStart,
-      claimDays,
+      claimDays: policy?.defaultClaimDays ?? claimDays,
       responseDays,
       arbiterDays,
     };
@@ -526,6 +567,33 @@ function AgreementForm({
         field: "propertyAddress",
         message: "Enter the rental property address for this agreement.",
       };
+    }
+    if (
+      selectedJurisdiction &&
+      (!addressResolution ||
+        !addressResolutionMatchesProfile(addressResolution, selectedJurisdiction) ||
+        addressResolution.label !== propertyAddress.trim())
+    ) {
+      return {
+        field: "propertyAddress",
+        message: "Select the complete property address from the verified suggestions again.",
+      };
+    }
+    if (selectedJurisdiction) {
+      try {
+        if (parseUSDC(monthlyRent || "0") <= 0n) {
+          return {
+            field: "monthlyRent",
+            message:
+              "Enter the monthly rent so OpenEscrow can evaluate the statewide deposit baseline.",
+          };
+        }
+      } catch {
+        return {
+          field: "monthlyRent",
+          message: "Enter a valid monthly rent.",
+        };
+      }
     }
     const hasArbiter = arbiterEmail.trim() !== "";
     if (hasArbiter && !EMAIL_PATTERN.test(arbiterEmail)) {
@@ -705,9 +773,14 @@ function AgreementForm({
     setShowAdditionalTenant(false);
     setShowArbiter(false);
     setPropertyAddress("");
+    setSelectedJurisdiction(null);
+    setAddressResolution(null);
+    setComplianceFacts({ ...DEFAULT_COMPLIANCE_FACTS });
+    setMonthlyRent("");
     setPrimaryTenantShareBps(10000);
     setTenantShareDraft({});
     setClaimWindowStart(defaultClaimWindowStart());
+    setClaimDays(GENERIC_TEST_POLICY.claimDays);
     setRevisionSummary("");
     setIsEditingRevision(false);
     setInvalidField(null);
@@ -727,9 +800,14 @@ function AgreementForm({
     setShowAdditionalTenant(false);
     setShowArbiter(false);
     setPropertyAddress("");
+    setSelectedJurisdiction(null);
+    setAddressResolution(null);
+    setComplianceFacts({ ...DEFAULT_COMPLIANCE_FACTS });
+    setMonthlyRent("");
     setPrimaryTenantShareBps(10000);
     setTenantShareDraft({});
     setClaimWindowStart(defaultClaimWindowStart());
+    setClaimDays(GENERIC_TEST_POLICY.claimDays);
     setRevisionSummary("");
     setIsEditingRevision(false);
     setInvalidField(null);
@@ -1067,9 +1145,14 @@ function AgreementForm({
       setShowAdditionalTenant(false);
       setShowArbiter(false);
       setPropertyAddress("");
+      setSelectedJurisdiction(null);
+      setAddressResolution(null);
+      setComplianceFacts({ ...DEFAULT_COMPLIANCE_FACTS });
+      setMonthlyRent("");
       setPrimaryTenantShareBps(10000);
       setTenantShareDraft({});
       setClaimWindowStart(defaultClaimWindowStart());
+      setClaimDays(GENERIC_TEST_POLICY.claimDays);
       setFormMessage(
         "Proposal cancelled and removed from active workspaces. Its audit record was preserved.",
       );
@@ -1168,7 +1251,23 @@ function AgreementForm({
       draft.terms.policyVersion === GENERIC_TEST_POLICY.version &&
       draft.terms.jurisdiction === GENERIC_TEST_POLICY.jurisdiction &&
       draft.terms.operationsReserve === GENERIC_TEST_POLICY.operationsReserve;
-    if (!approvedCaliforniaPolicy && !approvedGenericTestPolicy) {
+    const approvedResearchProfile = jurisdictionProfile(draft.terms.jurisdiction);
+    const approvedAddressPolicy =
+      approvedResearchProfile !== null &&
+      draft.terms.policyVersion === approvedResearchProfile.version &&
+      draft.terms.claimDays === approvedResearchProfile.defaultClaimDays &&
+      addressResolutionMatchesProfile(
+        draft.terms.addressResolution,
+        approvedResearchProfile,
+      ) &&
+      draft.terms.responseDays === "7" &&
+      (!draft.arbiterEmail || draft.terms.arbiterDays === "7") &&
+      draft.terms.operationsReserve === GENERIC_TEST_POLICY.operationsReserve;
+    if (
+      !approvedCaliforniaPolicy &&
+      !approvedGenericTestPolicy &&
+      !approvedAddressPolicy
+    ) {
       return setFormError(
         "This approved revision does not match a current jurisdiction policy. Unlock edits, publish a new revision, and collect fresh approvals before finalizing.",
       );
@@ -1636,7 +1735,26 @@ function AgreementForm({
         value={propertyAddress}
         onChange={(next) => {
           setPropertyAddress(next);
+          setSelectedJurisdiction(null);
+          setAddressResolution(null);
+          setClaimDays(GENERIC_TEST_POLICY.claimDays);
           clearFieldIssue("propertyAddress");
+        }}
+        onVerifiedSuggestion={(suggestion: AddressSuggestion) => {
+          const resolution = normalizeAddressResolution({
+            ...suggestion,
+            provider: "photon-openstreetmap",
+            providerFeatureId: suggestion.id,
+          });
+          const profile =
+            resolution?.countryCode === "US"
+              ? jurisdictionProfileForPostalCode(resolution.stateCode)
+              : null;
+          setAddressResolution(profile ? resolution : null);
+          setSelectedJurisdiction(profile);
+          setClaimDays(profile?.defaultClaimDays ?? GENERIC_TEST_POLICY.claimDays);
+          setResponseDays(GENERIC_TEST_POLICY.responseDays);
+          setArbiterDays(GENERIC_TEST_POLICY.arbiterDays);
         }}
         disabled={approvedTermsLocked}
         invalid={invalidField === "propertyAddress"}
@@ -1645,6 +1763,215 @@ function AgreementForm({
         This identifies which rental and security deposit the proposal covers. It remains in the
         private agreement record and is not written directly to the public blockchain.
       </p>
+      {selectedJurisdiction && (
+        <fieldset className="token-choice">
+          <legend>Property and program facts</legend>
+          <label>
+            <span>
+              <strong>Housing program</strong>
+              <small>Select the funding or assistance program, not the tenant's income.</small>
+            </span>
+            <select
+              value={complianceFacts.housingProgram}
+              disabled={approvedTermsLocked}
+              onChange={(event) =>
+                setComplianceFacts((current) => ({
+                  ...current,
+                  housingProgram: event.target
+                    .value as ComplianceFacts["housingProgram"],
+                }))
+              }
+            >
+              <option value="unknown">Unknown / confirm</option>
+              <option value="conventional">Conventional private rental</option>
+              <option value="housing-choice-voucher">Housing Choice Voucher</option>
+              <option value="emergency-housing-voucher">Emergency Housing Voucher</option>
+              <option value="public-housing">Public housing</option>
+              <option value="project-based-section-8">Project-based Section 8</option>
+              <option value="section-202">HUD Section 202</option>
+              <option value="section-811">HUD Section 811</option>
+              <option value="usda-rural">USDA Rural Development</option>
+              <option value="lihtc">Low-Income Housing Tax Credit</option>
+              <option value="home">HOME-assisted housing</option>
+              <option value="housing-trust-fund">Housing Trust Fund</option>
+              <option value="other-assisted">Other assisted housing</option>
+            </select>
+          </label>
+          <label>
+            <span>
+              <strong>Property type</strong>
+              <small>Coverage exceptions frequently depend on this classification.</small>
+            </span>
+            <select
+              value={complianceFacts.propertyType}
+              disabled={approvedTermsLocked}
+              onChange={(event) =>
+                setComplianceFacts((current) => ({
+                  ...current,
+                  propertyType: event.target
+                    .value as ComplianceFacts["propertyType"],
+                }))
+              }
+            >
+              <option value="unknown">Unknown / confirm</option>
+              <option value="standard-residential">Standard residential rental</option>
+              <option value="owner-occupied">Owner-occupied property</option>
+              <option value="mobile-home">Mobile or manufactured home</option>
+              <option value="seasonal">Seasonal occupancy</option>
+              <option value="transient">Transient occupancy</option>
+              <option value="institutional">Institutional housing</option>
+            </select>
+          </label>
+          <label>
+            <span>
+              <strong>Tenancy type</strong>
+              <small>This can select different statutory deadline paths.</small>
+            </span>
+            <select
+              value={complianceFacts.tenancyType}
+              disabled={approvedTermsLocked}
+              onChange={(event) =>
+                setComplianceFacts((current) => ({
+                  ...current,
+                  tenancyType: event.target
+                    .value as ComplianceFacts["tenancyType"],
+                }))
+              }
+            >
+              <option value="unknown">Unknown / confirm</option>
+              <option value="fixed-term">Fixed-term written lease</option>
+              <option value="month-to-month">Month-to-month</option>
+              <option value="at-will">Tenancy at will</option>
+            </select>
+          </label>
+          <label>
+            <span>
+              <strong>Number of rental units controlled by this owner</strong>
+              <small>Leave blank only when it cannot yet be confirmed.</small>
+            </span>
+            <input
+              type="number"
+              min="1"
+              max="100000"
+              step="1"
+              value={complianceFacts.unitCount ?? ""}
+              disabled={approvedTermsLocked}
+              onChange={(event) =>
+                setComplianceFacts((current) => ({
+                  ...current,
+                  unitCount: event.target.value
+                    ? Number(event.target.value)
+                    : null,
+                }))
+              }
+            />
+          </label>
+          <label>
+            <span>
+              <strong>Owner lives at the property</strong>
+              <small>Owner-occupancy changes coverage in several jurisdictions.</small>
+            </span>
+            <select
+              value={String(complianceFacts.ownerOccupied)}
+              disabled={approvedTermsLocked}
+              onChange={(event) =>
+                setComplianceFacts((current) => ({
+                  ...current,
+                  ownerOccupied:
+                    event.target.value === "true"
+                      ? true
+                      : event.target.value === "false"
+                        ? false
+                        : "unknown",
+                }))
+              }
+            >
+              <option value="unknown">Unknown / confirm</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </label>
+          <label>
+            <span>
+              <strong>Unit is furnished</strong>
+              <small>Some states allow a different furnished-unit deposit cap.</small>
+            </span>
+            <select
+              value={String(complianceFacts.furnished)}
+              disabled={approvedTermsLocked}
+              onChange={(event) =>
+                setComplianceFacts((current) => ({
+                  ...current,
+                  furnished:
+                    event.target.value === "true"
+                      ? true
+                      : event.target.value === "false"
+                        ? false
+                        : "unknown",
+                }))
+              }
+            >
+              <option value="unknown">Unknown / confirm</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </label>
+          <label>
+            <span>
+              <strong>Assistance-animal accommodation affects deposit treatment</strong>
+              <small>No diagnosis or medical documentation is stored here.</small>
+            </span>
+            <select
+              value={String(complianceFacts.assistanceAnimalAccommodation)}
+              disabled={approvedTermsLocked}
+              onChange={(event) =>
+                setComplianceFacts((current) => ({
+                  ...current,
+                  assistanceAnimalAccommodation:
+                    event.target.value === "true"
+                      ? true
+                      : event.target.value === "false"
+                        ? false
+                        : "unknown",
+                }))
+              }
+            >
+              <option value="unknown">Unknown / not answered</option>
+              <option value="true">Yes</option>
+              <option value="false">No</option>
+            </select>
+          </label>
+          <label>
+            <span>
+              <strong>Qualifying SCRA lease termination asserted</strong>
+              <small>Orders and military details stay outside the general agreement record.</small>
+            </span>
+            <select
+              value={String(complianceFacts.scraQualifiedTermination)}
+              disabled={approvedTermsLocked}
+              onChange={(event) =>
+                setComplianceFacts((current) => ({
+                  ...current,
+                  scraQualifiedTermination:
+                    event.target.value === "true"
+                      ? true
+                      : event.target.value === "false"
+                        ? false
+                        : "unknown",
+                }))
+              }
+            >
+              <option value="unknown">Unknown / not asserted</option>
+              <option value="true">Yes, asserted</option>
+              <option value="false">No</option>
+            </select>
+          </label>
+          <p className="field-help">
+            OpenEscrow never infers these facts from an address. VAWA survivor details and
+            emergency-transfer information must not be entered or uploaded here.
+          </p>
+        </fieldset>
+      )}
       <div className="proposal-step-actions">
         <button
           className="btn btn-primary"
@@ -1817,22 +2144,117 @@ function AgreementForm({
         )}
       </section>
 
-      <section className="jurisdiction-notice generic-test-policy" aria-labelledby="generic-policy-title">
+      <section
+        className={`jurisdiction-notice ${
+          selectedJurisdiction ? "california-policy" : "generic-test-policy"
+        }`}
+        aria-labelledby="jurisdiction-policy-title"
+      >
         <div className="california-policy-heading">
           <div>
-            <strong id="generic-policy-title">Non-specific test jurisdiction</strong>
-            <small>{GENERIC_TEST_POLICY.version}</small>
+            <strong id="jurisdiction-policy-title">
+              {selectedJurisdiction?.label ?? "Non-specific test jurisdiction"}
+            </strong>
+            <small>
+              {selectedJurisdiction?.version ?? GENERIC_TEST_POLICY.version}
+            </small>
           </div>
-          <span className="policy-test">Test only</span>
+          <span className="policy-test">
+            {selectedJurisdiction ? "Rules applied" : "Test only"}
+          </span>
         </div>
-        <p>
-          This build uses one generic profile for contract and lifecycle testing. It does not
-          encode any state or local law, and it does not validate legal compliance.
-        </p>
-        <p className="field-help">
-          Timing fields remain editable and become part of the parties&apos; approved record.
-          Do not use this profile with real funds or a real tenancy.
-        </p>
+        {selectedJurisdiction ? (
+          <>
+            <p>
+              The verified address selected and locked this statewide profile automatically.
+              OpenEscrow applies its baseline timing and records the full requirement set with the
+              agreement. Facts and local overlays can still change which branch controls.
+            </p>
+            {addressResolution && (
+              <p className="field-help">
+                Resolved to {addressResolution.city || "an unincorporated locality"}
+                {addressResolution.county ? `, ${addressResolution.county}` : ""},{" "}
+                {addressResolution.stateCode}
+                {addressResolution.postalCode ? ` ${addressResolution.postalCode}` : ""}.
+              </p>
+            )}
+            <ul>
+              {selectedJurisdiction.deadlines.map((deadline) => (
+                <li key={deadline.id}>
+                  {deadline.label}: {deadline.days} {deadline.dayType} days after{" "}
+                  {deadline.triggerDescription}
+                  {!deadline.statutory ? " (OpenEscrow safeguard, not a statutory deadline)" : ""}
+                </li>
+              ))}
+              <li>Deposit baseline: {selectedJurisdiction.depositCapSummary}</li>
+              <li>
+                Primary source:{" "}
+                <a
+                  href={selectedJurisdiction.statuteUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  {selectedJurisdiction.statuteCitation}
+                </a>
+              </li>
+            </ul>
+            <details>
+              <summary>Applied statewide requirement checklist</summary>
+              <ul>
+                {selectedJurisdiction.requirements.map((requirement) => (
+                  <li key={requirement}>{requirement}</li>
+                ))}
+              </ul>
+            </details>
+            {compliancePreview && (
+              <details>
+                <summary>
+                  Federal and program overlays ({compliancePreview.overlays.length})
+                </summary>
+                {compliancePreview.overlays.map((overlay) => (
+                  <section key={overlay.id}>
+                    <strong>{overlay.label}</strong>{" "}
+                    <small>
+                      {overlay.applicability === "applies"
+                        ? "Applied"
+                        : "Needs a property or program fact"}
+                    </small>
+                    <ul>
+                      {overlay.requirements.map((requirement) => (
+                        <li key={requirement}>{requirement}</li>
+                      ))}
+                    </ul>
+                    {overlay.privacyNote && (
+                      <p className="field-help">{overlay.privacyNote}</p>
+                    )}
+                  </section>
+                ))}
+                {compliancePreview.localCoverage === "unreviewed-locality" && (
+                  <p className="field-help">
+                    The resolved city and county do not yet have a reviewed local overlay.
+                    Their rules remain a required manual check.
+                  </p>
+                )}
+              </details>
+            )}
+            <p className="field-help">
+              Official-source snapshot checked {selectedJurisdiction.researchedOn}. City, county,
+              housing-program, property-type, and fact-specific overlays remain flagged for
+              resolution. This software output is not legal advice or a guarantee.
+            </p>
+          </>
+        ) : (
+          <>
+            <p>
+              Select a U.S. address suggestion to apply its statewide compliance profile. Manual,
+              unresolved, or non-U.S. addresses keep the generic lifecycle profile.
+            </p>
+            <p className="field-help">
+              Timing remains editable and is not a legal deadline. Do not use this profile with
+              real funds or a real tenancy.
+            </p>
+          </>
+        )}
       </section>
 
       <fieldset className="token-choice">
@@ -1846,6 +2268,25 @@ function AgreementForm({
           <span><strong>ytUSDC ⓘ</strong><small>Yield-test shares · 20%/day accelerated demo</small></span>
         </label>
       </fieldset>
+      <label>
+        Monthly rent
+        <input
+          value={monthlyRent}
+          onChange={(event) => {
+            setMonthlyRent(event.target.value);
+            clearFieldIssue("monthlyRent");
+          }}
+          type="number"
+          min="0"
+          step="0.01"
+          disabled={approvedTermsLocked}
+          data-proposal-field="monthlyRent"
+          aria-invalid={invalidField === "monthlyRent"}
+        />
+        <small>
+          Used to evaluate deposit caps. It remains in the private agreement record.
+        </small>
+      </label>
       <label>
         Deposit amount ({tokenChoice === "yield" ? "ytUSDC shares" : "testUSDC"})
         <input
@@ -1911,7 +2352,7 @@ function AgreementForm({
         </p>
       )}
       <label>
-        Test deduction window
+        {selectedJurisdiction ? "Statewide onchain safeguard window" : "Test deduction window"}
         <input
           value={claimDays}
           onChange={(event) => {
@@ -1920,13 +2361,15 @@ function AgreementForm({
           }}
           type="number"
           min="1"
-          disabled={approvedTermsLocked}
+          disabled={approvedTermsLocked || Boolean(selectedJurisdiction)}
           data-proposal-field="claimDays"
           aria-invalid={invalidField === "claimDays"}
         />
       </label>
       <p className="field-help">
-        Editable test timing. This value does not represent a legal deadline.
+        {selectedJurisdiction
+          ? `${selectedJurisdiction.defaultClaimDays} days is locked as the onchain safeguard. The agreement record also preserves the profile's conditional and multi-stage deadlines.`
+          : "Editable test timing. This value does not represent a legal deadline."}
       </p>
       <label>
         OpenEscrow tenant response period

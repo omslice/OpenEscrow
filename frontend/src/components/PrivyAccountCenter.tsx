@@ -27,7 +27,15 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   deadlineReminders: false,
 };
 
-export function PrivyAccountCenter({ embedded = false }: { embedded?: boolean }) {
+export function PrivyAccountCenter({
+  embedded = false,
+  workspaceRole,
+  onChangeWorkspaceRole,
+}: {
+  embedded?: boolean;
+  workspaceRole?: string;
+  onChangeWorkspaceRole?: () => void;
+}) {
   const { ready, authenticated, user, linkGoogle, linkWallet, logout } = usePrivy();
   const { identityToken } = useIdentityToken();
   const { ready: walletsReady, wallets } = useWallets();
@@ -45,6 +53,7 @@ export function PrivyAccountCenter({ embedded = false }: { embedded?: boolean })
   const inviteRole = useInviteRole();
 
   const email = user?.google?.email ?? user?.email?.address;
+  const displayName = user?.google?.name?.trim() || email || "Your";
   const hasWallet = wallets.length > 0;
   const preferenceKey = useMemo(
     () => (user ? `openescrow:notifications:${user.id}` : null),
@@ -191,9 +200,23 @@ export function PrivyAccountCenter({ embedded = false }: { embedded?: boolean })
       <div className="account-center-heading">
         <div>
           <span className="eyebrow">Account and wallet</span>
-          <h2 id="account-center-title">Your OpenEscrow account</h2>
+          <h2 id="account-center-title">
+            {displayName === "Your" ? "Your" : `${displayName}'s`} OpenEscrow account
+          </h2>
         </div>
-        <span className="account-status">Signed in</span>
+        <div className="account-heading-actions">
+          {workspaceRole && <span className="account-status">{workspaceRole} workspace</span>}
+          {onChangeWorkspaceRole && (
+            <button
+              className="btn btn-ghost small"
+              type="button"
+              onClick={onChangeWorkspaceRole}
+            >
+              Change workspace role
+            </button>
+          )}
+          <span className="account-status">Signed in</span>
+        </div>
       </div>
 
       {inviteRole && (
@@ -397,6 +420,40 @@ export function PrivyAccountCenter({ embedded = false }: { embedded?: boolean })
               <span>
                 Gmail drafts and copy-email notices remain available until the deployment owner
                 configures a free email provider.
+              </span>
+            </div>
+          </div>
+        )}
+        {serviceReadiness && (
+          <div
+            className={`notification-delivery-status ${
+              serviceReadiness.complianceSources.configured &&
+              serviceReadiness.complianceSources.changed === 0
+                ? "ready"
+                : ""
+            }`}
+          >
+            <div>
+              <strong>
+                {serviceReadiness.complianceSources.changed > 0
+                  ? `${serviceReadiness.complianceSources.changed} compliance source change${
+                      serviceReadiness.complianceSources.changed === 1 ? "" : "s"
+                    } need review`
+                  : serviceReadiness.complianceSources.configured
+                    ? "Official-source monitor ready"
+                    : "Official-source monitor not enabled"}
+              </strong>
+              <span>
+                {serviceReadiness.complianceSources.tracked} of{" "}
+                {serviceReadiness.complianceSources.total} sources tracked
+                {serviceReadiness.complianceSources.unreachable
+                  ? ` · ${serviceReadiness.complianceSources.unreachable} temporarily unreachable`
+                  : ""}
+                {serviceReadiness.complianceSources.lastRunAt
+                  ? ` · checked ${new Date(
+                      serviceReadiness.complianceSources.lastRunAt,
+                    ).toLocaleString()}`
+                  : " · awaiting its first hosted run"}
               </span>
             </div>
           </div>

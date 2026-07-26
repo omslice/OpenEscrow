@@ -9,10 +9,15 @@ import {
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import {
   loadNegotiationSnapshot,
+  negotiationReportDownloadUrl,
   negotiationAction,
   type AgreementSnapshot,
   type NegotiationAccess,
 } from "../lib/negotiations";
+import {
+  encryptRecordSnapshot,
+  type EncryptedRecordArchive,
+} from "../lib/recordArchive";
 import { TxButton } from "./TxButton";
 import { RecordSnapshotVerifier } from "./RecordSnapshotVerifier";
 
@@ -283,94 +288,181 @@ export function RecordSnapshotControls({
   agreementId?: bigint;
 }) {
   const [snapshot, setSnapshot] = useState<AgreementSnapshot | null>(null);
+  const [encryptedExport, setEncryptedExport] = useState<{
+    archive: EncryptedRecordArchive;
+    verificationKey: string;
+  } | null>(null);
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function generateSnapshot() {
+  function downloadContent(content: string, type: string, filename: string) {
+    const blob = new Blob([content], { type });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = filename;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function downloadEncryptedRecord() {
     setLoading(true);
     setStatus(null);
     try {
       const next = await loadNegotiationSnapshot(access);
+      const encrypted = await encryptRecordSnapshot(
+        next,
+        access.proposalId,
+        agreementId,
+      );
       setSnapshot(next);
-      setStatus("Canonical snapshot generated and hashed.");
+      setEncryptedExport(encrypted);
+      downloadContent(
+        JSON.stringify(encrypted.archive, null, 2),
+        "application/json",
+        `openescrow-${access.proposalId}-${next.hash.slice(2, 10)}.encrypted.json`,
+      );
+      setStatus(
+        "Encrypted record downloaded. Save the verification key separately before leaving this page.",
+      );
     } catch (error) {
       setStatus(
-        error instanceof Error ? error.message : "The snapshot could not be generated.",
+        error instanceof Error ? error.message : "The encrypted record could not be generated.",
       );
     } finally {
       setLoading(false);
     }
   }
 
-  function downloadSnapshot() {
-    if (!snapshot) return;
-    const blob = new Blob([snapshot.canonical], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `openescrow-${access.proposalId}-${snapshot.hash.slice(2, 10)}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+  function downloadVerificationKey() {
+    if (!encryptedExport) return;
+    downloadContent(
+      [
+        "OpenEscrow encrypted record verification key",
+        "",
+        encryptedExport.verificationKey,
+        "",
+        `Record SHA-256: ${encryptedExport.archive.integrity.canonicalRecordHash}`,
+        "Keep this key private and separate from the encrypted JSON.",
+      ].join("\n"),
+      "text/plain",
+      `openescrow-${access.proposalId}-verification-key.txt`,
+    );
   }
 
   return (
     <div className="record-snapshot">
-      <div>
-        <strong>Verifiable record snapshot</strong>
-        <p className="field-help">
-          Generate a deterministic JSON copy of the parties, terms, approvals, itemized claims,
-          and activity. Identical content always produces the same SHA-256 hash.
-        </p>
-      </div>
-      <div className="button-row">
-        <button
-          className="btn btn-secondary"
-          type="button"
-          onClick={() => void generateSnapshot()}
-          disabled={loading}
-        >
-          {loading ? "Generating..." : "Generate record snapshot"}
-        </button>
-        {snapshot && (
-          <>
-            <button className="btn btn-ghost" type="button" onClick={downloadSnapshot}>
-              Download JSON
-            </button>
-            <button
-              className="btn btn-ghost"
-              type="button"
-              onClick={() => void navigator.clipboard.writeText(snapshot.hash)}
-            >
-              Copy hash
-            </button>
-          </>
-        )}
-      </div>
-      {snapshot && (
-        <code className="snapshot-hash" title={snapshot.hash}>
-          {snapshot.algorithm}: {snapshot.hash}
-        </code>
-      )}
-      {snapshot && agreementId !== undefined && (
-        <div className="snapshot-anchor">
+      <section className="record-export-step">
+        <div>
+          <span className="eyebrow">1 · Readable report</span>
+          <strong>Download the complete timestamped record</strong>
           <p className="field-help">
-            Anchoring stores only this hash and your wallet address on Base Sepolia. Use the wallet
-            assigned to this agreement; no names, emails, notes, or documents are published.
+            Includes the parties, approved terms and revisions, itemized claims, transaction
+            receipts, and every timestamped activity recorded for this agreement.
           </p>
-          <AnchorAction
-            access={access}
-            agreementId={agreementId}
-            snapshot={snapshot}
-            onAnchored={() => setStatus("Snapshot anchored onchain.")}
-          />
         </div>
+        <a
+          className="btn btn-secondary"
+          href={negotiationReportDownloadUrl(access)}
+        >
+          Download complete record report
+        </a>
+      </section>
+
+      <section className="record-export-step">
+        <div>
+          <span className="eyebrow">2 · Encrypted evidence copy</span>
+          <strong>Download the encrypted record and verification key</strong>
+          <p className="field-help">
+            The complete canonical JSON is encrypted in this browser with a new AES-256-GCM key.
+            The plaintext record is not uploaded during export.
+          </p>
+        </div>
+        <div className="button-row">
+          <button
+            className="btn btn-primary"
+            type="button"
+            onClick={() => void downloadEncryptedRecord()}
+            disabled={loading}
+          >
+            {loading ? "Preparing encrypted record..." : "Download encrypted record"}
+          </button>
+          {encryptedExport && (
+            <>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={downloadVerificationKey}
+              >
+                Download verification key
+              </button>
+              <button
+                className="btn btn-ghost"
+                type="button"
+                onClick={() =>
+                  void navigator.clipboard.writeText(encryptedExport.verificationKey)
+                }
+              >
+                Copy verification key
+              </button>
+            </>
+          )}
+        </div>
+        {encryptedExport && (
+          <div className="record-key-warning" role="status">
+            <strong>Save the verification key now.</strong>
+            <span>
+              OpenEscrow cannot recover it. Keep it private and separate from the encrypted JSON.
+            </span>
+          </div>
+        )}
+      </section>
+
+      {snapshot && (
+        <section className="record-export-step snapshot-anchor">
+          <div>
+            <span className="eyebrow">3 · Onchain integrity receipt</span>
+            <strong>Save this record hash onchain</strong>
+          </div>
+          <p className="field-help">
+            Only the SHA-256 hash and the anchoring wallet are public. Names, emails, notes,
+            documents, the encrypted file, and its verification key stay private.
+          </p>
+          <code className="snapshot-hash" title={snapshot.hash}>
+            {snapshot.algorithm}: {snapshot.hash}
+          </code>
+          {agreementId !== undefined ? (
+            <AnchorAction
+              access={access}
+              agreementId={agreementId}
+              snapshot={snapshot}
+              onAnchored={() => setStatus("Record hash anchored onchain.")}
+            />
+          ) : (
+            <p className="field-help">
+              Finalize this proposal before saving its record hash onchain.
+            </p>
+          )}
+        </section>
       )}
-      <RecordSnapshotVerifier
-        proposalId={access.proposalId}
-        agreementId={agreementId}
-      />
+
+      <section className="record-export-step">
+        <span className="eyebrow">4 · Independent verification</span>
+        <RecordSnapshotVerifier
+          proposalId={access.proposalId}
+          agreementId={agreementId}
+        />
+      </section>
       {status && (
-        <p className={status.includes("could not") ? "tx-error" : "tx-success"}>{status}</p>
+        <p
+          className={
+            status.includes("could not") || status.includes("invalid")
+              ? "tx-error"
+              : "tx-success"
+          }
+        >
+          {status}
+        </p>
       )}
     </div>
   );

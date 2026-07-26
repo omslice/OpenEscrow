@@ -1,9 +1,16 @@
 import { useEffect, useId, useState } from "react";
 import "./AddressAutocomplete.css";
 
-type AddressSuggestion = {
+export type AddressSuggestion = {
   id: string;
   label: string;
+  countryCode: string | null;
+  stateCode: string | null;
+  city: string | null;
+  county: string | null;
+  postalCode: string | null;
+  latitude: number | null;
+  longitude: number | null;
 };
 
 function normalizeSuggestions(payload: unknown): AddressSuggestion[] {
@@ -21,7 +28,17 @@ function normalizeSuggestions(payload: unknown): AddressSuggestion[] {
   return values
     .map((value, index): AddressSuggestion | null => {
       if (typeof value === "string" && value.trim()) {
-        return { id: `${index}-${value}`, label: value.trim() };
+        return {
+          id: `${index}-${value}`,
+          label: value.trim(),
+          countryCode: null,
+          stateCode: null,
+          city: null,
+          county: null,
+          postalCode: null,
+          latitude: null,
+          longitude: null,
+        };
       }
       if (!value || typeof value !== "object") return null;
       const item = value as {
@@ -29,6 +46,13 @@ function normalizeSuggestions(payload: unknown): AddressSuggestion[] {
         label?: unknown;
         address?: unknown;
         formattedAddress?: unknown;
+        countryCode?: unknown;
+        stateCode?: unknown;
+        city?: unknown;
+        county?: unknown;
+        postalCode?: unknown;
+        latitude?: unknown;
+        longitude?: unknown;
       };
       const label = [item.label, item.formattedAddress, item.address].find(
         (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
@@ -37,6 +61,22 @@ function normalizeSuggestions(payload: unknown): AddressSuggestion[] {
       return {
         id: typeof item.id === "string" ? item.id : `${index}-${label}`,
         label: label.trim(),
+        countryCode:
+          typeof item.countryCode === "string" ? item.countryCode.toUpperCase() : null,
+        stateCode:
+          typeof item.stateCode === "string" ? item.stateCode.toUpperCase() : null,
+        city: typeof item.city === "string" ? item.city.trim() || null : null,
+        county: typeof item.county === "string" ? item.county.trim() || null : null,
+        postalCode:
+          typeof item.postalCode === "string" ? item.postalCode.trim() || null : null,
+        latitude:
+          typeof item.latitude === "number" && Number.isFinite(item.latitude)
+            ? item.latitude
+            : null,
+        longitude:
+          typeof item.longitude === "number" && Number.isFinite(item.longitude)
+            ? item.longitude
+            : null,
       };
     })
     .filter((value): value is AddressSuggestion => Boolean(value))
@@ -46,11 +86,13 @@ function normalizeSuggestions(payload: unknown): AddressSuggestion[] {
 export function AddressAutocomplete({
   value,
   onChange,
+  onVerifiedSuggestion,
   disabled,
   invalid,
 }: {
   value: string;
   onChange: (value: string) => void;
+  onVerifiedSuggestion?: (suggestion: AddressSuggestion) => void;
   disabled?: boolean;
   invalid?: boolean;
 }) {
@@ -110,6 +152,7 @@ export function AddressAutocomplete({
 
   function selectSuggestion(suggestion: AddressSuggestion) {
     onChange(suggestion.label);
+    onVerifiedSuggestion?.(suggestion);
     setVerifiedAddress(suggestion.label);
     setSuggestions([]);
     setIsOpen(false);

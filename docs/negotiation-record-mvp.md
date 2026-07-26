@@ -28,39 +28,29 @@ wallet-scoped pending receipt and offers a retry; repeated submissions are idemp
 
 Every role-specific link can open a printable report containing the parties, current terms,
 revision snapshots, approval state, itemized deduction tables, and event timeline. The record is
-also exportable as canonical JSON: object keys are deterministically ordered and the server returns
-the SHA-256 hash of the exact canonical bytes. After onchain finalization, the landlord, tenant, or
-current arbiter can submit that hash to the separate `AgreementActivityRegistry`; the app shows the
-party address, timestamp, and Base Sepolia transaction receipt. Until a party submits that anchor,
-the off-chain event stream is not itself immutable or independently notarized.
+also exportable as browser-encrypted canonical JSON: object keys are deterministically ordered and
+the server returns the SHA-256 hash of the exact canonical bytes. The browser encrypts those bytes
+with a fresh AES-256-GCM key and downloads the key separately. After onchain finalization, the
+landlord, tenant, or current arbiter can submit the plaintext record hash to the separate
+`AgreementActivityRegistry`. Until a party submits that anchor, the off-chain event stream is not
+itself immutable or independently notarized.
 
 The printable report groups every recorded transaction hash into a receipt table with a direct
 BaseScan link. This makes funding, claim, response, ruling, reserve, finalization, and registry
 transactions easier to audit without treating a client-submitted hash as independently verified;
 the explorer receipt remains the source to check.
 
-The finalized agreement dashboard also supports privacy-safe activity receipts. A landlord, tenant,
-or current arbiter may type a note or description locally, select note/document/notice/decision,
-and publish the resulting `keccak256` hash. Only the type, hash, agreement ID, party wallet, and
-block timestamp are public. The downloaded private proof JSON is required to reproduce the hash;
-OpenEscrow does not retain the readable content. When role-scoped proposal access is available, the
-hash, type, and transaction receipt are also appended to the server report; repeated recovery
-submissions are idempotent.
+Encrypted full-record exports have a local verifier. The user selects the encrypted JSON and
+provides its separately saved verification key. The browser decrypts the file, validates the
+snapshot schema and proposal identity, recomputes the SHA-256 hash, reads the current agreement
+parties directly from Base Sepolia, and checks the registry's `anchoredBy` mapping for each party.
+The encrypted file, key, and plaintext are not uploaded during verification. A valid but
+unanchored record is clearly distinguished from one whose hash was attested by an agreement-party
+wallet.
 
-Downloaded activity proof files can be verified inside the agreement dashboard. Verification is
-local-first: the browser reconstructs the canonical envelope, recomputes its keccak256 hash, then
-checks that the referenced Base Sepolia transaction emitted the matching registry event. The proof
-file is not uploaded.
-
-Downloaded full-record snapshots have a parallel local verifier. It validates the snapshot schema
-and proposal identity, hashes the exact file bytes with SHA-256, and lists any matching Base
-Sepolia snapshot anchors. A valid but unanchored snapshot is clearly distinguished from one whose
-hash was attested by an agreement-party wallet.
-
-Printable reports include a dedicated onchain evidence table for recorded snapshot anchors and
-privacy-safe activity hashes, including direct BaseScan receipt links. This table does not claim
-that plaintext is public or independently stored; a hash must be checked against the relevant
-private source material.
+Printable reports include a dedicated onchain evidence table for recorded snapshot anchors,
+including direct BaseScan receipt links. This table does not claim that plaintext is public or
+independently stored; a hash must be checked against the relevant encrypted record and key.
 
 ## External services
 

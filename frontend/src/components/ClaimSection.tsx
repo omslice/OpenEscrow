@@ -3,6 +3,7 @@ import { useAccount } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
 import { agreementReference } from "../lib/displayIds";
 import { formatUSDC, parseUSDC } from "../lib/format";
+import { CALIFORNIA_POLICY } from "../lib/jurisdictions";
 import {
   buildNegotiationInviteUrl,
   loadNegotiation,
@@ -113,7 +114,9 @@ export function ClaimSection({
   if (!isLandlord) return null;
 
   const { total: amountRaw, valid: itemsValid } = itemAmounts(items);
-  const isCaliforniaPolicy = record?.terms.jurisdiction !== "testnet-generic";
+  const isCaliforniaPolicy =
+    record?.terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
+    record.terms.policyVersion === CALIFORNIA_POLICY.version;
   const amount = amountRaw === null ? "" : formatUSDC(amountRaw);
   const evidenceType =
     items.length === 1 ? Number(items[0].category) : Number("13");

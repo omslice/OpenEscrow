@@ -1,4 +1,5 @@
 import type { InviteRole } from "./inviteContext";
+import type { ComplianceFacts, ComplianceSnapshot } from "./jurisdictions";
 
 export type NegotiationRole = "landlord" | InviteRole;
 export type NegotiationStatus =
@@ -12,6 +13,20 @@ export interface AgreementTerms {
   jurisdiction: string;
   policyVersion?: string;
   propertyAddress: string;
+  addressResolution?: {
+    provider: "photon-openstreetmap";
+    providerFeatureId: string;
+    label: string;
+    countryCode: "US";
+    stateCode: string;
+    city: string | null;
+    county: string | null;
+    postalCode: string | null;
+    latitude: number;
+    longitude: number;
+  } | null;
+  complianceFacts?: ComplianceFacts;
+  complianceSnapshot?: ComplianceSnapshot | null;
   tokenChoice: "plain" | "yield";
   deposit: string;
   operationsReserve: string;
@@ -58,6 +73,14 @@ export interface ServiceReadiness {
     mode: "private-r2" | "encrypted-ipfs" | "unconfigured";
     encryptedAtRest: boolean;
     decentralizedReady: boolean;
+  };
+  complianceSources: {
+    configured: boolean;
+    total: number;
+    tracked: number;
+    changed: number;
+    unreachable: number;
+    lastRunAt: string | null;
   };
 }
 
@@ -519,6 +542,16 @@ export type NegotiationAction =
     | { type: "tenant_share_funded"; amount?: string; transactionHash: string }
     | { type: "agreement_funded"; transactionHash: string }
     | {
+        type: "propose_compliance_event";
+        eventName: string;
+        occurredAt: string;
+        note?: string;
+      }
+    | {
+        type: "confirm_compliance_event";
+        proposalEventId: number;
+      }
+    | {
         type: "record_snapshot_anchored";
         snapshotHash: string;
         transactionHash: string;
@@ -594,6 +627,10 @@ export async function negotiationAction(
 
 export function negotiationReportUrl(access: NegotiationAccess) {
   return `/api/negotiations/${encodeURIComponent(access.proposalId)}/report?token=${encodeURIComponent(access.token)}`;
+}
+
+export function negotiationReportDownloadUrl(access: NegotiationAccess) {
+  return `${negotiationReportUrl(access)}&download=1`;
 }
 
 export function loadNegotiationSnapshot(access: NegotiationAccess) {

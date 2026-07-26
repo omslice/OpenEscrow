@@ -16,3 +16,12 @@ await mkdir(target, { recursive: true });
 await cp(source, join(target, "client"), { recursive: true });
 await mkdir(join(target, "server"), { recursive: true });
 await cp(join(frontend, "server", "index.js"), join(target, "server", "index.js"));
+await cp(join(frontend, "shared"), join(target, "shared"), { recursive: true });
+await mkdir(join(target, ".openai"), { recursive: true });
+await cp(
+  join(repository, ".openai", "hosting.json"),
+  join(target, ".openai", "hosting.json"),
+);
+await cp(join(repository, "drizzle"), join(target, ".openai", "drizzle"), {
+  recursive: true,
+});

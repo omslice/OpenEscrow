@@ -1,3 +1,15 @@
+import {
+  US_JURISDICTION_PROFILE_BY_CODE,
+  US_STATE_POSTAL_CODE_BY_NAME,
+} from "../shared/us-jurisdiction-profiles.js";
+import {
+  addressResolutionMatchesProfile,
+  complianceSnapshotMatchesProfile,
+  evaluateCompliance,
+  normalizeAddressResolution,
+} from "../shared/us-compliance-engine.js";
+import { COMPLIANCE_SOURCE_REGISTRY } from "../shared/compliance-sources.js";
+
 const AGREEMENTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS agreement_negotiations (
   id TEXT PRIMARY KEY,
@@ -155,6 +167,27 @@ CREATE TABLE IF NOT EXISTS scheduled_job_runs (
   last_started_at TEXT NOT NULL
 )`;
 
+const COMPLIANCE_SOURCE_CHECKS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS compliance_source_checks (
+  source_key TEXT PRIMARY KEY,
+  scope TEXT NOT NULL,
+  jurisdiction TEXT NOT NULL,
+  profile_version TEXT NOT NULL,
+  citation TEXT NOT NULL,
+  url TEXT NOT NULL,
+  baseline_signature TEXT,
+  current_signature TEXT,
+  http_status INTEGER,
+  status TEXT NOT NULL DEFAULT 'pending',
+  last_checked_at TEXT,
+  last_changed_at TEXT,
+  error TEXT
+)`;
+
+const COMPLIANCE_SOURCE_CHECKS_INDEX = `
+CREATE INDEX IF NOT EXISTS compliance_source_checks_status_idx
+ON compliance_source_checks (status, last_checked_at)`;
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const WALLET_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const DEDUCTION_CATEGORY_LABEL = {
@@ -171,6 +204,7 @@ const ADDRESS_SUGGESTION_CACHE_TTL_MS = 10 * 60 * 1000;
 const ADDRESS_SUGGESTION_CACHE_LIMIT = 200;
 const ADDRESS_GEOCODER_TIMEOUT_MS = 3_000;
 const DEFAULT_BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org";
+const FALLBACK_BASE_SEPOLIA_RPC_URL = "https://base-sepolia-rpc.publicnode.com";
 const DEFAULT_OPEN_ESCROW_ADDRESS = "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99";
 const DEFAULT_OPERATIONS_RESERVE_ADDRESS =
   "0x5d2E9c429F9d117c7b028c8f0f67d37252aDceC0";
@@ -343,47 +377,66 @@ async function verifiedBaseSepoliaReceipt(env, body, row, transactionHash) {
       error: "The agreement id required to verify this transaction is unavailable.",
     };
   }
-  const rpcUrl =
-    cleanText(env.BASE_SEPOLIA_RPC_URL, 1000) || DEFAULT_BASE_SEPOLIA_RPC_URL;
-  let parsedRpcUrl;
-  try {
-    parsedRpcUrl = new URL(rpcUrl);
-    if (parsedRpcUrl.protocol !== "https:") throw new Error("HTTPS is required.");
-  } catch {
-    return {
-      ok: false,
-      status: 503,
-      error: "The configured Base Sepolia receipt verifier is invalid.",
-    };
+  const configuredRpcUrl = cleanText(env.BASE_SEPOLIA_RPC_URL, 1000);
+  const rpcUrls = Array.from(
+    new Set([
+      configuredRpcUrl || DEFAULT_BASE_SEPOLIA_RPC_URL,
+      ...(configuredRpcUrl ? [] : [FALLBACK_BASE_SEPOLIA_RPC_URL]),
+    ]),
+  );
+  const parsedRpcUrls = [];
+  for (const rpcUrl of rpcUrls) {
+    try {
+      const parsed = new URL(rpcUrl);
+      if (parsed.protocol !== "https:") throw new Error("HTTPS is required.");
+      parsedRpcUrls.push(parsed);
+    } catch {
+      return {
+        ok: false,
+        status: 503,
+        error: "The configured Base Sepolia receipt verifier is invalid.",
+      };
+    }
   }
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 7_500);
   let receipt;
-  try {
-    const response = await fetch(parsedRpcUrl.toString(), {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        jsonrpc: "2.0",
-        id: 1,
-        method: "eth_getTransactionReceipt",
-        params: [transactionHash],
-      }),
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error("RPC request failed.");
-    const result = await response.json();
-    receipt = result?.result;
-  } catch {
+  let rpcResponded = false;
+  for (const parsedRpcUrl of parsedRpcUrls) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 7_500);
+    try {
+      const response = await fetch(parsedRpcUrl.toString(), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "eth_getTransactionReceipt",
+          params: [transactionHash],
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) continue;
+      const result = await response.json();
+      if (result?.error) continue;
+      rpcResponded = true;
+      if (result?.result) {
+        receipt = result.result;
+        break;
+      }
+    } catch {
+      // Try the next approved Base Sepolia endpoint.
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  if (!rpcResponded) {
     return {
       ok: false,
       status: 503,
       error:
         "OpenEscrow could not verify this Base Sepolia receipt. The onchain transaction is unchanged; retry saving its receipt shortly.",
     };
-  } finally {
-    clearTimeout(timeout);
   }
 
   if (!receipt) {
@@ -623,9 +676,10 @@ function validGenericTestClaim(items, confirmations, evidenceUri, evidenceHash) 
 }
 
 function validClaimForTerms(items, confirmations, evidenceUri, evidenceHash, terms) {
-  return terms?.jurisdiction === GENERIC_TEST_POLICY.jurisdiction
-    ? validGenericTestClaim(items, confirmations, evidenceUri, evidenceHash)
-    : validCaliforniaClaim(items, confirmations, evidenceUri, evidenceHash);
+  return terms?.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
+    terms?.policyVersion === CALIFORNIA_POLICY.version
+    ? validCaliforniaClaim(items, confirmations, evidenceUri, evidenceHash)
+    : validGenericTestClaim(items, confirmations, evidenceUri, evidenceHash);
 }
 
 function normalizeEmail(value) {
@@ -650,6 +704,13 @@ const GENERIC_TEST_POLICY = Object.freeze({
   jurisdiction: "testnet-generic",
   operationsReserve: "5",
 });
+
+const COMPLIANCE_EVENT_KEYS = new Set([
+  ...Object.values(US_JURISDICTION_PROFILE_BY_CODE).flatMap((profile) =>
+    profile.deadlines.map((deadlineRule) => deadlineRule.trigger),
+  ),
+  "scraTerminationEffectiveAt",
+]);
 
 function validPeriodDays(value) {
   const days = Number(value);
@@ -676,10 +737,34 @@ function validTerms(terms) {
       validPeriodDays(terms.arbiterDays));
   if (!commonTermsAreValid) return false;
 
-  return (
+  const isGenericPolicy =
     terms.jurisdiction === GENERIC_TEST_POLICY.jurisdiction &&
     terms.policyVersion === GENERIC_TEST_POLICY.version &&
-    terms.operationsReserve === GENERIC_TEST_POLICY.operationsReserve
+    terms.operationsReserve === GENERIC_TEST_POLICY.operationsReserve;
+  if (isGenericPolicy) return true;
+
+  const profile = US_JURISDICTION_PROFILE_BY_CODE[terms.jurisdiction];
+  const monthlyRent = tokenMicros(terms.monthlyRent);
+  return Boolean(
+    profile &&
+      monthlyRent !== null &&
+      monthlyRent > 0n &&
+      terms.policyVersion === profile.version &&
+      terms.claimDays === profile.defaultClaimDays &&
+      addressResolutionMatchesProfile(terms.addressResolution, profile) &&
+      normalizeAddressResolution(terms.addressResolution)?.label ===
+        cleanText(terms.propertyAddress, 300) &&
+      complianceSnapshotMatchesProfile(
+        terms.complianceSnapshot,
+        profile,
+        terms.addressResolution,
+        { facts: terms.complianceFacts },
+      ) &&
+      terms.responseDays === "7" &&
+      (terms.arbiterDays === undefined ||
+        terms.arbiterDays === null ||
+        terms.arbiterDays === "" ||
+        terms.arbiterDays === "7"),
   );
 }
 
@@ -862,6 +947,8 @@ async function initialize(db) {
     db.prepare(ACCOUNT_ACCESS_CONTEXT_SCHEMA),
     db.prepare(BACKFILL_PRIMARY_TENANTS),
     db.prepare(SCHEDULED_JOB_RUNS_SCHEMA),
+    db.prepare(COMPLIANCE_SOURCE_CHECKS_SCHEMA),
+    db.prepare(COMPLIANCE_SOURCE_CHECKS_INDEX),
   ]);
 }
 
@@ -996,6 +1083,12 @@ async function notificationPreferences(request, env) {
 
 async function serviceReadiness(env) {
   let schedulerLastRunAt = null;
+  let complianceSourceLastRunAt = null;
+  let complianceSourceStats = {
+    tracked: 0,
+    changed: 0,
+    unreachable: 0,
+  };
   if (env.DB) {
     await initialize(env.DB);
     const scheduledRun = await env.DB
@@ -1003,6 +1096,24 @@ async function serviceReadiness(env) {
       .bind("notification-reminders")
       .first();
     schedulerLastRunAt = scheduledRun?.last_started_at || null;
+    const sourceRun = await env.DB
+      .prepare("SELECT last_started_at FROM scheduled_job_runs WHERE name = ?")
+      .bind("compliance-source-monitor")
+      .first();
+    complianceSourceLastRunAt = sourceRun?.last_started_at || null;
+    const sourceStats = await env.DB
+      .prepare(
+        `SELECT COUNT(*) AS tracked,
+                SUM(CASE WHEN status = 'changed' THEN 1 ELSE 0 END) AS changed,
+                SUM(CASE WHEN status = 'unreachable' THEN 1 ELSE 0 END) AS unreachable
+         FROM compliance_source_checks`,
+      )
+      .first();
+    complianceSourceStats = {
+      tracked: Number(sourceStats?.tracked || 0),
+      changed: Number(sourceStats?.changed || 0),
+      unreachable: Number(sourceStats?.unreachable || 0),
+    };
   }
   const provider = emailProvider(env);
   const decentralizedReady = Boolean(
@@ -1035,6 +1146,12 @@ async function serviceReadiness(env) {
       lifecycleStateGuards: true,
       transactionReceiptVerification: receiptVerificationEnabled(env),
       chain: "Base Sepolia",
+    },
+    complianceSources: {
+      configured: env.COMPLIANCE_SOURCE_MONITOR_ENABLED === "true",
+      total: COMPLIANCE_SOURCE_REGISTRY.length,
+      ...complianceSourceStats,
+      lastRunAt: complianceSourceLastRunAt,
     },
   });
 }
@@ -2446,6 +2563,100 @@ function deadlineCandidates(row, events, now, tenantRows = []) {
   return candidates;
 }
 
+function complianceDeadlineCandidates(row, events, now, tenantRows = []) {
+  let terms;
+  try {
+    terms = JSON.parse(row.terms_json);
+  } catch {
+    return [];
+  }
+  if (terms.complianceSnapshot?.schema !== "openescrow.us-compliance-profile.v3") {
+    return [];
+  }
+  const profile = US_JURISDICTION_PROFILE_BY_CODE[terms.jurisdiction];
+  if (!profile) return [];
+  const confirmedEvents = Object.fromEntries(
+    events
+      .filter((event) => event.action === "compliance_event_confirmed")
+      .map((event) => [
+        cleanText(event.metadata?.eventName, 80),
+        cleanText(event.metadata?.occurredAt, 40),
+      ])
+      .filter(([eventName, occurredAt]) => eventName && occurredAt),
+  );
+  const evaluation = evaluateCompliance(profile, {
+    address: terms.addressResolution,
+    facts: {
+      ...(terms.complianceFacts || {}),
+      monthlyRent: terms.monthlyRent,
+      deposit: terms.deposit,
+    },
+    events: confirmedEvents,
+  });
+  if (!evaluation) return [];
+  const stateDeadlines = evaluation.deadlines
+    .filter((deadline) => !deadline.comparison)
+    .map((deadline) => ({ ...deadline, key: `state:${deadline.id}` }));
+  const combinedDeadlines = (evaluation.combinedDeadlines || []).map(
+    (deadline) => ({ ...deadline, key: `state:${deadline.id}` }),
+  );
+  const overlayDeadlines = evaluation.overlays.flatMap((overlay) =>
+    overlay.applicability === "applies"
+      ? overlay.deadlines.map((deadline) => ({
+          ...deadline,
+          key: `${overlay.id}:${deadline.id}`,
+        }))
+      : [],
+  );
+  const recipients = [
+    ["landlord", row.landlord_email],
+    ...(tenantRows.length
+      ? tenantRows.map((tenant) => [`tenant-${tenant.id}`, tenant.email])
+      : [["tenant", row.tenant_email]]),
+  ];
+  const candidates = [];
+  for (const deadline of [
+    ...stateDeadlines,
+    ...combinedDeadlines,
+    ...overlayDeadlines,
+  ]) {
+    if (deadline.status !== "scheduled" || !deadline.dueAt) continue;
+    const dueAt = new Date(deadline.dueAt);
+    const stage =
+      dueAt <= now
+        ? {
+            type: `compliance_${deadline.key}_due`,
+            scheduledFor: dueAt,
+            text: `${deadline.label} is due under the recorded compliance snapshot. Review the confirmed event, governing source, and required delivery record now.`,
+          }
+        : [
+            {
+              type: `compliance_${deadline.key}_3_days`,
+              scheduledFor: addDays(dueAt, -3),
+              text: `${deadline.label} is approaching in three days under the recorded compliance snapshot. Review the required accounting, documents, and delivery method.`,
+            },
+            {
+              type: `compliance_${deadline.key}_1_day`,
+              scheduledFor: addDays(dueAt, -1),
+              text: `${deadline.label} is tomorrow under the recorded compliance snapshot. Complete and preserve the required action and proof of delivery.`,
+            },
+          ]
+            .filter((candidate) => candidate.scheduledFor <= now && now < dueAt)
+            .at(-1);
+    if (!stage) continue;
+    for (const [role, email] of recipients) {
+      candidates.push({
+        ...stage,
+        role,
+        email,
+        preference: "deadline",
+        subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""}: compliance deadline`,
+      });
+    }
+  }
+  return candidates;
+}
+
 async function recordClaimPeriodTransitions(env, row, events, now) {
   const terms = JSON.parse(row.terms_json);
   const claimWindowStart = new Date(terms.claimWindowStart);
@@ -2542,12 +2753,182 @@ async function runScheduledNotifications(env, now = new Date()) {
     const tenantRows = await tenantsFor(env.DB, row.id);
     const candidates = [
       ...deadlineCandidates(row, events, now, tenantRows),
+      ...complianceDeadlineCandidates(row, events, now, tenantRows),
       ...withdrawalCandidates(row, events, now, tenantRows),
     ];
     for (const candidate of candidates) {
       if (!emailProvider(env)) continue;
       await sendScheduledNotification(env, row, candidate, appUrl);
     }
+  }
+}
+
+async function seedComplianceSources(db) {
+  const statements = COMPLIANCE_SOURCE_REGISTRY.map((item) =>
+    db
+      .prepare(
+        `INSERT INTO compliance_source_checks
+          (source_key, scope, jurisdiction, profile_version, citation, url, status)
+         VALUES (?, ?, ?, ?, ?, ?, 'pending')
+         ON CONFLICT(source_key) DO UPDATE SET
+           scope = excluded.scope,
+           jurisdiction = excluded.jurisdiction,
+           profile_version = excluded.profile_version,
+           citation = excluded.citation,
+           url = excluded.url`,
+      )
+      .bind(
+        item.key,
+        item.scope,
+        item.jurisdiction,
+        item.version,
+        item.citation,
+        item.url,
+      ),
+  );
+  for (let index = 0; index < statements.length; index += 20) {
+    await db.batch(statements.slice(index, index + 20));
+  }
+}
+
+async function digestSourceResponse(response) {
+  const chunks = [];
+  let total = 0;
+  const maximum = 256 * 1024;
+  if (response.body?.getReader) {
+    const reader = response.body.getReader();
+    while (total < maximum) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const remaining = maximum - total;
+      const chunk = value.slice(0, remaining);
+      chunks.push(chunk);
+      total += chunk.byteLength;
+      if (chunk.byteLength < value.byteLength || total >= maximum) {
+        await reader.cancel();
+        break;
+      }
+    }
+  } else {
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    chunks.push(bytes.slice(0, maximum));
+    total = Math.min(bytes.byteLength, maximum);
+  }
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const metadata = encoder.encode(
+    JSON.stringify({
+      etag: response.headers.get("etag") || "",
+      lastModified: response.headers.get("last-modified") || "",
+      contentLength: response.headers.get("content-length") || "",
+      contentType: response.headers.get("content-type") || "",
+      sampledBytes: total,
+    }),
+  );
+  const signatureBytes = new Uint8Array(metadata.byteLength + body.byteLength);
+  signatureBytes.set(metadata);
+  signatureBytes.set(body, metadata.byteLength);
+  const digest = await crypto.subtle.digest("SHA-256", signatureBytes);
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+async function checkComplianceSource(db, sourceRow, now) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8_000);
+  try {
+    const sourceUrl = new URL(sourceRow.url);
+    if (sourceUrl.protocol !== "https:") throw new Error("HTTPS is required.");
+    const response = await fetch(sourceUrl.toString(), {
+      headers: {
+        accept: "text/html,application/xhtml+xml,application/pdf,text/plain;q=0.9,*/*;q=0.5",
+        range: "bytes=0-262143",
+        "user-agent": "OpenEscrow compliance source monitor/1.0",
+      },
+      redirect: "follow",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Official source returned HTTP ${response.status}.`);
+    }
+    const signature = await digestSourceResponse(response);
+    const baseline = sourceRow.baseline_signature || signature;
+    const changed = Boolean(
+      sourceRow.baseline_signature && sourceRow.baseline_signature !== signature,
+    );
+    await db
+      .prepare(
+        `UPDATE compliance_source_checks
+         SET baseline_signature = ?, current_signature = ?, http_status = ?,
+             status = ?, last_checked_at = ?,
+             last_changed_at = CASE WHEN ? THEN ? ELSE last_changed_at END,
+             error = NULL
+         WHERE source_key = ?`,
+      )
+      .bind(
+        baseline,
+        signature,
+        response.status,
+        changed ? "changed" : "unchanged",
+        now.toISOString(),
+        changed ? 1 : 0,
+        now.toISOString(),
+        sourceRow.source_key,
+      )
+      .run();
+  } catch (error) {
+    await db
+      .prepare(
+        `UPDATE compliance_source_checks
+         SET status = 'unreachable', last_checked_at = ?, error = ?
+         WHERE source_key = ?`,
+      )
+      .bind(
+        now.toISOString(),
+        cleanText(error instanceof Error ? error.message : "Source check failed.", 300),
+        sourceRow.source_key,
+      )
+      .run();
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+async function runComplianceSourceAudit(env, now = new Date()) {
+  if (!env.DB || env.COMPLIANCE_SOURCE_MONITOR_ENABLED !== "true") return;
+  await initialize(env.DB);
+  const prior = await env.DB
+    .prepare("SELECT last_started_at FROM scheduled_job_runs WHERE name = ?")
+    .bind("compliance-source-monitor")
+    .first();
+  const lastStarted = prior?.last_started_at
+    ? new Date(prior.last_started_at).getTime()
+    : 0;
+  if (now.getTime() - lastStarted < 24 * 60 * 60 * 1000) return;
+  await seedComplianceSources(env.DB);
+  await env.DB
+    .prepare(
+      `INSERT INTO scheduled_job_runs (name, last_started_at)
+       VALUES (?, ?)
+       ON CONFLICT(name) DO UPDATE SET last_started_at = excluded.last_started_at`,
+    )
+    .bind("compliance-source-monitor", now.toISOString())
+    .run();
+  const pending = await env.DB
+    .prepare(
+      `SELECT * FROM compliance_source_checks
+       ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END,
+                COALESCE(last_checked_at, '') ASC, source_key ASC
+       LIMIT 4`,
+    )
+    .all();
+  for (const row of pending.results || []) {
+    await checkComplianceSource(env.DB, row, now);
   }
 }
 
@@ -2930,6 +3311,110 @@ async function applyAction(request, env, id) {
         `Finalized as onchain agreement #${agreementId} in transaction ${transactionHash}.`,
         revision,
         { agreementId, transactionHash },
+      ),
+    );
+  } else if (body.type === "propose_compliance_event") {
+    if (row.status !== "finalized") {
+      return json(
+        { error: "Lifecycle events can be recorded only after onchain finalization." },
+        409,
+      );
+    }
+    if (role !== "landlord" && role !== "tenant") {
+      return json(
+        { error: "Only a landlord or tenant may propose a lifecycle event." },
+        403,
+      );
+    }
+    const eventName = cleanText(body.eventName, 80);
+    const occurredAt = cleanText(body.occurredAt, 40);
+    const occurredTime = new Date(occurredAt).getTime();
+    const note = cleanText(body.note, 500);
+    if (!COMPLIANCE_EVENT_KEYS.has(eventName)) {
+      return json({ error: "That lifecycle event is not used by this compliance profile." }, 400);
+    }
+    if (
+      !occurredAt ||
+      Number.isNaN(occurredTime) ||
+      occurredTime > Date.now() + 5 * 60 * 1000 ||
+      occurredTime < new Date(row.created_at).getTime()
+    ) {
+      return json(
+        { error: "Enter the actual event time after proposal creation and not in the future." },
+        400,
+      );
+    }
+    statements.push(
+      db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "compliance_event_proposed",
+        `Proposed ${eventName} at ${new Date(occurredTime).toISOString()} for confirmation by the other party.`,
+        revision,
+        {
+          eventName,
+          occurredAt: new Date(occurredTime).toISOString(),
+          note: note || null,
+        },
+      ),
+    );
+  } else if (body.type === "confirm_compliance_event") {
+    if (row.status !== "finalized") {
+      return json(
+        { error: "Lifecycle events can be confirmed only after onchain finalization." },
+        409,
+      );
+    }
+    if (role !== "landlord" && role !== "tenant") {
+      return json(
+        { error: "Only a landlord or tenant may confirm a lifecycle event." },
+        403,
+      );
+    }
+    const proposalEventId = Number(body.proposalEventId);
+    const proposal = recordedEvents.find(
+      (event) =>
+        Number(event.id) === proposalEventId &&
+        event.action === "compliance_event_proposed",
+    );
+    if (!proposal) {
+      return json({ error: "The proposed lifecycle event could not be found." }, 404);
+    }
+    if (proposal.actorRole === role) {
+      return json(
+        { error: "The other party must confirm this lifecycle event." },
+        409,
+      );
+    }
+    if (
+      recordedEvents.some(
+        (event) =>
+          event.action === "compliance_event_confirmed" &&
+          Number(event.metadata?.proposalEventId) === proposalEventId,
+      )
+    ) {
+      return json({ error: "This lifecycle event is already confirmed." }, 409);
+    }
+    statements.push(
+      db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "compliance_event_confirmed",
+        `Confirmed ${proposal.metadata.eventName} at ${proposal.metadata.occurredAt}; compliance deadlines can now use this event.`,
+        revision,
+        {
+          proposalEventId,
+          eventName: proposal.metadata.eventName,
+          occurredAt: proposal.metadata.occurredAt,
+          proposedBy: proposal.actorRole,
+          confirmedBy: role,
+        },
       ),
     );
   } else if (body.type === "operations_reserve_paid") {
@@ -4384,21 +4869,71 @@ async function snapshot(db, id, token) {
   });
 }
 
-async function report(db, id, token) {
+async function report(db, id, token, download = false) {
   const row = await rowFor(db, id);
   const role = await authorize(db, row, token);
   if (!role) return new Response("Invalid report link.", { status: 403 });
   const record = await serialize(db, row);
   const terms = record.terms;
   const policyRows = (candidate) => {
-    const isCalifornia = candidate.jurisdiction === CALIFORNIA_POLICY.jurisdiction;
+    const isCalifornia =
+      candidate.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
+      candidate.policyVersion === CALIFORNIA_POLICY.version;
+    const researchProfile = US_JURISDICTION_PROFILE_BY_CODE[candidate.jurisdiction];
+    const complianceSnapshot =
+      (candidate.complianceSnapshot?.schema === "openescrow.us-compliance-profile.v2" ||
+        candidate.complianceSnapshot?.schema === "openescrow.us-compliance-profile.v3")
+        ? candidate.complianceSnapshot
+        : null;
+    const jurisdiction =
+      researchProfile?.label ||
+      (isCalifornia
+        ? "California residential tenancy"
+        : "Non-specific jurisdiction (testing only)");
+    const overlaySnapshots = complianceSnapshot?.overlays || [];
+    const deadlineRules = [
+      ...(complianceSnapshot?.deadlines || researchProfile?.deadlines || []),
+      ...overlaySnapshots.flatMap((overlay) =>
+        overlay.applicability === "applies" ? overlay.deadlines || [] : [],
+      ),
+    ];
+    const recordedRequirements =
+      complianceSnapshot?.requirements || researchProfile?.requirements || [];
+    const deadlinePaths = deadlineRules.length
+      ? deadlineRules
+          .map(
+            (deadlineRule) =>
+              `${escapeHtml(deadlineRule.label)}: ${escapeHtml(deadlineRule.days)} ${escapeHtml(deadlineRule.dayType)} days after ${escapeHtml(deadlineRule.triggerDescription)}${deadlineRule.statutory ? "" : " (OpenEscrow safeguard, not a statutory deadline)"}`,
+          )
+          .join("<br>")
+      : "";
+    const requirements = recordedRequirements.length
+      ? `<ol>${recordedRequirements.map((requirement) => `<li>${escapeHtml(requirement)}</li>`).join("")}</ol>`
+      : "";
+    const overlayRequirements = overlaySnapshots
+      .map(
+        (overlay) =>
+          `<p><strong>${escapeHtml(overlay.label)}</strong> — ${escapeHtml(
+            overlay.applicability === "applies"
+              ? "applied"
+              : "awaiting a property or program fact",
+          )}</p><ul>${(overlay.requirements || [])
+            .map((requirement) => `<li>${escapeHtml(requirement)}</li>`)
+            .join("")}</ul>`,
+      )
+      .join("");
+    const resolvedLocation = normalizeAddressResolution(
+      complianceSnapshot?.address || candidate.addressResolution,
+    );
     return `
 ${isCalifornia ? `<tr><th>Monthly rent used for cap</th><td>${escapeHtml(candidate.monthlyRent || "Not recorded")}</td></tr>` : ""}
-<tr><th>${isCalifornia ? "California accounting/refund period" : "Test deduction window"}</th><td>${escapeHtml(candidate.claimDays)} calendar days (${isCalifornia ? "locked" : "agreed test value"})</td></tr>
-<tr><th>OpenEscrow response period</th><td>${escapeHtml(candidate.responseDays)} days (${isCalifornia ? "locked pilot rule" : "agreed test value"})</td></tr>
-${record.arbiterEmail ? `<tr><th>OpenEscrow arbiter period</th><td>${escapeHtml(candidate.arbiterDays)} days (${isCalifornia ? "locked pilot rule" : "agreed test value"})</td></tr>` : ""}
-<tr><th>Jurisdiction</th><td>${isCalifornia ? "California residential tenancy" : "Non-specific jurisdiction (testing only)"}</td></tr>
+<tr><th>${isCalifornia ? "California accounting/refund period" : researchProfile ? "Statewide onchain safeguard window" : "Test deduction window"}</th><td>${escapeHtml(candidate.claimDays)} calendar days (${isCalifornia || researchProfile ? "profile default" : "agreed test value"})</td></tr>
+<tr><th>OpenEscrow response period</th><td>${escapeHtml(candidate.responseDays)} days (${isCalifornia || researchProfile ? "test rule" : "agreed test value"})</td></tr>
+${record.arbiterEmail ? `<tr><th>OpenEscrow arbiter period</th><td>${escapeHtml(candidate.arbiterDays)} days (${isCalifornia || researchProfile ? "test rule" : "agreed test value"})</td></tr>` : ""}
+<tr><th>Jurisdiction</th><td>${escapeHtml(jurisdiction)}</td></tr>
 <tr><th>Policy profile</th><td>${escapeHtml(candidate.policyVersion || "Legacy proposal")}</td></tr>
+${resolvedLocation ? `<tr><th>Validated location</th><td>${escapeHtml([resolvedLocation.city, resolvedLocation.county, resolvedLocation.stateCode, resolvedLocation.postalCode].filter(Boolean).join(", "))}<br><small>Photon/OpenStreetMap feature ${escapeHtml(resolvedLocation.providerFeatureId)}</small></td></tr>` : ""}
+${deadlineRules.length ? `<tr><th>Compliance deadline paths</th><td>${deadlinePaths}</td></tr><tr><th>Applied statewide requirements</th><td>${requirements}</td></tr>${overlayRequirements ? `<tr><th>Federal and program overlays</th><td>${overlayRequirements}</td></tr>` : ""}<tr><th>Unresolved coverage</th><td>${(complianceSnapshot?.unresolvedOverlays || ["Confirm local, federal, housing-program, and fact-specific overlays."]).map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")}<small>Software output is not legal advice.</small></td></tr>` : ""}
 ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordException ? "Qualifying small-landlord exception asserted" : "Standard one-month cap"}${candidate.tenantIsServiceMember ? " · tenant is a service member" : ""}</td></tr>` : ""}`;
   };
   const timeline = record.events
@@ -4516,8 +5051,7 @@ ${onchainEvidence ? `<h2>Onchain evidence receipts</h2><table><thead><tr><th>Tim
 <h2>Timestamped activity</h2><table><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th></tr></thead><tbody>${timeline}</tbody></table>
 <p class="meta">The readable record is platform-stored. Transaction hashes recorded by the app should be checked using their BaseScan links. The onchain evidence table lists snapshot or activity hashes separately anchored to Base Sepolia; a hash proves integrity only when checked against the corresponding private source material.</p>
 </body></html>`;
-  return new Response(html, {
-    headers: {
+  const headers = {
       "content-type": "text/html; charset=utf-8",
       "cache-control": "no-store",
       "content-security-policy":
@@ -4525,7 +5059,13 @@ ${onchainEvidence ? `<h2>Onchain evidence receipts</h2><table><thead><tr><th>Tim
       "referrer-policy": "no-referrer",
       "x-content-type-options": "nosniff",
       "x-frame-options": "DENY",
-    },
+  };
+  if (download) {
+    headers["content-disposition"] =
+      `attachment; filename="openescrow-${record.id.replace(/[^a-zA-Z0-9-]/g, "-")}-complete-record.html"`;
+  }
+  return new Response(html, {
+    headers,
   });
 }
 
@@ -4590,11 +5130,35 @@ function normalizeAddressSuggestions(value) {
     labels.add(label.toLowerCase());
     const osmType = cleanText(properties.osm_type, 20);
     const osmId = cleanText(String(properties.osm_id ?? ""), 80);
+    const countryName = cleanText(properties.country, 120);
+    const countryCode =
+      cleanText(properties.countrycode, 8).toUpperCase() ||
+      (/^(united states|united states of america|usa)$/i.test(countryName) ? "US" : "");
+    const stateName = cleanText(properties.state, 120);
+    const photonStateCode = cleanText(
+      properties.statecode || properties.state_code,
+      12,
+    ).toUpperCase();
+    const stateCode =
+      countryCode === "US"
+        ? (/^[A-Z]{2}$/.test(photonStateCode)
+            ? photonStateCode
+            : US_STATE_POSTAL_CODE_BY_NAME[stateName.toLowerCase()] || "")
+        : "";
     suggestions.push({
       id: osmId ? `${osmType || "osm"}:${osmId}` : `${latitude},${longitude}`,
       label,
       latitude,
       longitude,
+      countryCode: countryCode || null,
+      stateCode: stateCode || null,
+      city:
+        cleanText(
+          properties.city || properties.town || properties.village || properties.hamlet,
+          120,
+        ) || null,
+      county: cleanText(properties.county, 120) || null,
+      postalCode: cleanText(properties.postcode, 20) || null,
     });
     if (suggestions.length === 5) break;
   }
@@ -4767,7 +5331,12 @@ const worker = {
         return removeTenant(request, env, id, resourceId);
       }
       if (action === "report" && request.method === "GET") {
-        return report(env.DB, id, url.searchParams.get("token"));
+        return report(
+          env.DB,
+          id,
+          url.searchParams.get("token"),
+          url.searchParams.get("download") === "1",
+        );
       }
       if (action === "snapshot" && request.method === "GET") {
         return snapshot(env.DB, id, url.searchParams.get("token"));
@@ -4786,7 +5355,12 @@ const worker = {
   },
   async scheduled(controller, env, context) {
     const scheduledAt = new Date(controller?.scheduledTime || Date.now());
-    context.waitUntil(runNotificationJob(env, scheduledAt));
+    context.waitUntil(
+      Promise.all([
+        runNotificationJob(env, scheduledAt),
+        runComplianceSourceAudit(env, scheduledAt),
+      ]),
+    );
   },
 };
 

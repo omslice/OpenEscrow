@@ -2,7 +2,13 @@ import { useCallback, useEffect, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
-import { jurisdictionLabel, type JurisdictionCode } from "../lib/jurisdictions";
+import {
+  CALIFORNIA_POLICY,
+  evaluateJurisdictionCompliance,
+  jurisdictionLabel,
+  jurisdictionProfile,
+  type JurisdictionCode,
+} from "../lib/jurisdictions";
 import {
   loadNegotiation,
   negotiationAction,
@@ -19,25 +25,42 @@ function approvalLabel(record: NegotiationRecord, role: "tenant" | "arbiter") {
 
 function Terms({ record }: { record: NegotiationRecord }) {
   const { terms } = record;
-  const isCalifornia = terms.jurisdiction === "us-ca";
+  const isLegacyCalifornia =
+    terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
+    terms.policyVersion === CALIFORNIA_POLICY.version;
+  const researchProfile = jurisdictionProfile(terms.jurisdiction);
+  const complianceSnapshot = terms.complianceSnapshot;
   return (
     <dl className="negotiation-terms">
       <div><dt>Rental property</dt><dd>{terms.propertyAddress || "Legacy proposal: not recorded"}</dd></div>
+      {terms.addressResolution && (
+        <div>
+          <dt>Validated location</dt>
+          <dd>
+            {terms.addressResolution.city || "Unincorporated locality"}
+            {terms.addressResolution.county ? `, ${terms.addressResolution.county}` : ""},{" "}
+            {terms.addressResolution.stateCode}
+            {terms.addressResolution.postalCode
+              ? ` ${terms.addressResolution.postalCode}`
+              : ""}
+          </dd>
+        </div>
+      )}
       <div><dt>Deposit</dt><dd>{terms.deposit} {terms.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</dd></div>
-      {isCalifornia && <div><dt>Monthly rent used for cap</dt><dd>{terms.monthlyRent || "Legacy proposal: not recorded"}</dd></div>}
+      {(isLegacyCalifornia || researchProfile) && <div><dt>Monthly rent used for cap</dt><dd>{terms.monthlyRent || "Legacy proposal: not recorded"}</dd></div>}
       <div>
         <dt>Testnet operations reserve</dt>
         <dd>$5 testUSDC total · split evenly between tenants · not refundable principal</dd>
       </div>
       <div><dt>Expected possession returned</dt><dd>{new Date(terms.claimWindowStart).toLocaleString()}</dd></div>
-      <div><dt>{isCalifornia ? "California accounting/refund period" : "Test deduction window"}</dt><dd>{terms.claimDays} calendar days · {isCalifornia ? "locked" : "agreed test value"}</dd></div>
-      <div><dt>Tenant response</dt><dd>{terms.responseDays} days · {isCalifornia ? "locked pilot rule" : "agreed test value"}</dd></div>
+      <div><dt>{isLegacyCalifornia ? "California accounting/refund period" : researchProfile ? "Statewide onchain safeguard window" : "Test deduction window"}</dt><dd>{terms.claimDays} calendar days · {isLegacyCalifornia || researchProfile ? "profile default" : "agreed test value"}</dd></div>
+      <div><dt>Tenant response</dt><dd>{terms.responseDays} days · {isLegacyCalifornia || researchProfile ? "OpenEscrow test rule" : "agreed test value"}</dd></div>
       {record.arbiterEmail && (
-        <div><dt>Arbiter ruling</dt><dd>{terms.arbiterDays} days · {isCalifornia ? "locked pilot rule" : "agreed test value"}</dd></div>
+        <div><dt>Arbiter ruling</dt><dd>{terms.arbiterDays} days · {isLegacyCalifornia || researchProfile ? "OpenEscrow test rule" : "agreed test value"}</dd></div>
       )}
       <div><dt>Jurisdiction</dt><dd>{jurisdictionLabel(terms.jurisdiction as JurisdictionCode)}</dd></div>
       <div><dt>Policy profile</dt><dd>{terms.policyVersion || "Legacy proposal"}</dd></div>
-      {isCalifornia && (
+      {isLegacyCalifornia && (
       <div>
         <dt>California deposit-cap facts</dt>
         <dd>
@@ -47,6 +70,54 @@ function Terms({ record }: { record: NegotiationRecord }) {
       </div>
       )}
       <div><dt>Electronic record and return consent</dt><dd>{terms.electronicDeliveryConsent ? "Included in this approval" : "Not recorded"}</dd></div>
+      {(complianceSnapshot || researchProfile) && (
+        <div>
+          <dt>Compliance requirements</dt>
+          <dd>
+            <details>
+              <summary>
+                {(complianceSnapshot?.deadlines || researchProfile?.deadlines || []).length}{" "}
+                deadline path
+                {(complianceSnapshot?.deadlines || researchProfile?.deadlines || []).length === 1
+                  ? ""
+                  : "s"}{" "}
+                and{" "}
+                {(complianceSnapshot?.requirements || researchProfile?.requirements || []).length}{" "}
+                recorded requirements
+              </summary>
+              <ul>
+                {(complianceSnapshot?.requirements || researchProfile?.requirements || []).map(
+                  (requirement) => (
+                  <li key={requirement}>{requirement}</li>
+                  ),
+                )}
+              </ul>
+              {complianceSnapshot?.overlays.map((overlay) => (
+                <section key={overlay.id}>
+                  <strong>
+                    {overlay.label} ·{" "}
+                    {overlay.applicability === "applies"
+                      ? "applied"
+                      : "needs a property or program fact"}
+                  </strong>
+                  <ul>
+                    {overlay.requirements.map((requirement) => (
+                      <li key={requirement}>{requirement}</li>
+                    ))}
+                  </ul>
+                  {overlay.privacyNote && <small>{overlay.privacyNote}</small>}
+                </section>
+              ))}
+              <small>
+                {(complianceSnapshot?.unresolvedOverlays || [
+                  "Local, federal, housing-program, and fact-specific overlays still require resolution.",
+                ]).join(" ")}{" "}
+                Software output is not legal advice.
+              </small>
+            </details>
+          </dd>
+        </div>
+      )}
     </dl>
   );
 }
@@ -67,6 +138,9 @@ function AgreementNegotiationView({
   const { address, isConnected } = useAccount();
   const [record, setRecord] = useState<NegotiationRecord | null>(null);
   const [changeSummary, setChangeSummary] = useState("");
+  const [complianceEventName, setComplianceEventName] = useState("");
+  const [complianceEventOccurredAt, setComplianceEventOccurredAt] = useState("");
+  const [complianceEventNote, setComplianceEventNote] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -101,6 +175,57 @@ function AgreementNegotiationView({
       if (action.type === "propose_change") setChangeSummary("");
     } catch (actionError) {
       setError(actionError instanceof Error ? actionError.message : "The record could not be updated.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function proposeComplianceEvent() {
+    if (!complianceEventName || !complianceEventOccurredAt) return;
+    setIsWorking(true);
+    setMessage(null);
+    setError(null);
+    try {
+      setRecord(
+        await negotiationAction(access, {
+          type: "propose_compliance_event",
+          eventName: complianceEventName,
+          occurredAt: new Date(complianceEventOccurredAt).toISOString(),
+          note: complianceEventNote.trim() || undefined,
+        }),
+      );
+      setComplianceEventOccurredAt("");
+      setComplianceEventNote("");
+      setMessage("The lifecycle event is recorded and awaiting confirmation by the other party.");
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "The lifecycle event could not be recorded.",
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function confirmComplianceEvent(proposalEventId: number) {
+    setIsWorking(true);
+    setMessage(null);
+    setError(null);
+    try {
+      setRecord(
+        await negotiationAction(access, {
+          type: "confirm_compliance_event",
+          proposalEventId,
+        }),
+      );
+      setMessage("The lifecycle event is confirmed and its compliance deadlines are active.");
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "The lifecycle event could not be confirmed.",
+      );
     } finally {
       setIsWorking(false);
     }
@@ -144,6 +269,45 @@ function AgreementNegotiationView({
       : access.role === "arbiter"
         ? record.arbiterApproved
         : false;
+  const complianceSnapshot = record.terms.complianceSnapshot;
+  const activeComplianceProfile = jurisdictionProfile(record.terms.jurisdiction);
+  const eventOptions = [
+    ...(complianceSnapshot?.deadlines || []),
+    ...(complianceSnapshot?.overlays || []).flatMap((overlay) => overlay.deadlines),
+  ].filter(
+    (deadline, index, deadlines) =>
+      deadlines.findIndex((candidate) => candidate.trigger === deadline.trigger) === index,
+  );
+  const confirmedProposalIds = new Set(
+    record.events
+      .filter((event) => event.action === "compliance_event_confirmed")
+      .map((event) => Number(event.metadata?.proposalEventId)),
+  );
+  const pendingComplianceEvents = record.events.filter(
+    (event) =>
+      event.action === "compliance_event_proposed" &&
+      !confirmedProposalIds.has(event.id),
+  );
+  const confirmedEventValues = Object.fromEntries(
+    record.events
+      .filter((event) => event.action === "compliance_event_confirmed")
+      .map((event) => [
+        String(event.metadata?.eventName || ""),
+        String(event.metadata?.occurredAt || ""),
+      ]),
+  );
+  const complianceEvaluation =
+    complianceSnapshot && activeComplianceProfile
+      ? evaluateJurisdictionCompliance(activeComplianceProfile, {
+          address: record.terms.addressResolution,
+          facts: {
+            ...(record.terms.complianceFacts || {}),
+            monthlyRent: record.terms.monthlyRent || null,
+            deposit: record.terms.deposit,
+          },
+          events: confirmedEventValues,
+        })
+      : null;
 
   return (
     <section className="card negotiation-workspace" aria-labelledby="proposal-review-title">
@@ -230,6 +394,115 @@ function AgreementNegotiationView({
         )}
       </div>
       <Terms record={record} />
+
+      {record.status === "finalized" &&
+        complianceSnapshot &&
+        (access.role === "landlord" || access.role === "tenant") &&
+        invitedEmailMatches && (
+          <section className="negotiation-response">
+            <h3>Confirmed compliance timeline</h3>
+            <p className="field-help">
+              A landlord or tenant proposes the actual event time; the other side confirms it
+              before OpenEscrow activates the offchain compliance deadlines. This does not alter
+              the already-deployed smart contract timer.
+            </p>
+            <label>
+              Lifecycle event
+              <select
+                value={complianceEventName}
+                onChange={(event) => setComplianceEventName(event.target.value)}
+              >
+                <option value="">Choose an event</option>
+                {eventOptions.map((deadline) => (
+                  <option key={deadline.trigger} value={deadline.trigger}>
+                    {deadline.triggerDescription}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Actual date and time
+              <input
+                type="datetime-local"
+                value={complianceEventOccurredAt}
+                onChange={(event) => setComplianceEventOccurredAt(event.target.value)}
+              />
+            </label>
+            <label>
+              Non-sensitive note
+              <textarea
+                rows={2}
+                value={complianceEventNote}
+                onChange={(event) => setComplianceEventNote(event.target.value)}
+                placeholder="Record delivery or possession context; do not enter protected or medical details."
+              />
+            </label>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              disabled={
+                isWorking || !complianceEventName || !complianceEventOccurredAt
+              }
+              onClick={() => void proposeComplianceEvent()}
+            >
+              Propose actual event time
+            </button>
+            {pendingComplianceEvents.map((event) => (
+              <div className="role-mismatch" key={event.id}>
+                <p>
+                  <strong>{String(event.metadata?.eventName)}</strong>{" "}
+                  {new Date(String(event.metadata?.occurredAt)).toLocaleString()} · proposed by{" "}
+                  {event.actorRole}
+                </p>
+                {event.actorRole !== access.role && (
+                  <button
+                    className="btn btn-primary"
+                    type="button"
+                    disabled={isWorking}
+                    onClick={() => void confirmComplianceEvent(event.id)}
+                  >
+                    Confirm event
+                  </button>
+                )}
+              </div>
+            ))}
+            {complianceEvaluation && (
+              <ul>
+                {[
+                  ...complianceEvaluation.deadlines.filter(
+                    (deadline: { comparison: string | null }) =>
+                      !deadline.comparison,
+                  ),
+                  ...(complianceEvaluation.combinedDeadlines || []),
+                  ...complianceEvaluation.overlays.flatMap(
+                    (overlay: { deadlines: Array<Record<string, unknown>> }) =>
+                      overlay.deadlines,
+                  ),
+                ]
+                  .filter(
+                    (deadline: { status: string }) =>
+                      deadline.status === "scheduled" ||
+                      deadline.status === "waiting-for-event",
+                  )
+                  .map(
+                    (deadline: {
+                      id: string;
+                      label: string;
+                      status: string;
+                      dueAt: string | null;
+                    }) => (
+                      <li key={deadline.id}>
+                        {deadline.label}:{" "}
+                        {deadline.dueAt
+                          ? new Date(deadline.dueAt).toLocaleString()
+                          : "waiting for a confirmed event"}
+                      </li>
+                    ),
+                  )}
+              </ul>
+            )}
+          </section>
+        )}
 
       {canRespond && record.status !== "finalized" && record.status !== "cancelled" && (
         <div className="negotiation-response">

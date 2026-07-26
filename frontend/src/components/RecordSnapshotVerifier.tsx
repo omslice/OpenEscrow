@@ -1,34 +1,31 @@
 import { useState } from "react";
-import { parseAbiItem } from "viem";
 import { usePublicClient } from "wagmi";
 import {
-  ACTIVITY_REGISTRY_DEPLOYMENT_BLOCK,
   AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
+  AgreementActivityRegistryABI,
+  OPEN_ESCROW_ADDRESS,
+  OpenEscrowABI,
+  ZERO_ADDRESS,
 } from "../contracts/config";
-import { agreementReference } from "../lib/displayIds";
-import { formatTimestamp, shortAddr } from "../lib/format";
-
-type SnapshotAnchor = {
-  party: `0x${string}`;
-  transactionHash: `0x${string}`;
-  timestamp: bigint;
-};
+import {
+  decryptRecordArchive,
+  parseEncryptedRecordArchive,
+} from "../lib/recordArchive";
+import { shortAddr } from "../lib/format";
+import type { Agreement } from "../lib/useAgreement";
 
 type SnapshotVerification = {
   hash: `0x${string}`;
-  anchors: SnapshotAnchor[];
+  anchoredBy: `0x${string}`[];
+  agreementId: string | null;
 };
 
-const snapshotEvent = parseAbiItem(
-  "event RecordSnapshotAnchored(uint256 indexed agreementId, bytes32 indexed snapshotHash, address indexed party, uint64 timestamp)",
-);
-
-async function sha256Hex(content: string): Promise<`0x${string}`> {
-  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(content));
-  return `0x${Array.from(new Uint8Array(digest))
-    .map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("")}`;
-}
+type ContractReader = (parameters: {
+  address: `0x${string}`;
+  abi: typeof OpenEscrowABI;
+  functionName: string;
+  args: readonly unknown[];
+}) => Promise<unknown>;
 
 export function RecordSnapshotVerifier({
   proposalId,
@@ -38,61 +35,85 @@ export function RecordSnapshotVerifier({
   agreementId?: bigint;
 }) {
   const publicClient = usePublicClient();
+  const [file, setFile] = useState<File | null>(null);
+  const [verificationKey, setVerificationKey] = useState("");
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SnapshotVerification | null>(null);
 
-  async function verify(file: File) {
+  async function verify() {
+    if (!file) {
+      setError("Choose the encrypted OpenEscrow record JSON first.");
+      return;
+    }
     setWorking(true);
     setError(null);
     setResult(null);
     try {
-      if (file.size > 5_000_000) {
-        throw new Error("Record snapshots must be smaller than 5 MB.");
+      if (file.size > 8_000_000) {
+        throw new Error("Encrypted record files must be smaller than 8 MB.");
       }
-      const canonical = await file.text();
-      const parsed = JSON.parse(canonical) as {
-        schema?: string;
-        proposalId?: string;
-        onchain?: { agreementId?: string | null };
-      };
-      if (
-        parsed.schema !== "openescrow.agreement-record.v1" ||
-        parsed.proposalId !== proposalId
-      ) {
-        throw new Error("This is not a snapshot for the current OpenEscrow proposal.");
+      const archive = parseEncryptedRecordArchive(await file.text());
+      if (archive.record.proposalId !== proposalId) {
+        throw new Error("This encrypted record belongs to a different OpenEscrow proposal.");
       }
       if (
         agreementId !== undefined &&
-        parsed.onchain?.agreementId &&
-        BigInt(parsed.onchain.agreementId) !== agreementId
+        archive.record.agreementId !== agreementId.toString()
       ) {
-        throw new Error(
-          `This snapshot references ${agreementReference(parsed.onchain.agreementId)}.`,
-        );
+        throw new Error("This encrypted record belongs to a different onchain agreement.");
+      }
+      const decrypted = await decryptRecordArchive(archive, verificationKey);
+      const onchain = decrypted.snapshot.onchain as
+        | { agreementId?: string | null }
+        | undefined;
+      if (
+        onchain?.agreementId !== undefined &&
+        onchain.agreementId !== archive.record.agreementId
+      ) {
+        throw new Error("The encrypted record's agreement reference does not match its contents.");
       }
 
-      const hash = await sha256Hex(canonical);
-      let anchors: SnapshotAnchor[] = [];
+      let anchoredBy: `0x${string}`[] = [];
       if (agreementId !== undefined) {
         if (!publicClient) throw new Error("The Base Sepolia connection is not ready.");
-        const logs = await publicClient.getLogs({
-          address: AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
-          event: snapshotEvent,
-          args: { agreementId, snapshotHash: hash },
-          fromBlock: ACTIVITY_REGISTRY_DEPLOYMENT_BLOCK,
-          toBlock: "latest",
-        });
-        anchors = logs.map((log) => ({
-          party: log.args.party,
-          transactionHash: log.transactionHash,
-          timestamp: log.args.timestamp,
-        }));
+        const readContract = publicClient.readContract as unknown as ContractReader;
+        const agreement = (await readContract({
+          address: OPEN_ESCROW_ADDRESS,
+          abi: OpenEscrowABI,
+          functionName: "getAgreement",
+          args: [agreementId],
+        })) as Agreement;
+        const parties = Array.from(
+          new Set(
+            [agreement.landlord, agreement.tenant, agreement.arbiter]
+              .filter((party) => party.toLowerCase() !== ZERO_ADDRESS)
+              .map((party) => party.toLowerCase()),
+          ),
+        ) as `0x${string}`[];
+        const anchorChecks = await Promise.all(
+          parties.map(async (party) => ({
+            party,
+            anchored: (await readContract({
+              address: AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
+              abi: AgreementActivityRegistryABI,
+              functionName: "anchoredBy",
+              args: [agreementId, decrypted.hash, party],
+            })) as boolean,
+          })),
+        );
+        anchoredBy = anchorChecks
+          .filter((check) => check.anchored)
+          .map((check) => check.party);
       }
-      setResult({ hash, anchors });
+      setResult({
+        hash: decrypted.hash,
+        anchoredBy,
+        agreementId: archive.record.agreementId,
+      });
     } catch (cause) {
       setError(
-        cause instanceof Error ? cause.message : "The record snapshot could not be verified.",
+        cause instanceof Error ? cause.message : "The encrypted record could not be verified.",
       );
     } finally {
       setWorking(false);
@@ -100,26 +121,51 @@ export function RecordSnapshotVerifier({
   }
 
   return (
-    <details className="technical-details record-snapshot-verifier">
-      <summary>Verify a downloaded record snapshot</summary>
-      <p className="field-help">
-        The selected JSON stays in this browser. OpenEscrow hashes its exact bytes and looks for
-        matching Base Sepolia anchors when this proposal has been finalized.
-      </p>
+    <section className="record-snapshot-verifier" aria-labelledby={`verify-record-${proposalId}`}>
+      <div>
+        <strong id={`verify-record-${proposalId}`}>Verify an encrypted record onchain</strong>
+        <p className="field-help">
+          Choose the encrypted JSON and paste its separately saved verification key. Decryption,
+          hashing, and the Base Sepolia check happen in this browser.
+        </p>
+      </div>
       <label>
-        Record snapshot JSON
+        Encrypted record JSON
         <input
           type="file"
           accept="application/json,.json"
           disabled={working}
           onChange={(event) => {
-            const file = event.target.files?.[0];
-            if (file) void verify(file);
-            event.target.value = "";
+            setFile(event.target.files?.[0] || null);
+            setError(null);
+            setResult(null);
           }}
         />
       </label>
-      {working && <p className="field-help">Hashing the record and checking anchors…</p>}
+      <label>
+        Verification key
+        <input
+          type="password"
+          value={verificationKey}
+          autoComplete="off"
+          spellCheck={false}
+          placeholder="oe1_..."
+          disabled={working}
+          onChange={(event) => {
+            setVerificationKey(event.target.value);
+            setError(null);
+            setResult(null);
+          }}
+        />
+      </label>
+      <button
+        className="btn btn-secondary"
+        type="button"
+        disabled={working || !file || !verificationKey.trim()}
+        onClick={() => void verify()}
+      >
+        {working ? "Verifying encrypted record..." : "Verify encrypted record onchain"}
+      </button>
       {error && (
         <p className="tx-error" role="alert">
           {error}
@@ -128,7 +174,7 @@ export function RecordSnapshotVerifier({
       {result && (
         <div
           className={
-            agreementId === undefined || result.anchors.length
+            agreementId === undefined || result.anchoredBy.length
               ? "proof-verification-success"
               : "proof-verification-warning"
           }
@@ -136,34 +182,28 @@ export function RecordSnapshotVerifier({
         >
           <strong>
             {agreementId === undefined
-              ? "Snapshot structure verified"
-              : result.anchors.length
-                ? "Snapshot hash verified onchain"
-                : "Snapshot hash computed—no matching anchor found"}
+              ? "Encrypted record decrypted and integrity verified"
+              : result.anchoredBy.length
+                ? "Encrypted record verified onchain"
+                : "Record integrity verified, but no party anchor was found"}
           </strong>
-          <code title={result.hash}>{result.hash}</code>
-          {result.anchors.map((anchor) => (
-            <span key={`${anchor.transactionHash}-${anchor.party}`}>
-              Anchored by {shortAddr(anchor.party)} on {formatTimestamp(anchor.timestamp)} ·{" "}
-              <a
-                href={`https://sepolia.basescan.org/tx/${anchor.transactionHash}`}
-                target="_blank"
-                rel="noreferrer"
-              >
-                BaseScan receipt
-              </a>
-            </span>
-          ))}
-          {agreementId === undefined && (
-            <span>Finalize the proposal before checking for an onchain anchor.</span>
-          )}
-          {agreementId !== undefined && result.anchors.length === 0 && (
+          <code title={result.hash}>SHA-256: {result.hash}</code>
+          {result.anchoredBy.length > 0 && (
             <span>
-              The file may be an unanchored or older snapshot. Compare the hash with your records.
+              Anchored by agreement {result.anchoredBy.length === 1 ? "party" : "parties"}{" "}
+              {result.anchoredBy.map(shortAddr).join(", ")}.
+            </span>
+          )}
+          {agreementId === undefined && (
+            <span>This proposal has not been assigned an onchain agreement ID.</span>
+          )}
+          {agreementId !== undefined && result.anchoredBy.length === 0 && (
+            <span>
+              The file is intact, but its hash has not been anchored by a current agreement party.
             </span>
           )}
         </div>
       )}
-    </details>
+    </section>
   );
 }

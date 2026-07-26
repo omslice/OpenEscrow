@@ -15,7 +15,11 @@ import { agreementReference } from "../lib/displayIds";
 import { useNow } from "../lib/useNow";
 import type { Agreement } from "../lib/useAgreement";
 import { useAccount, useReadContract } from "wagmi";
-import { GENERIC_TEST_POLICY, jurisdictionLabel } from "../lib/jurisdictions";
+import {
+  GENERIC_TEST_POLICY,
+  isJurisdictionCode,
+  jurisdictionLabel,
+} from "../lib/jurisdictions";
 import { roleLabel, useInviteRole } from "../lib/inviteContext";
 import type { NegotiationRecord } from "../lib/negotiations";
 
@@ -106,10 +110,10 @@ export function AgreementDashboard({
       : normalized === agreement.landlord.toLowerCase()
         ? agreement.landlordWithdrawable
         : 0n;
-  // This test release intentionally exposes only the unrestricted generic profile.
-  // A later address-verification release can derive a state policy from the validated
-  // property address instead of relying on browser storage or a manual selector.
-  const jurisdiction = GENERIC_TEST_POLICY.jurisdiction;
+  const jurisdiction =
+    participantRecord && isJurisdictionCode(participantRecord.terms.jurisdiction)
+      ? participantRecord.terms.jurisdiction
+      : GENERIC_TEST_POLICY.jurisdiction;
   const reserveRequired = participantRecord?.terms.operationsReserve === "5";
   const reservePayment = useReadContract({
     address: OPERATIONS_RESERVE_ADDRESS,
@@ -305,7 +309,12 @@ export function AgreementDashboard({
       <div className="dashboard-row">
         <span className="label">Jurisdiction policy</span>
         <span>
-          {jurisdictionLabel(jurisdiction)} <small className="offchain-label">test profile</small>
+          {jurisdictionLabel(jurisdiction)}{" "}
+          <small className="offchain-label">
+            {jurisdiction === GENERIC_TEST_POLICY.jurisdiction
+              ? "test profile"
+              : "address-applied rules"}
+          </small>
         </span>
       </div>
       {agreement.claimedAmount > 0n && (
