@@ -21,8 +21,8 @@ Canonical data and evaluator:
 
 When a user selects a U.S. property suggestion from the address lookup, the
 server returns the normalized address, two-letter state code, municipality,
-county, postal code, coordinates, and provider feature identifier. The proposal
-builder then:
+county, postal code, coordinates, provider feature identifier, and a
+server-only HMAC attestation over those exact fields. The proposal builder then:
 
 1. selects the matching `us-xx` profile;
 2. records the normalized address resolution and exact profile version in the
@@ -36,12 +36,19 @@ builder then:
 6. shows the resolved locality, deadline paths, deposit baseline, official
    sources, unresolved questions, and requirement checklists; and
 7. rejects new or revised state-profile proposals when the address state,
-   property label, jurisdiction, profile version, or locked deadline disagree.
+   property label, jurisdiction, profile version, locked deadline, or server
+   attestation disagree.
 
 Manual addresses, unresolved state data, non-U.S. addresses, and failed
 geocoding continue to use the unrestricted generic test profile. Editing a
 verified address clears the selected state profile until a new suggestion is
 selected.
+
+The attestation closes the client-tampering boundary: a modified browser cannot
+invent a geocoder result or change its state, city, county, label, coordinates,
+or provider identifier while retaining a state compliance profile. It does not
+prove ownership, occupancy, deliverability, unit identity, or the legal
+boundaries of a city or county.
 
 The pure evaluator accepts profile facts and recorded lifecycle events. It
 classifies conditional deadlines as applicable, not applicable, or awaiting a

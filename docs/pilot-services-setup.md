@@ -113,9 +113,14 @@ RESEND_API_KEY=re_replace_with_your_key
 NOTIFICATION_FROM_EMAIL=OpenEscrow <notifications@notify.your-domain.example>
 PUBLIC_APP_URL=https://openescrow-demo.omrigross.chatgpt.site/
 COMPLIANCE_SOURCE_MONITOR_ENABLED=true
+ADDRESS_ATTESTATION_SECRET=replace_with_at_least_32_random_bytes
 ```
 
-Do not put `RESEND_API_KEY` in a `VITE_` variable, in Git, or in a browser-visible settings file.
+Do not put `RESEND_API_KEY` or `ADDRESS_ATTESTATION_SECRET` in a `VITE_`
+variable, in Git, or in a browser-visible settings file. The address secret is
+used only by the Worker to sign normalized geocoder results. Generate it from
+at least 32 random bytes and keep the same value for the lifetime of agreements
+created under that deployment so their address attestations remain verifiable.
 
 ### Scheduler setup
 

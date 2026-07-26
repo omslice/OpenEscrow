@@ -11,6 +11,7 @@ export type AddressSuggestion = {
   postalCode: string | null;
   latitude: number | null;
   longitude: number | null;
+  attestation: string | null;
 };
 
 function normalizeSuggestions(payload: unknown): AddressSuggestion[] {
@@ -38,6 +39,7 @@ function normalizeSuggestions(payload: unknown): AddressSuggestion[] {
           postalCode: null,
           latitude: null,
           longitude: null,
+          attestation: null,
         };
       }
       if (!value || typeof value !== "object") return null;
@@ -53,22 +55,31 @@ function normalizeSuggestions(payload: unknown): AddressSuggestion[] {
         postalCode?: unknown;
         latitude?: unknown;
         longitude?: unknown;
+        attestation?: unknown;
       };
       const label = [item.label, item.formattedAddress, item.address].find(
-        (entry): entry is string => typeof entry === "string" && entry.trim().length > 0,
+        (entry): entry is string =>
+          typeof entry === "string" && entry.trim().length > 0,
       );
       if (!label) return null;
       return {
         id: typeof item.id === "string" ? item.id : `${index}-${label}`,
         label: label.trim(),
         countryCode:
-          typeof item.countryCode === "string" ? item.countryCode.toUpperCase() : null,
+          typeof item.countryCode === "string"
+            ? item.countryCode.toUpperCase()
+            : null,
         stateCode:
-          typeof item.stateCode === "string" ? item.stateCode.toUpperCase() : null,
+          typeof item.stateCode === "string"
+            ? item.stateCode.toUpperCase()
+            : null,
         city: typeof item.city === "string" ? item.city.trim() || null : null,
-        county: typeof item.county === "string" ? item.county.trim() || null : null,
+        county:
+          typeof item.county === "string" ? item.county.trim() || null : null,
         postalCode:
-          typeof item.postalCode === "string" ? item.postalCode.trim() || null : null,
+          typeof item.postalCode === "string"
+            ? item.postalCode.trim() || null
+            : null,
         latitude:
           typeof item.latitude === "number" && Number.isFinite(item.latitude)
             ? item.latitude
@@ -76,6 +87,10 @@ function normalizeSuggestions(payload: unknown): AddressSuggestion[] {
         longitude:
           typeof item.longitude === "number" && Number.isFinite(item.longitude)
             ? item.longitude
+            : null,
+        attestation:
+          typeof item.attestation === "string" && item.attestation
+            ? item.attestation
             : null,
       };
     })
@@ -99,14 +114,17 @@ export function AddressAutocomplete({
   const inputId = useId();
   const listId = useId();
   const [suggestions, setSuggestions] = useState<AddressSuggestion[]>([]);
-  const [verifiedAddress, setVerifiedAddress] = useState<string | null>(null);
+  const [selectedAddress, setSelectedAddress] = useState<{
+    label: string;
+    attested: boolean;
+  } | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [lookupUnavailable, setLookupUnavailable] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
     const query = value.trim();
-    if (disabled || verifiedAddress === value || query.length < 4) {
+    if (disabled || selectedAddress?.label === value || query.length < 4) {
       setSuggestions([]);
       setIsOpen(false);
       setIsLoading(false);
@@ -123,7 +141,9 @@ export function AddressAutocomplete({
           headers: { accept: "application/json" },
           signal: controller.signal,
         });
-        if (!response.ok) throw new Error("Address suggestions are unavailable.");
+        if (!response.ok) {
+          throw new Error("Address suggestions are unavailable.");
+        }
         const next = normalizeSuggestions(await response.json());
         setSuggestions(next);
         setIsOpen(next.length > 0);
@@ -142,10 +162,10 @@ export function AddressAutocomplete({
       window.clearTimeout(timer);
       controller.abort();
     };
-  }, [disabled, value, verifiedAddress]);
+  }, [disabled, value, selectedAddress]);
 
   function updateValue(next: string) {
-    setVerifiedAddress(null);
+    setSelectedAddress(null);
     setLookupUnavailable(false);
     onChange(next);
   }
@@ -153,7 +173,10 @@ export function AddressAutocomplete({
   function selectSuggestion(suggestion: AddressSuggestion) {
     onChange(suggestion.label);
     onVerifiedSuggestion?.(suggestion);
-    setVerifiedAddress(suggestion.label);
+    setSelectedAddress({
+      label: suggestion.label,
+      attested: Boolean(suggestion.attestation),
+    });
     setSuggestions([]);
     setIsOpen(false);
     setLookupUnavailable(false);
@@ -179,9 +202,16 @@ export function AddressAutocomplete({
           role="combobox"
         />
         {isLoading && <span className="address-lookup-state">Searching…</span>}
-        {verifiedAddress === value && (
-          <span className="address-verified" aria-label="Verified address selection">
-            ✓ Verified
+        {selectedAddress?.label === value && (
+          <span
+            className="address-verified"
+            aria-label={
+              selectedAddress.attested
+                ? "Server-validated address selection"
+                : "Formatted address selection"
+            }
+          >
+            {selectedAddress.attested ? "✓ Validated" : "Formatted"}
           </span>
         )}
       </div>
@@ -189,7 +219,10 @@ export function AddressAutocomplete({
         <ul id={listId} className="address-suggestions" role="listbox">
           {suggestions.map((suggestion) => (
             <li key={suggestion.id} role="option" aria-selected={false}>
-              <button type="button" onClick={() => selectSuggestion(suggestion)}>
+              <button
+                type="button"
+                onClick={() => selectSuggestion(suggestion)}
+              >
                 {suggestion.label}
               </button>
             </li>
@@ -198,7 +231,8 @@ export function AddressAutocomplete({
       )}
       {lookupUnavailable && (
         <small className="address-lookup-note">
-          Suggestions are temporarily unavailable. You can still enter the address manually.
+          Suggestions are temporarily unavailable. You can still enter the
+          address manually.
         </small>
       )}
       {!disabled && (
@@ -211,7 +245,8 @@ export function AddressAutocomplete({
           >
             OpenStreetMap contributors
           </a>
-          . Selecting one verifies its formatting for this demo.
+          . A “Validated” result is signed by the OpenEscrow server and locks its
+          exact state profile.
         </small>
       )}
     </div>

@@ -13,6 +13,11 @@ import {
   getDepositAssetForTerms,
   validateDepositAssetTerms,
 } from "../shared/deposit-assets.js";
+import {
+  addressAttestationConfigured,
+  createAddressAttestation,
+  verifyAddressAttestation,
+} from "./address-attestation.js";
 
 const AGREEMENTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS agreement_negotiations (
@@ -857,7 +862,7 @@ function depositAssetTestnetLabel(terms) {
   );
 }
 
-function validTerms(terms) {
+async function validTerms(terms, env) {
   const deposit = tokenMicros(terms?.deposit);
   const commonTermsAreValid =
     terms &&
@@ -886,7 +891,7 @@ function validTerms(terms) {
 
   const profile = US_JURISDICTION_PROFILE_BY_CODE[terms.jurisdiction];
   const monthlyRent = tokenMicros(terms.monthlyRent);
-  return Boolean(
+  const profileTermsAreValid = Boolean(
     profile &&
       monthlyRent !== null &&
       monthlyRent > 0n &&
@@ -906,6 +911,13 @@ function validTerms(terms) {
         terms.arbiterDays === null ||
         terms.arbiterDays === "" ||
         terms.arbiterDays === "7"),
+  );
+  return (
+    profileTermsAreValid &&
+    (await verifyAddressAttestation(
+      terms.addressResolution,
+      env.ADDRESS_ATTESTATION_SECRET,
+    ))
   );
 }
 
@@ -1291,6 +1303,13 @@ async function serviceReadiness(env) {
       transactionReceiptVerification: receiptVerificationEnabled(env),
       chain: "Base Sepolia",
       activityRegistry: registryReadiness,
+    },
+    addressValidation: {
+      configured: addressAttestationConfigured(
+        env.ADDRESS_ATTESTATION_SECRET,
+      ),
+      provider: "Photon / OpenStreetMap",
+      tamperResistantProfiles: true,
     },
     complianceSources: {
       configured: env.COMPLIANCE_SOURCE_MONITOR_ENABLED === "true",
@@ -1723,7 +1742,8 @@ function eventStatement(db, id, now, actorRole, action, summary, revision, metad
     .bind(id, now, actorRole, action, summary, revision, metadata ? JSON.stringify(metadata) : null);
 }
 
-async function createNegotiation(request, db) {
+async function createNegotiation(request, env) {
+  const db = env.DB;
   const body = await request.json();
   const landlordName = cleanText(body.landlordName, 120);
   const landlordEmail = normalizeEmail(body.landlordEmail);
@@ -1785,7 +1805,7 @@ async function createNegotiation(request, db) {
   if (new Set(partyEmails).size !== partyEmails.length) {
     return json({ error: "Each party must use a different email." }, 400);
   }
-  if (!validTerms(body.terms)) {
+  if (!(await validTerms(body.terms, env))) {
     return json({ error: "The agreement terms are incomplete or invalid." }, 400);
   }
 
@@ -3461,7 +3481,9 @@ async function applyAction(request, env, id) {
       return json({ error: "Agreement terms can no longer be revised after onchain finalization." }, 409);
     }
     if (role !== "landlord") return json({ error: "Only the landlord may revise the proposal." }, 403);
-    if (!validTerms(body.terms)) return json({ error: "The revised agreement terms are invalid." }, 400);
+    if (!(await validTerms(body.terms, env))) {
+      return json({ error: "The revised agreement terms are invalid." }, 400);
+    }
     const summary = cleanText(body.summary, 1000);
     if (summary.length < 8) return json({ error: "Describe what changed in this revision." }, 400);
     const participants = {
@@ -3542,7 +3564,7 @@ async function applyAction(request, env, id) {
     } catch {
       approvedTerms = null;
     }
-    if (!validTerms(approvedTerms)) {
+    if (!(await validTerms(approvedTerms, env))) {
       return json(
         {
           error:
@@ -5358,8 +5380,37 @@ function sameOriginGet(request) {
   );
 }
 
-function addressSuggestionResponse(suggestions, cacheStatus = "MISS") {
-  return new Response(JSON.stringify({ suggestions, attribution: ADDRESS_ATTRIBUTION }), {
+async function addressSuggestionResponse(
+  suggestions,
+  env,
+  cacheStatus = "MISS",
+) {
+  const attestationReady = addressAttestationConfigured(
+    env.ADDRESS_ATTESTATION_SECRET,
+  );
+  const signedSuggestions = await Promise.all(
+    suggestions.map(async (suggestion) => {
+      const resolved = {
+        provider: "photon-openstreetmap",
+        providerFeatureId: suggestion.id,
+        ...suggestion,
+      };
+      return {
+        ...suggestion,
+        attestation:
+          attestationReady && normalizeAddressResolution(resolved)
+            ? await createAddressAttestation(
+                resolved,
+                env.ADDRESS_ATTESTATION_SECRET,
+              )
+            : null,
+      };
+    }),
+  );
+  return new Response(JSON.stringify({
+    suggestions: signedSuggestions,
+    attribution: ADDRESS_ATTRIBUTION,
+  }), {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "private, max-age=300",
@@ -5464,13 +5515,13 @@ async function addressSuggestions(request, env) {
       geocoderBaseUrl.origin,
     );
   } catch {
-    return addressSuggestionResponse([]);
+    return addressSuggestionResponse([], env);
   }
 
   const cacheKey = `${geocoderUrl.origin}${geocoderUrl.pathname}|${query.toLowerCase()}`;
   const cached = addressSuggestionCache.get(cacheKey);
   if (cached && cached.expiresAt > Date.now()) {
-    return addressSuggestionResponse(cached.suggestions, "HIT");
+    return addressSuggestionResponse(cached.suggestions, env, "HIT");
   }
   if (cached) addressSuggestionCache.delete(cacheKey);
 
@@ -5489,7 +5540,7 @@ async function addressSuggestions(request, env) {
       },
       signal: controller.signal,
     });
-    if (!upstream.ok) return addressSuggestionResponse([]);
+    if (!upstream.ok) return addressSuggestionResponse([], env);
     const suggestions = normalizeAddressSuggestions(await upstream.json());
     if (addressSuggestionCache.size >= ADDRESS_SUGGESTION_CACHE_LIMIT) {
       addressSuggestionCache.delete(addressSuggestionCache.keys().next().value);
@@ -5498,9 +5549,9 @@ async function addressSuggestions(request, env) {
       expiresAt: Date.now() + ADDRESS_SUGGESTION_CACHE_TTL_MS,
       suggestions,
     });
-    return addressSuggestionResponse(suggestions);
+    return addressSuggestionResponse(suggestions, env);
   } catch {
-    return addressSuggestionResponse([]);
+    return addressSuggestionResponse([], env);
   } finally {
     clearTimeout(timeout);
   }
@@ -5590,7 +5641,7 @@ const worker = {
       await initialize(env.DB);
 
       if (url.pathname === "/api/negotiations" && request.method === "POST") {
-        return createNegotiation(request, env.DB);
+        return createNegotiation(request, env);
       }
       if (url.pathname === "/api/negotiations/discover" && request.method === "POST") {
         return discoverNegotiations(request, env);

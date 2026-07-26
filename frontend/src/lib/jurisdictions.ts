@@ -28,6 +28,7 @@ export type AddressResolution = {
   postalCode: string | null;
   latitude: number;
   longitude: number;
+  attestation: string | null;
 };
 
 export type ComplianceDeadlineRule = {

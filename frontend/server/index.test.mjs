@@ -16,6 +16,13 @@ import {
   depositAssetAvailability,
   validateDepositAssetTerms,
 } from "../shared/deposit-assets.js";
+import {
+  createAddressAttestation,
+  verifyAddressAttestation,
+} from "./address-attestation.js";
+
+const TEST_ADDRESS_ATTESTATION_SECRET =
+  "openescrow-test-address-attestation-secret-2026";
 
 test("the packaged D1 migration applies cleanly", () => {
   const database = new DatabaseSync(":memory:");
@@ -189,7 +196,7 @@ test("deposit asset catalog keeps safe defaults and jurisdiction gates", () => {
   );
 });
 
-const newYorkAddressResolution = {
+const unsignedNewYorkAddressResolution = {
   provider: "photon-openstreetmap",
   providerFeatureId: "W:987",
   label: "11 Broadway, New York, NY 10004",
@@ -200,6 +207,13 @@ const newYorkAddressResolution = {
   postalCode: "10004",
   latitude: 40.7047,
   longitude: -74.0137,
+};
+const newYorkAddressResolution = {
+  ...unsignedNewYorkAddressResolution,
+  attestation: await createAddressAttestation(
+    unsignedNewYorkAddressResolution,
+    TEST_ADDRESS_ATTESTATION_SECRET,
+  ),
 };
 const newYorkProfile = US_JURISDICTION_PROFILES.find(
   (profile) => profile.postalCode === "NY",
@@ -472,7 +486,12 @@ async function identityTokenFor(privateKey, appId, kid, email) {
 async function act(db, id, token, action, env = {}) {
   return worker.fetch(
     request(`/api/negotiations/${id}/actions`, "POST", { token, ...action }),
-    { DB: db, VERIFY_TRANSACTION_RECEIPTS: "false", ...env },
+    {
+      DB: db,
+      VERIFY_TRANSACTION_RECEIPTS: "false",
+      ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+      ...env,
+    },
   );
 }
 
@@ -668,6 +687,10 @@ test("new proposals reject California policy terms", async () => {
 
 test("address-routed compliance profiles require their exact version and deadline", async () => {
   const db = new TestD1();
+  const stateEnv = {
+    DB: db,
+    ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+  };
   const created = await jsonResponse(
     await worker.fetch(
       request("/api/negotiations", "POST", {
@@ -679,7 +702,7 @@ test("address-routed compliance profiles require their exact version and deadlin
         arbiterEmail: null,
         terms: newYorkResearchTerms,
       }),
-      { DB: db },
+      stateEnv,
     ),
   );
   assert.equal(created.record.terms.jurisdiction, "us-ny");
@@ -695,7 +718,7 @@ test("address-routed compliance profiles require their exact version and deadlin
       arbiterEmail: null,
       terms: { ...newYorkResearchTerms, claimDays: "30" },
     }),
-    { DB: db },
+    stateEnv,
   );
   assert.equal(invalid.status, 400);
 
@@ -715,7 +738,7 @@ test("address-routed compliance profiles require their exact version and deadlin
         },
       },
     }),
-    { DB: db },
+    stateEnv,
   );
   assert.equal(mismatchedAddress.status, 400);
 
@@ -732,7 +755,7 @@ test("address-routed compliance profiles require their exact version and deadlin
         propertyAddress: "A manually edited address",
       },
     }),
-    { DB: db },
+    stateEnv,
   );
   assert.equal(editedAfterSelection.status, 400);
 
@@ -752,9 +775,29 @@ test("address-routed compliance profiles require their exact version and deadlin
         },
       },
     }),
-    { DB: db },
+    stateEnv,
   );
   assert.equal(tamperedSnapshot.status, 400);
+
+  const forgedAttestation = await worker.fetch(
+    request("/api/negotiations", "POST", {
+      landlordName: "Lena Landlord",
+      landlordEmail: "landlord@example.com",
+      tenantName: "Terry Tenant",
+      tenantEmail: "tenant@example.com",
+      arbiterName: "",
+      arbiterEmail: null,
+      terms: {
+        ...newYorkResearchTerms,
+        addressResolution: {
+          ...newYorkResearchTerms.addressResolution,
+          city: "Buffalo",
+        },
+      },
+    }),
+    stateEnv,
+  );
+  assert.equal(forgedAttestation.status, 400);
 });
 
 test("actual compliance events require confirmation by the other agreement side", async () => {
@@ -770,7 +813,10 @@ test("actual compliance events require confirmation by the other agreement side"
         arbiterEmail: null,
         terms: newYorkResearchTerms,
       }),
-      { DB: db },
+      {
+        DB: db,
+        ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+      },
     ),
   );
   await finalizeWithoutArbiter(db, created);
@@ -823,7 +869,10 @@ test("confirmed compliance events activate privacy-minimal deadline reminders", 
         arbiterEmail: null,
         terms: newYorkResearchTerms,
       }),
-      { DB: db },
+      {
+        DB: db,
+        ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+      },
     ),
   );
   await finalizeWithoutArbiter(db, created);
@@ -1019,14 +1068,18 @@ test("address suggestions validate same-origin queries, normalize Photon results
     });
   };
   try {
-    const env = { GEOCODER_BASE_URL: "https://geocoder.example/photon" };
+    const env = {
+      GEOCODER_BASE_URL: "https://geocoder.example/photon",
+      ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+    };
     const first = await worker.fetch(
       request("/api/address-suggestions?q=123%20Main%20Street"),
       env,
     );
     const firstBody = await jsonResponse(first);
     assert.equal(firstBody.suggestions.length, 1);
-    assert.deepEqual(firstBody.suggestions[0], {
+    const { attestation, ...suggestion } = firstBody.suggestions[0];
+    assert.deepEqual(suggestion, {
       id: "W:123",
       label: "123 Main Street, Los Angeles, California, 90001, United States",
       latitude: 34.0522,
@@ -1037,6 +1090,19 @@ test("address suggestions validate same-origin queries, normalize Photon results
       county: null,
       postalCode: "90001",
     });
+    assert.match(attestation, /^oeaddr1\.\d+\.[A-Za-z0-9_-]{43}$/);
+    assert.equal(
+      await verifyAddressAttestation(
+        {
+          provider: "photon-openstreetmap",
+          providerFeatureId: suggestion.id,
+          ...suggestion,
+          attestation,
+        },
+        TEST_ADDRESS_ATTESTATION_SECRET,
+      ),
+      true,
+    );
     assert.equal(firstBody.attribution.label, "© OpenStreetMap contributors");
     assert.equal(first.headers.get("x-openescrow-cache"), "MISS");
 
@@ -1375,6 +1441,7 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
       RESEND_API_KEY: "test-resend-key",
       NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
       BASE_SEPOLIA_RPC_URL: "https://rpc.example/",
+      ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
     };
     const readiness = await jsonResponse(
       await worker.fetch(
@@ -1387,6 +1454,8 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     assert.equal(readiness.evidence.contentTypeValidation, true);
     assert.equal(readiness.recordIntegrity.lifecycleStateGuards, true);
     assert.equal(readiness.recordIntegrity.activityRegistry.ready, true);
+    assert.equal(readiness.addressValidation.configured, true);
+    assert.equal(readiness.addressValidation.tamperResistantProfiles, true);
     assert.equal(
       readiness.recordIntegrity.activityRegistry.boundEscrowAddress,
       "0xf18bfdbfd3ff84c603cbdf895d2a96ac7260ae99",

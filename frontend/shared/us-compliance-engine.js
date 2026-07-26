@@ -45,6 +45,7 @@ export function normalizeAddressResolution(value) {
     postalCode: cleanString(value.postalCode, 20) || null,
     latitude,
     longitude,
+    attestation: cleanString(value.attestation, 200) || null,
   });
 }
 

@@ -78,6 +78,14 @@ const checks = [
     required: true,
   },
   {
+    label: "Server-attested property addresses",
+    ready: readiness.addressValidation?.configured === true,
+    detail: readiness.addressValidation?.configured
+      ? `${readiness.addressValidation.provider} responses are signed`
+      : "ADDRESS_ATTESTATION_SECRET is not configured",
+    required: true,
+  },
+  {
     label: "Encrypted decentralized evidence",
     ready: readiness.evidence?.decentralizedReady === true,
     detail: readiness.evidence?.decentralizedReady

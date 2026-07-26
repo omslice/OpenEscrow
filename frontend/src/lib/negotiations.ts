@@ -28,6 +28,7 @@ export interface AgreementTerms {
     postalCode: string | null;
     latitude: number;
     longitude: number;
+    attestation: string | null;
   } | null;
   complianceFacts?: ComplianceFacts;
   complianceSnapshot?: ComplianceSnapshot | null;
@@ -95,6 +96,11 @@ export interface ServiceReadiness {
       checkedAt: string | null;
       error: string | null;
     };
+  };
+  addressValidation: {
+    configured: boolean;
+    provider: "Photon / OpenStreetMap";
+    tamperResistantProfiles: boolean;
   };
   complianceSources: {
     configured: boolean;

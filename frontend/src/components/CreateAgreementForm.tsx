@@ -1785,7 +1785,7 @@ function AgreementForm({
             providerFeatureId: suggestion.id,
           });
           const profile =
-            resolution?.countryCode === "US"
+            resolution?.countryCode === "US" && resolution.attestation
               ? jurisdictionProfileForPostalCode(resolution.stateCode)
               : null;
           setAddressResolution(profile ? resolution : null);
