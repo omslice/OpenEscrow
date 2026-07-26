@@ -223,7 +223,10 @@ export function AgreementCard({
           <div className="agreement-panel-heading">
             <span className="eyebrow">Funding and payouts</span>
             <h3>Funds &amp; withdrawals</h3>
-            <p>Fund the approved deposit, review available balances, or withdraw an allocation.</p>
+            <p>
+              Contributions and ownership are read directly from the agreement. Withdrawable
+              amounts update after a claim or refund is resolved
+            </p>
           </div>
           {(ARBITER_UI_ENABLED || agreement.arbiter !== ZERO_ADDRESS) && (
             <ArbiterActions id={id} agreement={agreement} onRefetch={onRefetch} />

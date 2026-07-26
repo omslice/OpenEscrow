@@ -50,16 +50,7 @@ export function FundingLedger({
   }
 
   return (
-    <section className="funding-ledger" aria-labelledby={`funding-ledger-${id}`}>
-      <div className="agreement-panel-heading">
-        <span className="eyebrow">Funding ledger</span>
-        <h4 id={`funding-ledger-${id}`}>Who funded and who has claim to the deposit</h4>
-        <p>
-          Contributions and ownership are read directly from the agreement. Withdrawable
-          amounts update after a claim or refund is resolved.
-        </p>
-      </div>
-
+    <section className="funding-ledger" aria-label="Funding ledger">
       {!data ? (
         <p className="hint">Loading participant funding...</p>
       ) : (
