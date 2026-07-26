@@ -38,13 +38,21 @@ The pure `YieldEscrowAccounting.allocate` function records this proposed distrib
 
 ## Lifecycle boundary
 
-Yield must stop before the existing claim distribution mutates fixed USDC balances. The intended V2 transition is:
+Yield must stop before final claim distribution mutates fixed USDC balances. Strategy redemption
+and claim review are independent so an unavailable adapter cannot prevent a landlord from preserving
+a claim within the fixed submission deadline. The V2 transition is:
 
-1. Fund: convert USDC to fixed receipt shares and assign all shares to the agreement.
+1. Fund: collect each tenant's approved principal share as USDC. Invest the combined principal only
+   after every tenant has funded, then assign the fixed receipt shares to the agreement.
 2. Accrue: leave those shares invested through the deposit period.
-3. Settle strategy: at the end of the deposit period, redeem all agreement shares to USDC once and record the actual balance delta.
-4. Resolve claims: run the existing claim, response, and arbiter state machine in principal units.
-5. Distribute: apply the final principal award to the redeemed USDC using `YieldEscrowAccounting`.
+3. Open claims: at the fixed settlement time, allow the landlord to submit a principal-denominated
+   claim even if strategy redemption has not completed.
+4. Settle strategy: permissionlessly redeem all agreement shares to USDC once and record the actual
+   balance delta. This may occur before, during, or after claim review.
+5. Resolve claims: require every tenant response, send unaccepted amounts to the arbiter, and default
+   unproven disputed principal to tenants at timeout.
+6. Distribute: after both the claim outcome and strategy redemption exist, apply the final principal
+   award to actual redeemed USDC using `YieldEscrowAccounting`.
 
 An automation may prompt or submit the settlement transaction, but correctness cannot depend on the web server or a scheduled job. The contract needs an idempotent, permissionless settlement entry point and an explicit state transition.
 
@@ -74,17 +82,22 @@ An automation may prompt or submit the settlement transaction, but correctness c
 The isolated prototype now demonstrates:
 
 - tenant funding through an immutable adapter;
+- exact refunds while a proposal is only partially funded;
+- multi-tenant funding and ownership shares;
 - fixed receipt shares attributed per agreement in shared custody;
 - permissionless, once-only redemption after a fixed settlement time;
 - minimum-assets-out protection;
 - validation of adapter return values against actual token balance deltas;
-- distribution through a placeholder immutable claim resolver;
+- claim submission that does not depend on adapter availability;
+- unanimous multi-tenant response aggregation using the lowest commonly accepted amount;
+- downward amendment, retraction, no-response dispute, arbiter ruling, and tenant-favoring timeout;
+- claim outcomes held safely until delayed strategy redemption completes;
 - pull-based USDC withdrawals; and
-- gain, loss, rounding, malicious-reporting, retry, isolation, and fuzz tests.
+- gain, loss, rounding, malicious-reporting, retry, isolation, fuzz, and stateful invariant tests.
 
-The placeholder claim resolver intentionally avoids duplicating the full MVP claims workflow. The
-next contract milestone is to design the V2 claim-state integration and multi-tenant share treatment
-before any external protocol adapter is added.
+The next contract milestone is an external-protocol adapter spike plus emergency-liquidity and
+strategy-failure handling. Evidence manifests, arbiter replacement, and production compliance
+integration remain separate required workstreams.
 
 ## Deferred decisions
 
