@@ -14,6 +14,8 @@ import { TestFunds } from "./components/TestFunds";
 import { PublicIntro } from "./components/PublicIntro";
 import { AccountCenter } from "./components/AccountCenter";
 import { AgreementNegotiation } from "./components/AgreementNegotiation";
+import { AgreementOnchainActivity } from "./components/AgreementOnchainActivity";
+import { RecordSnapshotControls } from "./components/RecordSnapshotControls";
 import { TenantLandlordInvite } from "./components/TenantLandlordInvite";
 import { isJurisdictionCode, rememberJurisdiction } from "./lib/jurisdictions";
 import {
@@ -27,17 +29,26 @@ import {
   discoverNegotiationsForAccount,
   listNegotiationAccesses,
   loadNegotiation,
+  negotiationReportUrl,
   readNegotiationAccess,
   type NegotiationAccess,
   type NegotiationRecord,
 } from "./lib/negotiations";
+import { agreementReference, proposalReference } from "./lib/displayIds";
 import { ARBITER_UI_ENABLED } from "./lib/featureFlags";
 import { ACCOUNT_AUTH_ENABLED } from "./lib/accountConfig";
 import { useOnchainActivityNotifications } from "./lib/useOnchainActivityNotifications";
 import "./App.css";
 
-type WorkspaceTab = "overview" | "proposals" | "agreements";
+type WorkspaceTab = "overview" | "proposals" | "agreements" | "record";
 type SavedProposal = { access: NegotiationAccess; record: NegotiationRecord };
+
+function isRecordAction(action: string) {
+  return (
+    action === "record_snapshot_anchored" ||
+    action === "activity_hash_published"
+  );
+}
 
 function panelForAgreementAction(action: string): AgreementPanel | null {
   if (
@@ -61,12 +72,6 @@ function panelForAgreementAction(action: string): AgreementPanel | null {
     action === "posted_onchain"
   ) {
     return "funds";
-  }
-  if (
-    action === "record_snapshot_anchored" ||
-    action === "activity_hash_published"
-  ) {
-    return "record";
   }
   return null;
 }
@@ -110,19 +115,22 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   const { ids, addId, removeId } = useTrackedAgreements();
   const { address } = useAccount();
   const { discover, isScanning, scanError } = useDiscoverAgreements();
-  const [manualId, setManualId] = useState("");
   const [scanMessage, setScanMessage] = useState<string | null>(null);
   const [findError, setFindError] = useState<string | null>(null);
   const [isFinding, setIsFinding] = useState(false);
   const [isChangingRole, setIsChangingRole] = useState(false);
   const [savedProposals, setSavedProposals] = useState<SavedProposal[]>([]);
+  const [savedRecords, setSavedRecords] = useState<SavedProposal[]>([]);
   const [agreementPanels, setAgreementPanels] = useState<
     Record<string, AgreementPanel>
   >({});
   const [agreementFocusRequests, setAgreementFocusRequests] = useState<
     Record<string, AgreementFocusRequest>
   >({});
-  const participantAgreementIds = savedProposals.flatMap(({ record }) =>
+  const finalizedProposals = compactActiveProposals(
+    savedRecords.filter((item) => item.record.status === "finalized"),
+  );
+  const participantAgreementIds = finalizedProposals.flatMap(({ record }) =>
     record.onchainAgreementId ? [BigInt(record.onchainAgreementId)] : [],
   );
   const displayedIds = ACCOUNT_AUTH_ENABLED
@@ -193,6 +201,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
 
   useEffect(() => {
     setSavedProposals([]);
+    setSavedRecords([]);
     setScanMessage(null);
     setFindError(null);
     if (inviteRole) {
@@ -244,16 +253,14 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           })),
         );
         if (!active) return;
-        setSavedProposals(
-          compactActiveProposals(
-            loaded
-            .filter(
-              (result): result is PromiseFulfilledResult<SavedProposal> =>
-                result.status === "fulfilled",
-            )
-            .map((result) => result.value),
-          ),
-        );
+        const records = loaded
+          .filter(
+            (result): result is PromiseFulfilledResult<SavedProposal> =>
+              result.status === "fulfilled",
+          )
+          .map((result) => result.value);
+        setSavedRecords(records);
+        setSavedProposals(compactActiveProposals(records));
       } catch {
         // Manual search below presents discovery errors. Background refresh preserves the last
         // known records instead of turning a transient identity failure into persistent UI noise.
@@ -292,12 +299,14 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           record: await loadNegotiation(access),
         })),
       );
-      const proposals = compactActiveProposals(loaded
+      const records = loaded
         .filter(
           (result): result is PromiseFulfilledResult<SavedProposal> =>
             result.status === "fulfilled",
         )
-        .map((result) => result.value));
+        .map((result) => result.value);
+      const proposals = compactActiveProposals(records);
+      setSavedRecords(records);
       setSavedProposals(proposals);
 
       let onchainCount = 0;
@@ -348,6 +357,18 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
 
   function openProposalNotification(item: SavedProposal, action: string) {
     const agreementId = item.record.onchainAgreementId;
+    if (isRecordAction(action)) {
+      if (agreementId) addId(BigInt(agreementId));
+      setProposalAccess(null);
+      setTab("record");
+      scrollToNotificationTarget(
+        agreementId
+          ? `record-agreement-${agreementId}`
+          : `record-proposal-${item.record.id}`,
+        "record-workspace",
+      );
+      return;
+    }
     const requestedPanel =
       panelForAgreementAction(action) ||
       (agreementId && item.record.status === "finalized" ? "summary" : null);
@@ -390,18 +411,11 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     if (!agreementId) return;
     addId(BigInt(agreementId));
     setProposalAccess(null);
-    setTab("agreements");
-    setAgreementPanels((current) => ({
-      ...current,
-      [agreementId]: "record",
-    }));
-    setAgreementFocusRequests((current) => ({
-      ...current,
-      [agreementId]: {
-        targetId: `agreement-${agreementId}-panel-record`,
-        nonce: (current[agreementId]?.nonce || 0) + 1,
-      },
-    }));
+    setTab("record");
+    scrollToNotificationTarget(
+      `record-agreement-${agreementId}`,
+      "record-workspace",
+    );
   }
 
   function closeProposalReview() {
@@ -449,35 +463,30 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           overview: "Overview",
           proposals: "Proposals",
           agreements: "Agreements",
+          record: "Record",
         }
       : workspaceRole === "tenant"
         ? {
             overview: "Overview",
             proposals: "Proposals",
             agreements: "Deposits",
+            record: "Record",
           }
         : {
             overview: "Overview",
             proposals: "Reviews",
             agreements: "Cases",
+            record: "Record",
           };
 
-  function renderDiscoveryCard(scope: "proposals" | "agreements") {
+  function renderAgreementDiscovery() {
     return (
       <section className="card workspace-discovery">
         <div>
-          <span className="eyebrow">
-            {scope === "proposals" ? "Account proposals" : "Onchain workspace"}
-          </span>
-          <h2>
-            {scope === "proposals"
-              ? "Refresh proposals associated with this account"
-              : "Find finalized agreements associated with this account"}
-          </h2>
+          <span className="eyebrow">Onchain workspace</span>
+          <h2>Find finalized agreements associated with this account</h2>
           <p className="hint">
-            {scope === "proposals"
-              ? "Saved invitations and current proposal revisions are matched to your signed-in email."
-              : "OpenEscrow scans Base Sepolia for agreements involving your connected wallet."}
+            OpenEscrow scans Base Sepolia for agreements involving your connected wallet.
           </p>
         </div>
         <button
@@ -485,13 +494,9 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           disabled={isScanning || isFinding}
           onClick={() => void findProposalsAndAgreements()}
         >
-          {isScanning || isFinding
-            ? "Searching..."
-            : scope === "proposals"
-              ? "Refresh my proposals"
-              : "Find my agreements"}
+          {isScanning || isFinding ? "Searching..." : "Find my agreements"}
         </button>
-        {!address && scope === "agreements" && (
+        {!address && (
           <p className="field-help">
             Connect your wallet to scan for finalized onchain agreements.
           </p>
@@ -525,7 +530,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
         item.access.role === "landlord" && item.record.status === "ready";
       return (
         <article
-          className={`card saved-proposal-card${isReadyForLandlord ? " ready-to-finalize" : ""}`}
+          className={`saved-proposal-card${isReadyForLandlord ? " ready-to-finalize" : ""}`}
           key={`${item.access.proposalId}-${item.access.role}`}
         >
           <div className="proposal-builder-heading">
@@ -533,7 +538,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
               <span className="eyebrow">
                 Current proposal · {roleLabel[item.access.role]} access
               </span>
-              <h2>Proposal {item.record.id}</h2>
+              <h2>{proposalReference(item.record.id)}</h2>
             </div>
             <span className={`negotiation-status status-${item.record.status}`}>
               {item.record.status} · revision {item.record.revision}
@@ -567,37 +572,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   function renderAgreementWorkspace() {
     return (
       <>
-        {renderDiscoveryCard("agreements")}
-        <section className="card compact-manual-tracker">
-          <div>
-            <h2>Track an agreement by id</h2>
-            <p className="hint">
-              Add an onchain agreement manually if someone shared its id directly.
-            </p>
-          </div>
-          <div className="button-row">
-            <input
-              value={manualId}
-              onChange={(event) => setManualId(event.target.value)}
-              placeholder="Agreement id, e.g. 0"
-              inputMode="numeric"
-            />
-            <button
-              className="btn btn-secondary"
-              onClick={() => {
-                if (manualId.trim() === "") return;
-                try {
-                  addId(BigInt(manualId.trim()));
-                  setManualId("");
-                } catch {
-                  // Invalid ids remain in the field so the user can correct them.
-                }
-              }}
-            >
-              Track
-            </button>
-          </div>
-        </section>
+        {renderAgreementDiscovery()}
         {displayedIds.length === 0 && (
           <div className="workspace-empty">
             <strong>No finalized security deposits tracked yet.</strong>
@@ -607,7 +582,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           </div>
         )}
         {displayedIds.map((id) => {
-          const proposal = savedProposals.find(
+          const proposal = finalizedProposals.find(
             (item) => item.record.onchainAgreementId === id.toString(),
           );
           return (
@@ -630,6 +605,131 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
         })}
         {workspaceRole === "tenant" && <TestFunds />}
       </>
+    );
+  }
+
+  function renderRecordWorkspace() {
+    const linkedAgreementIds = new Set(
+      savedRecords.flatMap((item) =>
+        item.record.onchainAgreementId ? [item.record.onchainAgreementId] : [],
+      ),
+    );
+    const unlinkedAgreementIds = displayedIds.filter(
+      (id) => !linkedAgreementIds.has(id.toString()),
+    );
+
+    return (
+      <section className="record-workspace" id="record-workspace">
+        <div className="workspace-section-heading">
+          <span className="eyebrow">Audit trail</span>
+          <h2>Proposal and agreement record</h2>
+          <p>
+            Review timestamped actions, export reports, and verify privacy-safe
+            onchain receipts without cluttering the active workspace.
+          </p>
+        </div>
+        {savedRecords.length === 0 && unlinkedAgreementIds.length === 0 && (
+          <div className="workspace-empty">
+            <strong>No account records found.</strong>
+            <span>
+              Proposal history and finalized agreement activity will appear here.
+            </span>
+          </div>
+        )}
+        {savedRecords.map((item) => {
+          const agreementId = item.record.onchainAgreementId;
+          const isFinalized =
+            item.record.status === "finalized" && Boolean(agreementId);
+          return (
+            <article
+              className="card record-workspace-card"
+              id={
+                agreementId
+                  ? `record-agreement-${agreementId}`
+                  : `record-proposal-${item.record.id}`
+              }
+              key={`${item.access.proposalId}-${item.access.role}`}
+              tabIndex={-1}
+            >
+              <header className="record-workspace-header">
+                <div>
+                  <span className="eyebrow">
+                    {isFinalized ? "Finalized agreement record" : "Proposal record"}
+                  </span>
+                  <h3>
+                    {agreementId
+                      ? agreementReference(agreementId)
+                      : proposalReference(item.record.id)}
+                  </h3>
+                  {agreementId && (
+                    <small>
+                      Originated as {proposalReference(item.record.id)} · onchain ID{" "}
+                      {agreementId}
+                    </small>
+                  )}
+                </div>
+                <div className="record-workspace-actions">
+                  <span className={`negotiation-status status-${item.record.status}`}>
+                    {item.record.status} · revision {item.record.revision}
+                  </span>
+                  <a
+                    className="btn btn-ghost small"
+                    href={negotiationReportUrl(item.access)}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Open report
+                  </a>
+                </div>
+              </header>
+              <RecordSnapshotControls
+                access={item.access}
+                agreementId={agreementId ? BigInt(agreementId) : undefined}
+              />
+              {agreementId && (
+                <AgreementOnchainActivity
+                  agreementId={BigInt(agreementId)}
+                  isParty
+                  negotiationAccess={item.access}
+                />
+              )}
+              <div className="agreement-activity">
+                <h4>Timestamped activity</h4>
+                <ol className="activity-timeline">
+                  {[...item.record.events].reverse().map((event) => (
+                    <li key={event.id}>
+                      <time dateTime={event.createdAt}>
+                        {new Date(event.createdAt).toLocaleString()}
+                      </time>
+                      <strong>
+                        {roleLabel[event.actorRole as keyof typeof roleLabel] || "System"}
+                      </strong>
+                      <span>{event.summary}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </article>
+          );
+        })}
+        {unlinkedAgreementIds.map((id) => (
+          <article
+            className="card record-workspace-card"
+            id={`record-agreement-${id.toString()}`}
+            key={`unlinked-${id.toString()}`}
+            tabIndex={-1}
+          >
+            <header className="record-workspace-header">
+              <div>
+                <span className="eyebrow">Onchain-only record</span>
+                <h3>{agreementReference(id)}</h3>
+                <small>Onchain agreement ID {id.toString()}</small>
+              </div>
+            </header>
+            <AgreementOnchainActivity agreementId={id} isParty={false} />
+          </article>
+        ))}
+      </section>
     );
   }
 
@@ -720,6 +820,14 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             </span>
             <b aria-hidden="true">→</b>
           </button>
+          <button onClick={() => setTab("record")}>
+            <span className="route-icon" aria-hidden="true">3</span>
+            <span>
+              <strong>{workspaceTabLabels.record}</strong>
+              <small>Review the complete timestamped history and reports.</small>
+            </span>
+            <b aria-hidden="true">→</b>
+          </button>
         </div>
       </div>
     );
@@ -728,21 +836,6 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   return (
     <Layout notifications={notifications}>
       <PublicIntro onStart={startDemo} />
-      {inviteRole && (
-        <section className="card invite-landing-notice" aria-labelledby="invite-landing-title">
-          <span className="eyebrow">{roleLabel[inviteRole]} invitation · role locked</span>
-          <h2 id="invite-landing-title">You are joining as the {inviteRole}.</h2>
-          <p>
-            Continue with the Google account that received this invitation. You can review the
-            landlord’s saved terms, propose changes, and approve the current revision as the{" "}
-            {inviteRole}. This invitation does not provide landlord proposal tools.
-          </p>
-          <p className="field-help">
-            This role cannot be changed from an invitation. If the invitation belongs to someone
-            else, sign out and use the Google account named in the invitation.
-          </p>
-        </section>
-      )}
       {!inviteRole && workspaceRole && !isChangingRole && (
         <section className="card active-role-summary" id="role-workspace">
           <div>
@@ -833,7 +926,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           id="demo-workspace"
           aria-label={`${roleLabel[workspaceRole]} workspace`}
         >
-          {(["overview", "proposals", "agreements"] as WorkspaceTab[]).map(
+          {(["overview", "proposals", "agreements", "record"] as WorkspaceTab[]).map(
             (workspaceTab) => (
               <button
                 key={workspaceTab}
@@ -880,19 +973,36 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             </>
           ) : (
             <>
-              <section className="workspace-section-heading">
-                <span className="eyebrow">Current records</span>
-                <h2>
-                  {workspaceRole === "landlord"
-                    ? "Your active proposals"
-                    : "Invitations and proposals awaiting completion"}
-                </h2>
-                <p>
-                  Only the latest active revision is shown. Earlier revisions remain in the
-                  permanent activity record.
-                </p>
+              <section className="card active-proposals-section">
+                <div className="active-proposals-header">
+                  <div>
+                    <span className="eyebrow">Account proposals</span>
+                    <h2>
+                      {workspaceRole === "landlord"
+                        ? "Your active proposals"
+                        : "Invitations and proposals awaiting completion"}
+                    </h2>
+                    <p>
+                      Only the latest active revision is shown. Earlier revisions remain in
+                      the Record tab.
+                    </p>
+                  </div>
+                  <button
+                    className="refresh-icon-button"
+                    type="button"
+                    aria-label="Refresh account proposals"
+                    title="Refresh account proposals"
+                    disabled={isScanning || isFinding}
+                    onClick={() => void findProposalsAndAgreements()}
+                  >
+                    <span aria-hidden="true">↻</span>
+                  </button>
+                </div>
+                {renderSavedProposalCards()}
+                {scanMessage && <p className="tx-success">{scanMessage}</p>}
+                {findError && <p className="tx-error">{findError}</p>}
+                {scanError && <p className="tx-error">{scanError}</p>}
               </section>
-              {renderSavedProposalCards()}
               {workspaceRole === "landlord" && !inviteRole && (
                 <section className="proposal-composer-launcher">
                   {!isProposalComposerOpen ? (
@@ -939,7 +1049,6 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                 </section>
               )}
               {workspaceRole === "tenant" && !inviteRole && <TenantLandlordInvite />}
-              {renderDiscoveryCard("proposals")}
             </>
           )}
         </div>
@@ -951,150 +1060,12 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
         </div>
       )}
 
-      {/*
-      {workspaceRole && (
-        <div>
-          {proposalAccess ? (
-            <>
-              <button className="btn btn-ghost review-back" onClick={closeProposalReview}>
-                Back to proposals and agreements
-              </button>
-              <AgreementNegotiation access={proposalAccess} />
-            </>
-          ) : (
-            <>
-          {workspaceRole === "tenant" && !inviteRole && <TenantLandlordInvite />}
-          <div className="card">
-            <h2>
-              {workspaceRole === "landlord"
-                ? "Find proposals, agreements, and deduction work"
-                : workspaceRole === "arbiter"
-                  ? "Find proposals and agreements assigned to you"
-                  : "Find proposals and deposit agreements associated with you"}
-            </h2>
-            <p className="hint">
-              {workspaceRole === "landlord"
-                ? "Open saved proposals awaiting review or finalization, then scan Base Sepolia for agreements where you can submit documented deductions, resolve claims, and withdraw available funds."
-                : "Open saved proposals you were invited to review, then scan Base Sepolia for finalized agreements involving your connected wallet."}
-            </p>
-            <button
-              className="btn btn-primary"
-              disabled={isScanning || isFinding}
-              onClick={() => void findProposalsAndAgreements()}
-            >
-              {isScanning || isFinding ? "Searching..." : "Find my proposals & agreements"}
-            </button>
-            {!address && (
-              <p className="field-help">
-                Saved proposals can be found now. Connect your wallet to scan for finalized onchain agreements too.
-              </p>
-            )}
-            {scanMessage && <p className="tx-success">{scanMessage}</p>}
-            {findError && <p className="tx-error">{findError}</p>}
-            {scanError && <p className="tx-error">{scanError}</p>}
-          </div>
-
-          {savedProposals.map((item) => {
-            const counterpart =
-              item.access.role === "landlord"
-                ? item.record.tenantEmail
-                : item.record.landlordEmail;
-            const isReadyForLandlord =
-              item.access.role === "landlord" && item.record.status === "ready";
-            return (
-              <article
-                className={`card saved-proposal-card${isReadyForLandlord ? " ready-to-finalize" : ""}`}
-                key={`${item.access.proposalId}-${item.access.role}`}
-              >
-                <div className="proposal-builder-heading">
-                  <div>
-                    <span className="eyebrow">
-                      Saved offchain proposal · {roleLabel[item.access.role]} access
-                    </span>
-                    <h2>Proposal {item.record.id}</h2>
-                  </div>
-                  <span className={`negotiation-status status-${item.record.status}`}>
-                    {item.record.status} · revision {item.record.revision}
-                  </span>
-                </div>
-                <p className="hint">
-                  {item.access.role === "landlord" ? "Tenant" : "Landlord"}: {counterpart}
-                  {item.record.arbiterEmail ? ` · Arbiter: ${item.record.arbiterEmail}` : " · No arbiter"}
-                </p>
-                {isReadyForLandlord && (
-                  <div className="finalization-notice" role="status">
-                    <strong>All required approvals are complete.</strong>
-                    <span>
-                      Open this proposal to submit the approved terms onchain. It remains a saved
-                      proposal until you complete that transaction.
-                    </span>
-                  </div>
-                )}
-                <div className="button-row">
-                  <button
-                    className={isReadyForLandlord ? "btn btn-primary" : "btn btn-secondary"}
-                    onClick={() => openSavedProposal(item)}
-                  >
-                    {isReadyForLandlord
-                      ? "Review approved proposal"
-                      : item.record.status === "finalized"
-                        ? "Open agreement workspace"
-                        : "Open proposal"}
-                  </button>
-                </div>
-              </article>
-            );
-          })}
-
-          <div className="card">
-            <h2>Track an agreement by id</h2>
-            <p className="hint">
-              Add a finalized onchain agreement manually if someone shared its id directly.
-            </p>
-            <div className="button-row">
-              <input
-                value={manualId}
-                onChange={(e) => setManualId(e.target.value)}
-                placeholder="Agreement id, e.g. 0"
-              />
-              <button
-                className="btn btn-primary"
-                onClick={() => {
-                  if (manualId.trim() === "") return;
-                  try {
-                    addId(BigInt(manualId.trim()));
-                    setManualId("");
-                  } catch {
-                    // ignore invalid input
-                  }
-                }}
-              >
-                Track
-              </button>
-            </div>
-          </div>
-
-          {displayedIds.length === 0 && <p className="hint">No security deposits tracked for this account yet.</p>}
-          {displayedIds.map((id) => {
-            const proposal = savedProposals.find(
-              (item) => item.record.onchainAgreementId === id.toString(),
-            );
-            return (
-              <AgreementCard
-                key={id.toString()}
-                id={id}
-                onRemove={() => removeId(id)}
-                negotiationAccess={proposal?.access}
-                participantRecord={proposal?.record}
-              />
-            );
-          })}
-          {workspaceRole === "tenant" && <TestFunds />}
-            </>
-          )}
+      {workspaceRole && tab === "record" && (
+        <div className="workspace-panel" aria-label={workspaceTabLabels.record}>
+          {renderRecordWorkspace()}
         </div>
       )}
-      */}
+
       {!workspaceRole && (
         <p className="role-selection-prompt">Choose landlord or tenant above to open the demo workspace.</p>
       )}

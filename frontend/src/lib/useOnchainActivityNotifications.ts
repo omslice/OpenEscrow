@@ -6,6 +6,7 @@ import {
   AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
 } from "../contracts/config";
 import type { AppNotification } from "../components/Layout";
+import { agreementReference } from "./displayIds";
 import { shortAddr } from "./format";
 
 const snapshotEvent = parseAbiItem(
@@ -69,7 +70,7 @@ export function useOnchainActivityNotifications(agreementIds: readonly bigint[])
             id: `onchain-${log.transactionHash}-${log.logIndex}`,
             createdAt: new Date(Number(log.args.timestamp) * 1_000).toISOString(),
             actor: "Onchain receipt",
-            summary: `Agreement #${log.args.agreementId}: snapshot anchored by ${shortAddr(log.args.party)}`,
+            summary: `${agreementReference(log.args.agreementId)}: snapshot anchored by ${shortAddr(log.args.party)}`,
             href: `https://sepolia.basescan.org/tx/${log.transactionHash}`,
             agreementId: log.args.agreementId.toString(),
           })),
@@ -77,7 +78,7 @@ export function useOnchainActivityNotifications(agreementIds: readonly bigint[])
             id: `onchain-${log.transactionHash}-${log.logIndex}`,
             createdAt: new Date(Number(log.args.timestamp) * 1_000).toISOString(),
             actor: "Onchain receipt",
-            summary: `Agreement #${log.args.agreementId}: ${
+            summary: `${agreementReference(log.args.agreementId)}: ${
               activityLabel[Number(log.args.activityType)] || "activity proof published"
             } by ${shortAddr(log.args.party)}`,
             href: `https://sepolia.basescan.org/tx/${log.transactionHash}`,

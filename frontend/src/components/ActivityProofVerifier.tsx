@@ -4,6 +4,7 @@ import { usePublicClient } from "wagmi";
 import {
   AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
 } from "../contracts/config";
+import { agreementReference } from "../lib/displayIds";
 import { shortAddr } from "../lib/format";
 
 type ActivityEnvelope = {
@@ -79,7 +80,9 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
       }
       const proof = parseProofFile(await file.text());
       if (BigInt(proof.envelope.agreementId) !== agreementId) {
-        throw new Error(`This proof belongs to agreement #${proof.envelope.agreementId}.`);
+        throw new Error(
+          `This proof belongs to ${agreementReference(proof.envelope.agreementId)}.`,
+        );
       }
       const computedHash = keccak256(toBytes(canonicalEnvelope(proof.envelope)));
       if (computedHash.toLowerCase() !== proof.contentHash.toLowerCase()) {
@@ -149,7 +152,7 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
         <div className="proof-verification-success" role="status">
           <strong>Proof verified</strong>
           <span>
-            Agreement #{result.proof.envelope.agreementId} · activity type{" "}
+            {agreementReference(result.proof.envelope.agreementId)} · activity type{" "}
             {result.proof.envelope.activityType} · publisher {shortAddr(result.publisher)}
           </span>
           <code title={result.computedHash}>{result.computedHash}</code>

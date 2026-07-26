@@ -7,8 +7,8 @@ import { TxButton } from "./TxButton";
 
 /**
  * Nothing in OpenEscrow executes automatically at a deadline (spec §4) - every one of
- * these requires an explicit transaction from someone. These buttons only render once
- * their deadline has actually passed, since calling early would just revert.
+ * these requires an explicit transaction from an authorized party. These buttons only
+ * render once their deadline has actually passed, since calling early would just revert.
  */
 export function TimeoutSection({
   id,
@@ -52,8 +52,8 @@ export function TimeoutSection({
       <div className="action-section">
         <h3>No claim was submitted</h3>
         <p className="hint">
-          The claim window closed with no claim. Finalize the refund allocation; each tenant can
-          then withdraw their approved share.
+          The claim window closed with no claim, so the full deposit is now refundable.
+          Complete the onchain settlement; each tenant can then withdraw their approved share.
         </p>
         <TxButton
           address={OPEN_ESCROW_ADDRESS}

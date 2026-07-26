@@ -6,13 +6,11 @@ import { jurisdictionLabel, type JurisdictionCode } from "../lib/jurisdictions";
 import {
   loadNegotiation,
   negotiationAction,
-  negotiationReportUrl,
   type NegotiationAccess,
   type NegotiationRecord,
 } from "../lib/negotiations";
+import { agreementReference, proposalReference } from "../lib/displayIds";
 import { roleLabel } from "../lib/inviteContext";
-import { AgreementCard } from "./AgreementCard";
-import { RecordSnapshotControls } from "./RecordSnapshotControls";
 
 function approvalLabel(record: NegotiationRecord, role: "tenant" | "arbiter") {
   const approved = role === "tenant" ? record.tenantApproved : record.arbiterApproved;
@@ -151,7 +149,9 @@ function AgreementNegotiationView({
     <section className="card negotiation-workspace" aria-labelledby="proposal-review-title">
       <div className="negotiation-heading">
         <div>
-          <span className="eyebrow">Proposal {record.id} · revision {record.revision}</span>
+          <span className="eyebrow">
+            {proposalReference(record.id)} · revision {record.revision}
+          </span>
           <h2 id="proposal-review-title">Review the landlord’s agreement</h2>
         </div>
         <span className={`negotiation-status status-${record.status}`}>
@@ -198,42 +198,38 @@ function AgreementNegotiationView({
           {record.landlordName && <small>{record.landlordEmail}</small>}
         </div>
         {record.tenants.map((tenant) => (
-          <div key={tenant.id}>
+          <div
+            className={tenant.approved ? "participant-approved" : "participant-awaiting"}
+            key={tenant.id}
+          >
             <span>
               Tenant · {(tenant.depositShareBps / 100).toFixed(2).replace(/\.?0+$/, "")}% share
             </span>
             <strong>{tenant.name || tenant.email}</strong>
             {tenant.name && <small>{tenant.email}</small>}
+            <small className="party-review-status">
+              {tenant.approved
+                ? `Approved revision ${record.revision}`
+                : "Awaiting approval"}
+            </small>
           </div>
         ))}
         {record.arbiterEmail && (
-          <div>
+          <div
+            className={
+              record.arbiterApproved ? "participant-approved" : "participant-awaiting"
+            }
+          >
             <span>Arbiter</span>
             <strong>{record.arbiterName || record.arbiterEmail}</strong>
             {record.arbiterName && <small>{record.arbiterEmail}</small>}
+            <small className="party-review-status">
+              {approvalLabel(record, "arbiter")}
+            </small>
           </div>
         )}
       </div>
       <Terms record={record} />
-
-      <div className="approval-grid">
-        {record.tenants.map((tenant) => (
-          <div className={tenant.approved ? "approval approved" : "approval"} key={tenant.id}>
-            <strong>{tenant.name || "Tenant"}</strong>
-            <span>
-              {tenant.approved
-                ? `Approved revision ${record.revision}`
-                : "Awaiting tenant approval"}
-            </span>
-          </div>
-        ))}
-        {record.arbiterEmail && (
-          <div className={record.arbiterApproved ? "approval approved" : "approval"}>
-            <strong>Arbiter</strong>
-            <span>{approvalLabel(record, "arbiter")}</span>
-          </div>
-        )}
-      </div>
 
       {canRespond && record.status !== "finalized" && record.status !== "cancelled" && (
         <div className="negotiation-response">
@@ -278,48 +274,13 @@ function AgreementNegotiationView({
         </div>
       )}
 
-      <div className="record-header">
-        <div>
-          <h3>Running agreement record</h3>
-          <p className="hint">Append-only actions with server timestamps, ready for future onchain anchoring.</p>
-        </div>
-        <a
-          className="btn btn-ghost small"
-          href={negotiationReportUrl(access)}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Open timestamped report
-        </a>
-      </div>
-      <RecordSnapshotControls
-        access={access}
-        agreementId={
-          record.status === "finalized" && record.onchainAgreementId
-            ? BigInt(record.onchainAgreementId)
-            : undefined
-        }
-      />
-      <ol className="activity-timeline">
-        {record.events.map((event) => (
-          <li key={event.id}>
-            <time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time>
-            <strong>{roleLabel[event.actorRole as keyof typeof roleLabel] || "System"}</strong>
-            <span>{event.summary}</span>
-          </li>
-        ))}
-      </ol>
       {message && <p className="tx-success">{message}</p>}
       {error && <p className="tx-error">{error}</p>}
       {record.status === "finalized" && record.onchainAgreementId && (
-        <div className="finalized-agreement-workspace">
-          <span className="eyebrow">Live deduction and resolution workflow</span>
-          <AgreementCard
-            id={BigInt(record.onchainAgreementId)}
-            negotiationAccess={access}
-            participantRecord={record}
-          />
-        </div>
+        <p className="tx-success">
+          Finalized as {agreementReference(record.onchainAgreementId)}. Open the
+          Agreements tab to manage the deposit or the Record tab to review its history.
+        </p>
       )}
     </section>
   );

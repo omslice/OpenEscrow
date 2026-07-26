@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
+import { agreementReference } from "../lib/displayIds";
 import { formatUSDC, parseUSDC } from "../lib/format";
 import {
   buildNegotiationInviteUrl,
@@ -211,14 +212,14 @@ export function ClaimSection({
       negotiationAccess.proposalId,
       bundle.access.tenant,
     );
-    const subject = `OpenEscrow deduction claim for agreement #${id}`;
+    const subject = `OpenEscrow deduction claim for ${agreementReference(id)}`;
     const claimAmount = amount || formatUSDC(agreement.claimedAmount);
     const itemSummary = items.map(
       (item, index) =>
         `${index + 1}. ${CATEGORY_LABEL[item.category] || "Other"} — ${item.description.trim()} (${item.amount || "0"} shares)`,
     );
     const body = [
-      `A deduction claim of ${claimAmount} shares has been submitted for OpenEscrow agreement #${id}.`,
+      `A deduction claim of ${claimAmount} shares has been submitted for ${agreementReference(id)}.`,
       "",
       "Itemized deductions:",
       ...itemSummary,

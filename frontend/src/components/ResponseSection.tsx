@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
+import { agreementReference } from "../lib/displayIds";
 import { formatUSDC, parseUSDC } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
@@ -173,9 +174,9 @@ export function ResponseSection({
       record.tenants.find((candidate) => candidate.id === record.viewerTenantId) ||
       record.tenants.find((candidate) => candidate.email === record.viewerEmail);
     const tenantName = tenant?.name || record.tenantName || "A tenant";
-    const subject = `OpenEscrow tenant response for agreement #${id}`;
+    const subject = `OpenEscrow tenant response for ${agreementReference(id)}`;
     const body = [
-      `${tenantName} submitted a deduction-claim response for OpenEscrow agreement #${id}.`,
+      `${tenantName} submitted a deduction-claim response for ${agreementReference(id)}.`,
       "",
       `Decision: ${decisionText(action)}`,
       action.note ? `Explanation: ${action.note}` : "",

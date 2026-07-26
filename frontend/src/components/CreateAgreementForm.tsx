@@ -40,7 +40,6 @@ import {
   createNegotiation,
   loadNegotiation,
   negotiationAction,
-  negotiationReportUrl,
   readLandlordBundle,
   rememberLandlordBundle,
   storeNegotiationAccess,
@@ -49,7 +48,7 @@ import {
   type NegotiationAccess,
   type NegotiationRecord,
 } from "../lib/negotiations";
-import { AgreementCard } from "./AgreementCard";
+import { agreementReference } from "../lib/displayIds";
 import { AddressAutocomplete } from "./AddressAutocomplete";
 import "./CreateAgreementFormTabs.css";
 
@@ -364,8 +363,8 @@ function AgreementForm({
       } catch (cause) {
         setFinalizationRecordError(
           cause instanceof Error
-            ? `Agreement #${agreementId} was created onchain, but the saved proposal still needs its receipt: ${cause.message}`
-            : `Agreement #${agreementId} was created onchain, but the saved proposal still needs its receipt.`,
+            ? `${agreementReference(agreementId)} was created onchain, but the saved proposal still needs its receipt: ${cause.message}`
+            : `${agreementReference(agreementId)} was created onchain, but the saved proposal still needs its receipt.`,
         );
       }
     },
@@ -2193,15 +2192,15 @@ function AgreementForm({
               <h3>Invite parties to review revision {draft.revision}</h3>
               <p className="hint">Each link is role-locked and opens this saved proposal—not the landlord’s creation tools.</p>
             </div>
-            {landlordAccess && (
-              <a className="btn btn-ghost small" href={negotiationReportUrl(landlordAccess)} target="_blank" rel="noreferrer">
-                Open timestamped report
-              </a>
-            )}
           </div>
           <div className="tenant-invite-list">
             {draft.tenants.map((tenant, index) => (
-              <div className="tenant-invite-row" key={tenant.id}>
+              <div
+                className={`tenant-invite-row ${
+                  tenant.approved ? "approved" : "awaiting"
+                }`}
+                key={tenant.id}
+              >
                 <div>
                   <strong>{tenant.name || "Tenant"}</strong>
                   <span>{tenant.email}</span>
@@ -2214,6 +2213,11 @@ function AgreementForm({
                     tenantIndex={index}
                     tokenChoice={draft.terms.tokenChoice}
                   />
+                  <strong className="party-review-status">
+                    {tenant.approved
+                      ? `Approved revision ${draft.revision}`
+                      : "Awaiting approval"}
+                  </strong>
                 </div>
                 <div className="invite-actions">
                   <button
@@ -2247,10 +2251,22 @@ function AgreementForm({
                 </div>
               </div>
             ))}
-          </div>
-          <div className="invite-actions">
             {ARBITER_UI_ENABLED && draft.arbiterEmail && (
-              <>
+              <div
+                className={`tenant-invite-row ${
+                  draft.arbiterApproved ? "approved" : "awaiting"
+                }`}
+              >
+                <div>
+                  <strong>{draft.arbiterName || "Arbiter"}</strong>
+                  <span>{draft.arbiterEmail}</span>
+                  <strong className="party-review-status">
+                    {draft.arbiterApproved
+                      ? `Approved revision ${draft.revision}`
+                      : "Awaiting approval"}
+                  </strong>
+                </div>
+                <div className="invite-actions">
                 <button
                   className="btn btn-secondary"
                   type="button"
@@ -2269,54 +2285,10 @@ function AgreementForm({
                 >
                   {copiedInvite === "arbiter" ? "Arbiter invite copied" : "Copy arbiter invite"}
                 </button>
-              </>
-            )}
-          </div>
-          {(draft.tenants.some((tenant) => tenant.approved) || draft.arbiterApproved) && (
-            <p className="field-help">
-              Invitation controls are disabled for parties who already approved this revision.
-            </p>
-          )}
-
-          <div className="approval-grid">
-            {draft.tenants.map((tenant) => (
-              <div
-                className={tenant.approved ? "approval approved" : "approval"}
-                key={tenant.id}
-              >
-                <strong>{tenant.name || "Tenant"}</strong>
-                <span>{tenant.email}</span>
-                <span>
-                  {tenant.approved ? "Approved current revision" : "Awaiting approval"}
-                </span>
-              </div>
-            ))}
-            {ARBITER_UI_ENABLED && draft.arbiterEmail && (
-              <div className={draft.arbiterApproved ? "approval approved" : "approval"}>
-                <strong>{draft.arbiterName || "Arbiter"}</strong>
-                <span>{draft.arbiterEmail}</span>
-                <span>{draft.arbiterApproved ? "Approved current revision" : "Awaiting approval"}</span>
+                </div>
               </div>
             )}
           </div>
-
-          <div className="record-header">
-            <div><h3>Running agreement record</h3><p className="hint">All proposal actions are timestamped and append-only.</p></div>
-            {landlordAccess && (
-              <button className="btn btn-ghost small" type="button" onClick={() => void loadNegotiation(landlordAccess).then(setDraft)}>
-                Refresh
-              </button>
-            )}
-          </div>
-          <ol className="activity-timeline">
-            {draft.events.map((event) => (
-              <li key={event.id}>
-                <time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time>
-                <strong>{event.actorRole}</strong>
-                <span>{event.summary}</span>
-              </li>
-            ))}
-          </ol>
         </section>
       )}
 
@@ -2324,18 +2296,13 @@ function AgreementForm({
         <p className="role-pending">Onchain finalization stays locked until every tenant approves the current revision.</p>
       )}
       {draft?.status === "finalized" && (
-        <>
-          <p className="tx-success">This proposal is finalized as onchain agreement #{draft.onchainAgreementId}.</p>
-          {draft.onchainAgreementId && landlordAccess && (
-            <div className="finalized-agreement-workspace">
-              <AgreementCard
-                id={BigInt(draft.onchainAgreementId)}
-                negotiationAccess={landlordAccess}
-                participantRecord={draft}
-              />
-            </div>
-          )}
-        </>
+        <p className="tx-success">
+          This proposal is finalized as{" "}
+          {draft.onchainAgreementId
+            ? agreementReference(draft.onchainAgreementId)
+            : "an onchain agreement"}
+          . Open the Agreements tab to manage it.
+        </p>
       )}
       {error && <p className="tx-error">{error.message.split("\n")[0]}</p>}
       {pendingFinalization && finalizationRecordError && (
@@ -2356,7 +2323,9 @@ function AgreementForm({
         </div>
       )}
       {createdId !== null && (
-        <p className="tx-success">Created onchain agreement #{createdId.toString()}.</p>
+        <p className="tx-success">
+          Created {agreementReference(createdId)} onchain.
+        </p>
       )}
       <div className="proposal-step-actions">
         <button

@@ -284,6 +284,17 @@
   list-style: none;
 }
 
+.how-it-works-block {
+  scroll-margin-top: 90px;
+}
+
+.how-it-works-block > h3 {
+  margin: 0 0 14px;
+  color: var(--text-h);
+  font-size: clamp(22px, 3vw, 28px);
+  letter-spacing: -0.02em;
+}
+
 .how-it-works li {
   padding: 16px;
   border-top: 1px solid var(--border);
@@ -1177,6 +1188,24 @@
   margin: 0;
 }
 
+.tenant-invite-row.awaiting,
+.participant-grid > .participant-awaiting {
+  border-color: color-mix(in srgb, var(--danger) 42%, var(--border));
+  background: color-mix(in srgb, var(--danger) 7%, var(--surface));
+}
+
+.tenant-invite-row.approved,
+.participant-grid > .participant-approved {
+  border-color: color-mix(in srgb, var(--success) 52%, var(--border));
+  background: color-mix(in srgb, var(--success) 8%, var(--surface));
+}
+
+.party-review-status {
+  margin-top: 4px;
+  color: var(--text-h);
+  font-size: 12px;
+}
+
 .tenant-edit-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1726,7 +1755,11 @@ a.btn.disabled {
 }
 
 .saved-proposal-card {
-  border-width: 2px;
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  background: var(--surface);
 }
 
 .saved-proposal-card.ready-to-finalize {
@@ -1913,6 +1946,53 @@ a.btn.disabled {
   color: var(--text);
 }
 
+.active-proposals-section {
+  margin-top: 24px;
+}
+
+.active-proposals-header,
+.record-workspace-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.active-proposals-header h2,
+.record-workspace-header h3 {
+  margin: 4px 0 5px;
+}
+
+.active-proposals-header p {
+  margin: 0;
+  color: var(--text);
+}
+
+.refresh-icon-button {
+  display: grid;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text-h);
+  font: inherit;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.refresh-icon-button:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.refresh-icon-button:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
 .proposal-composer-launcher {
   display: grid;
   gap: 12px;
@@ -2076,6 +2156,99 @@ a.btn.disabled {
 .approval.approved {
   border-color: color-mix(in srgb, var(--success) 45%, var(--border));
   background: color-mix(in srgb, var(--success) 8%, var(--surface));
+}
+
+.record-workspace {
+  display: grid;
+  gap: 16px;
+}
+
+.record-workspace > .workspace-section-heading {
+  margin-bottom: 0;
+}
+
+.record-workspace-card {
+  scroll-margin-top: 86px;
+}
+
+.record-workspace-header {
+  margin-bottom: 18px;
+}
+
+.record-workspace-header small,
+.technical-id {
+  color: var(--text);
+}
+
+.record-workspace-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.funding-ledger {
+  margin: 18px 0;
+}
+
+.funding-ledger .agreement-panel-heading h4 {
+  margin: 3px 0 5px;
+  color: var(--text-h);
+  font-size: 19px;
+}
+
+.funding-party-list {
+  display: grid;
+  gap: 10px;
+}
+
+.funding-party-row {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.8fr) minmax(420px, 1.7fr);
+  gap: 18px;
+  align-items: center;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 14px 16px;
+  background: var(--surface);
+}
+
+.funding-party-row > div {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+}
+
+.funding-party-row span,
+.funding-party-row small,
+.funding-party-row dt {
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+.funding-party-row dl {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+
+.funding-party-row dl > div {
+  display: grid;
+  gap: 3px;
+}
+
+.funding-party-row dt {
+  font-size: 12px;
+}
+
+.funding-party-row dd {
+  margin: 0;
+  color: var(--text-h);
+  font-weight: 700;
+}
+
+.landlord-claim-row {
+  border-style: dashed;
 }
 
 .negotiation-terms {
@@ -2484,7 +2657,14 @@ a.btn.disabled {
 
   .proposal-builder-heading,
   .negotiation-heading,
-  .record-header {
+  .record-header,
+  .active-proposals-header,
+  .record-workspace-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .record-workspace-actions {
     align-items: stretch;
     flex-direction: column;
   }
@@ -2513,6 +2693,14 @@ a.btn.disabled {
 
   .tenant-invite-row .invite-actions {
     flex: 1 1 auto;
+  }
+
+  .funding-party-row {
+    grid-template-columns: 1fr;
+  }
+
+  .funding-party-row dl {
+    grid-template-columns: 1fr;
   }
 
   .activity-timeline li {

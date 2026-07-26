@@ -11,6 +11,7 @@ import {
   phaseLabel,
 } from "../contracts/config";
 import { countdown, formatTimestamp, formatUSDC, shortAddr } from "../lib/format";
+import { agreementReference } from "../lib/displayIds";
 import { useNow } from "../lib/useNow";
 import type { Agreement } from "../lib/useAgreement";
 import { useAccount, useReadContract } from "wagmi";
@@ -154,7 +155,9 @@ export function AgreementDashboard({
     <div className="dashboard">
       <div className="agreement-heading">
         <div>
-          <span className="eyebrow">Agreement #{id.toString()}</span>
+          <span className="eyebrow">
+            {agreementReference(id)} · onchain ID {id.toString()}
+          </span>
           <h2>Security deposit</h2>
         </div>
         <span className={`phase-badge phase-${agreement.phase}`}>{phaseLabel[agreement.phase]}</span>

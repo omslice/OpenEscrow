@@ -55,7 +55,8 @@ export function NextAction({ id, agreement }: { id: bigint; agreement: Agreement
       message = `The claim window opens ${formatTimestamp(agreement.claimWindowStart)}. Missing the deadline means a full tenant refund.`;
     } else if (isTenant) {
       title = "Deposit protected";
-      message = "If no timely claim is submitted, you can finalize a full refund after the claim deadline.";
+      message =
+        "If no timely claim is submitted, your deposit automatically becomes fully refundable after the claim deadline.";
     }
   } else if (agreement.phase === Phase.ClaimOpen) {
     if (isTenant) {

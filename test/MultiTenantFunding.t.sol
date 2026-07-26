@@ -61,6 +61,22 @@ contract MultiTenantFundingTest is Base {
         _assertConserved(id);
     }
 
+    function test_tenantCannotFundApprovedShareTwice() public {
+        uint256 id = _proposeMulti(5_000, 5_000);
+
+        vm.prank(tenant);
+        escrow.fundTenantShare(id);
+
+        vm.expectRevert(OpenEscrow.TenantAlreadyFunded.selector);
+        vm.prank(tenant);
+        escrow.fundTenantShare(id);
+
+        OpenEscrow.Agreement memory partiallyFunded = escrow.getAgreement(id);
+        assertEq(partiallyFunded.depositAmount, 500e6);
+        assertEq(escrow.tenantContribution(id, tenant), 500e6);
+        _assertConserved(id);
+    }
+
     function test_refundCreditsEachTenantByOwnershipShare() public {
         uint256 id = _proposeMulti(6_000, 4_000);
         vm.prank(tenant);

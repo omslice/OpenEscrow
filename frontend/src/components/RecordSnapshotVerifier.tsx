@@ -5,6 +5,7 @@ import {
   ACTIVITY_REGISTRY_DEPLOYMENT_BLOCK,
   AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
 } from "../contracts/config";
+import { agreementReference } from "../lib/displayIds";
 import { formatTimestamp, shortAddr } from "../lib/format";
 
 type SnapshotAnchor = {
@@ -66,7 +67,9 @@ export function RecordSnapshotVerifier({
         parsed.onchain?.agreementId &&
         BigInt(parsed.onchain.agreementId) !== agreementId
       ) {
-        throw new Error(`This snapshot references agreement #${parsed.onchain.agreementId}.`);
+        throw new Error(
+          `This snapshot references ${agreementReference(parsed.onchain.agreementId)}.`,
+        );
       }
 
       const hash = await sha256Hex(canonical);

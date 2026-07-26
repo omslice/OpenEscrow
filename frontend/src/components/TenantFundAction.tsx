@@ -213,6 +213,7 @@ function StandardTenantFundAction({
   onRefetch,
 }: TenantFundActionProps) {
   const { address } = useAccount();
+  const [fundedLocally, setFundedLocally] = useState(false);
   const reserveRecord = useTenantReceiptRecovery(negotiationAccess, "reserve");
   const fundingRecord = useTenantReceiptRecovery(negotiationAccess, "funding");
   const { data: requiredContribution } = useReadContract({
@@ -222,15 +223,23 @@ function StandardTenantFundAction({
     args: address ? [id, address] : undefined,
     query: { enabled: !!address && agreement.phase === Phase.ReadyToFund },
   });
-  const { data: existingContribution } = useReadContract({
+  const {
+    data: existingContribution,
+    refetch: refetchContribution,
+  } = useReadContract({
     address: OPEN_ESCROW_ADDRESS,
     abi: OpenEscrowABI,
     functionName: "tenantContribution",
     args: address ? [id, address] : undefined,
-    query: { enabled: !!address && agreement.phase === Phase.ReadyToFund },
+    query: {
+      enabled: !!address && agreement.phase === Phase.ReadyToFund,
+      refetchInterval: 4_000,
+    },
   });
   const needed = typeof requiredContribution === "bigint" ? requiredContribution : 0n;
-  const shareFunded = typeof existingContribution === "bigint" && existingContribution > 0n;
+  const shareFunded =
+    fundedLocally ||
+    (typeof existingContribution === "bigint" && existingContribution > 0n);
   const isTenant = needed > 0n;
   const { tokenLabel } = fundingDetails(agreement, needed);
   const reserveRequired = participantRecord?.terms.operationsReserve === "5";
@@ -333,6 +342,8 @@ function StandardTenantFundAction({
           label={`Fund total ${formatUSDC(tokenBalanceNeeded)} ${tokenLabel}`}
           className="btn btn-primary"
           onSuccess={(transactionHash) => {
+            setFundedLocally(true);
+            void refetchContribution();
             void refetchReservePaid();
             void reserveRecord.record(transactionHash, reserveAmount);
             void fundingRecord.record(transactionHash, needed);
@@ -347,6 +358,8 @@ function StandardTenantFundAction({
           args={[id]}
           label={`Fund my ${formatUSDC(needed)} share`}
           onSuccess={(transactionHash) => {
+            setFundedLocally(true);
+            void refetchContribution();
             void fundingRecord.record(transactionHash, needed);
             onRefetch?.();
           }}
@@ -380,6 +393,7 @@ function SponsoredTenantFundAction({
   onRefetch,
 }: TenantFundActionProps) {
   const { address } = useAccount();
+  const [fundedLocally, setFundedLocally] = useState(false);
   const reserveRecord = useTenantReceiptRecovery(negotiationAccess, "reserve");
   const fundingRecord = useTenantReceiptRecovery(negotiationAccess, "funding");
   const publicClient = usePublicClient();
@@ -398,15 +412,23 @@ function SponsoredTenantFundAction({
     args: address ? [id, address] : undefined,
     query: { enabled: !!address && agreement.phase === Phase.ReadyToFund },
   });
-  const { data: existingContribution } = useReadContract({
+  const {
+    data: existingContribution,
+    refetch: refetchContribution,
+  } = useReadContract({
     address: OPEN_ESCROW_ADDRESS,
     abi: OpenEscrowABI,
     functionName: "tenantContribution",
     args: address ? [id, address] : undefined,
-    query: { enabled: !!address && agreement.phase === Phase.ReadyToFund },
+    query: {
+      enabled: !!address && agreement.phase === Phase.ReadyToFund,
+      refetchInterval: 4_000,
+    },
   });
   const needed = typeof requiredContribution === "bigint" ? requiredContribution : 0n;
-  const shareFunded = typeof existingContribution === "bigint" && existingContribution > 0n;
+  const shareFunded =
+    fundedLocally ||
+    (typeof existingContribution === "bigint" && existingContribution > 0n);
   const isTenant = needed > 0n;
   const { tokenLabel } = fundingDetails(agreement, needed);
   const reserveRequired = participantRecord?.terms.operationsReserve === "5";
@@ -515,10 +537,18 @@ function SponsoredTenantFundAction({
     setTransactionError(null);
     setStep("funding");
     try {
-      const [latestBalance, latestAllowance] = await Promise.all([
+      const [latestBalance, latestAllowance, latestContribution] = await Promise.all([
         refetchBalance(),
         refetchAllowance(),
+        refetchContribution(),
       ]);
+      if (
+        typeof latestContribution.data === "bigint" &&
+        latestContribution.data > 0n
+      ) {
+        setFundedLocally(true);
+        return;
+      }
       if (typeof latestBalance.data !== "bigint" || latestBalance.data < tokenBalanceNeeded) {
         throw new Error(
           `This wallet needs ${formatUSDC(tokenBalanceNeeded)} ${tokenLabel} before it can fund the agreement.`,
@@ -540,6 +570,8 @@ function SponsoredTenantFundAction({
         }),
         reserveIsPaid ? 750_000n : 900_000n,
       );
+      setFundedLocally(true);
+      await refetchContribution();
       if (!reserveIsPaid) {
         await refetchReservePaid();
         await reserveRecord.record(transactionHash, reserveAmount);

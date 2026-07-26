@@ -1,16 +1,16 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from "react";
-import { useAccount } from "wagmi";
 import { useAgreement } from "../lib/useAgreement";
 import {
   Phase,
   ZERO_ADDRESS,
   phaseLabel,
 } from "../contracts/config";
+import { agreementReference } from "../lib/displayIds";
 import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
 import { AgreementDashboard } from "./AgreementDashboard";
-import { AgreementOnchainActivity } from "./AgreementOnchainActivity";
 import { ArbiterActions } from "./ArbiterActions";
 import { TenantFundAction } from "./TenantFundAction";
+import { FundingLedger } from "./FundingLedger";
 import { ClaimSection } from "./ClaimSection";
 import { ResponseSection } from "./ResponseSection";
 import { DisputeResolutionSection } from "./DisputeResolutionSection";
@@ -23,18 +23,17 @@ import { AgreementNoticeCenter } from "./AgreementNoticeCenter";
 import type { NegotiationAccess, NegotiationRecord } from "../lib/negotiations";
 import "./AgreementCard.css";
 
-export type AgreementPanel = "summary" | "funds" | "claims" | "record";
+export type AgreementPanel = "summary" | "funds" | "claims";
 export type AgreementFocusRequest = {
   targetId: string;
   nonce: number;
 };
 
-const PANELS: AgreementPanel[] = ["summary", "funds", "claims", "record"];
+const PANELS: AgreementPanel[] = ["summary", "funds", "claims"];
 const PANEL_LABELS: Record<AgreementPanel, string> = {
   summary: "Summary",
   funds: "Funds & withdrawals",
   claims: "Claims & resolution",
-  record: "Record",
 };
 
 function defaultPanelForAgreement(
@@ -58,7 +57,6 @@ function defaultPanelForAgreement(
   ) {
     return "funds";
   }
-  if (agreement.phase === Phase.Cancelled) return "record";
   return "summary";
 }
 
@@ -80,7 +78,6 @@ export function AgreementCard({
   focusRequest?: AgreementFocusRequest;
 }) {
   const { agreement, exists, isLoading, error, refetch } = useAgreement(id);
-  const { address } = useAccount();
   const [localPanel, setLocalPanel] = useState<AgreementPanel | null>(null);
   const tabRefs = useRef<Partial<Record<AgreementPanel, HTMLButtonElement | null>>>({});
   const handledFocusNonce = useRef<number | null>(null);
@@ -104,11 +101,13 @@ export function AgreementCard({
     isLoading,
   ]);
 
-  if (isLoading) return <div className="card">Loading agreement #{id.toString()}...</div>;
+  if (isLoading) {
+    return <div className="card">Loading {agreementReference(id)}...</div>;
+  }
   if (error || !exists || !agreement) {
     return (
       <div className="card">
-        <p>Agreement #{id.toString()} not found on this contract.</p>
+        <p>{agreementReference(id)} was not found on this contract.</p>
         {onRemove && (
           <button className="btn btn-ghost" onClick={onRemove}>
             Remove from tracked list
@@ -121,13 +120,6 @@ export function AgreementCard({
   const selectedPanel =
     activePanel || localPanel || defaultPanelForAgreement(agreement);
   const agreementKey = id.toString();
-  const normalizedAddress = address?.toLowerCase();
-  const isAgreementParty =
-    Boolean(negotiationAccess) ||
-    normalizedAddress === agreement.landlord.toLowerCase() ||
-    normalizedAddress === agreement.tenant.toLowerCase() ||
-    (agreement.arbiter !== ZERO_ADDRESS &&
-      normalizedAddress === agreement.arbiter.toLowerCase());
 
   // Every action component calls this on success so the dashboard reflects the
   // new state immediately, instead of waiting up to 5s for the next poll.
@@ -164,7 +156,10 @@ export function AgreementCard({
       <header className="agreement-card-header">
         <div>
           <span className="eyebrow">Finalized agreement</span>
-          <h2 id={`agreement-${agreementKey}-title`}>Agreement #{agreementKey}</h2>
+          <h2 id={`agreement-${agreementKey}-title`}>
+            {agreementReference(id)}
+          </h2>
+          <small className="technical-id">Onchain agreement ID {agreementKey}</small>
         </div>
         <span className={`phase-badge phase-${agreement.phase}`}>
           {phaseLabel[agreement.phase]}
@@ -174,7 +169,7 @@ export function AgreementCard({
       <div
         className="agreement-panel-tabs"
         role="tablist"
-        aria-label={`Agreement #${agreementKey} sections`}
+        aria-label={`${agreementReference(id)} sections`}
       >
         {PANELS.map((panel) => {
           const isSelected = selectedPanel === panel;
@@ -234,6 +229,11 @@ export function AgreementCard({
             <ArbiterActions id={id} agreement={agreement} onRefetch={onRefetch} />
           )}
           <ProposalActions id={id} agreement={agreement} onRefetch={onRefetch} />
+          <FundingLedger
+            id={id}
+            agreement={agreement}
+            participantRecord={participantRecord}
+          />
           <TenantFundAction
             id={id}
             agreement={agreement}
@@ -295,54 +295,11 @@ export function AgreementCard({
           />
       </section>
 
-      <section
-        className="agreement-panel"
-        id={`agreement-${agreementKey}-panel-record`}
-        role="tabpanel"
-        aria-labelledby={`agreement-${agreementKey}-tab-record`}
-        tabIndex={0}
-        hidden={selectedPanel !== "record"}
-      >
-          <div className="agreement-panel-heading">
-            <span className="eyebrow">Audit trail</span>
-            <h3>Agreement record</h3>
-            <p>
-              Review timestamped lifecycle activity and publish or verify privacy-safe onchain
-              receipts.
-            </p>
-          </div>
-          <AgreementOnchainActivity
-            agreementId={id}
-            isParty={isAgreementParty}
-            negotiationAccess={negotiationAccess}
-          />
-          {participantRecord ? (
-            <div className="agreement-activity">
-              <h4>Recent agreement activity</h4>
-              <ol className="activity-timeline">
-                {[...participantRecord.events]
-                  .reverse()
-                  .slice(0, 12)
-                  .map((event) => (
-                    <li key={event.id}>
-                      <time dateTime={event.createdAt}>
-                        {new Date(event.createdAt).toLocaleString()}
-                      </time>
-                      <strong>{event.actorRole}</strong>
-                      <span>{event.summary}</span>
-                    </li>
-                  ))}
-              </ol>
-            </div>
-          ) : (
-            <p className="hint">No offchain activity record is linked to this agreement.</p>
-          )}
-          {onRemove && (
-            <button className="btn btn-ghost small" onClick={onRemove}>
-              Stop tracking this agreement
-            </button>
-          )}
-      </section>
+      {onRemove && (
+        <button className="btn btn-ghost small stop-tracking" onClick={onRemove}>
+          Stop tracking this agreement
+        </button>
+      )}
     </article>
   );
 }
