@@ -41,24 +41,45 @@ contract WithdrawTest is Base {
         _assertConserved(id);
     }
 
-    function test_withdraw_partial_doesNotDisturbOtherPartysBalance() public {
+    function test_withdraw_revertsWhileClaimIsOpen_evenWithTenantCredit() public {
         uint256 id = _readyAgreement();
-        _submitClaim(id, DEPOSIT / 2); // tenant already has DEPOSIT/2 withdrawable
+        _submitClaim(id, DEPOSIT / 2);
 
         vm.prank(tenant);
-        escrow.withdraw(id); // withdraw the unclaimed remainder mid-dispute-window
+        vm.expectRevert(OpenEscrow.InvalidPhase.selector);
+        escrow.withdraw(id);
 
         OpenEscrow.Agreement memory a = escrow.getAgreement(id);
-        assertEq(a.tenantWithdrawable, 0);
-        assertEq(a.withdrawn, DEPOSIT / 2);
-        assertEq(a.locked, DEPOSIT / 2, "claimed portion must be untouched by tenant's partial withdrawal");
+        assertEq(a.tenantWithdrawable, DEPOSIT / 2);
+        assertEq(a.withdrawn, 0);
+        assertEq(a.locked, DEPOSIT / 2);
+        _assertConserved(id);
+    }
+
+    function test_withdraw_revertsWhileClaimIsDisputed_evenWithCredits() public {
+        uint256 id = _readyAgreement();
+        _submitClaim(id, DEPOSIT / 2);
+        vm.prank(tenant);
+        escrow.respondToClaim(id, DEPOSIT / 4);
+
+        vm.prank(tenant);
+        vm.expectRevert(OpenEscrow.InvalidPhase.selector);
+        escrow.withdraw(id);
+        vm.prank(landlord);
+        vm.expectRevert(OpenEscrow.InvalidPhase.selector);
+        escrow.withdraw(id);
+
+        OpenEscrow.Agreement memory a = escrow.getAgreement(id);
+        assertEq(a.tenantWithdrawable, DEPOSIT / 2);
+        assertEq(a.landlordWithdrawable, DEPOSIT / 4);
+        assertEq(a.withdrawn, 0);
         _assertConserved(id);
     }
 
     function test_withdraw_revertsWithNothingCredited() public {
         uint256 id = _readyAgreement();
         vm.prank(tenant);
-        vm.expectRevert(OpenEscrow.NothingToWithdraw.selector);
+        vm.expectRevert(OpenEscrow.InvalidPhase.selector);
         escrow.withdraw(id);
     }
 

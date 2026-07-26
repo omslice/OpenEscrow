@@ -113,6 +113,10 @@ contract OpenEscrow is ReentrancyGuard {
     mapping(uint256 => mapping(address => uint16)) public tenantShareBps;
     mapping(uint256 => mapping(address => uint256)) public tenantContribution;
     mapping(uint256 => mapping(address => uint256)) public tenantWithdrawableByAddress;
+    mapping(uint256 => mapping(address => bool)) public tenantClaimResponded;
+    mapping(uint256 => mapping(address => uint256)) public tenantAcceptedClaimAmount;
+    mapping(uint256 => uint256) public claimResponseCount;
+    mapping(uint256 => uint256) public minimumAcceptedClaimAmount;
 
     uint64 public constant MIN_PERIOD = 5 minutes;
     uint64 public constant MAX_PERIOD = 365 days;
@@ -140,11 +144,18 @@ contract OpenEscrow is ReentrancyGuard {
     event AgreementFunded(uint256 indexed id, uint256 amount);
     event TenantParticipantAdded(uint256 indexed id, address indexed tenant, uint16 shareBps);
     event TenantShareFunded(uint256 indexed id, address indexed tenant, uint256 amount, uint256 totalFunded);
-    event ClaimSubmitted(uint256 indexed id, uint256 amount, uint256 unclaimedReleased);
-    event ClaimAmended(uint256 indexed id, uint256 newAmount, uint256 additionalReleasedToTenant);
+    event ClaimSubmitted(uint256 indexed id, uint256 amount, uint256 unclaimedAllocatedToTenants);
+    event ClaimAmended(uint256 indexed id, uint256 newAmount, uint256 additionalAllocatedToTenants);
     event ClaimRetracted(uint256 indexed id);
     event EvidenceSubmitted(
         uint256 indexed id, uint256 index, address indexed submittedBy, bytes32 contentHash, uint8 evidenceType
+    );
+    event TenantClaimResponseRecorded(
+        uint256 indexed id,
+        address indexed tenant,
+        uint256 acceptedAmount,
+        uint256 responseCount,
+        uint256 requiredResponseCount
     );
     event ClaimResponded(uint256 indexed id, uint256 acceptedAmount, uint256 disputedAmount);
     event ResponseTimedOut(uint256 indexed id, uint256 disputedAmount);
@@ -181,6 +192,8 @@ contract OpenEscrow is ReentrancyGuard {
     error ResponseWindowClosed();
     error ResponseWindowStillOpen();
     error InvalidResponseAmount();
+    error TenantAlreadyResponded();
+    error ClaimResponseAlreadyStarted();
     error ArbiterRulingWindowClosed();
     error ArbiterRulingWindowStillOpen();
     error InvalidAward();
@@ -259,7 +272,8 @@ contract OpenEscrow is ReentrancyGuard {
 
     /// @notice Creates one agreement whose refundable deposit is owned and funded by
     ///         multiple tenants. Shares use basis points and must total exactly 10,000.
-    ///         The first tenant remains the primary tenant for claim-response actions.
+    ///         Every tenant must answer a claim; the lowest commonly accepted amount
+    ///         is the only amount that may settle without dispute.
     function createMultiTenantAgreementWithToken(
         address[] calldata tenants,
         uint16[] calldata sharesBps,
@@ -522,6 +536,7 @@ contract OpenEscrow is ReentrancyGuard {
         _creditTenants(id, a, unclaimed);
         a.locked = amount;
         a.claimedAmount = amount;
+        minimumAcceptedClaimAmount[id] = amount;
         a.responseDeadline = uint64(block.timestamp) + a.responsePeriod;
         a.phase = Phase.ClaimOpen;
 
@@ -540,6 +555,7 @@ contract OpenEscrow is ReentrancyGuard {
         if (a.phase != Phase.ClaimOpen) revert InvalidPhase();
         if (msg.sender != a.landlord) revert NotAuthorized();
         if (a.claimAmended) revert ClaimAlreadyAmended();
+        if (claimResponseCount[id] != 0) revert ClaimResponseAlreadyStarted();
         if (block.timestamp >= a.responseDeadline) revert ResponseWindowClosed();
         if (newAmount > a.claimedAmount) revert AmendmentMustNotIncrease();
 
@@ -547,6 +563,7 @@ contract OpenEscrow is ReentrancyGuard {
         _creditTenants(id, a, delta);
         a.locked -= delta;
         a.claimedAmount = newAmount;
+        minimumAcceptedClaimAmount[id] = newAmount;
         a.claimAmended = true;
 
         _recordEvidence(id, contentHash, uri, evidenceType, msg.sender);
@@ -575,17 +592,29 @@ contract OpenEscrow is ReentrancyGuard {
 
     /// @notice Unifies acceptance and disputing: acceptedAmount == claimedAmount is full
     ///         acceptance, 0 < acceptedAmount < claimedAmount is partial, 0 is full dispute.
+    ///         Every tenant records one response. The claim settles only after every tenant
+    ///         responds, using the lowest amount accepted by all tenants. Silence by any
+    ///         tenant at the deadline makes the full claim disputed.
     function respondToClaim(uint256 id, uint256 acceptedAmount) external {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.ClaimOpen) revert InvalidPhase();
-        // The first tenant is the proposal's primary tenant and remains the single
-        // claim-response coordinator in this MVP. All tenant owners receive their
-        // pro-rata settlement regardless of which approved primary tenant responds.
-        if (msg.sender != a.tenant) revert NotAuthorized();
+        if (!_isTenant(id, msg.sender)) revert NotAuthorized();
         if (block.timestamp >= a.responseDeadline) revert ResponseWindowClosed();
         if (acceptedAmount > a.claimedAmount) revert InvalidResponseAmount();
+        if (tenantClaimResponded[id][msg.sender]) revert TenantAlreadyResponded();
 
-        _settleResponse(id, a, acceptedAmount);
+        tenantClaimResponded[id][msg.sender] = true;
+        tenantAcceptedClaimAmount[id][msg.sender] = acceptedAmount;
+        uint256 responseCount = ++claimResponseCount[id];
+        if (acceptedAmount < minimumAcceptedClaimAmount[id]) {
+            minimumAcceptedClaimAmount[id] = acceptedAmount;
+        }
+        uint256 requiredResponseCount = _tenants[id].length;
+        emit TenantClaimResponseRecorded(id, msg.sender, acceptedAmount, responseCount, requiredResponseCount);
+
+        if (responseCount == requiredResponseCount) {
+            _settleResponse(id, a, minimumAcceptedClaimAmount[id]);
+        }
     }
 
     /// @notice Permissionless. Tenant silence past the deadline is treated as a full
@@ -595,6 +624,7 @@ contract OpenEscrow is ReentrancyGuard {
         if (a.phase != Phase.ClaimOpen) revert InvalidPhase();
         if (block.timestamp < a.responseDeadline) revert ResponseWindowStillOpen();
 
+        // A missing tenant response is never treated as consent.
         _settleResponse(id, a, 0);
         emit ResponseTimedOut(id, a.claimedAmount);
     }
@@ -731,19 +761,21 @@ contract OpenEscrow is ReentrancyGuard {
 
     function withdraw(uint256 id) external nonReentrant {
         Agreement storage a = _agreement(id);
+        bool isTenant = _isTenant(id, msg.sender);
+        bool isLandlord = msg.sender == a.landlord;
+        if (!isTenant && !isLandlord) revert NotAuthorized();
+        if (a.phase != Phase.Closed && a.phase != Phase.Cancelled) revert InvalidPhase();
 
         uint256 amount;
-        if (_isTenant(id, msg.sender)) {
+        if (isTenant) {
             amount = tenantWithdrawableByAddress[id][msg.sender];
             if (amount == 0) revert NothingToWithdraw();
             tenantWithdrawableByAddress[id][msg.sender] = 0;
             a.tenantWithdrawable -= amount;
-        } else if (msg.sender == a.landlord) {
+        } else {
             amount = a.landlordWithdrawable;
             if (amount == 0) revert NothingToWithdraw();
             a.landlordWithdrawable = 0;
-        } else {
-            revert NotAuthorized();
         }
 
         a.withdrawn += amount;

@@ -1,5 +1,6 @@
 import {
   MockUSDCABI,
+  OpenEscrowABI,
   OPEN_ESCROW_ADDRESS,
   OPERATIONS_RESERVE_ADDRESS,
   OperationsReserveABI,
@@ -71,17 +72,36 @@ export function AgreementDashboard({
   const { address } = useAccount();
   const normalized = address?.toLowerCase();
   const inviteRole = useInviteRole();
+  const tenantShare = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "tenantShareBps",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address },
+  });
+  const tenantCredit = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "tenantWithdrawableByAddress",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address, refetchInterval: 5000 },
+  });
+  const isTenant =
+    (typeof tenantShare.data === "bigint" && tenantShare.data > 0n) ||
+    (typeof tenantShare.data === "number" && tenantShare.data > 0);
   const actualRole =
     normalized === agreement.landlord.toLowerCase()
       ? "landlord"
-      : normalized === agreement.tenant.toLowerCase()
+      : isTenant
         ? "tenant"
         : normalized === agreement.arbiter.toLowerCase()
           ? "arbiter"
           : null;
   const availableToYou =
-    normalized === agreement.tenant.toLowerCase()
-      ? agreement.tenantWithdrawable
+    isTenant
+      ? typeof tenantCredit.data === "bigint"
+        ? tenantCredit.data
+        : 0n
       : normalized === agreement.landlord.toLowerCase()
         ? agreement.landlordWithdrawable
         : 0n;
@@ -94,7 +114,7 @@ export function AgreementDashboard({
     address: OPERATIONS_RESERVE_ADDRESS,
     abi: OperationsReserveABI,
     functionName: "paid",
-    args: [OPEN_ESCROW_ADDRESS, id, agreement.tenant],
+    args: [OPEN_ESCROW_ADDRESS, id, address || agreement.tenant],
     query: {
       enabled: reserveRequired,
       refetchInterval: 5000,

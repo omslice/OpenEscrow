@@ -2516,16 +2516,23 @@ async function applyAction(request, env, id) {
       return json({ error: "Only the tenant may approve or dispute a deduction claim." }, 403);
     }
     const tenant = await tenantForToken(db, id, body.token);
-    if (!tenant || tenant.is_funding_tenant !== 1) {
-      return json({ error: "Only the designated funding tenant may answer the deduction claim." }, 403);
+    if (!tenant) {
+      return json({ error: "Only an invited tenant may answer the deduction claim." }, 403);
     }
     if (!["approve", "partial", "dispute"].includes(body.decision)) {
       return json({ error: "The tenant response is invalid." }, 400);
     }
     const acceptedAmount = cleanText(body.acceptedAmount, 80);
+    const acceptedMicros = tokenMicros(acceptedAmount);
     const note = cleanText(body.note, 1000);
     const transactionHash = cleanText(body.transactionHash, 100);
-    if (!acceptedAmount || !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+    if (
+      acceptedMicros === null ||
+      (body.decision === "dispute" && acceptedMicros !== 0n) ||
+      (body.decision !== "dispute" && acceptedMicros === 0n) ||
+      ((body.decision === "partial" || body.decision === "dispute") && !note) ||
+      !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)
+    ) {
       return json({ error: "The tenant response record is incomplete." }, 400);
     }
     const decisionLabel =
@@ -2542,9 +2549,37 @@ async function applyAction(request, env, id) {
         now,
         role,
         "claim_response_submitted",
-        `Tenant ${decisionLabel}${note ? `: ${note}` : "."}`,
+        `${cleanText(tenant.name, 160) || cleanText(tenant.email, 320) || "Tenant"} ${decisionLabel}${note ? `: ${note}` : "."}`,
         revision,
-        { decision: body.decision, acceptedAmount, note, transactionHash },
+        {
+          tenantId: tenant.id,
+          decision: body.decision,
+          acceptedAmount,
+          note,
+          transactionHash,
+        },
+      ),
+    );
+  } else if (body.type === "claim_response_notification_prepared") {
+    if (role !== "tenant") {
+      return json({ error: "Only a tenant may prepare the landlord response notice." }, 403);
+    }
+    const tenant = await tenantForToken(db, id, body.token);
+    if (!tenant) {
+      return json({ error: "Only an invited tenant may prepare the landlord response notice." }, 403);
+    }
+    const method = body.method === "copy" ? "copied email" : "Gmail";
+    statements.push(
+      db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "claim_response_notification_prepared",
+        `${cleanText(tenant.name, 160) || cleanText(tenant.email, 320) || "Tenant"} prepared the landlord claim-response notice using ${method}.`,
+        revision,
+        { tenantId: tenant.id, method: body.method === "copy" ? "copy" : "gmail" },
       ),
     );
   } else if (body.type === "arbiter_ruling") {
@@ -3054,6 +3089,144 @@ async function sendClaimNotification(request, env) {
   return json({ messageId: result.id, duplicate: false });
 }
 
+async function sendClaimResponseNotification(request, env) {
+  if (!env.DB) return json({ error: "Agreement record storage is not available." }, 503);
+  if (!env.RESEND_API_KEY || !env.NOTIFICATION_FROM_EMAIL) {
+    return json(
+      {
+        error:
+          "Automatic email delivery is not configured yet. Use the Gmail or copy-email fallback.",
+      },
+      503,
+    );
+  }
+  const body = await request.json();
+  const proposalId = cleanText(body.proposalId, 80);
+  const row = await rowFor(env.DB, proposalId);
+  const role = await authorize(env.DB, row, body.token);
+  const tenant = role === "tenant"
+    ? await tenantForToken(env.DB, proposalId, body.token)
+    : null;
+  if (!tenant) {
+    return json({ error: "Only an invited tenant may notify the landlord." }, 403);
+  }
+  if (row.status !== "finalized") {
+    return json({ error: "The agreement must be finalized before a claim response." }, 409);
+  }
+
+  const agreementId = cleanText(body.agreementId, 80);
+  const decision = cleanText(body.decision, 20);
+  const acceptedAmount = cleanText(body.acceptedAmount, 80);
+  const note = cleanText(body.note, 1000);
+  const transactionHash = cleanText(body.transactionHash, 100);
+  let reviewUrl;
+  try {
+    reviewUrl = new URL(body.reviewUrl);
+  } catch {
+    return json({ error: "The landlord review link is invalid." }, 400);
+  }
+  const requestOrigin = new URL(request.url).origin;
+  if (
+    reviewUrl.origin !== requestOrigin ||
+    reviewUrl.searchParams.get("id") !== agreementId
+  ) {
+    return json({ error: "The landlord review link is invalid." }, 400);
+  }
+  if (
+    !agreementId ||
+    !["approve", "partial", "dispute"].includes(decision) ||
+    tokenMicros(acceptedAmount) === null ||
+    (decision === "dispute" && tokenMicros(acceptedAmount) !== 0n) ||
+    (decision !== "dispute" && tokenMicros(acceptedAmount) === 0n) ||
+    ((decision === "partial" || decision === "dispute") && !note) ||
+    !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)
+  ) {
+    return json({ error: "The claim response notice is incomplete." }, 400);
+  }
+
+  const decisionSummary =
+    decision === "approve"
+      ? `approved the full deduction (${acceptedAmount} shares)`
+      : decision === "dispute"
+        ? "disputed the full deduction"
+        : `approved ${acceptedAmount} shares and disputed the remainder`;
+  const tenantLabel =
+    cleanText(tenant.name, 160) || cleanText(tenant.email, 320) || "A tenant";
+  const deliveryKey = (
+    await hashToken(
+      JSON.stringify({
+        proposalId,
+        tenantId: tenant.id,
+        agreementId,
+        decision,
+        acceptedAmount,
+        note,
+        transactionHash,
+      }),
+    )
+  ).slice(0, 32);
+  const existingRecord = await serialize(env.DB, row, tenant.id);
+  const existingDelivery = existingRecord.events.find(
+    (event) =>
+      event.action === "claim_response_notification_sent" &&
+      event.metadata?.deliveryKey === deliveryKey,
+  );
+  if (existingDelivery) {
+    return json({
+      messageId: existingDelivery.metadata.messageId,
+      duplicate: true,
+    });
+  }
+
+  const subject = `OpenEscrow tenant response for agreement #${agreementId}`;
+  const text = [
+    `${tenantLabel} ${decisionSummary} for OpenEscrow agreement #${agreementId}.`,
+    note ? `Tenant explanation: ${note}` : "",
+    `Review the signed-in agreement dashboard: ${reviewUrl.toString()}`,
+    `Onchain transaction: https://sepolia.basescan.org/tx/${transactionHash}`,
+    "The deposit remains in escrow until the claim and any dispute are fully resolved.",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+  const sent = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      authorization: `Bearer ${env.RESEND_API_KEY}`,
+      "content-type": "application/json",
+      "idempotency-key": `claim-response-${proposalId}-${deliveryKey}`,
+      "user-agent": "OpenEscrow/1.0",
+    },
+    body: JSON.stringify({
+      from: env.NOTIFICATION_FROM_EMAIL,
+      to: [normalizeEmail(row.landlord_email)],
+      subject,
+      text,
+    }),
+  });
+  const result = await sent.json();
+  if (!sent.ok || !result.id) {
+    return json({ error: "The email provider could not send this claim response." }, 502);
+  }
+
+  const now = new Date().toISOString();
+  await env.DB.batch([
+    env.DB
+      .prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?")
+      .bind(now, proposalId),
+    eventStatement(
+      env.DB,
+      proposalId,
+      now,
+      role,
+      "claim_response_notification_sent",
+      `${tenantLabel} sent the claim response notice to ${normalizeEmail(row.landlord_email)}.`,
+      row.revision,
+      { tenantId: tenant.id, messageId: result.id, deliveryKey },
+    ),
+  ]);
+  return json({ messageId: result.id, duplicate: false });
+}
+
 function escapeHtml(value) {
   return String(value ?? "")
     .replaceAll("&", "&amp;")
@@ -3450,6 +3623,14 @@ const worker = {
       if (!sameOriginPost(request)) return json({ error: "Cross-origin writes are not allowed." }, 403);
       if (env.DB) await initialize(env.DB);
       return sendClaimNotification(request, env);
+    }
+    if (
+      url.pathname === "/api/notifications/claim-response" &&
+      request.method === "POST"
+    ) {
+      if (!sameOriginPost(request)) return json({ error: "Cross-origin writes are not allowed." }, 403);
+      if (env.DB) await initialize(env.DB);
+      return sendClaimResponseNotification(request, env);
     }
     if (url.pathname === "/api/evidence" && request.method === "POST") {
       if (!sameOriginPost(request)) return json({ error: "Cross-origin writes are not allowed." }, 403);

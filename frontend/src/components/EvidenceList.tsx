@@ -22,11 +22,20 @@ const TYPE_LABEL: Record<number, string> = {
   14: "Claim—other",
 };
 
-function privateEvidenceUrl(uri: string, access?: NegotiationAccess | null) {
+function evidenceUrl(uri: string, access?: NegotiationAccess | null) {
   const match = uri.match(/^openescrow:\/\/evidence\/([a-fA-F0-9-]+)$/);
-  return match && access
-    ? `/api/evidence/${encodeURIComponent(match[1])}?token=${encodeURIComponent(access.token)}`
-    : null;
+  if (match && access) {
+    return `/api/evidence/${encodeURIComponent(match[1])}?token=${encodeURIComponent(access.token)}`;
+  }
+  if (/^https:\/\//i.test(uri)) return uri;
+  const ipfsPath = uri.match(/^ipfs:\/\/([a-zA-Z0-9._~/-]+)$/)?.[1];
+  if (ipfsPath) {
+    return `https://ipfs.io/ipfs/${ipfsPath
+      .split("/")
+      .map((segment) => encodeURIComponent(segment))
+      .join("/")}`;
+  }
+  return null;
 }
 
 export function EvidenceList({
@@ -56,7 +65,7 @@ export function EvidenceList({
       </p>
       <ul>
         {entries.map((e, i) => {
-          const privateUrl = privateEvidenceUrl(e.uri, negotiationAccess);
+          const documentUrl = evidenceUrl(e.uri, negotiationAccess);
           return (
           <li key={i}>
             <strong>{TYPE_LABEL[e.evidenceType] ?? `Type ${e.evidenceType}`}</strong> by{" "}
@@ -67,9 +76,9 @@ export function EvidenceList({
               <>
                 <br />
                 pointer:{" "}
-                {privateUrl ? (
-                  <a href={privateUrl} target="_blank" rel="noreferrer">
-                    Open private evidence
+                {documentUrl ? (
+                  <a href={documentUrl} target="_blank" rel="noreferrer">
+                    Open supporting document
                   </a>
                 ) : (
                   <code>{e.uri}</code>

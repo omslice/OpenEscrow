@@ -1,4 +1,4 @@
-[
+﻿[
   {
     "type": "constructor",
     "inputs": [
@@ -341,6 +341,25 @@
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "claimResponseCount",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -836,6 +855,25 @@
   },
   {
     "type": "function",
+    "name": "minimumAcceptedClaimAmount",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "nextAgreementId",
     "inputs": [],
     "outputs": [
@@ -1029,6 +1067,54 @@
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "tenantAcceptedClaimAmount",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "tenantClaimResponded",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -1408,7 +1494,7 @@
         "internalType": "uint256"
       },
       {
-        "name": "additionalReleasedToTenant",
+        "name": "additionalAllocatedToTenants",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -1471,7 +1557,7 @@
         "internalType": "uint256"
       },
       {
-        "name": "unclaimedReleased",
+        "name": "unclaimedAllocatedToTenants",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -1619,6 +1705,43 @@
   },
   {
     "type": "event",
+    "name": "TenantClaimResponseRecorded",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "tenant",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "acceptedAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "responseCount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "requiredResponseCount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "TenantParticipantAdded",
     "inputs": [
       {
@@ -1736,6 +1859,11 @@
   {
     "type": "error",
     "name": "ClaimAlreadyAmended",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "ClaimResponseAlreadyStarted",
     "inputs": []
   },
   {
@@ -1862,6 +1990,11 @@
   {
     "type": "error",
     "name": "TenantAlreadyFunded",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TenantAlreadyResponded",
     "inputs": []
   },
   {

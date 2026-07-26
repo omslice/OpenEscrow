@@ -213,8 +213,8 @@ export function AgreementCard({
             agreement={agreement}
             participantRecord={participantRecord}
           />
-          <AgreementNoticeCenter agreement={agreement} />
-          <NextAction agreement={agreement} />
+          <AgreementNoticeCenter id={id} agreement={agreement} />
+          <NextAction id={id} agreement={agreement} />
       </section>
 
       <section

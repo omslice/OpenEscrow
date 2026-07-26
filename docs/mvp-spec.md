@@ -114,7 +114,7 @@ Disputed --arbiter rules, before arbiterRulingDeadline--> Closed (ResolvedByArbi
 Disputed --arbiterRulingDeadline passes, no ruling--> Closed (ResolvedByTimeout)
 ```
 
-`Cancelled` and `Closed` are terminal. `Closed` has five possible *reasons* (`NoClaim`, `ClaimRetracted`, `Settled`, `ResolvedByArbiter`, `ResolvedByTimeout`) recorded for UI/events but they are not separate FSM phases — nothing behaves differently between them except the accounting that already happened to get there. `withdraw()` is callable in any phase, including `Closed`, whenever the caller has a nonzero balance; it is not itself a phase transition.
+`Cancelled` and `Closed` are terminal. `Closed` has five possible *reasons* (`NoClaim`, `ClaimRetracted`, `Settled`, `ResolvedByArbiter`, `ResolvedByTimeout`) recorded for UI/events but they are not separate FSM phases — nothing behaves differently between them except the accounting that already happened to get there. `withdraw()` is callable only after the agreement reaches `Closed` or `Cancelled` and the caller has a nonzero credited balance. Allocations may be calculated earlier, but no party can remove funds while a deduction claim or dispute remains unresolved.
 
 Arbiter-replacement (§8) and arbiter-resignation are **not** phase transitions — they can happen inside `ReadyToFund`, `Active`, `ClaimOpen`, or `Disputed` without changing `phase`.
 
@@ -154,7 +154,7 @@ At the exact instant `now == deadline`, the window is expired, never open. This 
 
 Derived deadlines:
 - `claimSubmissionDeadline = claimWindowStart + claimPeriod`
-- `responseDeadline = (time of last submit/amend) + responsePeriod`
+- `responseDeadline = (time of original claim submission) + responsePeriod`
 - `arbiterRulingDeadline = (time dispute created, or time replacement arbiter accepted if later) + arbiterRulingPeriod`
 
 `claimWindowStart` is a fixed timestamp chosen by the landlord at proposal time and implicitly accepted by the tenant when they fund (§15 / `open-questions.md` item A1 — real move-out timing is a legal question this MVP does not attempt to solve). If `claimWindowStart` has already passed by the time the tenant funds, the claim window is simply open immediately — useful for demos, and not a bug.
@@ -166,11 +166,11 @@ No function executes automatically at a deadline. Every transition in §3a that 
 ## 5. Claims: full, partial, absent, late, amended
 
 - **Full claim:** `C == D`. Handled identically to partial in all logic; `D - C == 0` unclaimed remainder, so no tenant-withdrawable amount is created at submission.
-- **Partial claim:** `0 < C < D`. `D - C` becomes tenant-withdrawable immediately (T7 accounting, §9).
+- **Partial claim:** `0 < C < D`. `D - C` is allocated to the tenants immediately for accounting, but remains inside escrow and cannot be withdrawn until the claim reaches a terminal resolution (T7 accounting, §9).
 - **Absent claim:** no `submitClaim` before `claimSubmissionDeadline`. Tenant recovers everything via `withdrawNoClaim` (T8).
 - **Late claim:** `submitClaim` after `claimSubmissionDeadline` reverts (`ClaimWindowClosed`). There is no grace period. A landlord who misses the deadline has no further on-chain recourse in this agreement.
 - **Amended claim:** `amendClaim` is permitted **at most once** per agreement, only before the tenant has responded, and may only **decrease or hold** `C`, never increase it. It never touches `responseDeadline` — that deadline is fixed at the moment of the *original* `submitClaim` and nothing after that can move it, up or down.
-  - The non-increasing rule is a fund-safety requirement, not a stylistic choice: the moment a claim is submitted, `D - C` is already tenant-withdrawable and the tenant may call `withdraw()` immediately. If a later amendment were allowed to *raise* `C`, the contract would have no way to claw back tokens the tenant already pulled out, and the accounting invariant would break. Capping amendments to non-increasing values makes withdrawal timing irrelevant to correctness.
+  - The non-increasing rule is a fund-safety requirement, not a stylistic choice: the moment a claim is submitted, `D - C` is allocated to the tenants. It remains locked from withdrawal until resolution, but increasing the claim later would still reverse an already-recorded allocation. Capping amendments to non-increasing values keeps the accounting monotonic and auditable.
   - The fixed-deadline rule eliminates a griefing vector present in an earlier draft of this spec, where a landlord could repeatedly amend right before `responseDeadline` to indefinitely reset the tenant's response window. With the deadline fixed at first submission and only one amendment ever permitted, there is nothing left to reset — the griefing vector doesn't just get bounded, it's structurally impossible. The tradeoff: if a landlord amends late in the original response window, the tenant may have very little time left to react to the amended figure before `finalizeNoResponse` becomes callable. This is accepted as intended behavior per the approved decision, not a bug — a tenant facing a shrinking claim close to the deadline is never worse off in dollar terms than facing the original (larger) claim, since amendment can only reduce what's at stake.
   - `newC == 0` is treated as claim retraction and closes the agreement in the tenant's favor immediately (§3a, T9) — this is also the only way for a landlord to voluntarily withdraw a claim in this MVP; there is no separate "cancel claim" function, and retraction consumes the single amendment allowance like any other amendment.
 
@@ -178,12 +178,12 @@ No function executes automatically at a deadline. Every transition in §3a that 
 
 ## 6. Tenant acceptance, partial acceptance, and disputes
 
-There is a single tenant-facing function, `respondToClaim(A)`, that unifies acceptance and disputing — there is no separate "dispute" action:
+There is a single tenant-facing function, `respondToClaim(A)`, that unifies acceptance and disputing — there is no separate "dispute" action. Every tenant records one response. The amount accepted without dispute is the lowest amount approved by every tenant; settlement waits until every tenant responds:
 
 - `A == C` — full acceptance. No dispute created. `Ld += C`, agreement closes `Settled`.
 - `0 < A < C` — partial acceptance. `Ld += A` immediately; the remainder `C - A` becomes `disputedAmount`, locked pending the arbiter.
 - `A == 0` — full dispute. Nothing moves to `Ld`; the entire `C` becomes `disputedAmount`.
-- **No response** by `responseDeadline`: anyone may call `finalizeNoResponse`, which is defined as equivalent to `respondToClaim(0)` — i.e. tenant silence is treated as a full dispute of the claimed amount, *not* as acceptance. This is a deliberate policy choice consistent with the project's stated "burden of proof is on the claimant" philosophy: a landlord's claim is never auto-approved by tenant inaction. This is flagged as a product decision worth re-confirming in `open-questions.md` — the alternative (silence = acceptance) is simpler and more common in other escrow designs, but shifts risk onto an inattentive tenant.
+- **Any missing response** by `responseDeadline`: anyone may call `finalizeNoResponse`, which treats the full claimed amount as disputed. Tenant silence is never acceptance. This is a deliberate policy choice consistent with the project's stated "burden of proof is on the claimant" philosophy.
 
 ---
 

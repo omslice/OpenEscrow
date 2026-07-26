@@ -130,4 +130,101 @@ contract MultiTenantFundingTest is Base {
         vm.expectRevert(OpenEscrow.InvalidRoleAssignment.selector);
         escrow.renominateArbiter(id, tenantTwo);
     }
+
+    function test_everyTenantResponds_andLowestAcceptedAmountControlsSettlement() public {
+        uint256 id = _proposeMulti(5_000, 5_000);
+        vm.prank(tenant);
+        escrow.fundTenantShare(id);
+        vm.prank(tenantTwo);
+        escrow.fundTenantShare(id);
+        _submitClaim(id, 400e6);
+
+        vm.prank(tenant);
+        escrow.respondToClaim(id, 400e6);
+        assertEq(uint8(_phase(id)), uint8(OpenEscrow.Phase.ClaimOpen));
+        assertTrue(escrow.tenantClaimResponded(id, tenant));
+        assertEq(escrow.claimResponseCount(id), 1);
+
+        vm.prank(tenantTwo);
+        escrow.respondToClaim(id, 100e6);
+
+        OpenEscrow.Agreement memory agreement = escrow.getAgreement(id);
+        assertEq(uint8(agreement.phase), uint8(OpenEscrow.Phase.Disputed));
+        assertEq(agreement.landlordWithdrawable, 100e6);
+        assertEq(agreement.locked, 300e6);
+        assertEq(escrow.minimumAcceptedClaimAmount(id), 100e6);
+        _assertConserved(id);
+    }
+
+    function test_everyTenantMustApproveBeforeClaimSettles() public {
+        uint256 id = _proposeMulti(6_000, 4_000);
+        vm.prank(tenant);
+        escrow.fundTenantShare(id);
+        vm.prank(tenantTwo);
+        escrow.fundTenantShare(id);
+        _submitClaim(id, 250e6);
+
+        vm.prank(tenant);
+        escrow.respondToClaim(id, 250e6);
+        assertEq(uint8(_phase(id)), uint8(OpenEscrow.Phase.ClaimOpen));
+
+        vm.prank(tenantTwo);
+        escrow.respondToClaim(id, 250e6);
+        OpenEscrow.Agreement memory agreement = escrow.getAgreement(id);
+        assertEq(uint8(agreement.phase), uint8(OpenEscrow.Phase.Closed));
+        assertEq(agreement.landlordWithdrawable, 250e6);
+        assertEq(agreement.tenantWithdrawable, 750e6);
+        assertEq(agreement.locked, 0);
+        _assertConserved(id);
+    }
+
+    function test_tenantCannotRespondTwice() public {
+        uint256 id = _proposeMulti(5_000, 5_000);
+        vm.prank(tenant);
+        escrow.fundTenantShare(id);
+        vm.prank(tenantTwo);
+        escrow.fundTenantShare(id);
+        _submitClaim(id, 200e6);
+
+        vm.prank(tenant);
+        escrow.respondToClaim(id, 100e6);
+        vm.prank(tenant);
+        vm.expectRevert(OpenEscrow.TenantAlreadyResponded.selector);
+        escrow.respondToClaim(id, 0);
+    }
+
+    function test_missingTenantResponseMakesFullClaimDisputedAtDeadline() public {
+        uint256 id = _proposeMulti(5_000, 5_000);
+        vm.prank(tenant);
+        escrow.fundTenantShare(id);
+        vm.prank(tenantTwo);
+        escrow.fundTenantShare(id);
+        _submitClaim(id, 300e6);
+
+        vm.prank(tenant);
+        escrow.respondToClaim(id, 300e6);
+        vm.warp(_responseDeadline(id));
+        escrow.finalizeNoResponse(id);
+
+        OpenEscrow.Agreement memory agreement = escrow.getAgreement(id);
+        assertEq(uint8(agreement.phase), uint8(OpenEscrow.Phase.Disputed));
+        assertEq(agreement.landlordWithdrawable, 0);
+        assertEq(agreement.locked, 300e6);
+        _assertConserved(id);
+    }
+
+    function test_landlordCannotAmendAfterAnyTenantResponds() public {
+        uint256 id = _proposeMulti(5_000, 5_000);
+        vm.prank(tenant);
+        escrow.fundTenantShare(id);
+        vm.prank(tenantTwo);
+        escrow.fundTenantShare(id);
+        _submitClaim(id, 300e6);
+
+        vm.prank(tenantTwo);
+        escrow.respondToClaim(id, 200e6);
+        vm.prank(landlord);
+        vm.expectRevert(OpenEscrow.ClaimResponseAlreadyStarted.selector);
+        escrow.amendClaim(id, 200e6, HASH2, URI, 1);
+    }
 }

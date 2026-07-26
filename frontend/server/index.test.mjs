@@ -1282,6 +1282,120 @@ test("deduction claim email includes every tenant", async () => {
   }
 });
 
+test("each invited tenant can record a claim decision and notify the landlord", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenants: [
+          { name: "Terry Tenant", email: "tenant@example.com" },
+          { name: "Casey Tenant", email: "casey@example.com" },
+        ],
+        arbiterName: "",
+        arbiterEmail: null,
+        terms,
+      }),
+      { DB: db },
+    ),
+  );
+  for (const [index, tenant] of created.access.tenants.entries()) {
+    await jsonResponse(
+      await act(db, created.record.id, tenant.token, {
+        type: "approve",
+        wallet:
+          index === 0
+            ? "0x1111111111111111111111111111111111111111"
+            : "0x2222222222222222222222222222222222222222",
+      }),
+    );
+  }
+  await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "finalize",
+      agreementId: "77",
+      transactionHash: `0x${"a".repeat(64)}`,
+    }),
+  );
+
+  const secondTenant = created.access.tenants[1];
+  const responded = await jsonResponse(
+    await act(db, created.record.id, secondTenant.token, {
+      type: "claim_response",
+      decision: "dispute",
+      acceptedAmount: "0",
+      note: "This charge belongs to a different unit.",
+      transactionHash: `0x${"b".repeat(64)}`,
+    }),
+  );
+  assert.equal(responded.events.at(-1).action, "claim_response_submitted");
+  assert.equal(responded.events.at(-1).metadata.tenantId, secondTenant.id);
+  assert.match(responded.events.at(-1).summary, /Casey Tenant/);
+
+  const incomplete = await act(db, created.record.id, secondTenant.token, {
+    type: "claim_response",
+    decision: "dispute",
+    acceptedAmount: "0",
+    note: "",
+    transactionHash: `0x${"c".repeat(64)}`,
+  });
+  assert.equal(incomplete.status, 400);
+
+  const payload = {
+    proposalId: created.record.id,
+    token: secondTenant.token,
+    agreementId: "77",
+    decision: "dispute",
+    acceptedAmount: "0",
+    note: "This charge belongs to a different unit.",
+    transactionHash: `0x${"b".repeat(64)}`,
+    reviewUrl: "https://openescrow.example/?id=77",
+  };
+  const unavailable = await worker.fetch(
+    request("/api/notifications/claim-response", "POST", payload),
+    { DB: db },
+  );
+  assert.equal(unavailable.status, 503);
+
+  const originalFetch = globalThis.fetch;
+  let deliveryCount = 0;
+  let sentEmail = null;
+  globalThis.fetch = async (url, init) => {
+    assert.equal(url, "https://api.resend.com/emails");
+    deliveryCount += 1;
+    sentEmail = JSON.parse(init.body);
+    return Response.json({ id: "claim-response-message-1" });
+  };
+  try {
+    const notificationEnv = {
+      DB: db,
+      RESEND_API_KEY: "test-resend-key",
+      NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+    };
+    const first = await jsonResponse(
+      await worker.fetch(
+        request("/api/notifications/claim-response", "POST", payload),
+        notificationEnv,
+      ),
+    );
+    const duplicate = await jsonResponse(
+      await worker.fetch(
+        request("/api/notifications/claim-response", "POST", payload),
+        notificationEnv,
+      ),
+    );
+    assert.equal(first.duplicate, false);
+    assert.equal(duplicate.duplicate, true);
+    assert.equal(deliveryCount, 1);
+    assert.deepEqual(sentEmail.to, ["landlord@example.com"]);
+    assert.match(sentEmail.text, /Casey Tenant/);
+    assert.match(sentEmail.text, /different unit/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("documented claim, tenant decision, and email attempts are included in the record", async () => {
   const db = new TestD1();
   const created = await create(db);

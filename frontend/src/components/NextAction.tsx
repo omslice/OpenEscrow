@@ -1,15 +1,24 @@
-import { useAccount } from "wagmi";
-import { Phase, ZERO_ADDRESS } from "../contracts/config";
+import { useAccount, useReadContract } from "wagmi";
+import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
 import { formatTimestamp } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 
-export function NextAction({ agreement }: { agreement: Agreement }) {
+export function NextAction({ id, agreement }: { id: bigint; agreement: Agreement }) {
   const { address } = useAccount();
+  const { data: tenantShare } = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "tenantShareBps",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address },
+  });
   if (!address) return null;
 
   const me = address.toLowerCase();
   const isLandlord = me === agreement.landlord.toLowerCase();
-  const isTenant = me === agreement.tenant.toLowerCase();
+  const isTenant =
+    (typeof tenantShare === "bigint" && tenantShare > 0n) ||
+    (typeof tenantShare === "number" && tenantShare > 0);
   const isArbiter = me === agreement.arbiter.toLowerCase();
 
   let title = "No action required";

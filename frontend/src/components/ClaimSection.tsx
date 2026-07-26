@@ -417,7 +417,7 @@ export function ClaimSection({
         <p className="hint">
           Only the landlord can initiate a deduction. The claimed amount remains subject to the
           tenant’s approve-or-dispute response and, if disputed, the appointed arbiter process.
-          Whatever you do not claim becomes immediately withdrawable by the tenant.
+          All balances stay in escrow until the claim and any dispute are fully resolved.
         </p>
         {itemEditor}
         <p className="field-help">

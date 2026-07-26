@@ -1587,6 +1587,23 @@ a.btn.disabled {
   color: var(--text-h);
 }
 
+.claim-response-step {
+  margin-top: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+}
+
+.claim-response-step > .eyebrow {
+  display: block;
+  margin-bottom: 10px;
+}
+
+.claim-response-step .evidence-list h4 {
+  margin-top: 0;
+}
+
 .button-row {
   display: flex;
   gap: 8px;

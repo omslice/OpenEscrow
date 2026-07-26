@@ -1,16 +1,32 @@
-import { useAccount } from "wagmi";
-import { Phase, ZERO_ADDRESS } from "../contracts/config";
+import { useAccount, useReadContract } from "wagmi";
+import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
 import { countdown, formatTimestamp } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { useNow } from "../lib/useNow";
 
 type Notice = { level: "info" | "warning" | "success"; title: string; body: string };
 
-export function AgreementNoticeCenter({ agreement }: { agreement: Agreement }) {
+export function AgreementNoticeCenter({ id, agreement }: { id: bigint; agreement: Agreement }) {
   const { address } = useAccount();
+  const { data: tenantShare } = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "tenantShareBps",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address },
+  });
+  const { data: tenantCredit } = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "tenantWithdrawableByAddress",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address, refetchInterval: 5000 },
+  });
   const now = useNow();
   const me = address?.toLowerCase();
-  const isTenant = me === agreement.tenant.toLowerCase();
+  const isTenant =
+    (typeof tenantShare === "bigint" && tenantShare > 0n) ||
+    (typeof tenantShare === "number" && tenantShare > 0);
   const isLandlord = me === agreement.landlord.toLowerCase();
   const notices: Notice[] = [];
 
@@ -40,7 +56,7 @@ export function AgreementNoticeCenter({ agreement }: { agreement: Agreement }) {
   }
   if (agreement.phase === Phase.Closed) {
     const canWithdraw =
-      (isTenant && agreement.tenantWithdrawable > 0n) ||
+      (isTenant && typeof tenantCredit === "bigint" && tenantCredit > 0n) ||
       (isLandlord && agreement.landlordWithdrawable > 0n);
     notices.push({
       level: "success",

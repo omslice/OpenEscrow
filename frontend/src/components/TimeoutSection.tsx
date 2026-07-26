@@ -1,4 +1,4 @@
-import { useAccount } from "wagmi";
+import { useAccount, useReadContract } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
 import { useNow } from "../lib/useNow";
 import type { Agreement } from "../lib/useAgreement";
@@ -23,7 +23,16 @@ export function TimeoutSection({
 }) {
   const { address } = useAccount();
   const now = useNow();
-  const isTenant = address?.toLowerCase() === agreement.tenant.toLowerCase();
+  const { data: tenantShare } = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "tenantShareBps",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address },
+  });
+  const isTenant =
+    (typeof tenantShare === "bigint" && tenantShare > 0n) ||
+    (typeof tenantShare === "number" && tenantShare > 0);
   const recordTimeout = (
     timeout: "no_claim_refund" | "no_response_dispute" | "arbiter_timeout_refund",
     transactionHash: `0x${string}`,
@@ -42,13 +51,16 @@ export function TimeoutSection({
     return (
       <div className="action-section">
         <h3>No claim was submitted</h3>
-        <p className="hint">The claim window has closed with no claim. You can withdraw the full deposit.</p>
+        <p className="hint">
+          The claim window closed with no claim. Finalize the refund allocation; each tenant can
+          then withdraw their approved share.
+        </p>
         <TxButton
           address={OPEN_ESCROW_ADDRESS}
           abi={OpenEscrowABI}
           functionName="withdrawNoClaim"
           args={[id]}
-          label="Withdraw full deposit"
+          label="Finalize tenant refund"
           onSuccess={(transactionHash) => recordTimeout("no_claim_refund", transactionHash)}
         />
       </div>

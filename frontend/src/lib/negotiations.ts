@@ -527,6 +527,7 @@ export type NegotiationAction =
         note: string;
         transactionHash: string;
       }
+    | { type: "claim_response_notification_prepared"; method: "gmail" | "copy" }
     | {
         type: "arbiter_ruling";
         awardToLandlord: string;
@@ -627,4 +628,28 @@ export async function sendClaimNotification(
     method: "POST",
     body: JSON.stringify({ proposalId: access.proposalId, token: access.token, ...input }),
   });
+}
+
+export async function sendClaimResponseNotification(
+  access: NegotiationAccess,
+  input: {
+    agreementId: string;
+    decision: "approve" | "partial" | "dispute";
+    acceptedAmount: string;
+    note: string;
+    transactionHash: string;
+    reviewUrl: string;
+  },
+) {
+  return request<{ messageId: string; duplicate?: boolean }>(
+    "/api/notifications/claim-response",
+    {
+      method: "POST",
+      body: JSON.stringify({
+        proposalId: access.proposalId,
+        token: access.token,
+        ...input,
+      }),
+    },
+  );
 }
