@@ -75,6 +75,8 @@ CREATE TABLE IF NOT EXISTS evidence_files (
   content_type TEXT NOT NULL,
   size_bytes INTEGER NOT NULL,
   sha256 TEXT NOT NULL,
+  encryption_version TEXT,
+  encryption_iv TEXT,
   created_at TEXT NOT NULL,
   FOREIGN KEY (negotiation_id) REFERENCES agreement_negotiations(id)
 )`;
@@ -183,6 +185,70 @@ function json(data, status = 200) {
       "cache-control": "no-store",
     },
   });
+}
+
+function emailProvider(env) {
+  if (!env.NOTIFICATION_FROM_EMAIL) return null;
+  if (env.RESEND_API_KEY) return "resend";
+  if (env.EMAIL_WEBHOOK_URL) return "webhook";
+  return null;
+}
+
+async function deliverEmail(
+  env,
+  { to, subject, text, idempotencyKey },
+) {
+  const provider = emailProvider(env);
+  const recipients = [
+    ...new Set(
+      (Array.isArray(to) ? to : [to])
+        .map(normalizeEmail)
+        .filter(Boolean),
+    ),
+  ];
+  if (!provider || recipients.length === 0) return null;
+
+  if (provider === "resend") {
+    const sent = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${env.RESEND_API_KEY}`,
+        "content-type": "application/json",
+        ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
+        "user-agent": "OpenEscrow/1.0",
+      },
+      body: JSON.stringify({
+        from: env.NOTIFICATION_FROM_EMAIL,
+        to: recipients,
+        subject,
+        text,
+      }),
+    });
+    const result = await sent.json().catch(() => ({}));
+    return sent.ok && result.id
+      ? { id: String(result.id), provider }
+      : null;
+  }
+
+  const sent = await fetch(env.EMAIL_WEBHOOK_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(env.EMAIL_WEBHOOK_TOKEN
+        ? { authorization: `Bearer ${env.EMAIL_WEBHOOK_TOKEN}` }
+        : {}),
+    },
+    body: JSON.stringify({
+      from: env.NOTIFICATION_FROM_EMAIL,
+      to: recipients,
+      subject,
+      text,
+      idempotencyKey: idempotencyKey || null,
+    }),
+  });
+  const result = await sent.json().catch(() => ({}));
+  const id = result.id || result.messageId || result.message_id;
+  return sent.ok && id ? { id: String(id), provider } : null;
 }
 
 function cleanText(value, max = 500) {
@@ -342,6 +408,64 @@ function randomToken() {
 async function hashToken(token) {
   const digest = await crypto.subtle.digest("SHA-256", encoder.encode(token));
   return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function decodeBase64(value) {
+  const normalized = cleanText(value, 500)
+    .replaceAll("-", "+")
+    .replaceAll("_", "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+}
+
+function encodeBase64(value) {
+  return btoa(String.fromCharCode(...new Uint8Array(value)));
+}
+
+async function evidenceEncryptionKey(env, evidenceId) {
+  const rawKey = decodeBase64(env.EVIDENCE_ENCRYPTION_KEY);
+  if (rawKey.length !== 32) {
+    throw new Error("EVIDENCE_ENCRYPTION_KEY must be a base64-encoded 32-byte key.");
+  }
+  const sourceKey = await crypto.subtle.importKey("raw", rawKey, "HKDF", false, [
+    "deriveKey",
+  ]);
+  return crypto.subtle.deriveKey(
+    {
+      name: "HKDF",
+      hash: "SHA-256",
+      salt: encoder.encode(evidenceId),
+      info: encoder.encode("OpenEscrow evidence encryption v1"),
+    },
+    sourceKey,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
+  );
+}
+
+async function encryptEvidenceBytes(env, evidenceId, bytes) {
+  const key = await evidenceEncryptionKey(env, evidenceId);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt(
+    { name: "AES-GCM", iv },
+    key,
+    bytes,
+  );
+  return {
+    bytes: encrypted,
+    version: "aes-256-gcm-hkdf-v1",
+    iv: encodeBase64(iv),
+  };
+}
+
+async function decryptEvidenceBytes(env, evidenceId, bytes, iv) {
+  const key = await evidenceEncryptionKey(env, evidenceId);
+  return crypto.subtle.decrypt(
+    { name: "AES-GCM", iv: decodeBase64(iv) },
+    key,
+    bytes,
+  );
 }
 
 function decodeJwtJson(segment) {
@@ -580,6 +704,118 @@ async function notificationPreferences(request, env) {
     deadlineReminders: body.deadlineReminders,
     consentedAt,
     updatedAt: now,
+  });
+}
+
+async function serviceReadiness(env) {
+  let schedulerLastRunAt = null;
+  if (env.DB) {
+    await initialize(env.DB);
+    const scheduledRun = await env.DB
+      .prepare("SELECT last_started_at FROM scheduled_job_runs WHERE name = ?")
+      .bind("notification-reminders")
+      .first();
+    schedulerLastRunAt = scheduledRun?.last_started_at || null;
+  }
+  const provider = emailProvider(env);
+  const decentralizedReady = Boolean(
+    env.PINATA_JWT && env.EVIDENCE_ENCRYPTION_KEY,
+  );
+  const evidenceMode =
+    cleanText(env.EVIDENCE_STORAGE_MODE, 40) === "encrypted-ipfs" &&
+    decentralizedReady
+      ? "encrypted-ipfs"
+      : env.EVIDENCE
+        ? "private-r2"
+        : decentralizedReady
+          ? "encrypted-ipfs"
+          : "unconfigured";
+  return json({
+    email: {
+      configured: Boolean(provider),
+      provider,
+      schedulerConfigured: Boolean(env.DB),
+      schedulerLastRunAt,
+    },
+    evidence: {
+      configured: Boolean(env.EVIDENCE || decentralizedReady),
+      mode: evidenceMode,
+      encryptedAtRest: Boolean(env.EVIDENCE_ENCRYPTION_KEY),
+      decentralizedReady,
+    },
+  });
+}
+
+async function sendTestEmail(request, env) {
+  if (!env.DB) return json({ error: "Account preference storage is not available." }, 503);
+  if (!emailProvider(env)) {
+    return json({ error: "Automatic email delivery is not configured yet." }, 503);
+  }
+  let identity;
+  try {
+    identity = await verifyPrivyIdentity(request, env);
+  } catch (error) {
+    return json(
+      { error: error instanceof Error ? error.message : "Sign in again to send a test email." },
+      401,
+    );
+  }
+  const email = identity.emails[0];
+  const timeBucket = Math.floor(Date.now() / (10 * 60 * 1000));
+  const recipientKey = (await hashToken(email)).slice(0, 24);
+  const idempotencyKey = `email-test:${recipientKey}:${timeBucket}`;
+  const prior = await env.DB
+    .prepare("SELECT status, provider_message_id FROM notification_deliveries WHERE idempotency_key = ?")
+    .bind(idempotencyKey)
+    .first();
+  if (prior?.status === "sent") {
+    return json({
+      sent: true,
+      duplicate: true,
+      provider: emailProvider(env),
+      messageId: prior.provider_message_id,
+    });
+  }
+
+  const delivered = await deliverEmail(env, {
+    to: [email],
+    subject: "Your OpenEscrow email notifications are ready",
+    text: [
+      "This test confirms that OpenEscrow can deliver automatic agreement and deadline notifications to this verified account.",
+      "Private agreement details, addresses, amounts, evidence, and notes are intentionally omitted from notification emails.",
+      "You can change your notification preferences from the signed-in OpenEscrow account panel.",
+    ].join("\n\n"),
+    idempotencyKey,
+  });
+  const now = new Date().toISOString();
+  await env.DB
+    .prepare(
+      `INSERT INTO notification_deliveries
+       (idempotency_key, negotiation_id, recipient_email, notification_type,
+        scheduled_for, status, provider_message_id, created_at, sent_at)
+       VALUES (?, NULL, ?, 'email_configuration_test', NULL, ?, ?, ?, ?)
+       ON CONFLICT(idempotency_key) DO UPDATE SET
+         status = excluded.status,
+         provider_message_id = excluded.provider_message_id,
+         sent_at = excluded.sent_at`,
+    )
+    .bind(
+      idempotencyKey,
+      email,
+      delivered?.id ? "sent" : "failed",
+      delivered?.id || null,
+      now,
+      delivered?.id ? now : null,
+    )
+    .run();
+  if (!delivered?.id) {
+    return json({ error: "The email provider rejected the test message." }, 502);
+  }
+  return json({
+    sent: true,
+    duplicate: false,
+    provider: delivered.provider,
+    messageId: delivered.id,
   });
 }
 
@@ -1381,7 +1617,7 @@ async function removeTenant(request, env, id, tenantId) {
 }
 
 async function sendLandlordReadyNotification(request, env, row) {
-  if (!env.RESEND_API_KEY || !env.NOTIFICATION_FROM_EMAIL) return null;
+  if (!emailProvider(env)) return null;
   const workspaceUrl = new URL(request.url).origin;
   const subject = `OpenEscrow proposal ${row.id} is approved and ready to finalize`;
   const text = [
@@ -1390,27 +1626,17 @@ async function sendLandlordReadyNotification(request, env, row) {
     `Sign in as the landlord, choose Agreements & deductions, and select Find my proposals & agreements: ${workspaceUrl}`,
     "Open the approval-ready proposal and submit the finalized terms onchain.",
   ].join("\n\n");
-  const sent = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "content-type": "application/json",
-      "idempotency-key": `proposal-ready-${row.id}-${row.revision}`,
-      "user-agent": "OpenEscrow/1.0",
-    },
-    body: JSON.stringify({
-      from: env.NOTIFICATION_FROM_EMAIL,
-      to: [row.landlord_email],
-      subject,
-      text,
-    }),
+  const delivered = await deliverEmail(env, {
+    to: [row.landlord_email],
+    subject,
+    text,
+    idempotencyKey: `proposal-ready-${row.id}-${row.revision}`,
   });
-  const result = await sent.json().catch(() => ({}));
-  return sent.ok && result.id ? result.id : null;
+  return delivered?.id || null;
 }
 
 async function sendOptedInAgreementActivityEmails(request, env, row, eventType) {
-  if (!env.RESEND_API_KEY || !env.NOTIFICATION_FROM_EMAIL) return [];
+  if (!emailProvider(env)) return [];
   const tenantRecipients = (await tenantsFor(env.DB, row.id)).map((tenant) => [
     "tenant",
     tenant.email,
@@ -1487,23 +1713,14 @@ async function sendOptedInAgreementActivityEmails(request, env, row, eventType) 
     try {
       const unsubscribeUrl = await unsubscribeUrlFor(env.DB, appUrl, email);
       const recipientKey = (await hashToken(email)).slice(0, 16);
-      const sent = await fetch("https://api.resend.com/emails", {
-        method: "POST",
-        headers: {
-          authorization: `Bearer ${env.RESEND_API_KEY}`,
-          "content-type": "application/json",
-          "idempotency-key": `agreement-${row.id}-${eventType}-${recipientRole}-${recipientKey}-${row.updated_at}`,
-        },
-        body: JSON.stringify({
-          from: env.NOTIFICATION_FROM_EMAIL,
-          to: [email],
-          subject: notification.subject,
-          text: `${notification.text}\n\nOpen your signed-in dashboard: ${appUrl}\n\nThis email intentionally omits evidence, tenancy details, and private notes.${unsubscribeUrl ? `\n\nTurn off optional OpenEscrow emails: ${unsubscribeUrl}` : ""}`,
-        }),
+      const delivered = await deliverEmail(env, {
+        to: [email],
+        subject: notification.subject,
+        text: `${notification.text}\n\nOpen your signed-in dashboard: ${appUrl}\n\nThis email intentionally omits evidence, tenancy details, and private notes.${unsubscribeUrl ? `\n\nTurn off optional OpenEscrow emails: ${unsubscribeUrl}` : ""}`,
+        idempotencyKey: `agreement-${row.id}-${eventType}-${recipientRole}-${recipientKey}-${row.updated_at}`,
       });
-      const result = await sent.json().catch(() => ({}));
-      if (sent.ok && result.id) {
-        results.push({ recipientRole, email, messageId: result.id });
+      if (delivered?.id) {
+        results.push({ recipientRole, email, messageId: delivered.id });
       }
     } catch {
       // Continue delivering to other opted-in parties when one provider request fails.
@@ -1551,23 +1768,13 @@ async function sendScheduledNotification(env, row, notification, appUrl) {
   const createdAt = new Date().toISOString();
   let messageId = null;
   try {
-    const sent = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        authorization: `Bearer ${env.RESEND_API_KEY}`,
-        "content-type": "application/json",
-        "idempotency-key": idempotencyKey,
-        "user-agent": "OpenEscrow/1.0",
-      },
-      body: JSON.stringify({
-        from: env.NOTIFICATION_FROM_EMAIL,
-        to: [notification.email],
-        subject: notification.subject,
-        text: `${notification.text}\n\nOpen your signed-in dashboard: ${appUrl}\n\nThis reminder intentionally omits addresses, amounts, evidence, and private notes.${unsubscribeUrl ? `\n\nTurn off optional OpenEscrow emails: ${unsubscribeUrl}` : ""}`,
-      }),
+    const delivered = await deliverEmail(env, {
+      to: [notification.email],
+      subject: notification.subject,
+      text: `${notification.text}\n\nOpen your signed-in dashboard: ${appUrl}\n\nThis reminder intentionally omits addresses, amounts, evidence, and private notes.${unsubscribeUrl ? `\n\nTurn off optional OpenEscrow emails: ${unsubscribeUrl}` : ""}`,
+      idempotencyKey,
     });
-    const result = await sent.json().catch(() => ({}));
-    if (sent.ok && result.id) messageId = result.id;
+    if (delivered?.id) messageId = delivered.id;
   } catch {
     // The durable failed-delivery record allows the next scheduled run to retry.
   }
@@ -1848,7 +2055,7 @@ async function runScheduledNotifications(env, now = new Date()) {
       ...withdrawalCandidates(row, events, now),
     ];
     for (const candidate of candidates) {
-      if (!env.RESEND_API_KEY || !env.NOTIFICATION_FROM_EMAIL) continue;
+      if (!emailProvider(env)) continue;
       await sendScheduledNotification(env, row, candidate, appUrl);
     }
   }
@@ -2802,35 +3009,78 @@ async function uploadEvidence(request, env) {
     .join("")}`;
   const now = new Date().toISOString();
   const evidenceId = crypto.randomUUID();
+  const requestedMode = cleanText(env.EVIDENCE_STORAGE_MODE, 40);
+  const storeOnIpfs =
+    requestedMode === "encrypted-ipfs" ||
+    (!env.EVIDENCE && Boolean(env.PINATA_JWT));
+  if (storeOnIpfs && (!env.PINATA_JWT || !env.EVIDENCE_ENCRYPTION_KEY)) {
+    return json(
+      {
+        error:
+          "Decentralized evidence storage requires both PINATA_JWT and EVIDENCE_ENCRYPTION_KEY so no private document is published as plaintext.",
+      },
+      503,
+    );
+  }
 
-  if (env.EVIDENCE) {
+  let storedBytes = bytes;
+  let encryptionVersion = null;
+  let encryptionIv = null;
+  if (env.EVIDENCE_ENCRYPTION_KEY) {
+    try {
+      const encrypted = await encryptEvidenceBytes(env, evidenceId, bytes);
+      storedBytes = encrypted.bytes;
+      encryptionVersion = encrypted.version;
+      encryptionIv = encrypted.iv;
+    } catch (error) {
+      return json(
+        {
+          error:
+            error instanceof Error
+              ? error.message
+              : "Evidence encryption could not be initialized.",
+        },
+        503,
+      );
+    }
+  }
+
+  if (!storeOnIpfs && env.EVIDENCE) {
     const objectKey = `agreements/${proposalId}/${evidenceId}`;
-    await env.EVIDENCE.put(objectKey, bytes, {
-      httpMetadata: { contentType: file.type },
+    await env.EVIDENCE.put(objectKey, storedBytes, {
+      httpMetadata: {
+        contentType: encryptionVersion ? "application/octet-stream" : file.type,
+      },
       customMetadata: {
         negotiationId: proposalId,
         uploaderRole: role,
         sha256,
+        encrypted: encryptionVersion ? "true" : "false",
       },
     });
     const uri = `openescrow://evidence/${evidenceId}`;
+    const storageKind = encryptionVersion ? "encrypted-r2" : "private-r2";
     await env.DB.batch([
       env.DB
         .prepare(
           `INSERT INTO evidence_files
            (id, negotiation_id, uploader_role, storage_kind, object_key, cid,
-            original_name, content_type, size_bytes, sha256, created_at)
-           VALUES (?, ?, ?, 'private-r2', ?, NULL, ?, ?, ?, ?, ?)`,
+             original_name, content_type, size_bytes, sha256, encryption_version,
+             encryption_iv, created_at)
+           VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           evidenceId,
           proposalId,
           role,
+          storageKind,
           objectKey,
           cleanText(file.name, 240) || "evidence",
           file.type,
           file.size,
           sha256,
+          encryptionVersion,
+          encryptionIv,
           now,
         ),
       env.DB
@@ -2842,7 +3092,7 @@ async function uploadEvidence(request, env) {
         now,
         role,
         "evidence_uploaded",
-        `Uploaded a private ${file.type} evidence file. Its SHA-256 receipt is ${sha256}.`,
+        `Uploaded a private ${file.type} evidence file${encryptionVersion ? " encrypted at rest" : ""}. Its SHA-256 receipt is ${sha256}.`,
         row.revision,
         {
           evidenceId,
@@ -2850,7 +3100,8 @@ async function uploadEvidence(request, env) {
           sha256,
           size: file.size,
           type: file.type,
-          storageKind: "private-r2",
+          storageKind,
+          encrypted: Boolean(encryptionVersion),
         },
       ),
     ]);
@@ -2858,17 +3109,29 @@ async function uploadEvidence(request, env) {
       cid: evidenceId,
       uri,
       sha256,
-      storageKind: "private",
+      storageKind: encryptionVersion ? "encrypted" : "private",
       gatewayUrl: `/api/evidence/${encodeURIComponent(evidenceId)}?token=${encodeURIComponent(token)}`,
     });
   }
 
+  if (!storeOnIpfs) {
+    return json({ error: "Private evidence storage is not configured." }, 503);
+  }
+
   const pinataForm = new FormData();
-  pinataForm.set("file", file, file.name);
+  pinataForm.set(
+    "file",
+    new File([storedBytes], `${evidenceId}.openescrow-encrypted`, {
+      type: "application/octet-stream",
+    }),
+  );
   pinataForm.set("pinataOptions", JSON.stringify({ cidVersion: 1 }));
   pinataForm.set(
     "pinataMetadata",
-    JSON.stringify({ name: `openescrow-${proposalId}-${crypto.randomUUID()}` }),
+    JSON.stringify({
+      name: `openescrow-encrypted-${proposalId}-${crypto.randomUUID()}`,
+      keyvalues: { encrypted: "true", format: "aes-256-gcm-hkdf-v1" },
+    }),
   );
   const upload = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
     method: "POST",
@@ -2880,14 +3143,15 @@ async function uploadEvidence(request, env) {
     return json({ error: "The IPFS pinning service rejected the upload." }, 502);
   }
 
-  const uri = `ipfs://${result.IpfsHash}`;
+  const uri = `openescrow+ipfs://${result.IpfsHash}/${evidenceId}`;
   await env.DB.batch([
     env.DB
       .prepare(
         `INSERT INTO evidence_files
          (id, negotiation_id, uploader_role, storage_kind, object_key, cid,
-          original_name, content_type, size_bytes, sha256, created_at)
-         VALUES (?, ?, ?, 'public-ipfs', NULL, ?, ?, ?, ?, ?, ?)`,
+           original_name, content_type, size_bytes, sha256, encryption_version,
+           encryption_iv, created_at)
+         VALUES (?, ?, ?, 'encrypted-ipfs', NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         evidenceId,
@@ -2898,6 +3162,8 @@ async function uploadEvidence(request, env) {
         file.type,
         file.size,
         sha256,
+        encryptionVersion,
+        encryptionIv,
         now,
       ),
     env.DB
@@ -2909,7 +3175,7 @@ async function uploadEvidence(request, env) {
       now,
       role,
       "evidence_uploaded",
-      `Uploaded a ${file.type || "document"} evidence file to IPFS as ${uri}.`,
+      `Encrypted a ${file.type || "document"} evidence file and stored the ciphertext on IPFS as ${uri}.`,
       row.revision,
       {
         evidenceId,
@@ -2918,7 +3184,8 @@ async function uploadEvidence(request, env) {
         sha256,
         size: file.size,
         type: file.type || null,
-        storageKind: "public-ipfs",
+        storageKind: "encrypted-ipfs",
+        encrypted: true,
       },
     ),
   ]);
@@ -2926,42 +3193,96 @@ async function uploadEvidence(request, env) {
     cid: result.IpfsHash,
     uri,
     sha256,
-    storageKind: "public",
-    gatewayUrl: `https://gateway.pinata.cloud/ipfs/${result.IpfsHash}`,
+    storageKind: "encrypted",
+    gatewayUrl: `/api/evidence/${encodeURIComponent(evidenceId)}?token=${encodeURIComponent(token)}`,
   });
 }
 
 async function downloadEvidence(request, env, evidenceId) {
-  if (!env.DB || !env.EVIDENCE) {
+  if (!env.DB) {
     return json({ error: "Secure evidence storage is not available." }, 503);
   }
   const metadata = await env.DB
     .prepare("SELECT * FROM evidence_files WHERE id = ?")
     .bind(evidenceId)
     .first();
-  if (!metadata || metadata.storage_kind !== "private-r2" || !metadata.object_key) {
+  if (!metadata) {
     return json({ error: "This private evidence file was not found." }, 404);
   }
   const row = await rowFor(env.DB, metadata.negotiation_id);
   const token = new URL(request.url).searchParams.get("token");
   const role = await authorize(env.DB, row, token);
   if (!role) return json({ error: "This evidence link is invalid or no longer available." }, 403);
-  const object = await env.EVIDENCE.get(metadata.object_key);
-  if (!object) return json({ error: "This private evidence file is unavailable." }, 404);
+
+  let storedBytes;
+  if (
+    (metadata.storage_kind === "private-r2" ||
+      metadata.storage_kind === "encrypted-r2") &&
+    metadata.object_key
+  ) {
+    if (!env.EVIDENCE) {
+      return json({ error: "The private evidence bucket is unavailable." }, 503);
+    }
+    const object = await env.EVIDENCE.get(metadata.object_key);
+    if (!object) return json({ error: "This private evidence file is unavailable." }, 404);
+    storedBytes = await object.arrayBuffer();
+  } else if (metadata.storage_kind === "encrypted-ipfs" && metadata.cid) {
+    const gatewayBase =
+      cleanText(env.IPFS_GATEWAY_URL, 500) ||
+      "https://gateway.pinata.cloud/ipfs";
+    const gatewayUrl = `${gatewayBase.replace(/\/+$/, "")}/${encodeURIComponent(metadata.cid)}`;
+    const response = await fetch(gatewayUrl, {
+      headers: { "user-agent": "OpenEscrow/1.0" },
+    });
+    if (!response.ok) {
+      return json({ error: "The encrypted IPFS evidence file is unavailable." }, 502);
+    }
+    storedBytes = await response.arrayBuffer();
+  } else {
+    return json({ error: "This evidence storage format is not supported." }, 404);
+  }
+
+  let plaintext = storedBytes;
+  if (metadata.encryption_version) {
+    if (!env.EVIDENCE_ENCRYPTION_KEY || !metadata.encryption_iv) {
+      return json({ error: "The evidence decryption key is not configured." }, 503);
+    }
+    try {
+      plaintext = await decryptEvidenceBytes(
+        env,
+        evidenceId,
+        storedBytes,
+        metadata.encryption_iv,
+      );
+    } catch {
+      return json({ error: "The evidence file could not be decrypted or was altered." }, 422);
+    }
+  }
+  const digest = await crypto.subtle.digest("SHA-256", plaintext);
+  const sha256 = `0x${[...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")}`;
+  if (sha256.toLowerCase() !== String(metadata.sha256).toLowerCase()) {
+    return json({ error: "The evidence file failed its integrity check." }, 422);
+  }
+
   const safeName = cleanText(metadata.original_name, 240).replaceAll(/[^a-zA-Z0-9._ -]/g, "_");
   const headers = new Headers();
-  object.writeHttpMetadata(headers);
   headers.set("content-type", metadata.content_type || "application/octet-stream");
   headers.set("content-disposition", `inline; filename="${safeName || "evidence"}"`);
   headers.set("cache-control", "private, no-store");
   headers.set("x-content-type-options", "nosniff");
   headers.set("x-openescrow-sha256", metadata.sha256);
-  return new Response(object.body, { headers });
+  headers.set(
+    "x-openescrow-storage",
+    metadata.storage_kind || "unknown",
+  );
+  return new Response(plaintext, { headers });
 }
 
 async function sendClaimNotification(request, env) {
   if (!env.DB) return json({ error: "Agreement record storage is not available." }, 503);
-  if (!env.RESEND_API_KEY || !env.NOTIFICATION_FROM_EMAIL) {
+  if (!emailProvider(env)) {
     return json(
       {
         error:
@@ -3043,30 +3364,21 @@ async function sendClaimNotification(request, env) {
     `Itemized deductions:\n${itemSummary}`,
     note ? `Landlord note: ${note}` : "",
     evidenceUri
-      ? evidenceUri.startsWith("openescrow://evidence/")
+      ? evidenceUri.startsWith("openescrow://evidence/") ||
+        evidenceUri.startsWith("openescrow+ipfs://")
         ? "Invoice / evidence: available privately after opening the agreement"
         : `Invoice / evidence: ${evidenceUri}`
       : "",
     `Review the documentation and approve or dispute the claim: ${reviewUrl.toString()}`,
     "Your decision and all related actions will be included in the timestamped agreement record.",
   ].filter(Boolean).join("\n\n");
-  const sent = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "content-type": "application/json",
-      "idempotency-key": `claim-${proposalId}-${deliveryKey}`,
-      "user-agent": "OpenEscrow/1.0",
-    },
-    body: JSON.stringify({
-      from: env.NOTIFICATION_FROM_EMAIL,
-      to: recipientEmails,
-      subject,
-      text,
-    }),
+  const delivered = await deliverEmail(env, {
+    to: recipientEmails,
+    subject,
+    text,
+    idempotencyKey: `claim-${proposalId}-${deliveryKey}`,
   });
-  const result = await sent.json();
-  if (!sent.ok || !result.id) {
+  if (!delivered?.id) {
     return json({ error: "The email provider could not send this claim notice." }, 502);
   }
 
@@ -3083,15 +3395,15 @@ async function sendClaimNotification(request, env) {
       "claim_notification_sent",
       `Sent the deduction-claim notice to ${recipientEmails.join(", ")}.`,
       row.revision,
-      { messageId: result.id, deliveryKey },
+      { messageId: delivered.id, deliveryKey },
     ),
   ]);
-  return json({ messageId: result.id, duplicate: false });
+  return json({ messageId: delivered.id, duplicate: false });
 }
 
 async function sendClaimResponseNotification(request, env) {
   if (!env.DB) return json({ error: "Agreement record storage is not available." }, 503);
-  if (!env.RESEND_API_KEY || !env.NOTIFICATION_FROM_EMAIL) {
+  if (!emailProvider(env)) {
     return json(
       {
         error:
@@ -3188,23 +3500,13 @@ async function sendClaimResponseNotification(request, env) {
   ]
     .filter(Boolean)
     .join("\n\n");
-  const sent = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${env.RESEND_API_KEY}`,
-      "content-type": "application/json",
-      "idempotency-key": `claim-response-${proposalId}-${deliveryKey}`,
-      "user-agent": "OpenEscrow/1.0",
-    },
-    body: JSON.stringify({
-      from: env.NOTIFICATION_FROM_EMAIL,
-      to: [normalizeEmail(row.landlord_email)],
-      subject,
-      text,
-    }),
+  const delivered = await deliverEmail(env, {
+    to: [normalizeEmail(row.landlord_email)],
+    subject,
+    text,
+    idempotencyKey: `claim-response-${proposalId}-${deliveryKey}`,
   });
-  const result = await sent.json();
-  if (!sent.ok || !result.id) {
+  if (!delivered?.id) {
     return json({ error: "The email provider could not send this claim response." }, 502);
   }
 
@@ -3221,10 +3523,10 @@ async function sendClaimResponseNotification(request, env) {
       "claim_response_notification_sent",
       `${tenantLabel} sent the claim response notice to ${normalizeEmail(row.landlord_email)}.`,
       row.revision,
-      { tenantId: tenant.id, messageId: result.id, deliveryKey },
+      { tenantId: tenant.id, messageId: delivered.id, deliveryKey },
     ),
   ]);
-  return json({ messageId: result.id, duplicate: false });
+  return json({ messageId: delivered.id, duplicate: false });
 }
 
 function escapeHtml(value) {
@@ -3599,6 +3901,16 @@ const worker = {
     }
     if (url.pathname === "/api/address-suggestions" && request.method === "GET") {
       return addressSuggestions(request, env);
+    }
+    if (url.pathname === "/api/system/readiness" && request.method === "GET") {
+      return serviceReadiness(env);
+    }
+    if (url.pathname === "/api/profile/test-email" && request.method === "POST") {
+      if (!sameOriginPost(request)) {
+        return json({ error: "Cross-origin writes are not allowed." }, 403);
+      }
+      if (env.DB) await initialize(env.DB);
+      return sendTestEmail(request, env);
     }
     if (
       url.pathname === "/api/notifications/unsubscribe" &&

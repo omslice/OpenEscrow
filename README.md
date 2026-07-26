@@ -32,9 +32,12 @@ The Base Sepolia testnet MVP implements the complete technical lifecycle:
   deduction/dispute alerts, deadlines, and resolution status. The demo value is not real yield.
 - Agreement parties can anchor canonical record snapshots and privacy-safe activity hashes in the
   separate Base Sepolia activity registry, download private proofs, and verify them locally.
-- Supporting PDFs and images can be stored in a party-authorized private evidence vault while a
-  content hash supplies the integrity receipt.
-- Opted-in accounts receive idempotent action and deadline notices with one-click unsubscribe.
+- Supporting PDFs and images can be encrypted in a party-authorized private vault or stored as
+  encrypted IPFS ciphertext while a content hash supplies the integrity receipt.
+- Opted-in accounts receive provider-neutral, idempotent action and deadline notices with
+  one-click unsubscribe and a signed-in delivery self-test.
+- Embedded-wallet tenants have a guarded Privy card/bank checkout path ready for sandbox
+  configuration; the public Base Sepolia demo continues to use free test tokens.
 - Tenant and landlord withdraw credited balances using pull payments.
 
 The current source includes:
@@ -47,6 +50,7 @@ The current source includes:
 - [`docs/security-review.md`](docs/security-review.md) — internal review record and limitations
 - [`docs/usability-test-plan.md`](docs/usability-test-plan.md) — moderated research script and success gate
 - [`docs/pilot-readiness-brief.md`](docs/pilot-readiness-brief.md) — legal, partner, privacy, and audit handoff
+- [`docs/pilot-services-setup.md`](docs/pilot-services-setup.md) — email, fiat sandbox, and encrypted evidence setup
 
 ### Verification snapshot
 

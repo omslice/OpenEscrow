@@ -27,6 +27,12 @@ function evidenceUrl(uri: string, access?: NegotiationAccess | null) {
   if (match && access) {
     return `/api/evidence/${encodeURIComponent(match[1])}?token=${encodeURIComponent(access.token)}`;
   }
+  const encryptedIpfs = uri.match(
+    /^openescrow\+ipfs:\/\/[a-zA-Z0-9._~-]+\/([a-fA-F0-9-]+)$/,
+  );
+  if (encryptedIpfs && access) {
+    return `/api/evidence/${encodeURIComponent(encryptedIpfs[1])}?token=${encodeURIComponent(access.token)}`;
+  }
   if (/^https:\/\//i.test(uri)) return uri;
   const ipfsPath = uri.match(/^ipfs:\/\/([a-zA-Z0-9._~/-]+)$/)?.[1];
   if (ipfsPath) {

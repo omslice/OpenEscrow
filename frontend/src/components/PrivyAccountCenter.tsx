@@ -10,8 +10,11 @@ import { useAccount } from "wagmi";
 import { shortAddr } from "../lib/format";
 import {
   loadNotificationPreferences,
+  loadServiceReadiness,
   saveNotificationPreferences,
+  sendNotificationTest,
   type NotificationPreferences,
+  type ServiceReadiness,
 } from "../lib/negotiations";
 import {
   clearInviteRole,
@@ -33,6 +36,8 @@ export function PrivyAccountCenter({ embedded = false }: { embedded?: boolean })
   const { address } = useAccount();
   const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES);
   const [preferenceStatus, setPreferenceStatus] = useState<string | null>(null);
+  const [serviceReadiness, setServiceReadiness] = useState<ServiceReadiness | null>(null);
+  const [isTestingEmail, setIsTestingEmail] = useState(false);
   const preferenceWrite = useRef(0);
   const [walletSetup, setWalletSetup] = useState<"idle" | "creating" | "slow" | "error">("idle");
   const [walletError, setWalletError] = useState<string | null>(null);
@@ -84,6 +89,20 @@ export function PrivyAccountCenter({ embedded = false }: { embedded?: boolean })
       cancelled = true;
     };
   }, [identityToken, preferenceKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadServiceReadiness()
+      .then((readiness) => {
+        if (!cancelled) setServiceReadiness(readiness);
+      })
+      .catch(() => {
+        if (!cancelled) setServiceReadiness(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const provisionWallet = useCallback(async () => {
     if (!user || hasWallet || walletSetup === "creating") return;
@@ -326,10 +345,62 @@ export function PrivyAccountCenter({ embedded = false }: { embedded?: boolean })
           Upcoming claim, response, and arbiter deadlines
         </label>
         <p className="notification-boundary">
-          Preferences follow your verified account. Reminder checks run during normal app use and
-          every optional message includes an unsubscribe link. A production chain indexer and
-          dedicated scheduler are still needed before a real-world pilot.
+          Preferences follow your verified account. Every optional message includes an unsubscribe
+          link and intentionally omits private agreement details.
         </p>
+        {serviceReadiness?.email.configured ? (
+          <div className="notification-delivery-status ready">
+            <div>
+              <strong>Automatic delivery ready</strong>
+              <span>
+                {serviceReadiness.email.provider === "resend"
+                  ? "Resend"
+                  : "Configured email webhook"}
+                {serviceReadiness.email.schedulerLastRunAt
+                  ? ` · scheduler checked ${new Date(serviceReadiness.email.schedulerLastRunAt).toLocaleString()}`
+                  : " · scheduler awaits its first hosted run"}
+              </span>
+            </div>
+            <button
+              className="btn btn-ghost small"
+              type="button"
+              disabled={!identityToken || !email || isTestingEmail}
+              onClick={async () => {
+                if (!identityToken) return;
+                setIsTestingEmail(true);
+                setPreferenceStatus("Sending a private configuration test...");
+                try {
+                  const result = await sendNotificationTest(identityToken);
+                  setPreferenceStatus(
+                    result.duplicate
+                      ? "A test was already delivered recently. Check this account's inbox."
+                      : "Test email sent. Check this account's inbox.",
+                  );
+                } catch (error) {
+                  setPreferenceStatus(
+                    error instanceof Error
+                      ? error.message
+                      : "The test email could not be sent.",
+                  );
+                } finally {
+                  setIsTestingEmail(false);
+                }
+              }}
+            >
+              {isTestingEmail ? "Sending..." : "Send test email"}
+            </button>
+          </div>
+        ) : (
+          <div className="notification-delivery-status">
+            <div>
+              <strong>Manual fallback active</strong>
+              <span>
+                Gmail drafts and copy-email notices remain available until the deployment owner
+                configures a free email provider.
+              </span>
+            </div>
+          </div>
+        )}
         {preferenceStatus && (
           <p
             className={

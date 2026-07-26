@@ -68,7 +68,7 @@ export function useEvidenceInputs(access?: NegotiationAccess | null) {
                 setUploadMessage(
                   uploaded.storageKind === "private"
                     ? `Stored privately. SHA-256 receipt: ${uploaded.sha256.slice(0, 14)}…`
-                    : `Published to IPFS: ${uploaded.reference}`,
+                    : `Encrypted before decentralized storage. CID: ${uploaded.reference}`,
                 );
               } catch (error) {
                 setUploadError(error instanceof Error ? error.message : "The upload failed.");
@@ -88,9 +88,10 @@ export function useEvidenceInputs(access?: NegotiationAccess | null) {
         <input value={uri} onChange={(e) => setUri(e.target.value)} placeholder="ipfs://... or a privacy-safe document pointer" />
       </label>
       <p className="warning">
-        The default evidence vault limits retrieval to agreement-party links and records a
-        content hash for verification. A manually entered IPFS URI remains public and permanent.
-        This is still a testnet demo, so do not upload real tenancy records.
+        The evidence vault limits readable retrieval to agreement parties and verifies every
+        file against its SHA-256 receipt. Decentralized mode stores encrypted ciphertext, never
+        a readable invoice or photograph. A manually entered public IPFS URI is not protected.
+        This remains a testnet demo, so do not upload real tenancy records.
       </p>
     </>
   );

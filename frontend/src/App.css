@@ -805,7 +805,39 @@
 
 .notification-boundary {
   margin: 12px 0 0;
-  color: var(--warning);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.notification-delivery-status {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--warning-border);
+  border-radius: 9px;
+  background: var(--warning-bg);
+}
+
+.notification-delivery-status.ready {
+  border-color: color-mix(in srgb, var(--success) 45%, var(--border));
+  background: var(--success-bg);
+}
+
+.notification-delivery-status > div {
+  display: grid;
+  gap: 2px;
+}
+
+.notification-delivery-status strong {
+  color: var(--text-h);
+  font-size: 13px;
+}
+
+.notification-delivery-status span {
+  color: var(--text);
   font-size: 12px;
 }
 
@@ -1603,6 +1635,64 @@
 .funding-reserve-summary small {
   grid-column: 1 / -1;
   margin-top: 3px;
+}
+
+.funding-methods {
+  display: grid;
+  gap: 10px;
+}
+
+.fiat-funding-option {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--surface);
+}
+
+.fiat-funding-option summary {
+  color: var(--text-h);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.fiat-funding-option p,
+.fiat-funding-option span,
+.fiat-funding-option small {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.fiat-funding-option.enabled {
+  display: grid;
+  gap: 10px;
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+}
+
+.fiat-funding-option.enabled > div {
+  display: grid;
+  gap: 3px;
+}
+
+.fiat-funding-option.enabled .btn {
+  justify-self: start;
+}
+
+.testnet-funding-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: 9px;
+}
+
+.testnet-funding-fallback > span {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
 }
 
 .next-action {

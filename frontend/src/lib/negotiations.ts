@@ -46,6 +46,21 @@ export interface NotificationPreferences {
   updatedAt?: string | null;
 }
 
+export interface ServiceReadiness {
+  email: {
+    configured: boolean;
+    provider: "resend" | "webhook" | null;
+    schedulerConfigured: boolean;
+    schedulerLastRunAt: string | null;
+  };
+  evidence: {
+    configured: boolean;
+    mode: "private-r2" | "encrypted-ipfs" | "unconfigured";
+    encryptedAtRest: boolean;
+    decentralizedReady: boolean;
+  };
+}
+
 export interface AgreementSnapshot {
   algorithm: "SHA-256";
   hash: `0x${string}`;
@@ -459,6 +474,22 @@ export function saveNotificationPreferences(
   });
 }
 
+export function loadServiceReadiness() {
+  return request<ServiceReadiness>("/api/system/readiness");
+}
+
+export function sendNotificationTest(identityToken: string) {
+  return request<{
+    sent: boolean;
+    duplicate: boolean;
+    provider: "resend" | "webhook";
+    messageId: string;
+  }>("/api/profile/test-email", {
+    method: "POST",
+    headers: { "privy-id-token": identityToken },
+  });
+}
+
 export type NegotiationAction =
     | { type: "approve"; wallet: string; name?: string }
     | { type: "propose_change"; summary: string }
@@ -579,7 +610,7 @@ export async function uploadEvidenceDocument(
   uri: string;
   gatewayUrl: string;
   sha256: string;
-  storageKind: "private" | "public";
+  storageKind: "private" | "encrypted";
 }> {
   const form = new FormData();
   form.set("proposalId", access.proposalId);
@@ -591,7 +622,7 @@ export async function uploadEvidenceDocument(
     uri?: string;
     gatewayUrl?: string;
     sha256?: string;
-    storageKind?: "private" | "public";
+    storageKind?: "private" | "encrypted";
     error?: string;
   };
   if (

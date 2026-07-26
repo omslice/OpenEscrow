@@ -21,6 +21,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0002_notification_preferences.sql",
     "0003_private_evidence_and_notifications.sql",
     "0004_tenant_deposit_shares.sql",
+    "0005_encrypted_evidence.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -95,6 +96,12 @@ class TestR2 {
     if (!object) return null;
     return {
       body: object.bytes,
+      async arrayBuffer() {
+        return object.bytes.buffer.slice(
+          object.bytes.byteOffset,
+          object.bytes.byteOffset + object.bytes.byteLength,
+        );
+      },
       writeHttpMetadata(headers) {
         headers.set("content-type", object.contentType);
       },
@@ -587,6 +594,99 @@ test("a verified Privy identity can discover its landlord proposals across brows
   }
 });
 
+test("email readiness and the signed-in self-test work with Resend and a webhook provider", async () => {
+  const db = new TestD1();
+  const appId = "test-privy-email-app";
+  const kid = "test-email-key";
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  const identityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "tenant@example.com",
+  );
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (input, options) => {
+    const url = String(input);
+    if (url === `https://auth.privy.io/api/v1/apps/${appId}/jwks.json`) {
+      return Response.json({ keys: [{ ...publicJwk, kid, alg: "ES256", use: "sig" }] });
+    }
+    deliveries.push({
+      url,
+      body: JSON.parse(options.body),
+      authorization: options.headers.authorization,
+    });
+    return Response.json({ id: `email-test-${deliveries.length}` });
+  };
+  try {
+    const resendEnv = {
+      DB: db,
+      PRIVY_APP_ID: appId,
+      RESEND_API_KEY: "test-resend-key",
+      NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+    };
+    const readiness = await jsonResponse(
+      await worker.fetch(
+        request("/api/system/readiness"),
+        resendEnv,
+      ),
+    );
+    assert.equal(readiness.email.configured, true);
+    assert.equal(readiness.email.provider, "resend");
+
+    const testRequest = () =>
+      new Request("https://openescrow.example/api/profile/test-email", {
+        method: "POST",
+        headers: { "privy-id-token": identityToken },
+      });
+    const first = await jsonResponse(
+      await worker.fetch(testRequest(), resendEnv),
+    );
+    const duplicate = await jsonResponse(
+      await worker.fetch(testRequest(), resendEnv),
+    );
+    assert.equal(first.sent, true);
+    assert.equal(duplicate.duplicate, true);
+    assert.equal(deliveries.length, 1);
+    assert.equal(deliveries[0].url, "https://api.resend.com/emails");
+    assert.deepEqual(deliveries[0].body.to, ["tenant@example.com"]);
+
+    const webhookDb = new TestD1();
+    const webhookIdentity = await identityTokenFor(
+      keyPair.privateKey,
+      appId,
+      kid,
+      "webhook@example.com",
+    );
+    const webhookResponse = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/profile/test-email", {
+          method: "POST",
+          headers: { "privy-id-token": webhookIdentity },
+        }),
+        {
+          DB: webhookDb,
+          PRIVY_APP_ID: appId,
+          EMAIL_WEBHOOK_URL: "https://mailer.example/send",
+          EMAIL_WEBHOOK_TOKEN: "webhook-secret",
+          NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+        },
+      ),
+    );
+    assert.equal(webhookResponse.provider, "webhook");
+    assert.equal(deliveries.at(-1).url, "https://mailer.example/send");
+    assert.equal(deliveries.at(-1).authorization, "Bearer webhook-secret");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("private evidence is stored in R2 and only an agreement party can retrieve it", async () => {
   const db = new TestD1();
   const evidence = new TestR2();
@@ -631,6 +731,115 @@ test("private evidence is stored in R2 and only an agreement party can retrieve 
     { DB: db, EVIDENCE: evidence },
   );
   assert.equal(denied.status, 403);
+});
+
+test("configured evidence encryption stores only ciphertext and decrypts for an agreement party", async () => {
+  const db = new TestD1();
+  const evidence = new TestR2();
+  const created = await create(db);
+  const encryptionKey = Buffer.alloc(32, 7).toString("base64");
+  const form = new FormData();
+  form.set("proposalId", created.record.id);
+  form.set("token", created.access.landlord);
+  form.set(
+    "file",
+    new File(["private encrypted invoice"], "invoice.pdf", {
+      type: "application/pdf",
+    }),
+  );
+  const uploaded = await jsonResponse(
+    await worker.fetch(
+      new Request("https://openescrow.example/api/evidence", {
+        method: "POST",
+        body: form,
+      }),
+      {
+        DB: db,
+        EVIDENCE: evidence,
+        EVIDENCE_ENCRYPTION_KEY: encryptionKey,
+      },
+    ),
+  );
+  assert.equal(uploaded.storageKind, "encrypted");
+  const [stored] = evidence.objects.values();
+  assert.equal(new TextDecoder().decode(stored.bytes).includes("private encrypted invoice"), false);
+
+  const authorized = await worker.fetch(
+    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    {
+      DB: db,
+      EVIDENCE: evidence,
+      EVIDENCE_ENCRYPTION_KEY: encryptionKey,
+    },
+  );
+  assert.equal(authorized.status, 200);
+  assert.equal(await authorized.text(), "private encrypted invoice");
+  assert.equal(authorized.headers.get("x-openescrow-storage"), "encrypted-r2");
+});
+
+test("decentralized evidence mode uploads only encrypted IPFS ciphertext", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const encryptionKey = Buffer.alloc(32, 11).toString("base64");
+  const originalFetch = globalThis.fetch;
+  let encryptedBytes;
+  globalThis.fetch = async (input, options) => {
+    const url = String(input);
+    if (url === "https://api.pinata.cloud/pinning/pinFileToIPFS") {
+      const encryptedFile = options.body.get("file");
+      encryptedBytes = new Uint8Array(await encryptedFile.arrayBuffer());
+      assert.equal(
+        new TextDecoder().decode(encryptedBytes).includes("decentralized invoice"),
+        false,
+      );
+      return Response.json({ IpfsHash: "bafy-encrypted-test" });
+    }
+    if (url === "https://gateway.pinata.cloud/ipfs/bafy-encrypted-test") {
+      return new Response(encryptedBytes);
+    }
+    throw new Error(`Unexpected fetch: ${url}`);
+  };
+  try {
+    const form = new FormData();
+    form.set("proposalId", created.record.id);
+    form.set("token", created.access.landlord);
+    form.set(
+      "file",
+      new File(["decentralized invoice"], "invoice.pdf", {
+        type: "application/pdf",
+      }),
+    );
+    const uploaded = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/evidence", {
+          method: "POST",
+          body: form,
+        }),
+        {
+          DB: db,
+          PINATA_JWT: "test-pinata-jwt",
+          EVIDENCE_STORAGE_MODE: "encrypted-ipfs",
+          EVIDENCE_ENCRYPTION_KEY: encryptionKey,
+        },
+      ),
+    );
+    assert.equal(uploaded.storageKind, "encrypted");
+    assert.match(uploaded.uri, /^openescrow\+ipfs:\/\/bafy-encrypted-test\//);
+
+    const authorized = await worker.fetch(
+      new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+      {
+        DB: db,
+        EVIDENCE_STORAGE_MODE: "encrypted-ipfs",
+        EVIDENCE_ENCRYPTION_KEY: encryptionKey,
+      },
+    );
+    assert.equal(authorized.status, 200);
+    assert.equal(await authorized.text(), "decentralized invoice");
+    assert.equal(authorized.headers.get("x-openescrow-storage"), "encrypted-ipfs");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("unsubscribe links turn off optional activity and deadline emails", async () => {

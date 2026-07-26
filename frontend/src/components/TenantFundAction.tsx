@@ -27,6 +27,7 @@ import {
   type NegotiationRecord,
 } from "../lib/negotiations";
 import type { Agreement } from "../lib/useAgreement";
+import { FiatFundingOption } from "./FiatFundingOption";
 import { TxButton } from "./TxButton";
 
 type TenantFundActionProps = {
@@ -598,15 +599,25 @@ function SponsoredTenantFundAction({
         sponsored
       />
       {shareFunded ? null : !hasBalance ? (
-        <button
-          className="btn btn-primary"
-          disabled={step !== "idle"}
-          onClick={() => void mintMissingDeposit()}
-        >
-          {step === "minting"
-            ? "Claiming required test tokens..."
-            : `Get required ${tokenLabel}—gas covered`}
-        </button>
+        <div className="funding-methods">
+          <FiatFundingOption
+            walletAddress={address}
+            amount={tokenBalanceNeeded}
+            onComplete={() => void refetchBalance()}
+          />
+          <div className="testnet-funding-fallback">
+            <span>Base Sepolia demo</span>
+            <button
+              className="btn btn-primary"
+              disabled={step !== "idle"}
+              onClick={() => void mintMissingDeposit()}
+            >
+              {step === "minting"
+                ? "Claiming required test tokens..."
+                : `Get required ${tokenLabel}—gas covered`}
+            </button>
+          </div>
+        </div>
       ) : !hasAllowance ? (
         <button
           className="btn btn-primary"

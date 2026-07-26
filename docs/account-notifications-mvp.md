@@ -49,9 +49,11 @@ tenant/landlord-only pilot.
 
 Supporting PDFs and images default to a private R2 evidence vault when the hosted binding is
 available. D1 stores ownership metadata and a SHA-256 receipt; only a valid agreement-party token
-can retrieve the bytes. The private `openescrow://evidence/...` pointer and content hash can be
-recorded without publishing the file. A configured Pinata upload remains a public-IPFS fallback
-for sanitized or client-encrypted material.
+can retrieve the bytes. When `EVIDENCE_ENCRYPTION_KEY` is configured, the Worker derives a
+different AES-256-GCM key for each file and stores only ciphertext. Experimental
+`encrypted-ipfs` mode refuses to upload unless that encryption key and the Pinata adapter are both
+configured, then returns an authorized OpenEscrow retrieval link rather than exposing readable
+evidence through a public gateway.
 
 ## Configuration
 
@@ -90,7 +92,12 @@ retention, deletion, access controls, incident response, and the legal status of
 
 1. Testnet MVP: sponsor the transaction that mints freely available testUSDC to the active wallet.
 2. Pilot: add rate limits and abuse controls around test funding and monitor sponsorship spend.
-3. Later production phase: integrate a compliant fiat onramp that can deliver supported USDC to the
-   tenant's resolved wallet, then guide the tenant through approval and escrow funding. Provider
-   availability, fees, KYC, geography, refunds, and custody boundaries must be reviewed before this
-   is presented as an abstracted security-deposit payment.
+3. Sandbox phase: enable the guarded Privy card/bank checkout with supported Base mainnet USDC
+   identifiers and verify provider status and balance refresh without representing it as testnet
+   escrow funding.
+4. Later production phase: deploy reviewed Base mainnet contracts, let a compliant provider deliver
+   supported USDC to the tenant's resolved wallet, then guide the tenant through approval and escrow
+   funding. Provider availability, fees, KYC, geography, refunds, and custody boundaries must be
+   reviewed before this is presented as an abstracted security-deposit payment.
+
+See [`pilot-services-setup.md`](./pilot-services-setup.md) for the current external setup checklist.
