@@ -193,7 +193,8 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   const startDemo = () => {
     setTab("overview");
     window.requestAnimationFrame(() => {
-      document.getElementById("role-workspace")?.scrollIntoView({ behavior: "smooth" });
+      const targetId = workspaceRole ? "demo-workspace" : "role-workspace";
+      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
 
@@ -1032,23 +1033,10 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     <Layout notifications={notifications}>
       <PublicIntro onStart={startDemo} />
       {!inviteRole && workspaceRole && !isChangingRole && (
-        <details className="card account-workspace-disclosure" id="role-workspace">
-          <summary>
-            <span>
-              <span className="eyebrow">Account and workspace</span>
-              <strong>{roleLabel[workspaceRole]} workspace</strong>
-              <small>Identity, wallet, email preferences, and workspace tools</small>
-            </span>
-            <span className="disclosure-cue" aria-hidden="true" />
-          </summary>
-          <div className="account-workspace-content">
-            <AccountCenter
-              embedded
-              workspaceRole={roleLabel[workspaceRole]}
-              onChangeWorkspaceRole={() => setIsChangingRole(true)}
-            />
-          </div>
-        </details>
+        <AccountCenter
+          workspaceRole={roleLabel[workspaceRole]}
+          onChangeWorkspaceRole={() => setIsChangingRole(true)}
+        />
       )}
       {!inviteRole && (!workspaceRole || isChangingRole) && (
         <section className="card role-selector" id="role-workspace" aria-labelledby="role-selector-title">

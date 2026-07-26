@@ -28,11 +28,9 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
 };
 
 export function PrivyAccountCenter({
-  embedded = false,
   workspaceRole,
   onChangeWorkspaceRole,
 }: {
-  embedded?: boolean;
   workspaceRole?: string;
   onChangeWorkspaceRole?: () => void;
 }) {
@@ -193,158 +191,188 @@ export function PrivyAccountCenter({
   if (!ready || !authenticated || !user) return null;
 
   return (
-    <section
-      className={`account-center${embedded ? " account-center-embedded" : " card"}`}
-      aria-labelledby="account-center-title"
-    >
-      <div className="account-center-heading">
-        <div>
-          <span className="eyebrow">Account and wallet</span>
-          <h2 id="account-center-title">
-            {displayName === "Your" ? "Your" : `${displayName}'s`} OpenEscrow account
-          </h2>
-        </div>
-        <div className="account-heading-actions">
-          {workspaceRole && <span className="account-status">{workspaceRole} workspace</span>}
-          {onChangeWorkspaceRole && (
-            <button
-              className="btn btn-ghost small"
-              type="button"
-              onClick={onChangeWorkspaceRole}
-            >
-              Change workspace role
-            </button>
-          )}
-          <span className="account-status">Signed in</span>
-        </div>
-      </div>
-
-      {inviteRole && (
-        <div className="invite-role-notice">
-          <div>
-            <span className="eyebrow">{roleLabel[inviteRole]} invitation · role locked</span>
-            <h3>You are joining this deposit as the {inviteRole}.</h3>
-            <p>
-              Sign in with the Google account that received the invitation. This onboarding role
-              does not make the account a landlord; the connected wallet is matched to a specific
-              on-chain role when the agreement is created.
-            </p>
-            {email && (
-              <p>
-                Currently signed in as <strong>{email}</strong>. If this is the landlord account,
-                sign out and choose the invited account.
-              </p>
+    <>
+      <details className="card account-workspace-disclosure account-profile-disclosure">
+        <summary>
+          <span>
+            <span className="eyebrow">Account</span>
+            <strong>{displayName === "Your" ? "Your account" : displayName}</strong>
+            <small>Identity, email, and connected wallets</small>
+          </span>
+          <span className="disclosure-cue" aria-hidden="true" />
+        </summary>
+        <div className="account-workspace-content">
+          <section className="account-center account-center-embedded" aria-label="Account details">
+            {inviteRole && (
+              <div className="invite-role-notice">
+                <div>
+                  <span className="eyebrow">{roleLabel[inviteRole]} invitation · role locked</span>
+                  <h3>You are joining this deposit as the {inviteRole}.</h3>
+                  <p>
+                    Sign in with the Google account that received the invitation. This onboarding
+                    role does not make the account a landlord; the connected wallet is matched to a
+                    specific on-chain role when the agreement is created.
+                  </p>
+                  {email && (
+                    <p>
+                      Currently signed in as <strong>{email}</strong>. If this is the landlord
+                      account, sign out and choose the invited account.
+                    </p>
+                  )}
+                </div>
+                <div className="invite-role-actions">
+                  {address && (
+                    <button
+                      className="btn btn-secondary"
+                      onClick={() => void navigator.clipboard.writeText(address)}
+                    >
+                      Copy my {inviteRole} wallet
+                    </button>
+                  )}
+                  <button className="btn btn-ghost" onClick={() => logout()}>
+                    Use a different Google account
+                  </button>
+                  <button className="btn btn-ghost" onClick={clearInviteRole}>
+                    This invitation is for someone else
+                  </button>
+                </div>
+              </div>
             )}
-          </div>
-          <div className="invite-role-actions">
-            {address && (
-              <button
-                className="btn btn-secondary"
-                onClick={() => void navigator.clipboard.writeText(address)}
-              >
-                Copy my {inviteRole} wallet
-              </button>
-            )}
-            <button className="btn btn-ghost" onClick={() => logout()}>
-              Use a different Google account
-            </button>
-            <button className="btn btn-ghost" onClick={clearInviteRole}>
-              This invitation is for someone else
-            </button>
-          </div>
-        </div>
-      )}
 
-      <div className="account-grid">
-        <div>
-          <h3>Email identity</h3>
-          {email ? (
-            <>
-              <strong>{email}</strong>
-              <p className="hint">Verified through your linked Google or email account.</p>
-            </>
-          ) : (
-            <>
-              <p className="hint">Link Google to add a verified notification address.</p>
-              <button className="btn btn-secondary" onClick={() => linkGoogle()}>
-                Link Google account
-              </button>
-            </>
-          )}
-        </div>
+            <div className="account-grid">
+              <div>
+                <h3>Email identity</h3>
+                {email ? (
+                  <>
+                    <strong>{email}</strong>
+                    <p className="hint">Verified through your linked Google or email account.</p>
+                  </>
+                ) : (
+                  <>
+                    <p className="hint">Link Google to add a verified notification address.</p>
+                    <button className="btn btn-secondary" onClick={() => linkGoogle()}>
+                      Link Google account
+                    </button>
+                  </>
+                )}
+              </div>
 
-        <div>
-          <h3>Wallets</h3>
-          {!walletsReady ? (
-            <p className="hint">Loading wallets...</p>
-          ) : !hasWallet ? (
-            <div className="wallet-setup-state">
-              <p className="hint">
-                {walletSetup === "creating"
-                  ? "Creating your OpenEscrow wallet..."
-                  : walletSetup === "slow"
-                    ? "Wallet setup is taking longer than expected. You can retry or connect your own wallet."
-                    : "No wallet is linked to this account yet."}
-              </p>
-              {walletError && <p className="tx-error">{walletError}</p>}
-              {walletSetup !== "creating" && (
+              <div>
+                <h3>Wallets</h3>
+                {!walletsReady ? (
+                  <p className="hint">Loading wallets...</p>
+                ) : !hasWallet ? (
+                  <div className="wallet-setup-state">
+                    <p className="hint">
+                      {walletSetup === "creating"
+                        ? "Creating your OpenEscrow wallet..."
+                        : walletSetup === "slow"
+                          ? "Wallet setup is taking longer than expected. You can retry or connect your own wallet."
+                          : "No wallet is linked to this account yet."}
+                    </p>
+                    {walletError && <p className="tx-error">{walletError}</p>}
+                    {walletSetup !== "creating" && (
+                      <button
+                        className="btn btn-secondary"
+                        onClick={() => {
+                          attemptedForUser.current = null;
+                          void provisionWallet();
+                        }}
+                      >
+                        Retry OpenEscrow wallet setup
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <ul className="wallet-list">
+                    {wallets.map((wallet) => {
+                      const isEmbedded = wallet.walletClientType === "privy";
+                      const isActive = wallet.address.toLowerCase() === address?.toLowerCase();
+                      return (
+                        <li key={`${wallet.walletClientType}:${wallet.address}`}>
+                          <div>
+                            <strong>{isEmbedded ? "OpenEscrow wallet" : "Connected wallet"}</strong>
+                            <span title={wallet.address}>{shortAddr(wallet.address)}</span>
+                          </div>
+                          <div className="wallet-actions">
+                            {isActive ? (
+                              <span className="active-wallet">Active</span>
+                            ) : (
+                              <button
+                                className="btn btn-ghost"
+                                onClick={() => setActiveWallet(wallet)}
+                              >
+                                Use wallet
+                              </button>
+                            )}
+                            <button
+                              className="btn btn-ghost"
+                              onClick={() => void navigator.clipboard.writeText(wallet.address)}
+                            >
+                              Copy address
+                            </button>
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
                 <button
                   className="btn btn-secondary"
-                  onClick={() => {
-                    attemptedForUser.current = null;
-                    void provisionWallet();
-                  }}
+                  onClick={() => linkWallet({ walletChainType: "ethereum-only" })}
                 >
-                  Retry OpenEscrow wallet setup
+                  Connect another EVM wallet
+                </button>
+                <p className="hint wallet-support-note">
+                  Rabby is available through installed-wallet detection. If it is not installed in
+                  this browser, choose WalletConnect and search for Rabby.
+                </p>
+              </div>
+            </div>
+          </section>
+        </div>
+      </details>
+
+      <details className="card account-workspace-disclosure settings-disclosure">
+        <summary>
+          <span>
+            <span className="eyebrow">Preferences</span>
+            <strong>Settings</strong>
+            <small>Workspace and notification options</small>
+          </span>
+          <span className="disclosure-cue" aria-hidden="true" />
+        </summary>
+        <div className="account-workspace-content settings-content">
+          <section className="settings-group" aria-labelledby="workspace-settings-title">
+            <div>
+              <h3 id="workspace-settings-title">Workspace</h3>
+              <p>
+                This changes the tools shown in this session. Agreement roles remain fixed by each
+                participant record and wallet assignment.
+              </p>
+            </div>
+            <div className="settings-actions">
+              {workspaceRole ? (
+                <span className="account-status">{workspaceRole} workspace</span>
+              ) : inviteRole ? (
+                <span className="account-status">{roleLabel[inviteRole]} invitation</span>
+              ) : (
+                <span className="settings-status">No workspace selected</span>
+              )}
+              {onChangeWorkspaceRole && (
+                <button
+                  className="btn btn-ghost small"
+                  type="button"
+                  onClick={onChangeWorkspaceRole}
+                >
+                  Change workspace role
                 </button>
               )}
             </div>
-          ) : (
-            <ul className="wallet-list">
-              {wallets.map((wallet) => {
-                const isEmbedded = wallet.walletClientType === "privy";
-                const isActive = wallet.address.toLowerCase() === address?.toLowerCase();
-                return (
-                  <li key={`${wallet.walletClientType}:${wallet.address}`}>
-                    <div>
-                      <strong>{isEmbedded ? "OpenEscrow wallet" : "Connected wallet"}</strong>
-                      <span title={wallet.address}>{shortAddr(wallet.address)}</span>
-                    </div>
-                    <div className="wallet-actions">
-                      {isActive ? (
-                        <span className="active-wallet">Active</span>
-                      ) : (
-                        <button className="btn btn-ghost" onClick={() => setActiveWallet(wallet)}>
-                          Use wallet
-                        </button>
-                      )}
-                      <button
-                        className="btn btn-ghost"
-                        onClick={() => void navigator.clipboard.writeText(wallet.address)}
-                      >
-                        Copy address
-                      </button>
-                    </div>
-                  </li>
-                );
-              })}
-            </ul>
-          )}
-          <button
-            className="btn btn-secondary"
-            onClick={() => linkWallet({ walletChainType: "ethereum-only" })}
-          >
-            Connect another EVM wallet
-          </button>
-          <p className="hint wallet-support-note">
-            Rabby is available through installed-wallet detection. If it is not installed in this
-            browser, choose WalletConnect and search for Rabby.
-          </p>
-        </div>
-      </div>
+          </section>
 
-      <div className="notification-preferences">
-        <h3>Email notification preferences</h3>
+          <section className="settings-group notification-preferences" aria-labelledby="notification-settings-title">
+            <h3 id="notification-settings-title">Email notifications</h3>
         <label>
           <input
             type="checkbox"
@@ -424,40 +452,6 @@ export function PrivyAccountCenter({
             </div>
           </div>
         )}
-        {serviceReadiness && (
-          <div
-            className={`notification-delivery-status ${
-              serviceReadiness.complianceSources.configured &&
-              serviceReadiness.complianceSources.changed === 0
-                ? "ready"
-                : ""
-            }`}
-          >
-            <div>
-              <strong>
-                {serviceReadiness.complianceSources.changed > 0
-                  ? `${serviceReadiness.complianceSources.changed} compliance source change${
-                      serviceReadiness.complianceSources.changed === 1 ? "" : "s"
-                    } need review`
-                  : serviceReadiness.complianceSources.configured
-                    ? "Official-source monitor ready"
-                    : "Official-source monitor not enabled"}
-              </strong>
-              <span>
-                {serviceReadiness.complianceSources.tracked} of{" "}
-                {serviceReadiness.complianceSources.total} sources tracked
-                {serviceReadiness.complianceSources.unreachable
-                  ? ` · ${serviceReadiness.complianceSources.unreachable} temporarily unreachable`
-                  : ""}
-                {serviceReadiness.complianceSources.lastRunAt
-                  ? ` · checked ${new Date(
-                      serviceReadiness.complianceSources.lastRunAt,
-                    ).toLocaleString()}`
-                  : " · awaiting its first hosted run"}
-              </span>
-            </div>
-          </div>
-        )}
         {preferenceStatus && (
           <p
             className={
@@ -467,7 +461,9 @@ export function PrivyAccountCenter({
             {preferenceStatus}
           </p>
         )}
-      </div>
-    </section>
+          </section>
+        </div>
+      </details>
+    </>
   );
 }

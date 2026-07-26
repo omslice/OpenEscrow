@@ -6,11 +6,9 @@ const PrivyAccountCenter = lazy(() =>
 );
 
 export function AccountCenter({
-  embedded = false,
   workspaceRole,
   onChangeWorkspaceRole,
 }: {
-  embedded?: boolean;
   workspaceRole?: string;
   onChangeWorkspaceRole?: () => void;
 }) {
@@ -18,7 +16,6 @@ export function AccountCenter({
   return (
     <Suspense fallback={null}>
       <PrivyAccountCenter
-        embedded={embedded}
         workspaceRole={workspaceRole}
         onChangeWorkspaceRole={onChangeWorkspaceRole}
       />
