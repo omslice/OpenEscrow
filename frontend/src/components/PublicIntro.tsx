@@ -12,14 +12,17 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
           <button className="btn btn-primary" onClick={onStart}>
             Try the testnet demo
           </button>
-          <a className="btn btn-ghost" href="#how-it-works">
-            See how it works
-          </a>
         </div>
       </div>
 
       <div className="how-it-works-block" id="how-it-works">
-        <h3>How it works</h3>
+        <header className="how-it-works-title">
+          <div>
+            <span className="eyebrow">From agreement to outcome</span>
+            <h3>How it works</h3>
+          </div>
+          <p>Three clear steps, one shared record.</p>
+        </header>
         <ol className="how-it-works">
           <li>
             <span className="step-number">01</span>
