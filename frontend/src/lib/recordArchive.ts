@@ -185,7 +185,8 @@ export async function decryptRecordArchive(
   const snapshot = JSON.parse(canonical) as Record<string, unknown>;
   if (
     (snapshot.schema !== "openescrow.agreement-record.v1" &&
-      snapshot.schema !== "openescrow.agreement-record.v2") ||
+      snapshot.schema !== "openescrow.agreement-record.v2" &&
+      snapshot.schema !== "openescrow.agreement-record.v3") ||
     snapshot.proposalId !== archive.record.proposalId
   ) {
     throw new Error("The decrypted content is not the record described by this archive.");

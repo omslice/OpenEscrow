@@ -69,6 +69,15 @@ const checks = [
     required: true,
   },
   {
+    label: "Version-matched onchain record registry",
+    ready: readiness.recordIntegrity?.activityRegistry?.ready === true,
+    detail: readiness.recordIntegrity?.activityRegistry?.ready
+      ? `bound to ${readiness.recordIntegrity.activityRegistry.expectedEscrowAddress}`
+      : readiness.recordIntegrity?.activityRegistry?.error ||
+        "registry binding not verified",
+    required: true,
+  },
+  {
     label: "Encrypted decentralized evidence",
     ready: readiness.evidence?.decentralizedReady === true,
     detail: readiness.evidence?.decentralizedReady

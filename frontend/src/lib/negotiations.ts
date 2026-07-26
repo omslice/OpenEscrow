@@ -81,6 +81,21 @@ export interface ServiceReadiness {
     encryptedAtRest: boolean;
     decentralizedReady: boolean;
   };
+  recordIntegrity: {
+    lifecycleStateGuards: boolean;
+    transactionReceiptVerification: boolean;
+    chain: "Base Sepolia";
+    activityRegistry: {
+      configured: boolean;
+      verificationEnabled: boolean;
+      ready: boolean;
+      registryAddress: string;
+      expectedEscrowAddress: string;
+      boundEscrowAddress: string | null;
+      checkedAt: string | null;
+      error: string | null;
+    };
+  };
   complianceSources: {
     configured: boolean;
     total: number;

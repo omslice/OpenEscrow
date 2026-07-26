@@ -228,6 +228,8 @@ const DEFAULT_OPERATIONS_RESERVE_ADDRESS =
   "0x5d2E9c429F9d117c7b028c8f0f67d37252aDceC0";
 const DEFAULT_ACTIVITY_REGISTRY_ADDRESS =
   "0xC004dF4C43146FE55e5761EA1BB3C14f01161951";
+const ACTIVITY_REGISTRY_ESCROW_SELECTOR = "0xe681c4aa";
+const ACTIVITY_REGISTRY_READINESS_TTL_MS = 60_000;
 const RECEIPT_EVENT_TOPICS = Object.freeze({
   agreementProposed:
     "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6",
@@ -267,6 +269,7 @@ const ADDRESS_ATTRIBUTION = Object.freeze({
   url: "https://www.openstreetmap.org/copyright",
 });
 const addressSuggestionCache = new Map();
+const activityRegistryReadinessCache = new Map();
 const encoder = new TextEncoder();
 
 function json(data, status = 200) {
@@ -298,6 +301,117 @@ function secureResponse(response) {
 
 function receiptVerificationEnabled(env) {
   return cleanText(env.VERIFY_TRANSACTION_RECEIPTS, 20).toLowerCase() !== "false";
+}
+
+async function activityRegistryReadiness(env) {
+  const expectedEscrowAddress = cleanText(
+    env.OPEN_ESCROW_ADDRESS || DEFAULT_OPEN_ESCROW_ADDRESS,
+    80,
+  ).toLowerCase();
+  const registryAddress = cleanText(
+    env.ACTIVITY_REGISTRY_ADDRESS || DEFAULT_ACTIVITY_REGISTRY_ADDRESS,
+    80,
+  ).toLowerCase();
+  const verificationEnabled =
+    cleanText(env.VERIFY_ACTIVITY_REGISTRY_BINDING, 20).toLowerCase() !==
+    "false";
+  const configured =
+    WALLET_PATTERN.test(expectedEscrowAddress) &&
+    WALLET_PATTERN.test(registryAddress);
+  if (!configured || !verificationEnabled) {
+    return {
+      configured,
+      verificationEnabled,
+      ready: false,
+      registryAddress,
+      expectedEscrowAddress,
+      boundEscrowAddress: null,
+      checkedAt: null,
+      error: configured
+        ? "Onchain registry binding verification is disabled."
+        : "The activity registry or escrow address is invalid.",
+    };
+  }
+
+  const configuredRpcUrl = cleanText(env.BASE_SEPOLIA_RPC_URL, 1000);
+  const rpcUrls = Array.from(
+    new Set([
+      configuredRpcUrl || DEFAULT_BASE_SEPOLIA_RPC_URL,
+      ...(configuredRpcUrl ? [] : [FALLBACK_BASE_SEPOLIA_RPC_URL]),
+    ]),
+  );
+  const cacheKey = `${rpcUrls.join(",")}:${registryAddress}:${expectedEscrowAddress}`;
+  const cached = activityRegistryReadinessCache.get(cacheKey);
+  if (
+    cached &&
+    Date.now() - cached.cachedAt < ACTIVITY_REGISTRY_READINESS_TTL_MS
+  ) {
+    return cached.value;
+  }
+
+  let boundEscrowAddress = null;
+  let rpcResponded = false;
+  for (const rpcUrl of rpcUrls) {
+    let parsedRpcUrl;
+    try {
+      parsedRpcUrl = new URL(rpcUrl);
+      if (parsedRpcUrl.protocol !== "https:") continue;
+    } catch {
+      continue;
+    }
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 3_000);
+    try {
+      const response = await fetch(parsedRpcUrl.toString(), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "eth_call",
+          params: [
+            { to: registryAddress, data: ACTIVITY_REGISTRY_ESCROW_SELECTOR },
+            "latest",
+          ],
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) continue;
+      const payload = await response.json();
+      if (payload?.error) continue;
+      rpcResponded = true;
+      if (/^0x[a-fA-F0-9]{64}$/.test(payload?.result || "")) {
+        boundEscrowAddress = `0x${payload.result.slice(-40)}`.toLowerCase();
+        break;
+      }
+    } catch {
+      // Try the next approved Base Sepolia endpoint.
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  const checkedAt = new Date().toISOString();
+  const ready = boundEscrowAddress === expectedEscrowAddress;
+  const value = {
+    configured,
+    verificationEnabled,
+    ready,
+    registryAddress,
+    expectedEscrowAddress,
+    boundEscrowAddress,
+    checkedAt,
+    error: ready
+      ? null
+      : rpcResponded
+        ? "The activity registry is not bound to the active OpenEscrow release."
+        : "The activity registry binding could not be read from Base Sepolia.",
+  };
+  activityRegistryReadinessCache.set(cacheKey, {
+    cachedAt: Date.now(),
+    value,
+  });
+  return value;
 }
 
 function uint256Topic(value) {
@@ -1157,6 +1271,7 @@ async function serviceReadiness(env) {
         : decentralizedReady
           ? "encrypted-ipfs"
           : "unconfigured";
+  const registryReadiness = await activityRegistryReadiness(env);
   return json({
     email: {
       configured: Boolean(provider),
@@ -1175,6 +1290,7 @@ async function serviceReadiness(env) {
       lifecycleStateGuards: true,
       transactionReceiptVerification: receiptVerificationEnabled(env),
       chain: "Base Sepolia",
+      activityRegistry: registryReadiness,
     },
     complianceSources: {
       configured: env.COMPLIANCE_SOURCE_MONITOR_ENABLED === "true",
@@ -4947,13 +5063,13 @@ function stableJson(value) {
     .join(",")}}`;
 }
 
-async function snapshot(db, id, token) {
+async function snapshot(db, id, token, env) {
   const row = await rowFor(db, id);
   const role = await authorize(db, row, token);
   if (!role) return json({ error: "Invalid snapshot link." }, 403);
   const record = await serialize(db, row);
   const snapshotRecord = {
-    schema: "openescrow.agreement-record.v2",
+    schema: "openescrow.agreement-record.v3",
     proposalId: record.id,
     status: record.status,
     revision: record.revision,
@@ -4988,6 +5104,15 @@ async function snapshot(db, id, token) {
       arbiter: record.arbiterApproved,
     },
     onchain: {
+      chainId: 84532,
+      escrowAddress: cleanText(
+        env.OPEN_ESCROW_ADDRESS || DEFAULT_OPEN_ESCROW_ADDRESS,
+        80,
+      ),
+      activityRegistryAddress: cleanText(
+        env.ACTIVITY_REGISTRY_ADDRESS || DEFAULT_ACTIVITY_REGISTRY_ADDRESS,
+        80,
+      ),
       agreementId: record.onchainAgreementId,
       finalizationTransactionHash: record.onchainTxHash,
     },
@@ -5500,7 +5625,7 @@ const worker = {
         );
       }
       if (action === "snapshot" && request.method === "GET") {
-        return snapshot(env.DB, id, url.searchParams.get("token"));
+        return snapshot(env.DB, id, url.searchParams.get("token"), env);
       }
       return json({ error: "Method not allowed." }, 405);
     }

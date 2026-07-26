@@ -35,6 +35,13 @@ landlord, tenant, or current arbiter can submit the plaintext record hash to the
 `AgreementActivityRegistry`. Until a party submits that anchor, the off-chain event stream is not
 itself immutable or independently notarized.
 
+Version 3 canonical records bind the snapshot to Base Sepolia, the exact `OpenEscrow`
+deployment, and the matching activity-registry deployment. The browser rejects a version 3
+archive from a different release before describing it as onchain-verified. Private activity proof
+version 2 applies the same domain binding to its hashed envelope and also requires the referenced
+transaction to have been sent to the configured registry. Legacy proof files remain parseable,
+but every receipt lookup is still scoped to the configured registry address.
+
 The printable report groups every recorded transaction hash into a receipt table with a direct
 BaseScan link. This makes funding, claim, response, ruling, reserve, finalization, and registry
 transactions easier to audit without treating a client-submitted hash as independently verified;
@@ -47,6 +54,11 @@ parties directly from Base Sepolia, and checks the registry's `anchoredBy` mappi
 The encrypted file, key, and plaintext are not uploaded during verification. A valid but
 unanchored record is clearly distinguished from one whose hash was attested by an agreement-party
 wallet.
+
+Before exposing any registry-backed tool, the frontend reads the registry's immutable `ESCROW()`
+reference and compares it with the active escrow. A mismatch disables publishing, anchoring,
+verification, event history, and registry notifications so agreement IDs from two contract
+releases cannot be conflated.
 
 Printable reports include a dedicated onchain evidence table for recorded snapshot anchors,
 including direct BaseScan receipt links. This table does not claim that plaintext is public or

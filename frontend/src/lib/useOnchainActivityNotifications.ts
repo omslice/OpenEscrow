@@ -8,6 +8,7 @@ import {
 import type { AppNotification } from "../components/Layout";
 import { agreementReference } from "./displayIds";
 import { shortAddr } from "./format";
+import { useActivityRegistryReadiness } from "./useActivityRegistryReadiness";
 
 const snapshotEvent = parseAbiItem(
   "event RecordSnapshotAnchored(uint256 indexed agreementId, bytes32 indexed snapshotHash, address indexed party, uint64 timestamp)",
@@ -26,13 +27,14 @@ const activityLabel: Record<number, string> = {
 export function useOnchainActivityNotifications(agreementIds: readonly bigint[]) {
   const { address } = useAccount();
   const publicClient = usePublicClient();
+  const registry = useActivityRegistryReadiness();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const agreementIdsKey = Array.from(new Set(agreementIds.map((id) => id.toString())))
     .sort((left, right) => Number(BigInt(left) - BigInt(right)))
     .join(",");
 
   const refresh = useCallback(async () => {
-    if (!address || !publicClient || !agreementIdsKey) {
+    if (!address || !publicClient || !agreementIdsKey || !registry.isReady) {
       setNotifications([]);
       return;
     }
@@ -93,7 +95,7 @@ export function useOnchainActivityNotifications(agreementIds: readonly bigint[])
       // Agreement dashboards surface RPC errors. Keep the global bell quiet on transient
       // provider failures so it does not obscure the rest of the account experience.
     }
-  }, [address, agreementIdsKey, publicClient]);
+  }, [address, agreementIdsKey, publicClient, registry.isReady]);
 
   useEffect(() => {
     void refresh();

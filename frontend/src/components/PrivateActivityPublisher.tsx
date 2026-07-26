@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSendTransaction, useWallets } from "@privy-io/react-auth";
-import { encodeFunctionData, keccak256, toBytes } from "viem";
+import { encodeFunctionData } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 import {
   AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
   AgreementActivityRegistryABI,
+  OPEN_ESCROW_ADDRESS,
 } from "../contracts/config";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
+import {
+  canonicalActivityEnvelope,
+  createActivityEnvelopeV2,
+  hashActivityEnvelope,
+} from "../lib/activityProof";
 import {
   negotiationAction,
   type NegotiationAction,
@@ -144,18 +150,23 @@ export function PrivateActivityPublisher({
     ? `openescrow:pending-activity-receipt:${negotiationAccess.proposalId}:${negotiationAccess.role}:${address.toLowerCase()}`
     : null;
   const trimmedContent = content.trim();
-  const canonical = useMemo(
+  const envelope = useMemo(
     () =>
-      JSON.stringify({
-        version: "openescrow-activity-v1",
-        agreementId: agreementId.toString(),
+      createActivityEnvelopeV2({
+        escrowAddress: OPEN_ESCROW_ADDRESS,
+        registryAddress: AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
+        agreementId,
         activityType,
         content: trimmedContent,
       }),
     [activityType, agreementId, trimmedContent],
   );
+  const canonical = useMemo(
+    () => canonicalActivityEnvelope(envelope),
+    [envelope],
+  );
   const contentHash =
-    trimmedContent.length >= 4 ? keccak256(toBytes(canonical)) : undefined;
+    trimmedContent.length >= 4 ? hashActivityEnvelope(envelope) : undefined;
   const selectedType = activityTypes.find((option) => option.value === activityType);
 
   async function saveActivityRecord(action: ActivityReceiptAction) {

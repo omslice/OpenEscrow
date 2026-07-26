@@ -220,6 +220,11 @@
   },
   {
     "type": "error",
+    "name": "InvalidEscrowContract",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidHash",
     "inputs": []
   },

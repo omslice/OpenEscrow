@@ -18,6 +18,7 @@ import {
   encryptRecordSnapshot,
   type EncryptedRecordArchive,
 } from "../lib/recordArchive";
+import { useActivityRegistryReadiness } from "../lib/useActivityRegistryReadiness";
 import { TxButton } from "./TxButton";
 import { RecordSnapshotVerifier } from "./RecordSnapshotVerifier";
 
@@ -287,6 +288,7 @@ export function RecordSnapshotControls({
   access: NegotiationAccess;
   agreementId?: bigint;
 }) {
+  const registry = useActivityRegistryReadiness();
   const [snapshot, setSnapshot] = useState<AgreementSnapshot | null>(null);
   const [encryptedExport, setEncryptedExport] = useState<{
     archive: EncryptedRecordArchive;
@@ -431,16 +433,23 @@ export function RecordSnapshotControls({
           <code className="snapshot-hash" title={snapshot.hash}>
             {snapshot.algorithm}: {snapshot.hash}
           </code>
-          {agreementId !== undefined ? (
+          {agreementId !== undefined && registry.isReady ? (
             <AnchorAction
               access={access}
               agreementId={agreementId}
               snapshot={snapshot}
               onAnchored={() => setStatus("Record hash anchored onchain.")}
             />
-          ) : (
+          ) : agreementId === undefined ? (
             <p className="field-help">
               Finalize this proposal before saving its record hash onchain.
+            </p>
+          ) : registry.isChecking ? (
+            <p className="field-help">Checking the onchain record service…</p>
+          ) : (
+            <p className="tx-error" role="alert">
+              Onchain anchoring is temporarily unavailable because the record service
+              is not connected to this OpenEscrow release.
             </p>
           )}
         </section>
@@ -451,6 +460,8 @@ export function RecordSnapshotControls({
         <RecordSnapshotVerifier
           proposalId={access.proposalId}
           agreementId={agreementId}
+          registryReady={registry.isReady}
+          registryChecking={registry.isChecking}
         />
       </section>
       {status && (

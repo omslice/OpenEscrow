@@ -30,9 +30,13 @@ type ContractReader = (parameters: {
 export function RecordSnapshotVerifier({
   proposalId,
   agreementId,
+  registryReady,
+  registryChecking,
 }: {
   proposalId: string;
   agreementId?: bigint;
+  registryReady: boolean;
+  registryChecking: boolean;
 }) {
   const publicClient = usePublicClient();
   const [file, setFile] = useState<File | null>(null);
@@ -65,8 +69,25 @@ export function RecordSnapshotVerifier({
       }
       const decrypted = await decryptRecordArchive(archive, verificationKey);
       const onchain = decrypted.snapshot.onchain as
-        | { agreementId?: string | null }
+        | {
+            chainId?: number;
+            escrowAddress?: string;
+            activityRegistryAddress?: string;
+            agreementId?: string | null;
+          }
         | undefined;
+      if (
+        decrypted.snapshot.schema === "openescrow.agreement-record.v3" &&
+        (onchain?.chainId !== 84532 ||
+          onchain.escrowAddress?.toLowerCase() !==
+            OPEN_ESCROW_ADDRESS.toLowerCase() ||
+          onchain.activityRegistryAddress?.toLowerCase() !==
+            AGREEMENT_ACTIVITY_REGISTRY_ADDRESS.toLowerCase())
+      ) {
+        throw new Error(
+          "This encrypted record belongs to a different OpenEscrow contract release.",
+        );
+      }
       if (
         onchain?.agreementId !== undefined &&
         onchain.agreementId !== archive.record.agreementId
@@ -76,6 +97,11 @@ export function RecordSnapshotVerifier({
 
       let anchoredBy: `0x${string}`[] = [];
       if (agreementId !== undefined) {
+        if (!registryReady) {
+          throw new Error(
+            "Onchain verification is temporarily unavailable because the record service is not connected to this OpenEscrow release.",
+          );
+        }
         if (!publicClient) throw new Error("The Base Sepolia connection is not ready.");
         const readContract = publicClient.readContract as unknown as ContractReader;
         const agreement = (await readContract({
@@ -161,11 +187,23 @@ export function RecordSnapshotVerifier({
       <button
         className="btn btn-secondary"
         type="button"
-        disabled={working || !file || !verificationKey.trim()}
+        disabled={
+          working ||
+          registryChecking ||
+          (agreementId !== undefined && !registryReady) ||
+          !file ||
+          !verificationKey.trim()
+        }
         onClick={() => void verify()}
       >
         {working ? "Verifying encrypted record..." : "Verify encrypted record onchain"}
       </button>
+      {!registryChecking && agreementId !== undefined && !registryReady && (
+        <p className="tx-error" role="alert">
+          Onchain verification is temporarily unavailable because the record service is
+          not connected to this OpenEscrow release.
+        </p>
+      )}
       {error && (
         <p className="tx-error" role="alert">
           {error}

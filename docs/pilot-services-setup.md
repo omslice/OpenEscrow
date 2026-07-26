@@ -71,8 +71,14 @@ same reviewed release:
 ```dotenv
 OPEN_ESCROW_ADDRESS=0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99
 OPERATIONS_RESERVE_ADDRESS=0x5d2E9c429F9d117c7b028c8f0f67d37252aDceC0
-ACTIVITY_REGISTRY_ADDRESS=0xC004dF4C43146FE55e5761EA1BB3C14f01161951
+# Copy ACTIVITY_REGISTRY_ADDRESS from the version-matched deployment manifest.
+VERIFY_ACTIVITY_REGISTRY_BINDING=true
 ```
+
+The retired `0xC004...1951` activity registry points to an earlier escrow and is
+not a valid override. The public readiness response performs an `ESCROW()` call
+against the configured registry and reports ready only when it matches the
+configured OpenEscrow address.
 
 After deployment, submit one invented Base Sepolia action and confirm its running record contains
 `transaction_receipt_verified`. A temporary RPC failure must leave the onchain transaction

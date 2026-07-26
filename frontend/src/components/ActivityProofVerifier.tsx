@@ -1,25 +1,18 @@
 import { useState } from "react";
-import { keccak256, parseAbiItem, toBytes } from "viem";
+import { parseAbiItem } from "viem";
 import { usePublicClient } from "wagmi";
 import {
   AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
+  OPEN_ESCROW_ADDRESS,
 } from "../contracts/config";
 import { agreementReference } from "../lib/displayIds";
 import { shortAddr } from "../lib/format";
-
-type ActivityEnvelope = {
-  version: "openescrow-activity-v1";
-  agreementId: string;
-  activityType: 1 | 2 | 3 | 4;
-  content: string;
-};
-
-type ActivityProofFile = {
-  algorithm: "keccak256";
-  contentHash: `0x${string}`;
-  transactionHash: `0x${string}`;
-  envelope: ActivityEnvelope;
-};
+import {
+  assertActivityProofContext,
+  hashActivityEnvelope,
+  parseActivityProofFile,
+  type ActivityProofFile,
+} from "../lib/activityProof";
 
 type VerificationResult = {
   proof: ActivityProofFile;
@@ -28,38 +21,9 @@ type VerificationResult = {
   blockNumber: bigint;
 };
 
-const hashPattern = /^0x[a-fA-F0-9]{64}$/;
 const activityEvent = parseAbiItem(
   "event ActivityPublished(uint256 indexed agreementId, uint8 indexed activityType, address indexed party, bytes32 contentHash, uint64 timestamp)",
 );
-
-function parseProofFile(raw: string): ActivityProofFile {
-  const parsed = JSON.parse(raw) as Partial<ActivityProofFile>;
-  const envelope = parsed.envelope as Partial<ActivityEnvelope> | undefined;
-  if (
-    parsed.algorithm !== "keccak256" ||
-    !hashPattern.test(parsed.contentHash || "") ||
-    !hashPattern.test(parsed.transactionHash || "") ||
-    envelope?.version !== "openescrow-activity-v1" ||
-    !/^(0|[1-9]\d*)$/.test(envelope.agreementId || "") ||
-    ![1, 2, 3, 4].includes(Number(envelope.activityType)) ||
-    typeof envelope.content !== "string" ||
-    envelope.content.length < 4 ||
-    envelope.content.length > 2_000
-  ) {
-    throw new Error("This is not a valid OpenEscrow activity proof file.");
-  }
-  return parsed as ActivityProofFile;
-}
-
-function canonicalEnvelope(envelope: ActivityEnvelope) {
-  return JSON.stringify({
-    version: "openescrow-activity-v1",
-    agreementId: envelope.agreementId,
-    activityType: envelope.activityType,
-    content: envelope.content,
-  });
-}
 
 export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) {
   const publicClient = usePublicClient();
@@ -78,13 +42,18 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
       if (!publicClient) {
         throw new Error("The Base Sepolia connection is not ready.");
       }
-      const proof = parseProofFile(await file.text());
+      const proof = parseActivityProofFile(await file.text());
+      assertActivityProofContext(
+        proof,
+        OPEN_ESCROW_ADDRESS,
+        AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
+      );
       if (BigInt(proof.envelope.agreementId) !== agreementId) {
         throw new Error(
           `This proof belongs to ${agreementReference(proof.envelope.agreementId)}.`,
         );
       }
-      const computedHash = keccak256(toBytes(canonicalEnvelope(proof.envelope)));
+      const computedHash = hashActivityEnvelope(proof.envelope);
       if (computedHash.toLowerCase() !== proof.contentHash.toLowerCase()) {
         throw new Error("The private content no longer matches the proof hash.");
       }
@@ -94,6 +63,14 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
       });
       if (receipt.status !== "success") {
         throw new Error("The referenced transaction did not succeed.");
+      }
+      if (
+        receipt.to?.toLowerCase() !==
+        AGREEMENT_ACTIVITY_REGISTRY_ADDRESS.toLowerCase()
+      ) {
+        throw new Error(
+          "The referenced transaction was not sent to this OpenEscrow record registry.",
+        );
       }
       const logs = await publicClient.getLogs({
         address: AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,

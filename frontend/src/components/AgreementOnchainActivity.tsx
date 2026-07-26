@@ -7,6 +7,7 @@ import {
 } from "../contracts/config";
 import { formatTimestamp, shortAddr } from "../lib/format";
 import type { NegotiationAccess } from "../lib/negotiations";
+import { useActivityRegistryReadiness } from "../lib/useActivityRegistryReadiness";
 import { ActivityProofVerifier } from "./ActivityProofVerifier";
 import { PrivateActivityPublisher } from "./PrivateActivityPublisher";
 
@@ -44,11 +45,15 @@ export function AgreementOnchainActivity({
   negotiationAccess?: NegotiationAccess | null;
 }) {
   const publicClient = usePublicClient();
+  const registry = useActivityRegistryReadiness();
   const [items, setItems] = useState<ActivityItem[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
-    if (!publicClient) return;
+    if (!publicClient || !registry.isReady) {
+      setItems([]);
+      return;
+    }
     try {
       const [snapshots, activities] = await Promise.all([
         publicClient.getLogs({
@@ -95,7 +100,7 @@ export function AgreementOnchainActivity({
           : "Onchain activity could not be loaded.",
       );
     }
-  }, [agreementId, publicClient]);
+  }, [agreementId, publicClient, registry.isReady]);
 
   useEffect(() => {
     void refresh();
@@ -105,15 +110,24 @@ export function AgreementOnchainActivity({
 
   return (
     <section className="onchain-record-tools" aria-label="Onchain record tools">
-      {isParty && (
+      {registry.isChecking && (
+        <p className="field-help">Checking the onchain record service…</p>
+      )}
+      {!registry.isChecking && !registry.isReady && (
+        <p className="tx-error" role="alert">
+          Onchain record receipts are temporarily unavailable because the record service
+          is not connected to this OpenEscrow release.
+        </p>
+      )}
+      {registry.isReady && isParty && (
         <PrivateActivityPublisher
           agreementId={agreementId}
           negotiationAccess={negotiationAccess}
           onPublished={() => void refresh()}
         />
       )}
-      {isParty && <ActivityProofVerifier agreementId={agreementId} />}
-      {(items.length > 0 || error) && (
+      {registry.isReady && isParty && <ActivityProofVerifier agreementId={agreementId} />}
+      {registry.isReady && (items.length > 0 || error) && (
         <details className="technical-details onchain-activity">
           <summary>Onchain record receipts ({items.length})</summary>
           {items.map((item) => (

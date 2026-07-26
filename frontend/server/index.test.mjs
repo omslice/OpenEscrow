@@ -569,6 +569,16 @@ test("tenant can request changes, approve, and make an arbiter-free proposal rea
   assert.match(firstSnapshot.hash, /^0x[a-f0-9]{64}$/);
   assert.equal(firstSnapshot.hash, repeatedSnapshot.hash);
   assert.equal(firstSnapshot.canonical, repeatedSnapshot.canonical);
+  assert.equal(firstSnapshot.snapshot.schema, "openescrow.agreement-record.v3");
+  assert.equal(firstSnapshot.snapshot.onchain.chainId, 84532);
+  assert.equal(
+    firstSnapshot.snapshot.onchain.escrowAddress.toLowerCase(),
+    "0xf18bfdbfd3ff84c603cbdf895d2a96ac7260ae99",
+  );
+  assert.equal(
+    firstSnapshot.snapshot.onchain.activityRegistryAddress.toLowerCase(),
+    "0xc004df4c43146fe55e5761ea1bb3c14f01161951",
+  );
 });
 
 test("yield asset snapshots cannot be tampered with and require party consent", async () => {
@@ -1333,6 +1343,24 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     if (url === `https://auth.privy.io/api/v1/apps/${appId}/jwks.json`) {
       return Response.json({ keys: [{ ...publicJwk, kid, alg: "ES256", use: "sig" }] });
     }
+    if (url === "https://rpc.example/") {
+      const payload = JSON.parse(options.body);
+      assert.equal(payload.method, "eth_call");
+      return Response.json({
+        jsonrpc: "2.0",
+        id: payload.id,
+        result: `0x${"0".repeat(24)}f18bfdbfd3ff84c603cbdf895d2a96ac7260ae99`,
+      });
+    }
+    if (url === "https://mismatched-rpc.example/") {
+      const payload = JSON.parse(options.body);
+      assert.equal(payload.method, "eth_call");
+      return Response.json({
+        jsonrpc: "2.0",
+        id: payload.id,
+        result: `0x${"0".repeat(24)}83fabc39c4fcccb6a4e42c568e9750d1a24ff11f`,
+      });
+    }
     deliveries.push({
       url,
       body: JSON.parse(options.body),
@@ -1346,6 +1374,7 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
       PRIVY_APP_ID: appId,
       RESEND_API_KEY: "test-resend-key",
       NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      BASE_SEPOLIA_RPC_URL: "https://rpc.example/",
     };
     const readiness = await jsonResponse(
       await worker.fetch(
@@ -1357,11 +1386,33 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     assert.equal(readiness.email.provider, "resend");
     assert.equal(readiness.evidence.contentTypeValidation, true);
     assert.equal(readiness.recordIntegrity.lifecycleStateGuards, true);
+    assert.equal(readiness.recordIntegrity.activityRegistry.ready, true);
+    assert.equal(
+      readiness.recordIntegrity.activityRegistry.boundEscrowAddress,
+      "0xf18bfdbfd3ff84c603cbdf895d2a96ac7260ae99",
+    );
     assert.equal(readiness.complianceSources.configured, false);
     assert.ok(readiness.complianceSources.total >= 57);
     assert.equal(
       readiness.recordIntegrity.transactionReceiptVerification,
       true,
+    );
+    const mismatchedReadiness = await jsonResponse(
+      await worker.fetch(
+        request("/api/system/readiness"),
+        {
+          ...resendEnv,
+          BASE_SEPOLIA_RPC_URL: "https://mismatched-rpc.example/",
+        },
+      ),
+    );
+    assert.equal(
+      mismatchedReadiness.recordIntegrity.activityRegistry.ready,
+      false,
+    );
+    assert.equal(
+      mismatchedReadiness.recordIntegrity.activityRegistry.error,
+      "The activity registry is not bound to the active OpenEscrow release.",
     );
 
     const testRequest = () =>
@@ -1432,6 +1483,7 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
       {
         DB: db,
         COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+        VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
       },
       {
         waitUntil(promise) {

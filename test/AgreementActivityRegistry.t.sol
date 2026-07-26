@@ -14,6 +14,11 @@ contract AgreementActivityRegistryTest is Base {
         registry = new AgreementActivityRegistry(address(escrow));
     }
 
+    function test_constructorRejectsAddressWithoutEscrowCode() public {
+        vm.expectRevert(AgreementActivityRegistry.InvalidEscrowContract.selector);
+        new AgreementActivityRegistry(makeAddr("not-an-escrow-contract"));
+    }
+
     function test_allAgreementPartiesCanIndependentlyAnchorTheSameSnapshot() public {
         uint256 id = _propose();
 

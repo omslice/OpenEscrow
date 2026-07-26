@@ -31,6 +31,7 @@ contract AgreementActivityRegistry {
     );
 
     error ZeroAddress();
+    error InvalidEscrowContract();
     error InvalidHash();
     error InvalidActivityType();
     error NotAgreementParty();
@@ -38,6 +39,7 @@ contract AgreementActivityRegistry {
 
     constructor(address escrow) {
         if (escrow == address(0)) revert ZeroAddress();
+        if (escrow.code.length == 0) revert InvalidEscrowContract();
         ESCROW = OpenEscrow(escrow);
     }
 

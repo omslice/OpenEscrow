@@ -10,15 +10,19 @@ Public demo: https://openescrow-demo.omrigross.chatgpt.site
 ## Deployed addresses (Base Sepolia, chain id 84532)
 
 - `OpenEscrow`: see `src/contracts/config.ts` for the active deployment.
-- `OperationsReserve` (separate 5 testUSDC pilot service reserve): `0xf0aa0C72d240b86E7AaE328912CF8737069a0f5d`
-- `AgreementActivityRegistry` (party-authorized record hashes): `0xC004dF4C43146FE55e5761EA1BB3C14f01161951`
+- `OperationsReserve` (separate 5 testUSDC pilot service reserve): `0x5d2E9c429F9d117c7b028c8f0f67d37252aDceC0`
+- `AgreementActivityRegistry` (party-authorized record hashes): see
+  `src/contracts/config.ts`. The retired `0xC004...1951` registry is bound to an
+  earlier escrow release and must not be reused.
 - `MockUSDC` (test token, freely mintable): `0xE129b23BD89904D363ba226eE52deC74185D7789` (unchanged)
 - `MockYieldUSDC` (freely mintable yield-test shares): `0x2746034FF16371A65c133016470f85535992dabC`
 
 See `../script/DeployOpenEscrow.s.sol`, `../script/DeployOperationsReserve.s.sol`,
 `../script/DeployAgreementActivityRegistry.s.sol`, and
 `../script/DeployMockUSDC.s.sol` if you need to redeploy;
-update `src/contracts/config.ts` (address *and* `DEPLOYMENT_BLOCK`) with the new values afterward.
+update `src/contracts/config.ts` (address and matching deployment block) with the new values
+afterward. The registry must be freshly deployed for every escrow release; follow
+`../docs/agreement-activity-registry-deployment.md`.
 
 ## Running locally
 
