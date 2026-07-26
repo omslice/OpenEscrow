@@ -2,7 +2,9 @@
 
 ## Status
 
-Proposed for the post-MVP yield prototype. The interface, allocation library, and tests are local scaffolding only. They are not wired into or deployed with the current OpenEscrow contract.
+Prototype implemented locally for post-MVP evaluation. The interface, allocation library, isolated
+`YieldEscrowV2Prototype`, mock adapter, and tests are not wired into or deployed with the current
+OpenEscrow contract.
 
 ## Context
 
@@ -66,6 +68,23 @@ An automation may prompt or submit the settlement transaction, but correctness c
 - Yield becomes a clearly separated strategy concern, while claims remain stable USDC accounting.
 - A fixed-share wrapper or vault is required when the underlying protocol exposes a rebasing position.
 - The loss-allocation rule is now explicit and testable, but it still requires product and legal approval before a real-money pilot.
+
+## Prototype evidence
+
+The isolated prototype now demonstrates:
+
+- tenant funding through an immutable adapter;
+- fixed receipt shares attributed per agreement in shared custody;
+- permissionless, once-only redemption after a fixed settlement time;
+- minimum-assets-out protection;
+- validation of adapter return values against actual token balance deltas;
+- distribution through a placeholder immutable claim resolver;
+- pull-based USDC withdrawals; and
+- gain, loss, rounding, malicious-reporting, retry, isolation, and fuzz tests.
+
+The placeholder claim resolver intentionally avoids duplicating the full MVP claims workflow. The
+next contract milestone is to design the V2 claim-state integration and multi-tenant share treatment
+before any external protocol adapter is added.
 
 ## Deferred decisions
 
