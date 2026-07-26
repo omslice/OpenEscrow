@@ -610,7 +610,11 @@ export async function uploadEvidenceDocument(
   uri: string;
   gatewayUrl: string;
   sha256: string;
-  storageKind: "private" | "encrypted";
+  storageKind:
+    | "private"
+    | "encrypted"
+    | "encrypted-private"
+    | "encrypted-decentralized";
 }> {
   const form = new FormData();
   form.set("proposalId", access.proposalId);
@@ -622,7 +626,11 @@ export async function uploadEvidenceDocument(
     uri?: string;
     gatewayUrl?: string;
     sha256?: string;
-    storageKind?: "private" | "encrypted";
+    storageKind?:
+      | "private"
+      | "encrypted"
+      | "encrypted-private"
+      | "encrypted-decentralized";
     error?: string;
   };
   if (

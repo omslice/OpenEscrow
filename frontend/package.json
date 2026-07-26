@@ -9,6 +9,7 @@
     "build:sites": "npm run build && node prepare-sites.mjs",
     "lint": "oxlint",
     "check": "npm run lint && npm run test:server && npm run build",
+    "pilot:check": "node scripts/check-pilot-readiness.mjs",
     "test:server": "node --test server/index.test.mjs",
     "e2e:live": "node e2e-full-flow.mjs",
     "preview": "vite preview"

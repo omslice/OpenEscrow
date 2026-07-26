@@ -66,7 +66,8 @@ export function useEvidenceInputs(access?: NegotiationAccess | null) {
                 setUri(uploaded.uri);
                 setUploadedFileHash(uploaded.sha256 as `0x${string}`);
                 setUploadMessage(
-                  uploaded.storageKind === "private"
+                  (uploaded.storageKind === "private" ||
+                    uploaded.storageKind === "encrypted-private")
                     ? `Stored privately. SHA-256 receipt: ${uploaded.sha256.slice(0, 14)}…`
                     : `Encrypted before decentralized storage. CID: ${uploaded.reference}`,
                 );

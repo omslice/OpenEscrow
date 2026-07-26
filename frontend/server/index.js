@@ -1635,12 +1635,36 @@ async function sendLandlordReadyNotification(request, env, row) {
   return delivered?.id || null;
 }
 
-async function sendOptedInAgreementActivityEmails(request, env, row, eventType) {
+async function sendOptedInAgreementActivityEmails(
+  request,
+  env,
+  row,
+  eventType,
+  activity = {},
+) {
   if (!emailProvider(env)) return [];
   const tenantRecipients = (await tenantsFor(env.DB, row.id)).map((tenant) => [
     "tenant",
     tenant.email,
   ]);
+  const claimResponseCopy =
+    {
+      approve: {
+        subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} deduction approved`,
+        text: "The tenant approved the documented deduction claim. Review the recorded decision and resulting allocation in OpenEscrow.",
+      },
+      partial: {
+        subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} deduction partially disputed`,
+        text: "The tenant approved part of the documented deduction and disputed the remainder. Review the recorded decision and next step in OpenEscrow.",
+      },
+      dispute: {
+        subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} deduction disputed`,
+        text: "The tenant disputed the documented deduction claim. Review the recorded explanation and resolution status in OpenEscrow.",
+      },
+    }[activity.decision] || {
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} claim response`,
+      text: "The tenant responded to the deduction claim. Review the recorded decision and next step in OpenEscrow.",
+    };
   const notification = {
     finalize: {
       recipients: [
@@ -1685,8 +1709,7 @@ async function sendOptedInAgreementActivityEmails(request, env, row, eventType) 
         ...tenantRecipients,
         ["arbiter", row.arbiter_email],
       ],
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} claim response`,
-      text: "The tenant responded to the deduction claim. Review the recorded decision and next step in OpenEscrow.",
+      ...claimResponseCopy,
     },
     arbiter_ruling: {
       recipients: [
@@ -1735,6 +1758,41 @@ function addDays(date, days) {
 
 function latestEvent(events, action) {
   return [...events].reverse().find((event) => event.action === action) || null;
+}
+
+function claimResponseState(events, tenantRows) {
+  const responseEvents = events.filter(
+    (event) => event.action === "claim_response_submitted",
+  );
+  const responsesByTenant = new Map();
+  const legacyResponses = [];
+  for (const event of responseEvents) {
+    const tenantId = cleanText(event.metadata?.tenantId, 80);
+    if (tenantId) responsesByTenant.set(tenantId, event);
+    else legacyResponses.push(event);
+  }
+  if (legacyResponses.length && tenantRows.length) {
+    const primaryTenant =
+      tenantRows.find((tenant) => tenant.is_funding_tenant === 1) || tenantRows[0];
+    if (!responsesByTenant.has(primaryTenant.id)) {
+      responsesByTenant.set(primaryTenant.id, legacyResponses.at(-1));
+    }
+  }
+  const pendingTenants = tenantRows.filter(
+    (tenant) => !responsesByTenant.has(tenant.id),
+  );
+  const responses = tenantRows.length
+    ? tenantRows
+        .map((tenant) => responsesByTenant.get(tenant.id))
+        .filter(Boolean)
+    : responseEvents;
+  return {
+    responses,
+    pendingTenants,
+    allResponded: tenantRows.length
+      ? pendingTenants.length === 0
+      : responseEvents.length > 0,
+  };
 }
 
 async function sendScheduledNotification(env, row, notification, appUrl) {
@@ -1832,22 +1890,20 @@ function deadlineCandidates(row, events, now, tenantRows = []) {
   const candidates = [];
   const claimWindowStart = new Date(terms.claimWindowStart);
   const claimDeadline = addDays(claimWindowStart, terms.claimDays);
+  const lifecycleTenants = tenantRows.length
+    ? tenantRows
+    : [
+        {
+          id: "legacy-primary",
+          email: row.tenant_email,
+          is_funding_tenant: 1,
+        },
+      ];
   const lifecycleRecipients = [
     ["landlord", row.landlord_email],
-    ...tenantRows.map((tenant) => [`tenant-${tenant.id}`, tenant.email]),
+    ...lifecycleTenants.map((tenant) => [`tenant-${tenant.id}`, tenant.email]),
   ];
   for (const [role, email] of lifecycleRecipients) {
-    if (claimWindowStart <= now) {
-      candidates.push({
-        type: "claim_period_started",
-        role,
-        email,
-        preference: "deadline",
-        scheduledFor: claimWindowStart,
-        subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""}: claim period started`,
-        text: "The deduction claim period has started. Open the signed-in agreement workspace to review the current status and any required action.",
-      });
-    }
     if (claimDeadline <= now) {
       candidates.push({
         type: "claim_period_ended",
@@ -1858,102 +1914,114 @@ function deadlineCandidates(row, events, now, tenantRows = []) {
         subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""}: claim period ended`,
         text: "The deduction claim period has ended. Open the signed-in agreement workspace to see whether a claim was recorded and what happens next.",
       });
+    } else if (claimWindowStart <= now) {
+      candidates.push({
+        type: "claim_period_started",
+        role,
+        email,
+        preference: "deadline",
+        scheduledFor: claimWindowStart,
+        subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""}: claim period started`,
+        text: "The deduction claim period has started. Open the signed-in agreement workspace to review the current status and any required action.",
+      });
     }
   }
-    const claimSubmitted = events.find(
+  const claimSubmitted = events.find(
     (event) => event.action === "deduction_claim_submitted",
   );
   if (!claimSubmitted) {
-    for (const [type, scheduledFor, text] of [
-      [
-        "claim_deadline_3_days",
-        addDays(claimDeadline, -3),
-        "The landlord deduction-claim deadline is approaching. Submit any itemized claim and supporting documentation in OpenEscrow.",
-      ],
-      [
-        "claim_deadline_1_day",
-        addDays(claimDeadline, -1),
-        "The landlord deduction-claim deadline is tomorrow. No timely claim means the tenant can recover the full deposit.",
-      ],
-    ]) {
-      if (scheduledFor <= now && now < claimDeadline) {
-        candidates.push({
-          type,
-          role: "landlord",
-          email: row.landlord_email,
-          preference: "deadline",
-          scheduledFor,
-          subject: `OpenEscrow proposal ${row.id}: deduction deadline reminder`,
-          text,
-        });
-      }
+    const reminder = [
+      {
+        type: "claim_deadline_3_days",
+        scheduledFor: addDays(claimDeadline, -3),
+        text: "The landlord deduction-claim deadline is approaching. Submit any itemized claim and supporting documentation in OpenEscrow.",
+      },
+      {
+        type: "claim_deadline_1_day",
+        scheduledFor: addDays(claimDeadline, -1),
+        text: "The landlord deduction-claim deadline is tomorrow. No timely claim means the tenant can recover the full deposit.",
+      },
+    ].filter((candidate) => candidate.scheduledFor <= now && now < claimDeadline).at(-1);
+    if (reminder) {
+      candidates.push({
+        ...reminder,
+        role: "landlord",
+        email: row.landlord_email,
+        preference: "deadline",
+        subject: `OpenEscrow proposal ${row.id}: deduction deadline reminder`,
+      });
     }
   } else {
-    const tenantResponse = latestEvent(events, "claim_response_submitted");
-    if (!tenantResponse) {
+    const responseState = claimResponseState(events, lifecycleTenants);
+    if (!responseState.allResponded) {
       const responseDeadline = addDays(
         new Date(claimSubmitted.createdAt),
         terms.responseDays,
       );
-      for (const [type, scheduledFor, text] of [
-        [
-          "response_deadline_3_days",
-          addDays(responseDeadline, -3),
-          "A documented deduction claim is awaiting your response. Approve, partially accept, or dispute it before the response deadline.",
-        ],
-        [
-          "response_deadline_1_day",
-          addDays(responseDeadline, -1),
-          "Your deduction-claim response deadline is tomorrow. Silence escalates the claim to a dispute; it never automatically pays the landlord.",
-        ],
-      ]) {
-        if (scheduledFor <= now && now < responseDeadline) {
+      for (const tenant of responseState.pendingTenants) {
+        const reminder = [
+          {
+            type: "response_deadline_3_days",
+            scheduledFor: addDays(responseDeadline, -3),
+            text: "A documented deduction claim is awaiting your response. Approve, partially accept, or dispute it before the response deadline.",
+          },
+          {
+            type: "response_deadline_1_day",
+            scheduledFor: addDays(responseDeadline, -1),
+            text: "Your deduction-claim response deadline is tomorrow. Silence escalates the claim to a dispute; it never automatically pays the landlord.",
+          },
+        ].filter((candidate) => candidate.scheduledFor <= now && now < responseDeadline).at(-1);
+        if (reminder) {
           candidates.push({
-            type,
-            role: "tenant",
-            email: row.tenant_email,
+            ...reminder,
+            role: `tenant-${tenant.id}`,
+            email: tenant.email,
             preference: "deadline",
-            scheduledFor,
             subject: `OpenEscrow proposal ${row.id}: response deadline reminder`,
-            text,
           });
         }
       }
     } else {
-      const decision = tenantResponse.metadata?.decision;
+      const disputeOpened = responseState.responses.some(
+        (event) =>
+          event.metadata?.decision === "partial" ||
+          event.metadata?.decision === "dispute",
+      );
       const arbiterRuling = latestEvent(events, "arbiter_ruling_submitted");
       if (
         row.arbiter_email &&
         !arbiterRuling &&
-        (decision === "partial" || decision === "dispute")
+        disputeOpened
       ) {
+        const lastTenantResponse = [...responseState.responses].sort(
+          (left, right) =>
+            new Date(left.createdAt).getTime() -
+            new Date(right.createdAt).getTime(),
+        ).at(-1);
         const rulingDeadline = addDays(
-          new Date(tenantResponse.createdAt),
+          new Date(lastTenantResponse.createdAt),
           terms.arbiterDays,
         );
-        for (const [type, scheduledFor, text] of [
-          [
-            "arbiter_deadline_3_days",
-            addDays(rulingDeadline, -3),
-            "An OpenEscrow deduction dispute is awaiting your ruling. Review the private record and submit an allocation before the deadline.",
-          ],
-          [
-            "arbiter_deadline_1_day",
-            addDays(rulingDeadline, -1),
-            "The OpenEscrow ruling deadline is tomorrow. If no ruling is submitted, the disputed balance defaults to the tenant.",
-          ],
-        ]) {
-          if (scheduledFor <= now && now < rulingDeadline) {
-            candidates.push({
-              type,
-              role: "arbiter",
-              email: row.arbiter_email,
-              preference: "deadline",
-              scheduledFor,
-              subject: `OpenEscrow proposal ${row.id}: ruling deadline reminder`,
-              text,
-            });
-          }
+        const reminder = [
+          {
+            type: "arbiter_deadline_3_days",
+            scheduledFor: addDays(rulingDeadline, -3),
+            text: "An OpenEscrow deduction dispute is awaiting your ruling. Review the private record and submit an allocation before the deadline.",
+          },
+          {
+            type: "arbiter_deadline_1_day",
+            scheduledFor: addDays(rulingDeadline, -1),
+            text: "The OpenEscrow ruling deadline is tomorrow. If no ruling is submitted, the disputed balance defaults to the tenant.",
+          },
+        ].filter((candidate) => candidate.scheduledFor <= now && now < rulingDeadline).at(-1);
+        if (reminder) {
+          candidates.push({
+            ...reminder,
+            role: "arbiter",
+            email: row.arbiter_email,
+            preference: "deadline",
+            subject: `OpenEscrow proposal ${row.id}: ruling deadline reminder`,
+          });
         }
       }
     }
@@ -2009,19 +2077,44 @@ async function recordClaimPeriodTransitions(env, row, events, now) {
   if (statements.length) await env.DB.batch(statements);
 }
 
-function withdrawalCandidates(row, events, now) {
+function withdrawalCandidates(row, events, now, tenantRows = []) {
   const timeout = latestEvent(events, "timeout_executed");
+  const lifecycleTenants = tenantRows.length
+    ? tenantRows
+    : [
+        {
+          id: "legacy-primary",
+          email: row.tenant_email,
+          is_funding_tenant: 1,
+        },
+      ];
+  const responseState = claimResponseState(events, lifecycleTenants);
+  const acceptedResponses = responseState.responses.filter(
+    (event) => event.metadata?.decision === "approve",
+  );
+  const acceptedWithoutDispute =
+    responseState.allResponded &&
+    acceptedResponses.length === responseState.responses.length
+      ? [...acceptedResponses].sort(
+          (left, right) =>
+            new Date(left.createdAt).getTime() -
+            new Date(right.createdAt).getTime(),
+        ).at(-1)
+      : null;
   const resolution =
     latestEvent(events, "arbiter_ruling_submitted") ||
-    latestEvent(events, "claim_response_submitted") ||
+    acceptedWithoutDispute ||
     (timeout?.metadata?.timeout === "no_claim_refund" ||
     timeout?.metadata?.timeout === "arbiter_timeout_refund"
       ? timeout
       : null);
   if (!resolution) return [];
   return [
-    ["tenant", row.tenant_email],
     ["landlord", row.landlord_email],
+    ...lifecycleTenants.map((tenant) => [
+      `tenant-${tenant.id}`,
+      tenant.email,
+    ]),
   ].map(([role, email]) => ({
     type: "allocation_ready",
     role,
@@ -2052,7 +2145,7 @@ async function runScheduledNotifications(env, now = new Date()) {
     const tenantRows = await tenantsFor(env.DB, row.id);
     const candidates = [
       ...deadlineCandidates(row, events, now, tenantRows),
-      ...withdrawalCandidates(row, events, now),
+      ...withdrawalCandidates(row, events, now, tenantRows),
     ];
     for (const candidate of candidates) {
       if (!emailProvider(env)) continue;
@@ -2933,6 +3026,7 @@ async function applyAction(request, env, id) {
         env,
         updated,
         body.type,
+        body,
       );
       if (deliveries.length) {
         const notifiedAt = new Date().toISOString();
@@ -3109,7 +3203,7 @@ async function uploadEvidence(request, env) {
       cid: evidenceId,
       uri,
       sha256,
-      storageKind: encryptionVersion ? "encrypted" : "private",
+      storageKind: encryptionVersion ? "encrypted-private" : "private",
       gatewayUrl: `/api/evidence/${encodeURIComponent(evidenceId)}?token=${encodeURIComponent(token)}`,
     });
   }
@@ -3193,7 +3287,7 @@ async function uploadEvidence(request, env) {
     cid: result.IpfsHash,
     uri,
     sha256,
-    storageKind: "encrypted",
+    storageKind: "encrypted-decentralized",
     gatewayUrl: `/api/evidence/${encodeURIComponent(evidenceId)}?token=${encodeURIComponent(token)}`,
   });
 }

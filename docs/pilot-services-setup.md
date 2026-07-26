@@ -4,6 +4,33 @@ This guide covers the external accounts and values that cannot be created safely
 repository. Complete the email section first. Keep fiat funding in sandbox and keep evidence in
 the private vault until each section passes its verification checklist.
 
+## Morning owner checklist
+
+The application code, private R2 binding, D1 records, account sign-in, embedded wallets, manual
+email fallbacks, and provider adapters are already in place. The current live readiness check
+shows four owner actions before a controlled pilot:
+
+1. **Verify a sending domain in Resend** and create a sending-only API key.
+2. **Add the three email runtime values** listed below to the existing Sites deployment.
+3. **Activate the 15-minute Cron Trigger** and wait for its first successful run.
+4. **Generate and back up the evidence master key**, then add it as
+   `EVIDENCE_ENCRYPTION_KEY`.
+
+Do email first, encryption second, and the optional fiat sandbox last. Do not send API keys or
+the evidence master key in chat, screenshots, email, or Git. Enter them only in the provider and
+hosting secret controls.
+
+After the settings are saved and the site is redeployed, ask Codex to run the pilot readiness
+check, or run:
+
+```powershell
+cd frontend
+npm.cmd run pilot:check
+```
+
+The required rows should all report `PASS`. The decentralized-evidence row may remain `OPTIONAL`
+for the pilot.
+
 ## 1. Free automatic email delivery
 
 ### What is already implemented
@@ -101,7 +128,7 @@ test tokens. Keep the current faucet for the public demo. Only activate real fia
 3. Enable Coinbase Onramp or another supported card provider.
 4. Add the OpenEscrow production and local development domains to the allowed origins.
 5. Confirm Google login and embedded Ethereum wallets remain enabled.
-6. Configure these public build values for a sandbox build:
+6. Configure these public build values in `frontend/.env.local` before creating a sandbox build:
 
 ```dotenv
 VITE_FIAT_ONRAMP_ENABLED=true
@@ -112,6 +139,10 @@ VITE_FIAT_ONRAMP_ASSET=0x833589fCD6EDB6E08f4c7C32D4f71b54bdA02913
 
 The chain and asset above are Base mainnet USDC identifiers. Sandbox mode simulates the provider
 checkout; it must not be confused with funding the Base Sepolia escrow.
+
+These are Vite build-time values, not hosted Worker secrets. Changing them requires a new
+validated build and deployment. The enabled UI labels the experience as a sandbox, states that
+no real money moves, and continues to direct the tenant to the free Base Sepolia faucet.
 
 ### Production design
 
@@ -177,6 +208,10 @@ EVIDENCE_ENCRYPTION_KEY=replace_with_the_generated_base64_value
 
 The application encrypts the document before persistent storage and verifies the original
 SHA-256 hash after decryption. This is private and inexpensive, but R2 is not decentralized.
+
+Keep this as the pilot default. Do not enable the decentralized mode merely to complete a
+checklist; participant-controlled key recovery should be designed before decentralized storage
+becomes the only copy of evidence.
 
 ### Experimental decentralized mode: encrypted IPFS
 

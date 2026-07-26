@@ -760,7 +760,7 @@ test("configured evidence encryption stores only ciphertext and decrypts for an 
       },
     ),
   );
-  assert.equal(uploaded.storageKind, "encrypted");
+  assert.equal(uploaded.storageKind, "encrypted-private");
   const [stored] = evidence.objects.values();
   assert.equal(new TextDecoder().decode(stored.bytes).includes("private encrypted invoice"), false);
 
@@ -823,7 +823,7 @@ test("decentralized evidence mode uploads only encrypted IPFS ciphertext", async
         },
       ),
     );
-    assert.equal(uploaded.storageKind, "encrypted");
+    assert.equal(uploaded.storageKind, "encrypted-decentralized");
     assert.match(uploaded.uri, /^openescrow\+ipfs:\/\/bafy-encrypted-test\//);
 
     const authorized = await worker.fetch(
@@ -928,6 +928,390 @@ test("scheduled claim-window reminders are opted-in and idempotent", async () =>
     });
     await Promise.all(repeated);
     assert.equal(deliveries.length, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a delayed scheduler sends only the current no-claim lifecycle notice", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenants: [
+          { name: "Terry Tenant", email: "tenant@example.com" },
+          { name: "Casey Tenant", email: "casey@example.com" },
+        ],
+        arbiterName: "",
+        arbiterEmail: null,
+        terms,
+      }),
+      { DB: db },
+    ),
+  );
+  for (const [index, tenant] of created.access.tenants.entries()) {
+    await jsonResponse(
+      await act(db, created.record.id, tenant.token, {
+        type: "approve",
+        wallet:
+          index === 0
+            ? "0x1111111111111111111111111111111111111111"
+            : "0x2222222222222222222222222222222222222222",
+      }),
+    );
+  }
+  await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "finalize",
+      agreementId: "76",
+      transactionHash: `0x${"a".repeat(64)}`,
+    }),
+  );
+  const preferenceTime = new Date().toISOString();
+  for (const [index, email] of [
+    "landlord@example.com",
+    "tenant@example.com",
+    "casey@example.com",
+  ].entries()) {
+    await db
+      .prepare(
+        `INSERT INTO notification_preferences
+         (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind(`did:privy:no-claim-${index}`, email, preferenceTime, preferenceTime)
+      .run();
+  }
+
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `no-claim-scheduled-${deliveries.length}` });
+  };
+  try {
+    const env = {
+      DB: db,
+      RESEND_API_KEY: "test-resend-key",
+      NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      PUBLIC_APP_URL: "https://openescrow.example/",
+    };
+    const claimDeadline =
+      new Date(terms.claimWindowStart).getTime() +
+      Number(terms.claimDays) * 24 * 60 * 60 * 1000;
+    const deadlineWaits = [];
+    await worker.scheduled(
+      { scheduledTime: claimDeadline },
+      env,
+      { waitUntil(promise) { deadlineWaits.push(promise); } },
+    );
+    await Promise.all(deadlineWaits);
+    assert.equal(deliveries.length, 3);
+    for (const delivery of deliveries) {
+      assert.match(delivery.subject, /claim period ended/);
+      assert.doesNotMatch(delivery.subject, /claim period started/);
+    }
+
+    await jsonResponse(
+      await act(db, created.record.id, created.access.tenant, {
+        type: "timeout_executed",
+        timeout: "no_claim_refund",
+        transactionHash: `0x${"b".repeat(64)}`,
+      }),
+    );
+    const refundWaits = [];
+    await worker.scheduled(
+      { scheduledTime: claimDeadline + 11 * 60 * 1000 },
+      env,
+      { waitUntil(promise) { refundWaits.push(promise); } },
+    );
+    await Promise.all(refundWaits);
+    assert.equal(deliveries.length, 6);
+    assert.deepEqual(
+      deliveries.slice(3).map((delivery) => delivery.to[0]),
+      ["landlord@example.com", "tenant@example.com", "casey@example.com"],
+    );
+    for (const delivery of deliveries.slice(3)) {
+      assert.match(delivery.subject, /allocation ready/);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("scheduled response and allocation notices respect every tenant", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenants: [
+          { name: "Terry Tenant", email: "tenant@example.com" },
+          { name: "Casey Tenant", email: "casey@example.com" },
+        ],
+        arbiterName: "",
+        arbiterEmail: null,
+        terms,
+      }),
+      { DB: db },
+    ),
+  );
+  for (const [index, tenant] of created.access.tenants.entries()) {
+    await jsonResponse(
+      await act(db, created.record.id, tenant.token, {
+        type: "approve",
+        wallet:
+          index === 0
+            ? "0x1111111111111111111111111111111111111111"
+            : "0x2222222222222222222222222222222222222222",
+      }),
+    );
+  }
+  await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "finalize",
+      agreementId: "77",
+      transactionHash: `0x${"a".repeat(64)}`,
+    }),
+  );
+  const claimed = await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "claim_submitted",
+      amount: "100",
+      category: "Damage beyond ordinary wear",
+      items: [
+        {
+          category: "11",
+          description: "Documented repair",
+          amount: "100",
+        },
+      ],
+      note: "",
+      evidenceUri: "openescrow://evidence/test",
+      evidenceHash: `0x${"b".repeat(64)}`,
+      californiaConfirmations: {
+        itemizedStatement: true,
+        supportingDocuments: true,
+      },
+      transactionHash: `0x${"c".repeat(64)}`,
+    }),
+  );
+  const claimEvent = claimed.events.find(
+    (event) => event.action === "deduction_claim_submitted",
+  );
+  const preferenceTime = new Date().toISOString();
+  for (const [index, email] of [
+    "landlord@example.com",
+    "tenant@example.com",
+    "casey@example.com",
+  ].entries()) {
+    await db
+      .prepare(
+        `INSERT INTO notification_preferences
+         (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind(`did:privy:multi-${index}`, email, preferenceTime, preferenceTime)
+      .run();
+  }
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenants[0].token, {
+      type: "claim_response",
+      decision: "approve",
+      acceptedAmount: "100",
+      note: "",
+      transactionHash: `0x${"d".repeat(64)}`,
+    }),
+  );
+
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `multi-scheduled-${deliveries.length}` });
+  };
+  try {
+    const env = {
+      DB: db,
+      RESEND_API_KEY: "test-resend-key",
+      NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      PUBLIC_APP_URL: "https://openescrow.example/",
+    };
+    const reminderTime =
+      new Date(claimEvent.createdAt).getTime() + 6 * 24 * 60 * 60 * 1000;
+    const firstWaits = [];
+    await worker.scheduled(
+      { scheduledTime: reminderTime },
+      env,
+      { waitUntil(promise) { firstWaits.push(promise); } },
+    );
+    await Promise.all(firstWaits);
+    assert.equal(deliveries.length, 1);
+    assert.deepEqual(deliveries[0].to, ["casey@example.com"]);
+    assert.match(deliveries[0].subject, /response deadline reminder/);
+
+    await jsonResponse(
+      await act(db, created.record.id, created.access.tenants[1].token, {
+        type: "claim_response",
+        decision: "approve",
+        acceptedAmount: "100",
+        note: "",
+        transactionHash: `0x${"e".repeat(64)}`,
+      }),
+    );
+    const resolutionWaits = [];
+    await worker.scheduled(
+      { scheduledTime: reminderTime + 11 * 60 * 1000 },
+      env,
+      { waitUntil(promise) { resolutionWaits.push(promise); } },
+    );
+    await Promise.all(resolutionWaits);
+    assert.equal(deliveries.length, 4);
+    assert.deepEqual(
+      deliveries.slice(1).map((delivery) => delivery.to[0]),
+      ["landlord@example.com", "tenant@example.com", "casey@example.com"],
+    );
+    for (const delivery of deliveries.slice(1)) {
+      assert.match(delivery.subject, /allocation ready/);
+    }
+
+    const duplicateWaits = [];
+    await worker.scheduled(
+      { scheduledTime: reminderTime + 22 * 60 * 1000 },
+      env,
+      { waitUntil(promise) { duplicateWaits.push(promise); } },
+    );
+    await Promise.all(duplicateWaits);
+    assert.equal(deliveries.length, 4);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("scheduled allocation notices wait for an arbiter to resolve a dispute", async () => {
+  const db = new TestD1();
+  const created = await create(db, "arbiter@example.com");
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+  await jsonResponse(
+    await act(db, created.record.id, created.access.arbiter, {
+      type: "approve",
+      wallet: "0x2222222222222222222222222222222222222222",
+    }),
+  );
+  await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "finalize",
+      agreementId: "78",
+      transactionHash: `0x${"a".repeat(64)}`,
+    }),
+  );
+  await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "claim_submitted",
+      amount: "100",
+      category: "Damage beyond ordinary wear",
+      items: [
+        {
+          category: "11",
+          description: "Documented repair",
+          amount: "100",
+        },
+      ],
+      note: "",
+      evidenceUri: "openescrow://evidence/test",
+      evidenceHash: `0x${"b".repeat(64)}`,
+      californiaConfirmations: {
+        itemizedStatement: true,
+        supportingDocuments: true,
+      },
+      transactionHash: `0x${"c".repeat(64)}`,
+    }),
+  );
+  const responded = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "claim_response",
+      decision: "dispute",
+      acceptedAmount: "0",
+      note: "The invoice does not establish tenant responsibility.",
+      transactionHash: `0x${"d".repeat(64)}`,
+    }),
+  );
+  const responseEvent = responded.events.find(
+    (event) => event.action === "claim_response_submitted",
+  );
+  const preferenceTime = new Date().toISOString();
+  for (const [index, email] of [
+    "landlord@example.com",
+    "tenant@example.com",
+    "arbiter@example.com",
+  ].entries()) {
+    await db
+      .prepare(
+        `INSERT INTO notification_preferences
+         (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind(`did:privy:dispute-${index}`, email, preferenceTime, preferenceTime)
+      .run();
+  }
+
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `dispute-scheduled-${deliveries.length}` });
+  };
+  try {
+    const env = {
+      DB: db,
+      RESEND_API_KEY: "test-resend-key",
+      NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      PUBLIC_APP_URL: "https://openescrow.example/",
+    };
+    const reminderTime =
+      new Date(responseEvent.createdAt).getTime() + 6 * 24 * 60 * 60 * 1000;
+    const firstWaits = [];
+    await worker.scheduled(
+      { scheduledTime: reminderTime },
+      env,
+      { waitUntil(promise) { firstWaits.push(promise); } },
+    );
+    await Promise.all(firstWaits);
+    assert.equal(deliveries.length, 1);
+    assert.deepEqual(deliveries[0].to, ["arbiter@example.com"]);
+    assert.match(deliveries[0].subject, /ruling deadline reminder/);
+
+    await jsonResponse(
+      await act(db, created.record.id, created.access.arbiter, {
+        type: "arbiter_ruling",
+        awardToLandlord: "40",
+        note: "The documented repair supports a partial deduction.",
+        transactionHash: `0x${"e".repeat(64)}`,
+      }),
+    );
+    const resolutionWaits = [];
+    await worker.scheduled(
+      { scheduledTime: reminderTime + 11 * 60 * 1000 },
+      env,
+      { waitUntil(promise) { resolutionWaits.push(promise); } },
+    );
+    await Promise.all(resolutionWaits);
+    assert.equal(deliveries.length, 3);
+    assert.deepEqual(
+      deliveries.slice(1).map((delivery) => delivery.to[0]),
+      ["landlord@example.com", "tenant@example.com"],
+    );
+    for (const delivery of deliveries.slice(1)) {
+      assert.match(delivery.subject, /allocation ready/);
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -1386,6 +1770,99 @@ test("opted-in agreement activity email is privacy-minimal and idempotent", asyn
       retry.events.filter((event) => event.action === "agreement_funded").length,
       1,
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("claim-response activity emails name the outcome and stay within the agreement", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenants: [
+          { name: "Terry Tenant", email: "tenant@example.com" },
+          { name: "Casey Tenant", email: "casey@example.com" },
+        ],
+        arbiterName: "",
+        arbiterEmail: null,
+        terms,
+      }),
+      { DB: db },
+    ),
+  );
+  for (const [index, tenant] of created.access.tenants.entries()) {
+    await jsonResponse(
+      await act(db, created.record.id, tenant.token, {
+        type: "approve",
+        wallet:
+          index === 0
+            ? "0x1111111111111111111111111111111111111111"
+            : "0x2222222222222222222222222222222222222222",
+      }),
+    );
+  }
+  await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "finalize",
+      agreementId: "79",
+      transactionHash: `0x${"a".repeat(64)}`,
+    }),
+  );
+  const preferenceTime = new Date().toISOString();
+  for (const [index, email] of [
+    "landlord@example.com",
+    "tenant@example.com",
+    "casey@example.com",
+    "unrelated@example.com",
+  ].entries()) {
+    await db
+      .prepare(
+        `INSERT INTO notification_preferences
+         (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 0, ?, ?)`,
+      )
+      .bind(`did:privy:claim-outcome-${index}`, email, preferenceTime, preferenceTime)
+      .run();
+  }
+
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `claim-outcome-${deliveries.length}` });
+  };
+  try {
+    await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.tenants[1].token,
+        {
+          type: "claim_response",
+          decision: "dispute",
+          acceptedAmount: "0",
+          note: "This invoice belongs to a different unit.",
+          transactionHash: `0x${"b".repeat(64)}`,
+        },
+        {
+          RESEND_API_KEY: "test-resend-key",
+          NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+        },
+      ),
+    );
+    assert.equal(deliveries.length, 3);
+    assert.deepEqual(
+      deliveries.map((delivery) => delivery.to[0]).sort(),
+      ["casey@example.com", "landlord@example.com", "tenant@example.com"],
+    );
+    for (const delivery of deliveries) {
+      assert.match(delivery.subject, /deduction disputed/);
+      assert.match(delivery.text, /recorded explanation and resolution status/);
+      assert.doesNotMatch(delivery.text, /different unit|unrelated@example.com/);
+    }
   } finally {
     globalThis.fetch = originalFetch;
   }
