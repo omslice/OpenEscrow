@@ -17,6 +17,7 @@ import {
 } from "../lib/negotiations";
 import { agreementReference, proposalReference } from "../lib/displayIds";
 import { roleLabel } from "../lib/inviteContext";
+import { getDepositAssetForTerms } from "../../shared/deposit-assets.js";
 
 function approvalLabel(record: NegotiationRecord, role: "tenant" | "arbiter") {
   const approved = role === "tenant" ? record.tenantApproved : record.arbiterApproved;
@@ -25,6 +26,8 @@ function approvalLabel(record: NegotiationRecord, role: "tenant" | "arbiter") {
 
 function Terms({ record }: { record: NegotiationRecord }) {
   const { terms } = record;
+  const depositAsset = getDepositAssetForTerms(terms);
+  const assetSnapshot = terms.depositAssetSnapshot;
   const isLegacyCalifornia =
     terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
     terms.policyVersion === CALIFORNIA_POLICY.version;
@@ -46,11 +49,47 @@ function Terms({ record }: { record: NegotiationRecord }) {
           </dd>
         </div>
       )}
-      <div><dt>Deposit</dt><dd>{terms.deposit} {terms.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</dd></div>
+      <div>
+        <dt>Deposit</dt>
+        <dd>
+          {terms.deposit} {assetSnapshot?.testnetSymbol || depositAsset?.testnetSymbol || "testUSDC"}
+          {assetSnapshot ? ` · ${assetSnapshot.displayName}` : ""}
+        </dd>
+      </div>
+      {assetSnapshot && (
+        <div>
+          <dt>Deposit asset terms</dt>
+          <dd>
+            <strong>
+              {assetSnapshot.yieldType === "none"
+                ? "No yield"
+                : `${assetSnapshot.yieldSource} · ${assetSnapshot.yieldVariability} yield`}
+            </strong>
+            <span>Settlement asset: {assetSnapshot.settlementAsset}</span>
+            <details>
+              <summary>Eligibility, risk, and accepted disclosures</summary>
+              <p>{assetSnapshot.eligibility}</p>
+              <p>{assetSnapshot.mainRisk}</p>
+              <p>{assetSnapshot.liquidityRisk}</p>
+              <ul>
+                {assetSnapshot.disclosures.map((disclosure) => (
+                  <li key={disclosure}>{disclosure}</li>
+                ))}
+              </ul>
+              <small>
+                Catalog {assetSnapshot.catalogVersion} · {assetSnapshot.implementationStatus}
+              </small>
+            </details>
+          </dd>
+        </div>
+      )}
       {(isLegacyCalifornia || researchProfile) && <div><dt>Monthly rent used for cap</dt><dd>{terms.monthlyRent || "Legacy proposal: not recorded"}</dd></div>}
       <div>
         <dt>Testnet operations reserve</dt>
-        <dd>$5 testUSDC total · split evenly between tenants · not refundable principal</dd>
+        <dd>
+          $5 {assetSnapshot?.testnetSymbol || depositAsset?.testnetSymbol || "testUSDC"} total ·
+          split evenly between tenants · not refundable principal
+        </dd>
       </div>
       <div><dt>Expected possession returned</dt><dd>{new Date(terms.claimWindowStart).toLocaleString()}</dd></div>
       <div><dt>{isLegacyCalifornia ? "California accounting/refund period" : researchProfile ? "Statewide onchain safeguard window" : "Test deduction window"}</dt><dd>{terms.claimDays} calendar days · {isLegacyCalifornia || researchProfile ? "profile default" : "agreed test value"}</dd></div>
@@ -144,6 +183,7 @@ function AgreementNegotiationView({
   const [isWorking, setIsWorking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [assetConsent, setAssetConsent] = useState(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -160,9 +200,13 @@ function AgreementNegotiationView({
     return () => window.clearInterval(interval);
   }, [refresh]);
 
+  useEffect(() => {
+    setAssetConsent(false);
+  }, [record?.id, record?.revision]);
+
   async function act(
     action:
-      | { type: "approve"; wallet: string; name?: string }
+      | { type: "approve"; wallet: string; name?: string; assetConsent?: boolean }
       | { type: "propose_change"; summary: string },
     success: string,
   ) {
@@ -269,6 +313,10 @@ function AgreementNegotiationView({
       : access.role === "arbiter"
         ? record.arbiterApproved
         : false;
+  const reviewAsset = getDepositAssetForTerms(record.terms);
+  const requiresAssetConsent = Boolean(
+    record.terms.depositAssetId && reviewAsset?.consentRequired,
+  );
   const complianceSnapshot = record.terms.complianceSnapshot;
   const activeComplianceProfile = jurisdictionProfile(record.terms.jurisdiction);
   const eventOptions = [
@@ -507,6 +555,23 @@ function AgreementNegotiationView({
       {canRespond && record.status !== "finalized" && record.status !== "cancelled" && (
         <div className="negotiation-response">
           <h3>Respond to revision {record.revision}</h3>
+          {requiresAssetConsent && reviewAsset && !alreadyApproved && (
+            <label className="asset-consent">
+              <input
+                type="checkbox"
+                checked={assetConsent}
+                disabled={isWorking}
+                onChange={(event) => setAssetConsent(event.target.checked)}
+              />
+              <span>
+                <strong>I affirmatively agree to {reviewAsset.displayName}.</strong>
+                <small>
+                  I reviewed the variable yield, eligibility, additional risks, simulation status,
+                  and {reviewAsset.settlementAsset} settlement disclosed above.
+                </small>
+              </span>
+            </label>
+          )}
           <label>
             Proposed change
             <textarea
@@ -531,11 +596,22 @@ function AgreementNegotiationView({
             </button>
             <button
               className="btn btn-primary"
-              disabled={isWorking || alreadyApproved || !isConnected || !address}
+              disabled={
+                isWorking ||
+                alreadyApproved ||
+                !isConnected ||
+                !address ||
+                (requiresAssetConsent && !assetConsent)
+              }
               onClick={() =>
                 address &&
                 void act(
-                  { type: "approve", wallet: address, name: currentName?.trim() || undefined },
+                  {
+                    type: "approve",
+                    wallet: address,
+                    name: currentName?.trim() || undefined,
+                    assetConsent: requiresAssetConsent ? assetConsent : undefined,
+                  },
                   `Revision ${record.revision} approved and your wallet was recorded.`,
                 )
               }

@@ -1729,6 +1729,161 @@
   color: var(--text);
 }
 
+.deposit-asset-selector {
+  margin: 0 0 18px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.deposit-asset-selector > legend {
+  padding: 0 6px;
+  color: var(--text-h);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.deposit-asset-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.deposit-asset-option {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  cursor: pointer;
+}
+
+.deposit-asset-option.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--accent-bg);
+}
+
+.deposit-asset-option.unavailable {
+  cursor: not-allowed;
+  opacity: 0.68;
+}
+
+.deposit-asset-option-heading {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: 9px;
+}
+
+.deposit-asset-option-heading input,
+.asset-consent input {
+  width: auto;
+  margin: 3px 0 0;
+}
+
+.deposit-asset-option-heading strong,
+.deposit-asset-option-heading small,
+.deposit-asset-option dl,
+.deposit-asset-option dd,
+.deposit-asset-option dt {
+  display: block;
+  margin: 0;
+}
+
+.deposit-asset-option-heading small {
+  margin-top: 2px;
+  color: var(--text);
+}
+
+.implementation-badge {
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.implementation-badge.simulated {
+  border-color: var(--warning);
+  color: var(--warning);
+}
+
+.deposit-asset-option dl {
+  display: grid;
+  gap: 7px;
+}
+
+.deposit-asset-option dl > div {
+  display: grid;
+  gap: 2px;
+}
+
+.deposit-asset-option dt {
+  color: var(--text);
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.deposit-asset-option dd,
+.deposit-asset-option > a {
+  color: var(--text);
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.deposit-asset-option > a {
+  width: fit-content;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.asset-consent {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 12px;
+  border: 1px solid var(--warning);
+  border-radius: 9px;
+  background: var(--warning-bg);
+}
+
+.asset-consent strong,
+.asset-consent small {
+  display: block;
+}
+
+.asset-consent small {
+  margin-top: 3px;
+  color: var(--text);
+}
+
+.asset-disclosures {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+}
+
+.asset-disclosures summary {
+  color: var(--text-h);
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.asset-disclosures li,
+.asset-disclosures p {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.55;
+}
+
 .cost-breakdown {
   display: grid;
   gap: 8px;
@@ -1871,6 +2026,19 @@
 
 .fiat-funding-option.enabled .btn {
   justify-self: start;
+}
+
+.funding-route-summary {
+  display: grid;
+  gap: 3px;
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border);
+}
+
+.funding-route-summary strong {
+  color: var(--text-h);
+  font-size: 12px;
 }
 
 .testnet-funding-fallback {
@@ -3223,7 +3391,8 @@ a.btn.disabled {
   }
 
   .test-funds-stack,
-  .token-choice {
+  .token-choice,
+  .deposit-asset-options {
     grid-template-columns: 1fr;
   }
 

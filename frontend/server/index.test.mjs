@@ -10,6 +10,12 @@ import {
   evaluateCompliance,
   normalizeAddressResolution,
 } from "../shared/us-compliance-engine.js";
+import {
+  DEPOSIT_ASSETS,
+  createDepositAssetSnapshot,
+  depositAssetAvailability,
+  validateDepositAssetTerms,
+} from "../shared/deposit-assets.js";
 
 test("the packaged D1 migration applies cleanly", () => {
   const database = new DatabaseSync(":memory:");
@@ -150,6 +156,38 @@ const genericTerms = {
   responseDays: "10",
   arbiterDays: "14",
 };
+
+test("deposit asset catalog keeps safe defaults and jurisdiction gates", () => {
+  assert.deepEqual(
+    DEPOSIT_ASSETS.map((asset) => asset.id),
+    ["usdc", "aave-usdc", "frnt", "usdy"],
+  );
+  assert.equal(DEPOSIT_ASSETS[0].enabled, true);
+  assert.equal(DEPOSIT_ASSETS[0].yieldType, "none");
+  assert.equal(DEPOSIT_ASSETS[1].implementationStatus, "simulated");
+  assert.equal(depositAssetAvailability("usdy", { countryCode: "US" }).available, false);
+  assert.equal(depositAssetAvailability("usdy", { countryCode: "CA" }).available, false);
+  assert.equal(depositAssetAvailability("frnt", { countryCode: "US" }).available, false);
+
+  const selected = {
+    ...terms,
+    tokenChoice: "yield",
+    depositAssetId: "aave-usdc",
+    depositAssetSnapshot: createDepositAssetSnapshot("aave-usdc"),
+    yieldConsent: true,
+  };
+  assert.equal(validateDepositAssetTerms(selected), true);
+  assert.equal(
+    validateDepositAssetTerms({
+      ...selected,
+      depositAssetSnapshot: {
+        ...selected.depositAssetSnapshot,
+        settlementAsset: "aUSDC",
+      },
+    }),
+    false,
+  );
+});
 
 const newYorkAddressResolution = {
   provider: "photon-openstreetmap",
@@ -531,6 +569,73 @@ test("tenant can request changes, approve, and make an arbiter-free proposal rea
   assert.match(firstSnapshot.hash, /^0x[a-f0-9]{64}$/);
   assert.equal(firstSnapshot.hash, repeatedSnapshot.hash);
   assert.equal(firstSnapshot.canonical, repeatedSnapshot.canonical);
+});
+
+test("yield asset snapshots cannot be tampered with and require party consent", async () => {
+  const db = new TestD1();
+  const aaveTerms = {
+    ...terms,
+    tokenChoice: "yield",
+    depositAssetId: "aave-usdc",
+    depositAssetSnapshot: createDepositAssetSnapshot("aave-usdc"),
+    yieldConsent: true,
+  };
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
+        tenantEmail: "tenant@example.com",
+        arbiterName: "",
+        arbiterEmail: null,
+        terms: aaveTerms,
+      }),
+      { DB: db },
+    ),
+  );
+
+  const missingConsent = await act(
+    db,
+    created.record.id,
+    created.access.tenant,
+    {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    },
+  );
+  assert.equal(missingConsent.status, 400);
+  assert.match((await missingConsent.json()).error, /Affirmatively confirm/);
+
+  const approved = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+      assetConsent: true,
+    }),
+  );
+  assert.equal(approved.status, "ready");
+  assert.equal(approved.events.at(-2).metadata.assetConsent, true);
+
+  const tampered = await worker.fetch(
+    request("/api/negotiations", "POST", {
+      landlordName: "Lena Landlord",
+      landlordEmail: "landlord@example.com",
+      tenantName: "Terry Tenant",
+      tenantEmail: "tenant2@example.com",
+      arbiterName: "",
+      arbiterEmail: null,
+      terms: {
+        ...aaveTerms,
+        depositAssetSnapshot: {
+          ...aaveTerms.depositAssetSnapshot,
+          settlementAsset: "aUSDC",
+        },
+      },
+    }),
+    { DB: new TestD1() },
+  );
+  assert.equal(tampered.status, 400);
 });
 
 test("new proposals reject California policy terms", async () => {

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useFiatOnramp } from "@privy-io/react-auth";
 import { FIAT_ONRAMP_CONFIG } from "../lib/accountConfig";
+import type { DepositAssetConfig } from "../../shared/deposit-assets.js";
 
 function microsToDecimal(value: bigint) {
   const whole = value / 1_000_000n;
@@ -14,10 +15,12 @@ function microsToDecimal(value: bigint) {
 export function FiatFundingOption({
   walletAddress,
   amount,
+  depositAsset,
   onComplete,
 }: {
   walletAddress: string;
   amount: bigint;
+  depositAsset?: DepositAssetConfig | null;
   onComplete?: () => void | Promise<void>;
 }) {
   const { fund } = useFiatOnramp();
@@ -33,6 +36,7 @@ export function FiatFundingOption({
           agreement uses free test tokens because real card and bank payments cannot purchase
           testnet assets.
         </p>
+        <FundingRouteSummary depositAsset={depositAsset} />
       </details>
     );
   }
@@ -99,7 +103,33 @@ export function FiatFundingOption({
           ? "Sandbox mode has no charge. In production, provider fees would appear separately and would not be taken from the operations reserve."
           : "Provider processing fees are shown separately at checkout. ACH is usually better suited to a full security deposit than a debit card."}
       </small>
+      <FundingRouteSummary depositAsset={depositAsset} />
       {status && <p className={/did not|error/i.test(status) ? "tx-error" : "field-help"}>{status}</p>}
+    </div>
+  );
+}
+
+function FundingRouteSummary({
+  depositAsset,
+}: {
+  depositAsset?: DepositAssetConfig | null;
+}) {
+  if (!depositAsset) return null;
+  return (
+    <div className="funding-route-summary">
+      <strong>Planned production route</strong>
+      <span>
+        {depositAsset.id === "usdc"
+          ? "USD → USDC in your wallet → OpenEscrow"
+          : depositAsset.id === "aave-usdc"
+            ? "USD → USDC in your wallet → direct Aave supply → aUSDC escrow → direct Aave withdrawal → USDC settlement"
+            : "No production route is enabled."}
+      </span>
+      <small>
+        Privy chooses an available regulated on-ramp provider by region. OpenEscrow does not take
+        custody of payment credentials or pool gas funds. Asset conversion remains disabled in
+        this testnet build.
+      </small>
     </div>
   );
 }

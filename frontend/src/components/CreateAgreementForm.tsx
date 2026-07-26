@@ -60,6 +60,15 @@ import {
 } from "../lib/negotiations";
 import { agreementReference } from "../lib/displayIds";
 import { AddressAutocomplete, type AddressSuggestion } from "./AddressAutocomplete";
+import { DepositAssetSelector } from "./DepositAssetSelector";
+import {
+  DEPOSIT_ASSET_IDS,
+  createDepositAssetSnapshot,
+  depositAssetAvailability,
+  depositAssetIdFromTerms,
+  getDepositAsset,
+  type DepositAssetId,
+} from "../../shared/deposit-assets.js";
 import "./CreateAgreementFormTabs.css";
 
 const DAY = 24 * 60 * 60;
@@ -73,6 +82,7 @@ type ProposalField =
   | "arbiterEmail"
   | "propertyAddress"
   | "monthlyRent"
+  | "depositAsset"
   | "deposit"
   | "depositShares"
   | "claimWindowStart"
@@ -317,7 +327,14 @@ function AgreementForm({
   const [deposit, setDeposit] = useState("100");
   const [monthlyRent, setMonthlyRent] = useState("");
   const operationsReserve = GENERIC_TEST_POLICY.operationsReserve;
-  const [tokenChoice, setTokenChoice] = useState<"plain" | "yield">("plain");
+  const [depositAssetId, setDepositAssetId] = useState<DepositAssetId>(
+    DEPOSIT_ASSET_IDS.USDC,
+  );
+  const [yieldConsent, setYieldConsent] = useState(false);
+  const selectedDepositAsset =
+    getDepositAsset(depositAssetId) ?? getDepositAsset(DEPOSIT_ASSET_IDS.USDC)!;
+  const tokenChoice =
+    selectedDepositAsset.contractTokenChoice === "yield" ? "yield" : "plain";
   const [claimWindowStart, setClaimWindowStart] = useState(defaultClaimWindowStart);
   const [claimDays, setClaimDays] = useState<string>(GENERIC_TEST_POLICY.claimDays);
   const [responseDays, setResponseDays] = useState<string>(GENERIC_TEST_POLICY.responseDays);
@@ -441,7 +458,8 @@ function AgreementForm({
     );
     setDeposit(record.terms.deposit);
     setMonthlyRent(record.terms.monthlyRent || "");
-    setTokenChoice(record.terms.tokenChoice);
+    setDepositAssetId(depositAssetIdFromTerms(record.terms));
+    setYieldConsent(record.terms.yieldConsent === true);
     setClaimWindowStart(record.terms.claimWindowStart);
     setClaimDays(
       isLegacyCalifornia ? GENERIC_TEST_POLICY.claimDays : record.terms.claimDays,
@@ -529,6 +547,9 @@ function AgreementForm({
       jurisdiction: policy?.code ?? GENERIC_TEST_POLICY.jurisdiction,
       policyVersion: policy?.version ?? GENERIC_TEST_POLICY.version,
       tokenChoice,
+      depositAssetId,
+      depositAssetSnapshot: createDepositAssetSnapshot(depositAssetId) ?? undefined,
+      yieldConsent: selectedDepositAsset.consentRequired ? yieldConsent : false,
       propertyAddress: propertyAddress.trim(),
       addressResolution,
       complianceFacts,
@@ -594,6 +615,23 @@ function AgreementForm({
           message: "Enter a valid monthly rent.",
         };
       }
+    }
+    const assetAvailability = depositAssetAvailability(depositAssetId, {
+      countryCode: addressResolution?.countryCode || "US",
+    });
+    if (!assetAvailability.available || !selectedDepositAsset.contractTokenChoice) {
+      return {
+        field: "depositAsset",
+        message:
+          assetAvailability.reason ||
+          "The selected deposit asset is not supported by the current escrow contract.",
+      };
+    }
+    if (selectedDepositAsset.consentRequired && !yieldConsent) {
+      return {
+        field: "depositAsset",
+        message: `Affirmatively consent to the ${selectedDepositAsset.displayName} risks before saving this revision.`,
+      };
     }
     const hasArbiter = arbiterEmail.trim() !== "";
     if (hasArbiter && !EMAIL_PATTERN.test(arbiterEmail)) {
@@ -2257,17 +2295,16 @@ function AgreementForm({
         )}
       </section>
 
-      <fieldset className="token-choice">
-        <legend>Deposit test token</legend>
-        <label title="Plain freely mintable test token. Its displayed value does not grow.">
-          <input type="radio" name="deposit-token" checked={tokenChoice === "plain"} disabled={approvedTermsLocked} onChange={() => setTokenChoice("plain")} />
-          <span><strong>testUSDC</strong><small>Plain test token · stable demo value</small></span>
-        </label>
-        <label title="Freely mintable test shares whose displayed testUSDC value grows 20% per day.">
-          <input type="radio" name="deposit-token" checked={tokenChoice === "yield"} disabled={approvedTermsLocked} onChange={() => setTokenChoice("yield")} />
-          <span><strong>ytUSDC ⓘ</strong><small>Yield-test shares · 20%/day accelerated demo</small></span>
-        </label>
-      </fieldset>
+      <div data-proposal-field="depositAsset" tabIndex={-1}>
+        <DepositAssetSelector
+          selectedAssetId={depositAssetId}
+          yieldConsent={yieldConsent}
+          disabled={approvedTermsLocked}
+          countryCode={addressResolution?.countryCode || "US"}
+          onSelect={setDepositAssetId}
+          onYieldConsentChange={setYieldConsent}
+        />
+      </div>
       <label>
         Monthly rent
         <input

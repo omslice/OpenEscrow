@@ -1,5 +1,9 @@
 import type { InviteRole } from "./inviteContext";
 import type { ComplianceFacts, ComplianceSnapshot } from "./jurisdictions";
+import type {
+  DepositAssetId,
+  DepositAssetSnapshot,
+} from "../../shared/deposit-assets.js";
 
 export type NegotiationRole = "landlord" | InviteRole;
 export type NegotiationStatus =
@@ -28,6 +32,9 @@ export interface AgreementTerms {
   complianceFacts?: ComplianceFacts;
   complianceSnapshot?: ComplianceSnapshot | null;
   tokenChoice: "plain" | "yield";
+  depositAssetId?: DepositAssetId;
+  depositAssetSnapshot?: DepositAssetSnapshot;
+  yieldConsent?: boolean;
   deposit: string;
   operationsReserve: string;
   monthlyRent?: string;
@@ -536,7 +543,7 @@ export function sendNotificationTest(identityToken: string) {
 }
 
 export type NegotiationAction =
-    | { type: "approve"; wallet: string; name?: string }
+    | { type: "approve"; wallet: string; name?: string; assetConsent?: boolean }
     | { type: "propose_change"; summary: string }
     | {
         type: "revise";

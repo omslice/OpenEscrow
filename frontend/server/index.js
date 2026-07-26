@@ -9,6 +9,10 @@ import {
   normalizeAddressResolution,
 } from "../shared/us-compliance-engine.js";
 import { COMPLIANCE_SOURCE_REGISTRY } from "../shared/compliance-sources.js";
+import {
+  getDepositAssetForTerms,
+  validateDepositAssetTerms,
+} from "../shared/deposit-assets.js";
 
 const AGREEMENTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS agreement_negotiations (
@@ -731,6 +735,14 @@ function validPeriodDays(value) {
   return Number.isInteger(days) && days >= 1 && days <= 365;
 }
 
+function depositAssetTestnetLabel(terms) {
+  return (
+    terms?.depositAssetSnapshot?.testnetSymbol ||
+    getDepositAssetForTerms(terms)?.testnetSymbol ||
+    (terms?.tokenChoice === "yield" ? "ytUSDC" : "testUSDC")
+  );
+}
+
 function validTerms(terms) {
   const deposit = tokenMicros(terms?.deposit);
   const commonTermsAreValid =
@@ -738,6 +750,7 @@ function validTerms(terms) {
     typeof terms === "object" &&
     cleanText(terms.propertyAddress, 300).length >= 5 &&
     (terms.tokenChoice === "plain" || terms.tokenChoice === "yield") &&
+    validateDepositAssetTerms(terms) &&
     deposit !== null &&
     deposit > 0n &&
     terms.operationsReserve === "5" &&
@@ -3232,6 +3245,23 @@ async function applyAction(request, env, id) {
     if (role !== "tenant" && role !== "arbiter") {
       return json({ error: "Only the invited tenant or arbiter may approve." }, 403);
     }
+    let approvalTerms;
+    try {
+      approvalTerms = JSON.parse(row.terms_json);
+    } catch {
+      approvalTerms = null;
+    }
+    const approvalAsset = approvalTerms?.depositAssetId
+      ? getDepositAssetForTerms(approvalTerms)
+      : null;
+    if (approvalAsset?.consentRequired && body.assetConsent !== true) {
+      return json(
+        {
+          error: `Affirmatively confirm the ${approvalAsset.displayName} disclosures before approving this revision.`,
+        },
+        400,
+      );
+    }
     if (!WALLET_PATTERN.test(body.wallet || "")) {
       return json({ error: "Connect a valid EVM wallet before approving." }, 400);
     }
@@ -3279,6 +3309,8 @@ async function applyAction(request, env, id) {
             name: participantName,
             tenantId: tenant.id,
             isFundingTenant: tenant.is_funding_tenant === 1,
+            assetConsent: approvalAsset?.consentRequired ? true : null,
+            depositAssetId: approvalAsset?.id || null,
           },
         ),
       );
@@ -3299,7 +3331,12 @@ async function applyAction(request, env, id) {
           "revision_approved",
           `Approved revision ${revision}${participantName ? ` as ${participantName}` : ""} and confirmed wallet ${body.wallet}.`,
           revision,
-          { wallet: body.wallet, name: participantName },
+          {
+            wallet: body.wallet,
+            name: participantName,
+            assetConsent: approvalAsset?.consentRequired ? true : null,
+            depositAssetId: approvalAsset?.id || null,
+          },
         ),
       );
     }
@@ -5080,7 +5117,7 @@ ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordExc
       const snapshot = event.metadata.terms;
       return `<h3>Revision ${event.revision}</h3><p class="meta">${escapeHtml(event.createdAt)}</p><table>
 <tr><th>Rental property</th><td>${escapeHtml(snapshot.propertyAddress || "Legacy proposal: not recorded")}</td></tr>
-<tr><th>Refundable deposit</th><td>${escapeHtml(snapshot.deposit)} ${snapshot.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</td></tr>
+<tr><th>Refundable deposit</th><td>${escapeHtml(snapshot.deposit)} ${escapeHtml(depositAssetTestnetLabel(snapshot))}${snapshot.depositAssetSnapshot ? ` · ${escapeHtml(snapshot.depositAssetSnapshot.displayName)}` : ""}</td></tr>
 <tr><th>Tenant-paid platform fee</th><td>$0</td></tr>
 <tr><th>Expected possession returned</th><td>${escapeHtml(snapshot.claimWindowStart)}</td></tr>
 ${policyRows(snapshot)}
@@ -5149,7 +5186,7 @@ ${tenantPartyRows}
 </tbody></table>
 <h2>Current terms</h2><table>
 <tr><th>Rental property</th><td>${escapeHtml(terms.propertyAddress || "Legacy proposal: not recorded")}</td></tr>
-<tr><th>Refundable deposit</th><td>${escapeHtml(terms.deposit)} ${terms.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</td></tr>
+<tr><th>Refundable deposit</th><td>${escapeHtml(terms.deposit)} ${escapeHtml(depositAssetTestnetLabel(terms))}${terms.depositAssetSnapshot ? ` · ${escapeHtml(terms.depositAssetSnapshot.displayName)}` : ""}</td></tr>
 <tr><th>Tenant-paid platform fee</th><td>$0</td></tr>
 <tr><th>Expected possession returned</th><td>${escapeHtml(terms.claimWindowStart)}</td></tr>
 ${policyRows(terms)}

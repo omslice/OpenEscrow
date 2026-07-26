@@ -22,6 +22,10 @@ import {
 } from "../lib/jurisdictions";
 import { roleLabel, useInviteRole } from "../lib/inviteContext";
 import type { NegotiationRecord } from "../lib/negotiations";
+import {
+  calculateDepositAccounting,
+  getDepositAssetForTerms,
+} from "../../shared/deposit-assets.js";
 
 function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | null {
   switch (agreement.phase) {
@@ -150,10 +154,18 @@ export function AgreementDashboard({
     },
   });
   const isYieldToken = agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase();
-  const tokenLabel = isYieldToken ? "ytUSDC" : "testUSDC";
+  const depositAsset = getDepositAssetForTerms(
+    participantRecord?.terms || { tokenChoice: isYieldToken ? "yield" : "plain" },
+  );
+  const tokenLabel = depositAsset?.testnetSymbol || (isYieldToken ? "ytUSDC" : "testUSDC");
   const testValue = (currentValue.data as bigint | undefined) ?? agreement.depositAmount;
   const startingValue = (fundedValue.data as bigint | undefined) ?? agreement.depositAmount;
-  const testYield = testValue > startingValue ? testValue - startingValue : 0n;
+  const accounting = calculateDepositAccounting({
+    originalPrincipal: startingValue,
+    currentRedeemableValue: testValue,
+    feesAndSlippage: 0n,
+    finalDistributed: agreement.withdrawn,
+  });
 
   return (
     <div className="dashboard">
@@ -168,26 +180,49 @@ export function AgreementDashboard({
       </div>
       <div className="amount-grid">
         <div className="amount-tile">
-          <span>Deposit shares in escrow</span>
+          <span>Original principal</span>
           <strong>
             {agreement.depositAmount > 0n
-              ? `${formatUSDC(agreement.depositAmount)} ${tokenLabel}`
+              ? `${formatUSDC(accounting.originalPrincipal)} ${isYieldToken ? "testUSDC value" : tokenLabel}`
               : `${formatUSDC(agreement.agreedAmount)} ${tokenLabel} proposed`}
           </strong>
         </div>
         <div className="amount-tile">
-          <span>{isYieldToken ? "Current testUSDC value" : "Token value"}</span>
-          <strong>{agreement.depositAmount > 0n ? formatUSDC(testValue) : "Not funded"}</strong>
+          <span>{isYieldToken ? "Current modeled value" : "Current redeemable value"}</span>
+          <strong>
+            {agreement.depositAmount > 0n
+              ? `${formatUSDC(accounting.currentRedeemableValue)} ${isYieldToken ? "testUSDC" : tokenLabel}`
+              : "Not funded"}
+          </strong>
         </div>
         <div className="amount-tile">
-          <span>Demo yield accrued</span>
-          <strong>{isYieldToken && agreement.depositAmount > 0n ? `+${formatUSDC(testYield)}` : "Not enabled"}</strong>
+          <span>Accrued yield</span>
+          <strong>
+            {isYieldToken && agreement.depositAmount > 0n
+              ? `+${formatUSDC(accounting.accruedYield)} testUSDC`
+              : "Not enabled"}
+          </strong>
+        </div>
+      </div>
+      <div className="amount-grid secondary">
+        <div className="amount-tile">
+          <span>Fees &amp; slippage</span>
+          <strong>{formatUSDC(accounting.feesAndSlippage)} · not modeled in testnet</strong>
+        </div>
+        <div className="amount-tile">
+          <span>Final distributed</span>
+          <strong>{formatUSDC(accounting.finalDistributed)} {tokenLabel}</strong>
+        </div>
+        <div className="amount-tile">
+          <span>Settlement asset</span>
+          <strong>{depositAsset?.settlementAsset || "USDC"}</strong>
         </div>
       </div>
       {isYieldToken && (
         <p className="yield-disclaimer">
-          Test-only projection at 20% per day. The escrow holds fixed ytUSDC shares; there is no
-          underlying asset, redemption, or real yield.
+          Simulated Aave path only: test value grows at 20% per day so accounting is visible
+          quickly. The escrow holds fixed ytUSDC shares; there is no aUSDC, underlying USDC,
+          redemption, live APY, or real yield.
         </p>
       )}
       <div className="amount-grid secondary">
@@ -341,15 +376,15 @@ export function AgreementDashboard({
         <summary>Accounting details</summary>
         <div className="dashboard-row">
           <span className="label">Tenant withdrawable</span>
-          <span>{formatUSDC(agreement.tenantWithdrawable)} ytUSDC shares</span>
+          <span>{formatUSDC(agreement.tenantWithdrawable)} {tokenLabel}</span>
         </div>
         <div className="dashboard-row">
           <span className="label">Landlord withdrawable</span>
-          <span>{formatUSDC(agreement.landlordWithdrawable)} ytUSDC shares</span>
+          <span>{formatUSDC(agreement.landlordWithdrawable)} {tokenLabel}</span>
         </div>
         <div className="dashboard-row">
           <span className="label">Already withdrawn</span>
-          <span>{formatUSDC(agreement.withdrawn)} ytUSDC shares</span>
+          <span>{formatUSDC(agreement.withdrawn)} {tokenLabel}</span>
         </div>
       </details>
     </div>

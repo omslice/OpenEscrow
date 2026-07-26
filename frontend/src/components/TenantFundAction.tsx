@@ -27,6 +27,7 @@ import {
   type NegotiationRecord,
 } from "../lib/negotiations";
 import type { Agreement } from "../lib/useAgreement";
+import { getDepositAssetForTerms } from "../../shared/deposit-assets.js";
 import { FiatFundingOption } from "./FiatFundingOption";
 import { TxButton } from "./TxButton";
 
@@ -132,12 +133,19 @@ function reserveShareFor(
     : base;
 }
 
-function fundingDetails(agreement: Agreement, needed: bigint) {
+function fundingDetails(
+  agreement: Agreement,
+  needed: bigint,
+  participantRecord?: NegotiationRecord | null,
+) {
+  const isYieldToken =
+    agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase();
+  const depositAsset = getDepositAssetForTerms(
+    participantRecord?.terms || { tokenChoice: isYieldToken ? "yield" : "plain" },
+  );
   const tokenLabel =
-    agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase()
-      ? "ytUSDC"
-      : "testUSDC";
-  return { needed, tokenLabel };
+    depositAsset?.testnetSymbol || (isYieldToken ? "ytUSDC" : "testUSDC");
+  return { needed, tokenLabel, depositAsset };
 }
 
 function FundingIntroduction({
@@ -242,7 +250,7 @@ function StandardTenantFundAction({
     fundedLocally ||
     (typeof existingContribution === "bigint" && existingContribution > 0n);
   const isTenant = needed > 0n;
-  const { tokenLabel } = fundingDetails(agreement, needed);
+  const { tokenLabel } = fundingDetails(agreement, needed, participantRecord);
   const reserveRequired = participantRecord?.terms.operationsReserve === "5";
   const reserveAmount = reserveShareFor(participantRecord, address);
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
@@ -431,7 +439,11 @@ function SponsoredTenantFundAction({
     fundedLocally ||
     (typeof existingContribution === "bigint" && existingContribution > 0n);
   const isTenant = needed > 0n;
-  const { tokenLabel } = fundingDetails(agreement, needed);
+  const { tokenLabel, depositAsset } = fundingDetails(
+    agreement,
+    needed,
+    participantRecord,
+  );
   const reserveRequired = participantRecord?.terms.operationsReserve === "5";
   const reserveAmount = reserveShareFor(participantRecord, address);
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
@@ -603,6 +615,7 @@ function SponsoredTenantFundAction({
           <FiatFundingOption
             walletAddress={address}
             amount={tokenBalanceNeeded}
+            depositAsset={depositAsset}
             onComplete={() => void refetchBalance()}
           />
           <div className="testnet-funding-fallback">

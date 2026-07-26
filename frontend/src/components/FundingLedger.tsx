@@ -7,6 +7,7 @@ import {
 import { formatUSDC, shortAddr } from "../lib/format";
 import type { NegotiationRecord } from "../lib/negotiations";
 import type { Agreement } from "../lib/useAgreement";
+import { getDepositAssetForTerms } from "../../shared/deposit-assets.js";
 
 type TenantParticipants =
   | readonly [
@@ -34,10 +35,12 @@ export function FundingLedger({
     query: { refetchInterval: 4_000 },
   });
   const data = participants.data as TenantParticipants;
+  const isYieldToken =
+    agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase();
   const tokenLabel =
-    agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase()
-      ? "ytUSDC"
-      : "testUSDC";
+    getDepositAssetForTerms(
+      participantRecord?.terms || { tokenChoice: isYieldToken ? "yield" : "plain" },
+    )?.testnetSymbol || (isYieldToken ? "ytUSDC" : "testUSDC");
 
   function tenantIdentity(wallet: string) {
     const tenant = participantRecord?.tenants.find(
