@@ -1,10 +1,11 @@
 # OpenEscrow
 
-**A tenant-default security-deposit escrow prototype.**
+**A better way to handle rental deposits.**
 
 [X](https://x.com/0penEscrow) · [Gitcoin](https://explorer.gitcoin.co/#/projects/0x05a570572fd3b79ac1f9a9f214db9bfd174c42786e14c314152fb8300a7c37f1) · [LinkedIn](https://www.linkedin.com/company/openescrow)
 
-OpenEscrow explores a simple product hypothesis: a rental security deposit should remain protected by default, while a landlord who seeks a deduction must submit a timely claim that the tenant can accept or dispute.
+A clear, documented process from agreement to refund, with fair dispute resolution and optional
+yield. Automated, tracked, and secured by Ethereum.
 
 **Public testnet demo:** [openescrow-demo.omrigross.chatgpt.site](https://openescrow-demo.omrigross.chatgpt.site)
 

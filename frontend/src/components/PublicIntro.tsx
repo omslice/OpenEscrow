@@ -3,7 +3,11 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
     <section className="public-intro" aria-labelledby="public-intro-title">
       <div className="intro-copy">
         <p className="eyebrow">Open-source public-interest prototype</p>
-        <h2 id="public-intro-title">One clear process for rental security deposits.</h2>
+        <h2 id="public-intro-title">A better way to handle rental deposits.</h2>
+        <p className="intro-summary">
+          A clear, documented process from agreement to refund, with fair dispute resolution and
+          optional yield. Automated, tracked, and secured by Ethereum.
+        </p>
         <div className="intro-actions">
           <button className="btn btn-primary" onClick={onStart}>
             Try the testnet demo

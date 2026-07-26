@@ -256,6 +256,14 @@
   letter-spacing: -0.045em;
 }
 
+.intro-summary {
+  max-width: 720px;
+  margin: 0;
+  color: var(--muted);
+  font-size: clamp(17px, 2.2vw, 21px);
+  line-height: 1.6;
+}
+
 .intro-actions {
   display: flex;
   gap: 10px;
