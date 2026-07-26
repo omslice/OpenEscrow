@@ -4,7 +4,7 @@
 (`SafeERC20`, `ReentrancyGuard`, `Address`). The historical first review referenced the now-retired
 Base Sepolia deployment at `0x4365f7B9632d083F1a03D57AE56a0e6d239ef62F`. The reviewed and
 regression-tested source was redeployed at the currently configured testnet address
-`0x83faBc39c4FcccB6a4e42c568E9750D1a24FF11f` after the 2026-07-24 addendum. The separate
+`0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99` after the multi-tenant lifecycle changes. The separate
 `OperationsReserve`, mock-token, and `AgreementActivityRegistry` contracts have automated tests
 but are not covered by the original line-by-line review described below.
 **Method:** manual line-by-line review (access control matrix, state-machine transition
@@ -186,6 +186,59 @@ dependencies pulled through Privy/wagmi. The suggested forced remediation would 
 `@privy-io/react-auth` across a breaking boundary, so it was not applied automatically. No high or
 critical advisory was reported. This should be rechecked when Privy/wagmi publish a compatible
 dependency update and is another reason the current build remains testnet-only.
+
+## Hosted workflow and evidence addendum — 2026-07-25
+
+A separate review covered the hosted D1 agreement record, notification scheduler, private evidence
+routes, and the frontend-to-record action boundary. This remains an AI-assisted internal review.
+
+The review found that the readable secondary record accepted syntactically valid transaction
+hashes and action payloads without enforcing enough lifecycle order. A party could not move
+onchain funds through that API, but could create a misleading off-chain audit trail: for example,
+recording a tenant response before a claim, recording a ruling without a dispute, recording a
+withdrawal before resolution, or recording the same party's funding more than once under different
+transaction hashes.
+
+The hosted action handler now:
+
+- enforces one reserve and one deposit contribution per tenant;
+- requires a positive, deposit-bounded claim and permits only one original claim;
+- restricts amendments to an unanswered original claim and prevents increases;
+- requires one valid response from every invited tenant;
+- computes whether a real disputed balance exists before accepting an arbiter ruling;
+- bounds the arbiter award by the disputed amount;
+- rejects withdrawals until a response, ruling, retraction, or refund resolves the claim;
+- validates timeout actions against their prerequisite lifecycle state; and
+- records tenant IDs on funding, response, and withdrawal events so co-tenants cannot be
+  conflated.
+
+Base Sepolia receipt verification is enabled by default. Every recorded transaction must have a
+successful receipt with the current deployment address, expected event signature, and agreement
+ID. It can be disabled only through an explicit emergency diagnostics setting.
+
+Evidence upload now checks PDF/JPEG/PNG/WebP file signatures instead of trusting a browser-provided
+MIME type. Evidence downloads and printable reports add no-referrer, no-sniffing, anti-framing, and
+restrictive content-security headers. Static app responses also receive no-referrer and no-sniffing
+headers.
+
+Automated coverage at this addendum is 173 passing Solidity tests across 15 suites, including the
+three 32,768-call stateful invariants and 512-run fuzz cases, plus 38 passing hosted workflow tests.
+The workflow suite contains a complete two-tenant/optional-arbiter negotiation, funding, claim,
+response, dispute, ruling, refund, and withdrawal scenario.
+
+### Residual hosted-workflow risks
+
+- Receipt verification depends on a Base Sepolia RPC endpoint. A temporary provider outage can
+  delay saving the readable receipt record, although it does not alter the completed onchain
+  transaction and the UI retains a retry path.
+- Invitation URLs are bearer credentials. Account-discovery access expires, but direct invitation
+  revocation and a complete recovery flow still need product design. Invitations must not be
+  forwarded or logged.
+- The server record cannot prove that the human-readable note or uploaded document accurately
+  describes the onchain action. Its hash and transaction receipt prove integrity and occurrence,
+  not truth.
+- Email delivery, evidence-key backup, scheduler operation, and separate-account browser testing
+  remain operator responsibilities documented in `pilot-services-setup.md`.
 
 ## Disclaimer
 

@@ -170,6 +170,46 @@ const DEFAULT_GEOCODER_BASE_URL = "https://photon.komoot.io";
 const ADDRESS_SUGGESTION_CACHE_TTL_MS = 10 * 60 * 1000;
 const ADDRESS_SUGGESTION_CACHE_LIMIT = 200;
 const ADDRESS_GEOCODER_TIMEOUT_MS = 3_000;
+const DEFAULT_BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org";
+const DEFAULT_OPEN_ESCROW_ADDRESS = "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99";
+const DEFAULT_OPERATIONS_RESERVE_ADDRESS =
+  "0x5d2E9c429F9d117c7b028c8f0f67d37252aDceC0";
+const DEFAULT_ACTIVITY_REGISTRY_ADDRESS =
+  "0xC004dF4C43146FE55e5761EA1BB3C14f01161951";
+const RECEIPT_EVENT_TOPICS = Object.freeze({
+  agreementProposed:
+    "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6",
+  operationsReservePaid:
+    "0x8817d9a1dd298236cd746a97680a13cf2e5d0a9d970b20e26b8fa0ee32cd855b",
+  tenantShareFunded:
+    "0xa59b69e1d871c72525782e2de73d8b4a83a1bf00840689625923330b4464544d",
+  agreementFunded:
+    "0xce24c0ae1d73d57cf2e6d1d90b94b11b288e5cfb1c0aa6e7f8ed3391f0c0f021",
+  claimSubmitted:
+    "0xcf394f7701f2b1dae6f328cbc70c1f155122b124431f95bbf4a483bba6854555",
+  claimAmended:
+    "0x478de1b8c18ffc9b16915e850b17f80fc5fe83405310df3db31765a38a3365ff",
+  claimRetracted:
+    "0x78ed2810f3e800697035ce152a2c6e2d92fe189711545693db5d97ac0b9f7eb9",
+  tenantClaimResponse:
+    "0x270cfb5d0a1ef7453b09614e7321e2bc1c39e82a0642070b4247c08452dca245",
+  legacyClaimResponse:
+    "0x0e3cd88697129d255d76bfa437dbf12aaeaef7601cf1c8d5f75ad2ba18e0cd4b",
+  disputeResolved:
+    "0x959dc01840aa516bf9407cffa45326c7b6821c48feff7b91eb0c743c8f460fd6",
+  withdrawn:
+    "0xcf7d23a3cbe4e8b36ff82fd1b05b1b17373dc7804b4ebbd6e2356716ef202372",
+  noClaimWithdrawal:
+    "0x845bd4e89218507974962580a9461fcb8f451ebd83d8c3b843d2c9032217d179",
+  responseTimedOut:
+    "0xfad75d47bd1a89b1c3f46dd58d38a0b9fe3c1b992a6077875a9ebb5432ba513a",
+  arbiterTimedOut:
+    "0xab22e8614f3457bfcf1e3c2852a4c49aceafbd8c37e6a3181f13c8472f916e3d",
+  recordSnapshotAnchored:
+    "0x4012b6d2c58584f354b2ad24151a4b24d5e18ea9aff9ced4667a2ffe01305ab6",
+  activityPublished:
+    "0x2aca0841f18e301ab87df30a3dd50b022d848e0b1ee373dcbe9f914886b2eea7",
+});
 const ADDRESS_ATTRIBUTION = Object.freeze({
   label: "© OpenStreetMap contributors",
   url: "https://www.openstreetmap.org/copyright",
@@ -183,8 +223,206 @@ function json(data, status = 200) {
     headers: {
       "content-type": "application/json; charset=utf-8",
       "cache-control": "no-store",
+      "referrer-policy": "no-referrer",
+      "x-content-type-options": "nosniff",
     },
   });
+}
+
+function secureResponse(response) {
+  const headers = new Headers(response.headers);
+  if (!headers.has("referrer-policy")) {
+    headers.set("referrer-policy", "no-referrer");
+  }
+  if (!headers.has("x-content-type-options")) {
+    headers.set("x-content-type-options", "nosniff");
+  }
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function receiptVerificationEnabled(env) {
+  return cleanText(env.VERIFY_TRANSACTION_RECEIPTS, 20).toLowerCase() !== "false";
+}
+
+function uint256Topic(value) {
+  try {
+    const encoded = BigInt(value).toString(16);
+    return `0x${encoded.padStart(64, "0")}`;
+  } catch {
+    return null;
+  }
+}
+
+function receiptExpectation(body, row, env) {
+  const agreementId = cleanText(
+    body.type === "finalize" ? body.agreementId : row.onchain_agreement_id,
+    80,
+  );
+  const agreementTopic = uint256Topic(agreementId);
+  if (!agreementTopic) return null;
+  const openEscrowAddress = cleanText(
+    env.OPEN_ESCROW_ADDRESS || DEFAULT_OPEN_ESCROW_ADDRESS,
+    80,
+  ).toLowerCase();
+  const reserveAddress = cleanText(
+    env.OPERATIONS_RESERVE_ADDRESS || DEFAULT_OPERATIONS_RESERVE_ADDRESS,
+    80,
+  ).toLowerCase();
+  const registryAddress = cleanText(
+    env.ACTIVITY_REGISTRY_ADDRESS || DEFAULT_ACTIVITY_REGISTRY_ADDRESS,
+    80,
+  ).toLowerCase();
+
+  const expectation = {
+    addresses: [openEscrowAddress],
+    topics: [],
+    agreementTopic,
+    agreementTopicIndex: 1,
+  };
+  if (body.type === "finalize") {
+    expectation.topics = [RECEIPT_EVENT_TOPICS.agreementProposed];
+  } else if (body.type === "operations_reserve_paid") {
+    expectation.addresses = [reserveAddress];
+    expectation.topics = [RECEIPT_EVENT_TOPICS.operationsReservePaid];
+    expectation.agreementTopicIndex = 2;
+  } else if (
+    body.type === "tenant_share_funded" ||
+    body.type === "agreement_funded"
+  ) {
+    expectation.topics = [
+      RECEIPT_EVENT_TOPICS.tenantShareFunded,
+      RECEIPT_EVENT_TOPICS.agreementFunded,
+    ];
+  } else if (body.type === "claim_submitted") {
+    expectation.topics = [RECEIPT_EVENT_TOPICS.claimSubmitted];
+  } else if (body.type === "claim_amended") {
+    expectation.topics = [
+      tokenMicros(body.amount) === 0n
+        ? RECEIPT_EVENT_TOPICS.claimRetracted
+        : RECEIPT_EVENT_TOPICS.claimAmended,
+    ];
+  } else if (body.type === "claim_response") {
+    expectation.topics = [
+      RECEIPT_EVENT_TOPICS.tenantClaimResponse,
+      RECEIPT_EVENT_TOPICS.legacyClaimResponse,
+    ];
+  } else if (body.type === "arbiter_ruling") {
+    expectation.topics = [RECEIPT_EVENT_TOPICS.disputeResolved];
+  } else if (body.type === "withdrawal_completed") {
+    expectation.topics = [RECEIPT_EVENT_TOPICS.withdrawn];
+  } else if (body.type === "timeout_executed") {
+    expectation.topics = [
+      body.timeout === "no_claim_refund"
+        ? RECEIPT_EVENT_TOPICS.noClaimWithdrawal
+        : body.timeout === "no_response_dispute"
+          ? RECEIPT_EVENT_TOPICS.responseTimedOut
+          : RECEIPT_EVENT_TOPICS.arbiterTimedOut,
+    ];
+  } else if (body.type === "record_snapshot_anchored") {
+    expectation.addresses = [registryAddress];
+    expectation.topics = [RECEIPT_EVENT_TOPICS.recordSnapshotAnchored];
+  } else if (body.type === "activity_hash_published") {
+    expectation.addresses = [registryAddress];
+    expectation.topics = [RECEIPT_EVENT_TOPICS.activityPublished];
+  } else {
+    return null;
+  }
+  return expectation;
+}
+
+async function verifiedBaseSepoliaReceipt(env, body, row, transactionHash) {
+  const expectation = receiptExpectation(body, row, env);
+  if (!expectation) {
+    return {
+      ok: false,
+      status: 409,
+      error: "The agreement id required to verify this transaction is unavailable.",
+    };
+  }
+  const rpcUrl =
+    cleanText(env.BASE_SEPOLIA_RPC_URL, 1000) || DEFAULT_BASE_SEPOLIA_RPC_URL;
+  let parsedRpcUrl;
+  try {
+    parsedRpcUrl = new URL(rpcUrl);
+    if (parsedRpcUrl.protocol !== "https:") throw new Error("HTTPS is required.");
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      error: "The configured Base Sepolia receipt verifier is invalid.",
+    };
+  }
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 7_500);
+  let receipt;
+  try {
+    const response = await fetch(parsedRpcUrl.toString(), {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_getTransactionReceipt",
+        params: [transactionHash],
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error("RPC request failed.");
+    const result = await response.json();
+    receipt = result?.result;
+  } catch {
+    return {
+      ok: false,
+      status: 503,
+      error:
+        "OpenEscrow could not verify this Base Sepolia receipt. The onchain transaction is unchanged; retry saving its receipt shortly.",
+    };
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!receipt) {
+    return {
+      ok: false,
+      status: 409,
+      error:
+        "This transaction is not confirmed on Base Sepolia yet. Wait for confirmation and retry saving its receipt.",
+    };
+  }
+  if (receipt.status !== "0x1") {
+    return {
+      ok: false,
+      status: 400,
+      error: "The submitted Base Sepolia transaction reverted and cannot be recorded.",
+    };
+  }
+  const matchingLog = (Array.isArray(receipt.logs) ? receipt.logs : []).find(
+    (log) =>
+      expectation.addresses.includes(cleanText(log?.address, 80).toLowerCase()) &&
+      expectation.topics.includes(cleanText(log?.topics?.[0], 80).toLowerCase()) &&
+      cleanText(
+        log?.topics?.[expectation.agreementTopicIndex],
+        80,
+      ).toLowerCase() === expectation.agreementTopic,
+  );
+  if (!matchingLog) {
+    return {
+      ok: false,
+      status: 400,
+      error:
+        "This transaction does not contain the expected event for the current OpenEscrow agreement.",
+    };
+  }
+  return {
+    ok: true,
+    blockNumber: cleanText(receipt.blockNumber, 80),
+    transactionHash,
+  };
 }
 
 function emailProvider(env) {
@@ -286,6 +524,55 @@ function cleanDeductionItems(value) {
     return null;
   }
   return items;
+}
+
+function detectedEvidenceContentType(bytes) {
+  const value = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
+  if (
+    value.length >= 5 &&
+    value[0] === 0x25 &&
+    value[1] === 0x50 &&
+    value[2] === 0x44 &&
+    value[3] === 0x46 &&
+    value[4] === 0x2d
+  ) {
+    return "application/pdf";
+  }
+  if (
+    value.length >= 3 &&
+    value[0] === 0xff &&
+    value[1] === 0xd8 &&
+    value[2] === 0xff
+  ) {
+    return "image/jpeg";
+  }
+  if (
+    value.length >= 8 &&
+    value[0] === 0x89 &&
+    value[1] === 0x50 &&
+    value[2] === 0x4e &&
+    value[3] === 0x47 &&
+    value[4] === 0x0d &&
+    value[5] === 0x0a &&
+    value[6] === 0x1a &&
+    value[7] === 0x0a
+  ) {
+    return "image/png";
+  }
+  if (
+    value.length >= 12 &&
+    value[0] === 0x52 &&
+    value[1] === 0x49 &&
+    value[2] === 0x46 &&
+    value[3] === 0x46 &&
+    value[8] === 0x57 &&
+    value[9] === 0x45 &&
+    value[10] === 0x42 &&
+    value[11] === 0x50
+  ) {
+    return "image/webp";
+  }
+  return null;
 }
 
 function deductionItemsMatchAmount(items, amount) {
@@ -742,6 +1029,12 @@ async function serviceReadiness(env) {
       mode: evidenceMode,
       encryptedAtRest: Boolean(env.EVIDENCE_ENCRYPTION_KEY),
       decentralizedReady,
+      contentTypeValidation: true,
+    },
+    recordIntegrity: {
+      lifecycleStateGuards: true,
+      transactionReceiptVerification: receiptVerificationEnabled(env),
+      chain: "Base Sepolia",
     },
   });
 }
@@ -1795,6 +2088,130 @@ function claimResponseState(events, tenantRows) {
   };
 }
 
+function latestClaimEvent(events) {
+  return [...events]
+    .reverse()
+    .find(
+      (event) =>
+        event.action === "deduction_claim_submitted" ||
+        event.action === "deduction_claim_amended",
+    );
+}
+
+function eventBelongsToTenant(event, tenant, tenantRows) {
+  const tenantId = cleanText(event.metadata?.tenantId, 80);
+  if (tenantId) return tenantId === tenant.id;
+  const primaryTenant =
+    tenantRows.find((candidate) => candidate.is_funding_tenant === 1) ||
+    tenantRows[0];
+  return event.actorRole === "tenant" && primaryTenant?.id === tenant.id;
+}
+
+function tenantHasEvent(events, actions, tenant, tenantRows) {
+  return events.some(
+    (event) =>
+      actions.includes(event.action) &&
+      eventBelongsToTenant(event, tenant, tenantRows),
+  );
+}
+
+function claimDisputeState(events, tenantRows) {
+  const claim = latestClaimEvent(events);
+  const claimMicros = tokenMicros(claim?.metadata?.amount);
+  if (!claim || claimMicros === null || claimMicros <= 0n) {
+    return {
+      claim,
+      claimMicros,
+      responses: claimResponseState(events, tenantRows),
+      disputedMicros: 0n,
+      disputeOpened: false,
+    };
+  }
+  const responses = claimResponseState(events, tenantRows);
+  const noResponseDispute = events.some(
+    (event) =>
+      event.action === "timeout_executed" &&
+      event.metadata?.timeout === "no_response_dispute",
+  );
+  if (noResponseDispute) {
+    return {
+      claim,
+      claimMicros,
+      responses,
+      disputedMicros: claimMicros,
+      disputeOpened: true,
+    };
+  }
+  if (!responses.allResponded || responses.responses.length === 0) {
+    return {
+      claim,
+      claimMicros,
+      responses,
+      disputedMicros: 0n,
+      disputeOpened: false,
+    };
+  }
+  const acceptedAmounts = responses.responses.map((event) =>
+    tokenMicros(event.metadata?.acceptedAmount),
+  );
+  if (acceptedAmounts.some((amount) => amount === null)) {
+    return {
+      claim,
+      claimMicros,
+      responses,
+      disputedMicros: 0n,
+      disputeOpened: false,
+    };
+  }
+  const minimumAccepted = acceptedAmounts.reduce(
+    (minimum, amount) => (amount < minimum ? amount : minimum),
+    claimMicros,
+  );
+  const disputedMicros =
+    minimumAccepted < claimMicros ? claimMicros - minimumAccepted : 0n;
+  return {
+    claim,
+    claimMicros,
+    responses,
+    disputedMicros,
+    disputeOpened: disputedMicros > 0n,
+  };
+}
+
+function resolutionEvent(events, tenantRows) {
+  const ruling = latestEvent(events, "arbiter_ruling_submitted");
+  if (ruling) return ruling;
+  const refundTimeout = [...events]
+    .reverse()
+    .find(
+      (event) =>
+        event.action === "timeout_executed" &&
+        (event.metadata?.timeout === "no_claim_refund" ||
+          event.metadata?.timeout === "arbiter_timeout_refund"),
+    );
+  if (refundTimeout) return refundTimeout;
+  const claim = latestClaimEvent(events);
+  if (
+    claim?.action === "deduction_claim_amended" &&
+    tokenMicros(claim.metadata?.amount) === 0n
+  ) {
+    return claim;
+  }
+  const dispute = claimDisputeState(events, tenantRows);
+  if (
+    dispute.claim &&
+    dispute.responses.allResponded &&
+    !dispute.disputeOpened
+  ) {
+    return [...dispute.responses.responses].sort(
+      (left, right) =>
+        new Date(left.createdAt).getTime() -
+        new Date(right.createdAt).getTime(),
+    ).at(-1);
+  }
+  return null;
+}
+
 async function sendScheduledNotification(env, row, notification, appUrl) {
   const preferenceColumn =
     notification.preference === "deadline" ? "deadline_reminders" : "agreement_activity";
@@ -2078,7 +2495,6 @@ async function recordClaimPeriodTransitions(env, row, events, now) {
 }
 
 function withdrawalCandidates(row, events, now, tenantRows = []) {
-  const timeout = latestEvent(events, "timeout_executed");
   const lifecycleTenants = tenantRows.length
     ? tenantRows
     : [
@@ -2088,26 +2504,7 @@ function withdrawalCandidates(row, events, now, tenantRows = []) {
           is_funding_tenant: 1,
         },
       ];
-  const responseState = claimResponseState(events, lifecycleTenants);
-  const acceptedResponses = responseState.responses.filter(
-    (event) => event.metadata?.decision === "approve",
-  );
-  const acceptedWithoutDispute =
-    responseState.allResponded &&
-    acceptedResponses.length === responseState.responses.length
-      ? [...acceptedResponses].sort(
-          (left, right) =>
-            new Date(left.createdAt).getTime() -
-            new Date(right.createdAt).getTime(),
-        ).at(-1)
-      : null;
-  const resolution =
-    latestEvent(events, "arbiter_ruling_submitted") ||
-    acceptedWithoutDispute ||
-    (timeout?.metadata?.timeout === "no_claim_refund" ||
-    timeout?.metadata?.timeout === "arbiter_timeout_refund"
-      ? timeout
-      : null);
+  const resolution = resolutionEvent(events, lifecycleTenants);
   if (!resolution) return [];
   return [
     ["landlord", row.landlord_email],
@@ -2217,6 +2614,7 @@ async function applyAction(request, env, id) {
     if (alreadyRecorded) return json(currentRecord);
   }
 
+  const recordedEvents = await eventsFor(db, id);
   const now = new Date().toISOString();
   const revision = Number(row.revision);
   const statements = [];
@@ -2550,6 +2948,19 @@ async function applyAction(request, env, id) {
       return json({ error: "The operations reserve transaction is invalid." }, 400);
     }
     const tenantRows = await tenantsFor(db, id);
+    if (
+      tenantHasEvent(
+        recordedEvents,
+        ["operations_reserve_paid"],
+        tenant,
+        tenantRows,
+      )
+    ) {
+      return json(
+        { error: "This tenant's operations-reserve payment is already recorded." },
+        409,
+      );
+    }
     const tenantIndex = tenantRows.findIndex((candidate) => candidate.id === tenant.id);
     const baseReserveMicros = 5_000_000n / BigInt(tenantRows.length);
     const expectedReserveMicros =
@@ -2591,6 +3002,19 @@ async function applyAction(request, env, id) {
       return json({ error: "The deposit funding transaction is invalid." }, 400);
     }
     const tenantRows = await tenantsFor(db, id);
+    if (
+      tenantHasEvent(
+        recordedEvents,
+        ["tenant_share_funded", "agreement_funded"],
+        tenant,
+        tenantRows,
+      )
+    ) {
+      return json(
+        { error: "This tenant's approved deposit share is already recorded as funded." },
+        409,
+      );
+    }
     const tenantIndex = tenantRows.findIndex((candidate) => candidate.id === tenant.id);
     const depositMicros = tokenMicros(JSON.parse(row.terms_json).deposit);
     if (depositMicros === null) {
@@ -2696,6 +3120,19 @@ async function applyAction(request, env, id) {
     if (row.status !== "finalized") {
       return json({ error: "The agreement must be finalized onchain before a deduction claim." }, 409);
     }
+    if (
+      recordedEvents.some(
+        (event) =>
+          event.action === "deduction_claim_submitted" ||
+          (event.action === "timeout_executed" &&
+            event.metadata?.timeout === "no_claim_refund"),
+      )
+    ) {
+      return json(
+        { error: "A deduction claim or no-claim refund is already recorded for this agreement." },
+        409,
+      );
+    }
     const amount = cleanText(body.amount, 80);
     const category = cleanText(body.category, 120);
     const items = cleanDeductionItems(body.items);
@@ -2705,8 +3142,14 @@ async function applyAction(request, env, id) {
     const californiaConfirmations = body.californiaConfirmations;
     const transactionHash = cleanText(body.transactionHash, 100);
     const agreementTerms = JSON.parse(row.terms_json);
+    const amountMicros = tokenMicros(amount);
+    const depositMicros = tokenMicros(agreementTerms.deposit);
     if (
       !amount ||
+      amountMicros === null ||
+      amountMicros <= 0n ||
+      depositMicros === null ||
+      amountMicros > depositMicros ||
       !category ||
       !items ||
       !deductionItemsMatchAmount(items, amount) ||
@@ -2749,6 +3192,9 @@ async function applyAction(request, env, id) {
     if (role !== "landlord") {
       return json({ error: "Only the landlord may prepare the tenant claim notice." }, 403);
     }
+    if (!latestClaimEvent(recordedEvents)) {
+      return json({ error: "Submit the deduction claim before preparing its notice." }, 409);
+    }
     const method = body.method === "copy" ? "copied email" : "Gmail";
     statements.push(
       db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
@@ -2766,6 +3212,28 @@ async function applyAction(request, env, id) {
     if (role !== "landlord") {
       return json({ error: "Only the landlord may amend a deduction claim." }, 403);
     }
+    const priorClaim = latestClaimEvent(recordedEvents);
+    if (!priorClaim || priorClaim.action !== "deduction_claim_submitted") {
+      return json(
+        { error: "A submitted deduction claim is required before recording an amendment." },
+        409,
+      );
+    }
+    if (
+      recordedEvents.some(
+        (event) =>
+          event.action === "claim_response_submitted" ||
+          event.action === "arbiter_ruling_submitted" ||
+          event.action === "deduction_claim_amended" ||
+          (event.action === "timeout_executed" &&
+            event.metadata?.timeout !== "no_claim_refund"),
+      )
+    ) {
+      return json(
+        { error: "The deduction claim can no longer be amended after a response, timeout, ruling, or prior amendment." },
+        409,
+      );
+    }
     const amount = cleanText(body.amount, 80);
     const items = cleanDeductionItems(body.items);
     const note = cleanText(body.note, 1000);
@@ -2774,8 +3242,13 @@ async function applyAction(request, env, id) {
     const californiaConfirmations = body.californiaConfirmations;
     const transactionHash = cleanText(body.transactionHash, 100);
     const agreementTerms = JSON.parse(row.terms_json);
+    const amendedMicros = tokenMicros(amount);
+    const priorClaimMicros = tokenMicros(priorClaim.metadata?.amount);
     if (
       !amount ||
+      amendedMicros === null ||
+      priorClaimMicros === null ||
+      amendedMicros > priorClaimMicros ||
       !items ||
       !deductionItemsMatchAmount(items, amount) ||
       !validClaimForTerms(
@@ -2819,6 +3292,33 @@ async function applyAction(request, env, id) {
     if (!tenant) {
       return json({ error: "Only an invited tenant may answer the deduction claim." }, 403);
     }
+    const tenantRows = await tenantsFor(db, id);
+    const claim = latestClaimEvent(recordedEvents);
+    const claimMicros = tokenMicros(claim?.metadata?.amount);
+    if (!claim || claimMicros === null || claimMicros <= 0n) {
+      return json({ error: "A positive deduction claim must be recorded before a tenant response." }, 409);
+    }
+    if (
+      tenantHasEvent(
+        recordedEvents,
+        ["claim_response_submitted"],
+        tenant,
+        tenantRows,
+      )
+    ) {
+      return json({ error: "This tenant has already responded to the deduction claim." }, 409);
+    }
+    if (
+      recordedEvents.some(
+        (event) =>
+          event.action === "arbiter_ruling_submitted" ||
+          (event.action === "timeout_executed" &&
+            (event.metadata?.timeout === "no_response_dispute" ||
+              event.metadata?.timeout === "arbiter_timeout_refund")),
+      )
+    ) {
+      return json({ error: "The claim response period has already been resolved onchain." }, 409);
+    }
     if (!["approve", "partial", "dispute"].includes(body.decision)) {
       return json({ error: "The tenant response is invalid." }, 400);
     }
@@ -2828,6 +3328,10 @@ async function applyAction(request, env, id) {
     const transactionHash = cleanText(body.transactionHash, 100);
     if (
       acceptedMicros === null ||
+      acceptedMicros > claimMicros ||
+      (body.decision === "approve" && acceptedMicros !== claimMicros) ||
+      (body.decision === "partial" &&
+        (acceptedMicros === 0n || acceptedMicros >= claimMicros)) ||
       (body.decision === "dispute" && acceptedMicros !== 0n) ||
       (body.decision !== "dispute" && acceptedMicros === 0n) ||
       ((body.decision === "partial" || body.decision === "dispute") && !note) ||
@@ -2868,6 +3372,20 @@ async function applyAction(request, env, id) {
     if (!tenant) {
       return json({ error: "Only an invited tenant may prepare the landlord response notice." }, 403);
     }
+    const tenantRows = await tenantsFor(db, id);
+    if (
+      !tenantHasEvent(
+        recordedEvents,
+        ["claim_response_submitted"],
+        tenant,
+        tenantRows,
+      )
+    ) {
+      return json(
+        { error: "Record this tenant's claim response before preparing its email notice." },
+        409,
+      );
+    }
     const method = body.method === "copy" ? "copied email" : "Gmail";
     statements.push(
       db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
@@ -2886,10 +3404,35 @@ async function applyAction(request, env, id) {
     if (role !== "arbiter") {
       return json({ error: "Only the appointed arbiter may record a ruling." }, 403);
     }
+    if (recordedEvents.some((event) => event.action === "arbiter_ruling_submitted")) {
+      return json({ error: "The arbiter ruling is already recorded." }, 409);
+    }
+    if (
+      recordedEvents.some(
+        (event) =>
+          event.action === "timeout_executed" &&
+          event.metadata?.timeout === "arbiter_timeout_refund",
+      )
+    ) {
+      return json({ error: "The arbiter ruling deadline has already been resolved onchain." }, 409);
+    }
+    const tenantRows = await tenantsFor(db, id);
+    const dispute = claimDisputeState(recordedEvents, tenantRows);
+    if (!dispute.disputeOpened || dispute.disputedMicros <= 0n) {
+      return json(
+        { error: "A recorded deduction dispute is required before an arbiter ruling." },
+        409,
+      );
+    }
     const award = cleanText(body.awardToLandlord, 80);
+    const awardMicros = tokenMicros(award);
     const note = cleanText(body.note, 1000);
     const transactionHash = cleanText(body.transactionHash, 100);
-    if (!award || !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+    if (
+      awardMicros === null ||
+      awardMicros > dispute.disputedMicros ||
+      !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)
+    ) {
       return json({ error: "The arbiter ruling record is incomplete." }, 400);
     }
     statements.push(
@@ -2912,9 +3455,42 @@ async function applyAction(request, env, id) {
     if (row.status !== "finalized") {
       return json({ error: "The agreement must be finalized before a withdrawal." }, 409);
     }
+    const tenantRows = await tenantsFor(db, id);
+    if (!resolutionEvent(recordedEvents, tenantRows)) {
+      return json(
+        { error: "A claim decision, ruling, or refund must be resolved before recording a withdrawal." },
+        409,
+      );
+    }
+    const withdrawingTenant =
+      role === "tenant" ? await tenantForToken(db, id, body.token) : null;
+    if (role === "tenant" && !withdrawingTenant) {
+      return json({ error: "Only an invited tenant may record this withdrawal." }, 403);
+    }
+    const withdrawalAlreadyRecorded =
+      role === "landlord"
+        ? recordedEvents.some(
+            (event) =>
+              event.action === "withdrawal_completed" &&
+              event.actorRole === "landlord",
+          )
+        : tenantHasEvent(
+            recordedEvents,
+            ["withdrawal_completed"],
+            withdrawingTenant,
+            tenantRows,
+          );
+    if (withdrawalAlreadyRecorded) {
+      return json({ error: "This party's withdrawal is already recorded." }, 409);
+    }
     const amount = cleanText(body.amount, 80);
+    const amountMicros = tokenMicros(amount);
     const transactionHash = cleanText(body.transactionHash, 100);
-    if (tokenMicros(amount) === null || !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+    if (
+      amountMicros === null ||
+      amountMicros <= 0n ||
+      !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)
+    ) {
       return json({ error: "The withdrawal receipt is incomplete." }, 400);
     }
     statements.push(
@@ -2925,9 +3501,13 @@ async function applyAction(request, env, id) {
         now,
         role,
         "withdrawal_completed",
-        `${role === "landlord" ? "Landlord" : "Tenant"} withdrew ${amount} shares in transaction ${transactionHash}.`,
+        `${role === "landlord" ? "Landlord" : cleanText(withdrawingTenant?.name, 160) || "Tenant"} withdrew ${amount} shares in transaction ${transactionHash}.`,
         revision,
-        { amount, transactionHash },
+        {
+          amount,
+          transactionHash,
+          tenantId: withdrawingTenant?.id || null,
+        },
       ),
     );
   } else if (body.type === "timeout_executed") {
@@ -2940,6 +3520,56 @@ async function applyAction(request, env, id) {
     const transactionHash = cleanText(body.transactionHash, 100);
     if (!timeoutLabels[timeout] || !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
       return json({ error: "The deadline-action receipt is incomplete." }, 400);
+    }
+    if (
+      recordedEvents.some(
+        (event) =>
+          event.action === "timeout_executed" &&
+          event.metadata?.timeout === timeout,
+      )
+    ) {
+      return json({ error: "This deadline action is already recorded." }, 409);
+    }
+    const tenantRows = await tenantsFor(db, id);
+    const dispute = claimDisputeState(recordedEvents, tenantRows);
+    if (timeout === "no_claim_refund") {
+      if (role !== "tenant") {
+        return json({ error: "Only a tenant may record the no-claim refund." }, 403);
+      }
+      if (latestClaimEvent(recordedEvents)) {
+        return json(
+          { error: "A deduction claim is already recorded, so the no-claim refund does not apply." },
+          409,
+        );
+      }
+    }
+    if (timeout === "no_response_dispute") {
+      if (!dispute.claim || dispute.claimMicros === null || dispute.claimMicros <= 0n) {
+        return json(
+          { error: "A positive deduction claim is required before recording a no-response dispute." },
+          409,
+        );
+      }
+      if (dispute.responses.allResponded) {
+        return json(
+          { error: "Every tenant already responded, so the no-response action does not apply." },
+          409,
+        );
+      }
+    }
+    if (timeout === "arbiter_timeout_refund") {
+      if (!dispute.disputeOpened || dispute.disputedMicros <= 0n) {
+        return json(
+          { error: "A recorded deduction dispute is required before an arbiter-timeout refund." },
+          409,
+        );
+      }
+      if (recordedEvents.some((event) => event.action === "arbiter_ruling_submitted")) {
+        return json(
+          { error: "The arbiter already ruled, so the timeout refund does not apply." },
+          409,
+        );
+      }
     }
     statements.push(
       db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
@@ -2956,6 +3586,39 @@ async function applyAction(request, env, id) {
     );
   } else {
     return json({ error: "Unsupported agreement action." }, 400);
+  }
+
+  if (
+    expectedEvent &&
+    receiptVerificationEnabled(env) &&
+    /^0x[a-fA-F0-9]{64}$/.test(incomingTransactionHash)
+  ) {
+    const verification = await verifiedBaseSepoliaReceipt(
+      env,
+      body,
+      row,
+      incomingTransactionHash,
+    );
+    if (!verification.ok) {
+      return json({ error: verification.error }, verification.status);
+    }
+    statements.push(
+      eventStatement(
+        db,
+        id,
+        now,
+        "system",
+        "transaction_receipt_verified",
+        `Verified the ${expectedEvent.replaceAll("_", " ")} receipt on Base Sepolia in block ${verification.blockNumber}.`,
+        revision,
+        {
+          eventType: expectedEvent,
+          transactionHash: incomingTransactionHash,
+          blockNumber: verification.blockNumber,
+          chainId: 84532,
+        },
+      ),
+    );
   }
 
   await db.batch(statements);
@@ -3097,6 +3760,16 @@ async function uploadEvidence(request, env) {
   }
 
   const bytes = await file.arrayBuffer();
+  const contentType = detectedEvidenceContentType(bytes);
+  if (!contentType || contentType !== file.type) {
+    return json(
+      {
+        error:
+          "The selected file contents do not match a supported PDF, JPEG, PNG, or WebP document.",
+      },
+      415,
+    );
+  }
   const digest = await crypto.subtle.digest("SHA-256", bytes);
   const sha256 = `0x${[...new Uint8Array(digest)]
     .map((byte) => byte.toString(16).padStart(2, "0"))
@@ -3143,7 +3816,7 @@ async function uploadEvidence(request, env) {
     const objectKey = `agreements/${proposalId}/${evidenceId}`;
     await env.EVIDENCE.put(objectKey, storedBytes, {
       httpMetadata: {
-        contentType: encryptionVersion ? "application/octet-stream" : file.type,
+        contentType: encryptionVersion ? "application/octet-stream" : contentType,
       },
       customMetadata: {
         negotiationId: proposalId,
@@ -3170,7 +3843,7 @@ async function uploadEvidence(request, env) {
           storageKind,
           objectKey,
           cleanText(file.name, 240) || "evidence",
-          file.type,
+          contentType,
           file.size,
           sha256,
           encryptionVersion,
@@ -3186,14 +3859,14 @@ async function uploadEvidence(request, env) {
         now,
         role,
         "evidence_uploaded",
-        `Uploaded a private ${file.type} evidence file${encryptionVersion ? " encrypted at rest" : ""}. Its SHA-256 receipt is ${sha256}.`,
+        `Uploaded a private ${contentType} evidence file${encryptionVersion ? " encrypted at rest" : ""}. Its SHA-256 receipt is ${sha256}.`,
         row.revision,
         {
           evidenceId,
           uri,
           sha256,
           size: file.size,
-          type: file.type,
+          type: contentType,
           storageKind,
           encrypted: Boolean(encryptionVersion),
         },
@@ -3253,7 +3926,7 @@ async function uploadEvidence(request, env) {
         role,
         result.IpfsHash,
         cleanText(file.name, 240) || "evidence",
-        file.type,
+        contentType,
         file.size,
         sha256,
         encryptionVersion,
@@ -3269,7 +3942,7 @@ async function uploadEvidence(request, env) {
       now,
       role,
       "evidence_uploaded",
-      `Encrypted a ${file.type || "document"} evidence file and stored the ciphertext on IPFS as ${uri}.`,
+      `Encrypted a ${contentType} evidence file and stored the ciphertext on IPFS as ${uri}.`,
       row.revision,
       {
         evidenceId,
@@ -3277,7 +3950,7 @@ async function uploadEvidence(request, env) {
         uri,
         sha256,
         size: file.size,
-        type: file.type || null,
+        type: contentType,
         storageKind: "encrypted-ipfs",
         encrypted: true,
       },
@@ -3366,6 +4039,9 @@ async function downloadEvidence(request, env, evidenceId) {
   headers.set("content-disposition", `inline; filename="${safeName || "evidence"}"`);
   headers.set("cache-control", "private, no-store");
   headers.set("x-content-type-options", "nosniff");
+  headers.set("referrer-policy", "no-referrer");
+  headers.set("content-security-policy", "sandbox");
+  headers.set("x-frame-options", "DENY");
   headers.set("x-openescrow-sha256", metadata.sha256);
   headers.set(
     "x-openescrow-storage",
@@ -3841,7 +4517,15 @@ ${onchainEvidence ? `<h2>Onchain evidence receipts</h2><table><thead><tr><th>Tim
 <p class="meta">The readable record is platform-stored. Transaction hashes recorded by the app should be checked using their BaseScan links. The onchain evidence table lists snapshot or activity hashes separately anchored to Base Sepolia; a hash proves integrity only when checked against the corresponding private source material.</p>
 </body></html>`;
   return new Response(html, {
-    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+    headers: {
+      "content-type": "text/html; charset=utf-8",
+      "cache-control": "no-store",
+      "content-security-policy":
+        "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      "referrer-policy": "no-referrer",
+      "x-content-type-options": "nosniff",
+      "x-frame-options": "DENY",
+    },
   });
 }
 
@@ -4092,11 +4776,13 @@ const worker = {
     }
 
     const response = await env.ASSETS.fetch(request);
-    if (response.status !== 404 || request.method !== "GET") return response;
+    if (response.status !== 404 || request.method !== "GET") {
+      return secureResponse(response);
+    }
     const fallback = new URL(request.url);
     fallback.pathname = "/index.html";
     fallback.search = "";
-    return env.ASSETS.fetch(new Request(fallback, request));
+    return secureResponse(await env.ASSETS.fetch(new Request(fallback, request)));
   },
   async scheduled(controller, env, context) {
     const scheduledAt = new Date(controller?.scheduledTime || Date.now());

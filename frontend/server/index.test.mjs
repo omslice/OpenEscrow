@@ -196,8 +196,12 @@ async function identityTokenFor(privateKey, appId, kid, email) {
 async function act(db, id, token, action, env = {}) {
   return worker.fetch(
     request(`/api/negotiations/${id}/actions`, "POST", { token, ...action }),
-    { DB: db, ...env },
+    { DB: db, VERIFY_TRANSACTION_RECEIPTS: "false", ...env },
   );
+}
+
+function transactionHash(index) {
+  return `0x${BigInt(index).toString(16).padStart(64, "0")}`;
 }
 
 async function finalizeWithoutArbiter(db, created) {
@@ -212,6 +216,35 @@ async function finalizeWithoutArbiter(db, created) {
       type: "finalize",
       agreementId: "42",
       transactionHash: `0x${"a".repeat(64)}`,
+    }),
+  );
+}
+
+async function submitStandardClaim(
+  db,
+  created,
+  { amount = "100", transactionByte = "c" } = {},
+) {
+  return jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "claim_submitted",
+      amount,
+      category: "Damage beyond ordinary wear",
+      items: [
+        {
+          category: "11",
+          description: "Documented repair",
+          amount,
+        },
+      ],
+      note: "",
+      evidenceUri: "openescrow://evidence/test",
+      evidenceHash: `0x${"b".repeat(64)}`,
+      californiaConfirmations: {
+        itemizedStatement: true,
+        supportingDocuments: true,
+      },
+      transactionHash: `0x${transactionByte.repeat(64)}`,
     }),
   );
 }
@@ -639,6 +672,12 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     );
     assert.equal(readiness.email.configured, true);
     assert.equal(readiness.email.provider, "resend");
+    assert.equal(readiness.evidence.contentTypeValidation, true);
+    assert.equal(readiness.recordIntegrity.lifecycleStateGuards, true);
+    assert.equal(
+      readiness.recordIntegrity.transactionReceiptVerification,
+      true,
+    );
 
     const testRequest = () =>
       new Request("https://openescrow.example/api/profile/test-email", {
@@ -696,7 +735,7 @@ test("private evidence is stored in R2 and only an agreement party can retrieve 
   form.set("token", created.access.landlord);
   form.set(
     "file",
-    new File([new TextEncoder().encode("test invoice")], "invoice.pdf", {
+    new File([new TextEncoder().encode("%PDF-1.7\ntest invoice")], "invoice.pdf", {
       type: "application/pdf",
     }),
   );
@@ -718,8 +757,12 @@ test("private evidence is stored in R2 and only an agreement party can retrieve 
     { DB: db, EVIDENCE: evidence },
   );
   assert.equal(authorized.status, 200);
-  assert.equal(await authorized.text(), "test invoice");
+  assert.equal(await authorized.text(), "%PDF-1.7\ntest invoice");
   assert.equal(authorized.headers.get("x-openescrow-sha256"), uploaded.sha256);
+  assert.equal(authorized.headers.get("cache-control"), "private, no-store");
+  assert.equal(authorized.headers.get("referrer-policy"), "no-referrer");
+  assert.equal(authorized.headers.get("x-content-type-options"), "nosniff");
+  assert.equal(authorized.headers.get("x-frame-options"), "DENY");
 
   const denied = await worker.fetch(
     new Request(
@@ -733,6 +776,31 @@ test("private evidence is stored in R2 and only an agreement party can retrieve 
   assert.equal(denied.status, 403);
 });
 
+test("evidence upload rejects a spoofed content type before storage", async () => {
+  const db = new TestD1();
+  const evidence = new TestR2();
+  const created = await create(db);
+  const form = new FormData();
+  form.set("proposalId", created.record.id);
+  form.set("token", created.access.landlord);
+  form.set(
+    "file",
+    new File(["this is not a PDF"], "invoice.pdf", {
+      type: "application/pdf",
+    }),
+  );
+  const response = await worker.fetch(
+    new Request("https://openescrow.example/api/evidence", {
+      method: "POST",
+      body: form,
+    }),
+    { DB: db, EVIDENCE: evidence },
+  );
+  assert.equal(response.status, 415);
+  assert.match((await response.json()).error, /contents do not match/);
+  assert.equal(evidence.objects.size, 0);
+});
+
 test("configured evidence encryption stores only ciphertext and decrypts for an agreement party", async () => {
   const db = new TestD1();
   const evidence = new TestR2();
@@ -743,7 +811,7 @@ test("configured evidence encryption stores only ciphertext and decrypts for an 
   form.set("token", created.access.landlord);
   form.set(
     "file",
-    new File(["private encrypted invoice"], "invoice.pdf", {
+    new File(["%PDF-1.7\nprivate encrypted invoice"], "invoice.pdf", {
       type: "application/pdf",
     }),
   );
@@ -773,7 +841,7 @@ test("configured evidence encryption stores only ciphertext and decrypts for an 
     },
   );
   assert.equal(authorized.status, 200);
-  assert.equal(await authorized.text(), "private encrypted invoice");
+  assert.equal(await authorized.text(), "%PDF-1.7\nprivate encrypted invoice");
   assert.equal(authorized.headers.get("x-openescrow-storage"), "encrypted-r2");
 });
 
@@ -805,7 +873,7 @@ test("decentralized evidence mode uploads only encrypted IPFS ciphertext", async
     form.set("token", created.access.landlord);
     form.set(
       "file",
-      new File(["decentralized invoice"], "invoice.pdf", {
+      new File(["%PDF-1.7\ndecentralized invoice"], "invoice.pdf", {
         type: "application/pdf",
       }),
     );
@@ -835,7 +903,7 @@ test("decentralized evidence mode uploads only encrypted IPFS ciphertext", async
       },
     );
     assert.equal(authorized.status, 200);
-    assert.equal(await authorized.text(), "decentralized invoice");
+    assert.equal(await authorized.text(), "%PDF-1.7\ndecentralized invoice");
     assert.equal(authorized.headers.get("x-openescrow-storage"), "encrypted-ipfs");
   } finally {
     globalThis.fetch = originalFetch;
@@ -1639,8 +1707,8 @@ test("every tenant records only their approved deposit and equal reserve share",
     amount: "600",
     transactionHash: `0x${"f".repeat(64)}`,
   });
-  assert.equal(invalid.status, 400);
-  assert.match((await invalid.json()).error, /approved share/);
+  assert.equal(invalid.status, 409);
+  assert.match((await invalid.json()).error, /already recorded as funded/);
 });
 
 test("cancelling a proposal removes it from active work while preserving its record", async () => {
@@ -1811,6 +1879,7 @@ test("claim-response activity emails name the outcome and stay within the agreem
       transactionHash: `0x${"a".repeat(64)}`,
     }),
   );
+  await submitStandardClaim(db, created);
   const preferenceTime = new Date().toISOString();
   for (const [index, email] of [
     "landlord@example.com",
@@ -2004,8 +2073,18 @@ test("each invited tenant can record a claim decision and notify the landlord", 
       transactionHash: `0x${"a".repeat(64)}`,
     }),
   );
+  await submitStandardClaim(db, created);
 
   const secondTenant = created.access.tenants[1];
+  const incomplete = await act(db, created.record.id, secondTenant.token, {
+    type: "claim_response",
+    decision: "dispute",
+    acceptedAmount: "0",
+    note: "",
+    transactionHash: `0x${"d".repeat(64)}`,
+  });
+  assert.equal(incomplete.status, 400);
+
   const responded = await jsonResponse(
     await act(db, created.record.id, secondTenant.token, {
       type: "claim_response",
@@ -2018,15 +2097,6 @@ test("each invited tenant can record a claim decision and notify the landlord", 
   assert.equal(responded.events.at(-1).action, "claim_response_submitted");
   assert.equal(responded.events.at(-1).metadata.tenantId, secondTenant.id);
   assert.match(responded.events.at(-1).summary, /Casey Tenant/);
-
-  const incomplete = await act(db, created.record.id, secondTenant.token, {
-    type: "claim_response",
-    decision: "dispute",
-    acceptedAmount: "0",
-    note: "",
-    transactionHash: `0x${"c".repeat(64)}`,
-  });
-  assert.equal(incomplete.status, 400);
 
   const payload = {
     proposalId: created.record.id,
@@ -2390,6 +2460,476 @@ test("documented claim, tenant decision, and email attempts are included in the 
     assert.equal(firstDelivery.duplicate, false);
     assert.equal(duplicateDelivery.duplicate, true);
     assert.equal(deliveryCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a two-tenant agreement completes the negotiated funding, dispute, ruling, and withdrawal lifecycle once", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenants: [
+          {
+            name: "Terry Tenant",
+            email: "tenant@example.com",
+            depositShareBps: 6000,
+          },
+          {
+            name: "Casey Co-tenant",
+            email: "cotenant@example.com",
+            depositShareBps: 4000,
+          },
+        ],
+        arbiterName: "Ari Arbiter",
+        arbiterEmail: "arbiter@example.com",
+        terms: { ...terms, deposit: "1000" },
+      }),
+      { DB: db },
+    ),
+  );
+  const [primary, coTenant] = created.access.tenants;
+
+  await jsonResponse(
+    await act(db, created.record.id, primary.token, {
+      type: "propose_change",
+      summary: "Allow ten days for every tenant to review a deduction claim.",
+    }),
+  );
+  const revised = await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "revise",
+      summary: "Extended the tenant response period to ten days.",
+      terms: { ...terms, deposit: "1000", responseDays: "10" },
+      participants: {
+        landlordName: "Lena Landlord",
+        tenantName: "Terry Tenant",
+        arbiterName: "Ari Arbiter",
+      },
+    }),
+  );
+  assert.equal(revised.revision, 2);
+
+  for (const [index, tenant] of created.access.tenants.entries()) {
+    const approved = await jsonResponse(
+      await act(db, created.record.id, tenant.token, {
+        type: "approve",
+        name: index === 0 ? "Terry Tenant" : "Casey Co-tenant",
+        wallet:
+          index === 0
+            ? "0x1111111111111111111111111111111111111111"
+            : "0x2222222222222222222222222222222222222222",
+      }),
+    );
+    assert.equal(approved.status, "draft");
+  }
+  const arbiterApproved = await jsonResponse(
+    await act(db, created.record.id, created.access.arbiter, {
+      type: "approve",
+      name: "Ari Arbiter",
+      wallet: "0x3333333333333333333333333333333333333333",
+    }),
+  );
+  assert.equal(arbiterApproved.status, "ready");
+
+  await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "finalize",
+      agreementId: "101",
+      transactionHash: transactionHash(1),
+    }),
+  );
+  for (const [index, tenant] of created.access.tenants.entries()) {
+    await jsonResponse(
+      await act(db, created.record.id, tenant.token, {
+        type: "operations_reserve_paid",
+        amount: "2.5",
+        transactionHash: transactionHash(2 + index),
+      }),
+    );
+    await jsonResponse(
+      await act(db, created.record.id, tenant.token, {
+        type: "tenant_share_funded",
+        amount: index === 0 ? "600" : "400",
+        transactionHash: transactionHash(4 + index),
+      }),
+    );
+  }
+
+  const duplicateFunding = await act(db, created.record.id, primary.token, {
+    type: "tenant_share_funded",
+    amount: "600",
+    transactionHash: transactionHash(6),
+  });
+  assert.equal(duplicateFunding.status, 409);
+  assert.match((await duplicateFunding.json()).error, /already recorded as funded/);
+
+  await submitStandardClaim(db, created, {
+    amount: "300",
+    transactionByte: "7",
+  });
+  const prematureRuling = await act(
+    db,
+    created.record.id,
+    created.access.arbiter,
+    {
+      type: "arbiter_ruling",
+      awardToLandlord: "50",
+      note: "A ruling cannot precede the tenant responses.",
+      transactionHash: transactionHash(8),
+    },
+  );
+  assert.equal(prematureRuling.status, 409);
+  assert.match((await prematureRuling.json()).error, /dispute is required/);
+
+  await jsonResponse(
+    await act(db, created.record.id, primary.token, {
+      type: "claim_response",
+      decision: "approve",
+      acceptedAmount: "300",
+      note: "",
+      transactionHash: transactionHash(9),
+    }),
+  );
+  await jsonResponse(
+    await act(db, created.record.id, coTenant.token, {
+      type: "claim_response",
+      decision: "partial",
+      acceptedAmount: "150",
+      note: "The invoice supports only part of the requested amount.",
+      transactionHash: transactionHash(10),
+    }),
+  );
+
+  const prematureWithdrawal = await act(
+    db,
+    created.record.id,
+    created.access.landlord,
+    {
+      type: "withdrawal_completed",
+      amount: "150",
+      transactionHash: transactionHash(11),
+    },
+  );
+  assert.equal(prematureWithdrawal.status, 409);
+  assert.match((await prematureWithdrawal.json()).error, /must be resolved/);
+
+  const excessiveAward = await act(
+    db,
+    created.record.id,
+    created.access.arbiter,
+    {
+      type: "arbiter_ruling",
+      awardToLandlord: "151",
+      note: "This exceeds the remaining disputed amount.",
+      transactionHash: transactionHash(12),
+    },
+  );
+  assert.equal(excessiveAward.status, 400);
+
+  await jsonResponse(
+    await act(db, created.record.id, created.access.arbiter, {
+      type: "arbiter_ruling",
+      awardToLandlord: "75",
+      note: "The documentation supports half of the disputed balance.",
+      transactionHash: transactionHash(13),
+    }),
+  );
+  const withdrawalActors = [
+    [created.access.landlord, "landlord", "225"],
+    [primary.token, "tenant", "465"],
+    [coTenant.token, "tenant", "310"],
+  ];
+  for (const [index, [token, , amount]] of withdrawalActors.entries()) {
+    await jsonResponse(
+      await act(db, created.record.id, token, {
+        type: "withdrawal_completed",
+        amount,
+        transactionHash: transactionHash(14 + index),
+      }),
+    );
+  }
+  const duplicateWithdrawal = await act(db, created.record.id, coTenant.token, {
+    type: "withdrawal_completed",
+    amount: "1",
+    transactionHash: transactionHash(20),
+  });
+  assert.equal(duplicateWithdrawal.status, 409);
+
+  const record = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${created.access.landlord}`,
+      ),
+      { DB: db },
+    ),
+  );
+  assert.equal(record.status, "finalized");
+  assert.equal(
+    record.events.filter((event) => event.action === "tenant_share_funded").length,
+    2,
+  );
+  assert.equal(
+    record.events.filter((event) => event.action === "claim_response_submitted").length,
+    2,
+  );
+  assert.equal(
+    record.events.filter((event) => event.action === "withdrawal_completed").length,
+    3,
+  );
+
+  const report = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}/report?token=${created.access.landlord}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(report.status, 200);
+  assert.equal(report.headers.get("cache-control"), "no-store");
+  assert.equal(report.headers.get("referrer-policy"), "no-referrer");
+  assert.equal(report.headers.get("x-frame-options"), "DENY");
+  assert.match(report.headers.get("content-security-policy"), /default-src 'none'/);
+  const reportHtml = await report.text();
+  assert.match(reportHtml, /Casey Co-tenant/);
+  assert.match(reportHtml, /The documentation supports half/);
+  assert.match(reportHtml, /withdrew 310 shares/);
+});
+
+test("deadline refunds require the correct state and cannot be recorded twice", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+
+  const landlordRefund = await act(
+    db,
+    created.record.id,
+    created.access.landlord,
+    {
+      type: "timeout_executed",
+      timeout: "no_claim_refund",
+      transactionHash: transactionHash(30),
+    },
+  );
+  assert.equal(landlordRefund.status, 403);
+
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "timeout_executed",
+      timeout: "no_claim_refund",
+      transactionHash: transactionHash(31),
+    }),
+  );
+  const duplicateRefund = await act(
+    db,
+    created.record.id,
+    created.access.tenant,
+    {
+      type: "timeout_executed",
+      timeout: "no_claim_refund",
+      transactionHash: transactionHash(32),
+    },
+  );
+  assert.equal(duplicateRefund.status, 409);
+
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "withdrawal_completed",
+      amount: "1200",
+      transactionHash: transactionHash(33),
+    }),
+  );
+});
+
+test("a landlord can retract an unanswered claim but cannot replace or increase it", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  await submitStandardClaim(db, created, {
+    amount: "100",
+    transactionByte: "8",
+  });
+
+  const replacementClaim = await act(
+    db,
+    created.record.id,
+    created.access.landlord,
+    {
+      type: "claim_submitted",
+      amount: "50",
+      category: "Damage beyond ordinary wear",
+      items: [
+        {
+          category: "11",
+          description: "A replacement claim must not overwrite the record.",
+          amount: "50",
+        },
+      ],
+      note: "",
+      evidenceUri: "openescrow://evidence/replacement",
+      evidenceHash: `0x${"b".repeat(64)}`,
+      californiaConfirmations: {
+        itemizedStatement: true,
+        supportingDocuments: true,
+      },
+      transactionHash: transactionHash(41),
+    },
+  );
+  assert.equal(replacementClaim.status, 409);
+
+  const increased = await act(
+    db,
+    created.record.id,
+    created.access.landlord,
+    {
+      type: "claim_amended",
+      amount: "101",
+      items: [
+        {
+          category: "11",
+          description: "The amount cannot be increased.",
+          amount: "101",
+        },
+      ],
+      note: "",
+      evidenceUri: "openescrow://evidence/increase",
+      evidenceHash: `0x${"c".repeat(64)}`,
+      californiaConfirmations: {
+        itemizedStatement: true,
+        supportingDocuments: true,
+      },
+      transactionHash: transactionHash(42),
+    },
+  );
+  assert.equal(increased.status, 400);
+
+  const retracted = await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "claim_amended",
+      amount: "0",
+      items: [
+        {
+          category: "11",
+          description: "The landlord withdrew the pending deduction claim.",
+          amount: "0",
+        },
+      ],
+      note: "Claim withdrawn after reviewing the invoice.",
+      evidenceUri: "openescrow://evidence/retraction",
+      evidenceHash: `0x${"d".repeat(64)}`,
+      californiaConfirmations: {
+        itemizedStatement: true,
+        supportingDocuments: true,
+      },
+      transactionHash: transactionHash(43),
+    }),
+  );
+  assert.equal(retracted.events.at(-1).action, "deduction_claim_amended");
+
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "withdrawal_completed",
+      amount: "1200",
+      transactionHash: transactionHash(44),
+    }),
+  );
+});
+
+test("static assets and single-page fallbacks receive browser privacy headers", async () => {
+  const assets = {
+    async fetch(assetRequest) {
+      const path = new URL(assetRequest.url).pathname;
+      if (path === "/missing") return new Response("missing", { status: 404 });
+      return new Response(path === "/index.html" ? "<main>OpenEscrow</main>" : "asset", {
+        headers: { "content-type": "text/html; charset=utf-8" },
+      });
+    },
+  };
+
+  for (const path of ["/", "/missing"]) {
+    const response = await worker.fetch(request(path), { ASSETS: assets });
+    assert.equal(response.status, 200);
+    assert.equal(response.headers.get("referrer-policy"), "no-referrer");
+    assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+  }
+});
+
+test("configured receipt verification accepts only the expected Base Sepolia agreement event", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+  const originalFetch = globalThis.fetch;
+  let includeExpectedEvent = false;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(String(url), "https://sepolia.base.org/");
+    const rpcRequest = JSON.parse(options.body);
+    assert.equal(rpcRequest.method, "eth_getTransactionReceipt");
+    return Response.json({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        status: "0x1",
+        blockNumber: "0x2a",
+        logs: includeExpectedEvent
+          ? [
+              {
+                address: "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99",
+                topics: [
+                  "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6",
+                  `0x${BigInt(42).toString(16).padStart(64, "0")}`,
+                ],
+              },
+            ]
+          : [],
+      },
+    });
+  };
+  const env = {
+    VERIFY_TRANSACTION_RECEIPTS: "true",
+  };
+  try {
+    const rejected = await act(
+      db,
+      created.record.id,
+      created.access.landlord,
+      {
+        type: "finalize",
+        agreementId: "42",
+        transactionHash: transactionHash(50),
+      },
+      env,
+    );
+    assert.equal(rejected.status, 400);
+    assert.match((await rejected.json()).error, /expected event/);
+
+    includeExpectedEvent = true;
+    const finalized = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.landlord,
+        {
+          type: "finalize",
+          agreementId: "42",
+          transactionHash: transactionHash(50),
+        },
+        env,
+      ),
+    );
+    assert.equal(finalized.status, "finalized");
+    const verified = finalized.events.find(
+      (event) => event.action === "transaction_receipt_verified",
+    );
+    assert.equal(verified.metadata.transactionHash, transactionHash(50));
+    assert.equal(verified.metadata.blockNumber, "0x2a");
+    assert.equal(verified.metadata.chainId, 84532);
   } finally {
     globalThis.fetch = originalFetch;
   }

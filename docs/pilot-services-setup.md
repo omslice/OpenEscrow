@@ -7,8 +7,9 @@ the private vault until each section passes its verification checklist.
 ## Morning owner checklist
 
 The application code, private R2 binding, D1 records, account sign-in, embedded wallets, manual
-email fallbacks, and provider adapters are already in place. The current live readiness check
-shows four owner actions before a controlled pilot:
+email fallbacks, provider adapters, lifecycle state guards, transaction-receipt verification, and
+deterministic lifecycle tests are already in place. The readiness check shows four owner actions
+before a controlled pilot:
 
 1. **Verify a sending domain in Resend** and create a sending-only API key.
 2. **Add the three email runtime values** listed below to the existing Sites deployment.
@@ -29,7 +30,56 @@ npm.cmd run pilot:check
 ```
 
 The required rows should all report `PASS`. The decentralized-evidence row may remain `OPTIONAL`
-for the pilot.
+for the pilot. Run this again after every deployment because the endpoint checks the deployed
+runtime, not the developer machine.
+
+### What the automated release gate now covers
+
+The repository test gate includes 38 server/workflow scenarios and 173 contract tests. The
+workflow suite exercises a landlord, two tenants, and an optional arbiter through proposal
+revision, unanimous approval, finalization, each tenant's reserve and deposit contribution,
+deduction claim, different tenant responses, dispute, ruling, withdrawal, no-claim refund,
+claim retraction, email idempotency, evidence authorization, and report generation. It also
+rejects duplicate funding, duplicate responses, premature rulings, premature withdrawals,
+impossible timeout records, and spoofed evidence file types.
+
+The deterministic suite does not replace a real browser test with separate Google accounts. Use
+invented identities and Base Sepolia tokens only for that final operator test. Follow
+[`testnet-pilot-runbook.md`](./testnet-pilot-runbook.md) and stop at its first failed safety
+condition.
+
+## 0. Verify onchain receipts recorded by the hosted workflow
+
+The D1 agreement record is a readable secondary record; the contracts remain the source of truth.
+When receipt verification is enabled, OpenEscrow asks a Base Sepolia JSON-RPC endpoint for every
+transaction receipt before saving the related workflow event. It requires a successful receipt,
+the current deployed contract address, the expected event signature, and the correct agreement
+ID. This prevents a user from attaching an unrelated transaction hash to the agreement record.
+
+Receipt verification is enabled by default and uses `https://sepolia.base.org`. No owner setting
+or credential is required for a small controlled testnet pilot. If the public endpoint becomes
+unreliable, configure a dedicated Base Sepolia endpoint without exposing its key to the browser:
+
+```dotenv
+BASE_SEPOLIA_RPC_URL=https://your-private-base-sepolia-rpc.example/
+```
+
+The deployed contract addresses are pinned in the server verifier. Override them only when the
+contracts have intentionally been redeployed and the frontend configuration was updated in the
+same reviewed release:
+
+```dotenv
+OPEN_ESCROW_ADDRESS=0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99
+OPERATIONS_RESERVE_ADDRESS=0x5d2E9c429F9d117c7b028c8f0f67d37252aDceC0
+ACTIVITY_REGISTRY_ADDRESS=0xC004dF4C43146FE55e5761EA1BB3C14f01161951
+```
+
+After deployment, submit one invented Base Sepolia action and confirm its running record contains
+`transaction_receipt_verified`. A temporary RPC failure must leave the onchain transaction
+unchanged and show a retryable “save receipt” error.
+
+`VERIFY_TRANSACTION_RECEIPTS=false` is an emergency local-diagnostics escape hatch. Do not use it
+for the public deployment or a controlled pilot.
 
 ## 1. Free automatic email delivery
 
@@ -173,6 +223,8 @@ and a recovery path before it can safely be enabled.
 - Agreement-party authorization on every upload and retrieval
 - Private R2 vault as the default
 - SHA-256 integrity receipt for every document
+- File-signature validation for PDF, JPEG, PNG, and WebP uploads instead of trusting the
+  browser-declared content type
 - Optional application-layer AES-256-GCM encryption
 - Per-file keys derived with HKDF from a deployment master key
 - Encrypted-IPFS mode that refuses to publish evidence unless encryption is configured
@@ -249,6 +301,8 @@ authorized-retrieval design should remain the same; only the upload and gateway 
 - [ ] Signed-in test email arrives.
 - [ ] Cron Trigger has a recent successful run.
 - [ ] Duplicate scheduled checks send only one message.
+- [ ] Base Sepolia receipt verification reports `PASS`.
+- [ ] An unrelated transaction hash is rejected from the running record.
 - [ ] Base Sepolia still uses only free test tokens.
 - [ ] Fiat checkout remains sandbox-only.
 - [ ] Evidence master key is backed up.

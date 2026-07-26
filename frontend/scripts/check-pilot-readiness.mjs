@@ -44,6 +44,31 @@ const checks = [
     required: true,
   },
   {
+    label: "Evidence file-content validation",
+    ready: readiness.evidence?.contentTypeValidation === true,
+    detail: readiness.evidence?.contentTypeValidation
+      ? "PDF and image signatures enforced"
+      : "not enabled",
+    required: true,
+  },
+  {
+    label: "Agreement lifecycle state guards",
+    ready: readiness.recordIntegrity?.lifecycleStateGuards === true,
+    detail: readiness.recordIntegrity?.lifecycleStateGuards
+      ? "enabled"
+      : "not enabled",
+    required: true,
+  },
+  {
+    label: "Onchain transaction receipt verification",
+    ready:
+      readiness.recordIntegrity?.transactionReceiptVerification === true,
+    detail: readiness.recordIntegrity?.transactionReceiptVerification
+      ? `enabled for ${readiness.recordIntegrity?.chain || "the configured chain"}`
+      : "not enabled",
+    required: true,
+  },
+  {
     label: "Encrypted decentralized evidence",
     ready: readiness.evidence?.decentralizedReady === true,
     detail: readiness.evidence?.decentralizedReady
