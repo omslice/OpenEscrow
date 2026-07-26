@@ -350,8 +350,8 @@ export function ClaimSection({
             onChange={(event) => setDocumentsConfirmed(event.target.checked)}
           />
           <span>
-            The supporting file includes applicable invoices, receipts, labor details, or a
-            permitted good-faith estimate.
+            The supporting file includes applicable invoices, receipts, labor details,
+            photographs, or a permitted good-faith estimate.
           </span>
         </label>
         {isCaliforniaPolicy && hasConditionBasedDeduction && (
@@ -428,11 +428,11 @@ export function ClaimSection({
           Maximum total: {formatUSDC(agreement.depositAmount)} shares.
         </p>
         <label>
-          Landlord claim note
+          Claim note
           <textarea
             value={note}
             onChange={(event) => setNote(event.target.value)}
-            placeholder="Briefly explain the deduction and how the invoice supports it."
+            placeholder="Explain the deduction and what the attached file or photo shows."
             rows={3}
           />
         </label>
@@ -526,8 +526,13 @@ export function ClaimSection({
         </p>
         {itemEditor}
         <label>
-          Amendment note
-          <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} />
+          Claim note
+          <textarea
+            value={note}
+            onChange={(event) => setNote(event.target.value)}
+            placeholder="Explain the amendment and what the attached file or photo shows."
+            rows={3}
+          />
         </label>
         {fields}
         <TxButton

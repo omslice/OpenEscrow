@@ -30,6 +30,7 @@ import {
   listNegotiationAccesses,
   loadNegotiation,
   readNegotiationAccess,
+  updateRecordArchivePreference,
   type NegotiationAccess,
   type NegotiationRecord,
 } from "./lib/negotiations";
@@ -41,6 +42,14 @@ import "./App.css";
 
 type WorkspaceTab = "overview" | "proposals" | "agreements" | "record";
 type SavedProposal = { access: NegotiationAccess; record: NegotiationRecord };
+
+function savedRecordKey(item: SavedProposal) {
+  return `proposal:${item.access.proposalId}:${item.access.role}`;
+}
+
+function onchainRecordKey(agreementId: bigint | string) {
+  return `onchain:${agreementId.toString()}`;
+}
 
 function isRecordAction(action: string) {
   return (
@@ -120,6 +129,17 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   const [isChangingRole, setIsChangingRole] = useState(false);
   const [savedProposals, setSavedProposals] = useState<SavedProposal[]>([]);
   const [savedRecords, setSavedRecords] = useState<SavedProposal[]>([]);
+  const [expandedRecordKeys, setExpandedRecordKeys] = useState<Record<string, boolean>>(
+    {},
+  );
+  const [isRecordArchiveOpen, setIsRecordArchiveOpen] = useState(false);
+  const [recordArchivePendingKey, setRecordArchivePendingKey] = useState<string | null>(
+    null,
+  );
+  const [recordArchiveError, setRecordArchiveError] = useState<{
+    key: string;
+    message: string;
+  } | null>(null);
   const [agreementPanels, setAgreementPanels] = useState<
     Record<string, AgreementPanel>
   >({});
@@ -199,6 +219,10 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   useEffect(() => {
     setSavedProposals([]);
     setSavedRecords([]);
+    setExpandedRecordKeys({});
+    setIsRecordArchiveOpen(false);
+    setRecordArchivePendingKey(null);
+    setRecordArchiveError(null);
     setScanMessage(null);
     setFindError(null);
     if (inviteRole) {
@@ -362,6 +386,11 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     const agreementId = item.record.onchainAgreementId;
     if (isRecordAction(action)) {
       if (agreementId) addId(BigInt(agreementId));
+      setExpandedRecordKeys((current) => ({
+        ...current,
+        [savedRecordKey(item)]: true,
+      }));
+      if (item.access.archived) setIsRecordArchiveOpen(true);
       setProposalAccess(null);
       setTab("record");
       scrollToNotificationTarget(
@@ -413,6 +442,10 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   function openOnchainNotification(agreementId?: string) {
     if (!agreementId) return;
     addId(BigInt(agreementId));
+    setExpandedRecordKeys((current) => ({
+      ...current,
+      [onchainRecordKey(agreementId)]: true,
+    }));
     setProposalAccess(null);
     setTab("record");
     scrollToNotificationTarget(
@@ -427,6 +460,49 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     url.searchParams.delete("proposal");
     url.searchParams.delete("token");
     window.history.replaceState(null, "", url.toString());
+  }
+
+  async function setRecordArchived(item: SavedProposal, archived: boolean) {
+    if (!identityToken) {
+      setRecordArchiveError({
+        key: savedRecordKey(item),
+        message: "Sign in with Google or a wallet to save record archive preferences.",
+      });
+      return;
+    }
+    const key = savedRecordKey(item);
+    setRecordArchivePendingKey(key);
+    setRecordArchiveError(null);
+    try {
+      const result = await updateRecordArchivePreference(
+        identityToken,
+        item.access,
+        archived,
+      );
+      setSavedRecords((current) =>
+        current.map((candidate) =>
+          savedRecordKey(candidate) === key
+            ? {
+                ...candidate,
+                access: { ...candidate.access, archived: result.archived },
+              }
+            : candidate,
+        ),
+      );
+      if (archived) {
+        setExpandedRecordKeys((current) => ({ ...current, [key]: false }));
+      }
+    } catch (error) {
+      setRecordArchiveError({
+        key,
+        message:
+          error instanceof Error
+            ? error.message
+            : "This record could not be moved between current and archived views.",
+      });
+    } finally {
+      setRecordArchivePendingKey(null);
+    }
   }
 
   const notifications: AppNotification[] = [
@@ -620,63 +696,95 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     const unlinkedAgreementIds = displayedIds.filter(
       (id) => !linkedAgreementIds.has(id.toString()),
     );
+    const sortedRecords = [...savedRecords].sort(
+      (left, right) =>
+        new Date(right.record.updatedAt).getTime() -
+        new Date(left.record.updatedAt).getTime(),
+    );
+    const currentRecords = sortedRecords.filter((item) => !item.access.archived);
+    const archivedRecords = sortedRecords.filter((item) => item.access.archived);
 
-    return (
-      <section className="record-workspace" id="record-workspace">
-        <div className="workspace-section-heading">
-          <span className="eyebrow">Audit trail</span>
-          <h2>Proposal and agreement record</h2>
-          <p>
-            Download the complete timestamped report, preserve an encrypted evidence copy,
-            and verify its integrity hash onchain.
-          </p>
-        </div>
-        {savedRecords.length === 0 && unlinkedAgreementIds.length === 0 && (
-          <div className="workspace-empty">
-            <strong>No account records found.</strong>
-            <span>
-              Proposal history and finalized agreement activity will appear here.
-            </span>
-          </div>
-        )}
-        {savedRecords.map((item) => {
-          const agreementId = item.record.onchainAgreementId;
-          const isFinalized =
-            item.record.status === "finalized" && Boolean(agreementId);
-          return (
-            <article
-              className="card record-workspace-card"
-              id={
-                agreementId
-                  ? `record-agreement-${agreementId}`
-                  : `record-proposal-${item.record.id}`
+    function renderSavedRecordCard(item: SavedProposal, archived: boolean) {
+      const agreementId = item.record.onchainAgreementId;
+      const isFinalized =
+        item.record.status === "finalized" && Boolean(agreementId);
+      const key = savedRecordKey(item);
+      const expanded = Boolean(expandedRecordKeys[key]);
+      const contentId = `record-content-${item.record.id}-${item.access.role}`;
+      return (
+        <article
+          className={`card record-workspace-card record-list-item${
+            archived ? " is-archived" : ""
+          }`}
+          id={
+            agreementId
+              ? `record-agreement-${agreementId}`
+              : `record-proposal-${item.record.id}`
+          }
+          key={`${item.access.proposalId}-${item.access.role}`}
+          role="listitem"
+          tabIndex={-1}
+        >
+          <header className="record-workspace-header record-list-row">
+            <button
+              className="record-expand-button"
+              type="button"
+              aria-expanded={expanded}
+              aria-controls={contentId}
+              onClick={() =>
+                setExpandedRecordKeys((current) => ({
+                  ...current,
+                  [key]: !expanded,
+                }))
               }
-              key={`${item.access.proposalId}-${item.access.role}`}
-              tabIndex={-1}
             >
-              <header className="record-workspace-header">
-                <div>
-                  <span className="eyebrow">
-                    {isFinalized ? "Finalized agreement record" : "Proposal record"}
-                  </span>
-                  <h3>
-                    {agreementId
-                      ? agreementReference(agreementId)
-                      : proposalReference(item.record.id)}
-                  </h3>
-                  {agreementId && (
-                    <small>
-                      Originated as {proposalReference(item.record.id)} · onchain ID{" "}
-                      {agreementId}
-                    </small>
-                  )}
-                </div>
-                <div className="record-workspace-actions">
-                  <span className={`negotiation-status status-${item.record.status}`}>
-                    {item.record.status} · revision {item.record.revision}
-                  </span>
-                </div>
-              </header>
+              <span className="record-list-identity">
+                <span className="eyebrow">
+                  {isFinalized ? "Finalized agreement record" : "Proposal record"}
+                </span>
+                <strong>
+                  {agreementId
+                    ? agreementReference(agreementId)
+                    : proposalReference(item.record.id)}
+                </strong>
+                <small>
+                  {agreementId
+                    ? `${proposalReference(item.record.id)} · onchain ID ${agreementId}`
+                    : `Updated ${new Date(item.record.updatedAt).toLocaleDateString()}`}
+                </small>
+              </span>
+              <span className="record-expand-label" aria-hidden="true">
+                {expanded ? "Hide details" : "Show details"}
+                <span className="record-expand-chevron">⌄</span>
+              </span>
+            </button>
+            <div className="record-workspace-actions">
+              <span className={`negotiation-status status-${item.record.status}`}>
+                {item.record.status} · revision {item.record.revision}
+              </span>
+              {identityToken && (
+                <button
+                  className="btn btn-ghost small"
+                  type="button"
+                  disabled={recordArchivePendingKey === key}
+                  onClick={() => void setRecordArchived(item, !archived)}
+                >
+                  {recordArchivePendingKey === key
+                    ? archived
+                      ? "Restoring..."
+                      : "Archiving..."
+                    : archived
+                      ? "Restore"
+                      : "Archive"}
+                </button>
+              )}
+            </div>
+          </header>
+          {recordArchiveError?.key === key && (
+            <p className="tx-error record-archive-error">{recordArchiveError.message}</p>
+          )}
+          {expanded && (
+            <div className="record-workspace-body" id={contentId}>
               <RecordSnapshotControls
                 access={item.access}
                 agreementId={agreementId ? BigInt(agreementId) : undefined}
@@ -697,26 +805,112 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                   ))}
                 </ol>
               </details>
-            </article>
-          );
-        })}
-        {unlinkedAgreementIds.map((id) => (
-          <article
-            className="card record-workspace-card"
-            id={`record-agreement-${id.toString()}`}
-            key={`unlinked-${id.toString()}`}
-            tabIndex={-1}
-          >
-            <header className="record-workspace-header">
-              <div>
+            </div>
+          )}
+        </article>
+      );
+    }
+
+    function renderOnchainRecordCard(id: bigint) {
+      const key = onchainRecordKey(id);
+      const expanded = Boolean(expandedRecordKeys[key]);
+      const contentId = `record-content-onchain-${id.toString()}`;
+      return (
+        <article
+          className="card record-workspace-card record-list-item"
+          id={`record-agreement-${id.toString()}`}
+          key={`unlinked-${id.toString()}`}
+          role="listitem"
+          tabIndex={-1}
+        >
+          <header className="record-workspace-header record-list-row">
+            <button
+              className="record-expand-button"
+              type="button"
+              aria-expanded={expanded}
+              aria-controls={contentId}
+              onClick={() =>
+                setExpandedRecordKeys((current) => ({
+                  ...current,
+                  [key]: !expanded,
+                }))
+              }
+            >
+              <span className="record-list-identity">
                 <span className="eyebrow">Onchain-only record</span>
-                <h3>{agreementReference(id)}</h3>
+                <strong>{agreementReference(id)}</strong>
                 <small>Onchain agreement ID {id.toString()}</small>
-              </div>
-            </header>
-            <AgreementOnchainActivity agreementId={id} isParty={false} />
-          </article>
-        ))}
+              </span>
+              <span className="record-expand-label" aria-hidden="true">
+                {expanded ? "Hide details" : "Show details"}
+                <span className="record-expand-chevron">⌄</span>
+              </span>
+            </button>
+          </header>
+          {expanded && (
+            <div className="record-workspace-body" id={contentId}>
+              <AgreementOnchainActivity agreementId={id} isParty={false} />
+            </div>
+          )}
+        </article>
+      );
+    }
+
+    return (
+      <section className="record-workspace" id="record-workspace">
+        <div className="workspace-section-heading">
+          <span className="eyebrow">Audit trail</span>
+          <h2>Proposal and agreement record</h2>
+          <p>
+            Download the complete timestamped report, preserve an encrypted evidence copy,
+            and verify its integrity hash onchain.
+          </p>
+        </div>
+        {currentRecords.length === 0 && unlinkedAgreementIds.length === 0 && (
+          <div className="workspace-empty">
+            <strong>
+              {archivedRecords.length
+                ? "All account records are archived."
+                : "No account records found."}
+            </strong>
+            <span>
+              {archivedRecords.length
+                ? "Open Archived records below to review or restore them."
+                : "Proposal history and finalized agreement activity will appear here."}
+            </span>
+          </div>
+        )}
+        {(currentRecords.length > 0 || unlinkedAgreementIds.length > 0) && (
+          <div className="record-list-heading">
+            <h3>Current records</h3>
+            <span>
+              {currentRecords.length + unlinkedAgreementIds.length}{" "}
+              {currentRecords.length + unlinkedAgreementIds.length === 1
+                ? "record"
+                : "records"}
+            </span>
+          </div>
+        )}
+        <div className="record-list" role="list">
+          {currentRecords.map((item) => renderSavedRecordCard(item, false))}
+          {unlinkedAgreementIds.map(renderOnchainRecordCard)}
+        </div>
+        {archivedRecords.length > 0 && (
+          <details
+            className="record-archive-section"
+            open={isRecordArchiveOpen}
+            onToggle={(event) => setIsRecordArchiveOpen(event.currentTarget.open)}
+          >
+            <summary>Archived records ({archivedRecords.length})</summary>
+            <p>
+              Archiving only removes a record from your current list. It does not delete
+              the agreement, its audit trail, or another participant’s access.
+            </p>
+            <div className="record-list" role="list">
+              {archivedRecords.map((item) => renderSavedRecordCard(item, true))}
+            </div>
+          </details>
+        )}
       </section>
     );
   }

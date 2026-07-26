@@ -1,98 +1,84 @@
 import { useState } from "react";
-import { keccak256, toBytes } from "viem";
 import {
   uploadEvidenceDocument,
   type NegotiationAccess,
 } from "../lib/negotiations";
 
-/**
- * Shared evidence-entry UX: the description text is hashed client-side and only the
- * hash goes on-chain, alongside a caller-supplied pointer/URI. Per spec decision 6,
- * the raw description is never itself sent to the contract - only keccak256(description).
- */
 export function useEvidenceInputs(access?: NegotiationAccess | null) {
-  const [description, setDescription] = useState("");
   const [uri, setUri] = useState("");
   const [file, setFile] = useState<File | null>(null);
-  const [uploadedFileHash, setUploadedFileHash] = useState<`0x${string}` | null>(null);
+  const [uploadedFileHash, setUploadedFileHash] = useState<`0x${string}` | null>(
+    null,
+  );
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
 
   const contentHash =
-    uploadedFileHash ||
-    (description
-      ? keccak256(toBytes(description))
-      : (("0x" + "0".repeat(64)) as `0x${string}`));
-  const valid = description.trim().length > 0 && uri.trim().length > 0;
+    uploadedFileHash || (("0x" + "0".repeat(64)) as `0x${string}`);
+  const valid =
+    Boolean(access) &&
+    Boolean(file) &&
+    Boolean(uploadedFileHash) &&
+    uri.trim().length > 0 &&
+    !isUploading;
+
+  async function selectAndStoreFile(selectedFile: File | null) {
+    setFile(selectedFile);
+    setUploadedFileHash(null);
+    setUri("");
+    setUploadMessage(null);
+    setUploadError(null);
+    if (!selectedFile) return;
+    if (!access) {
+      setUploadError(
+        "Open this agreement from your signed-in account before attaching documentation.",
+      );
+      return;
+    }
+    setIsUploading(true);
+    try {
+      const uploaded = await uploadEvidenceDocument(access, selectedFile);
+      setUri(uploaded.uri);
+      setUploadedFileHash(uploaded.sha256 as `0x${string}`);
+      setUploadMessage(
+        uploaded.storageKind === "private" ||
+          uploaded.storageKind === "encrypted-private"
+          ? "Supporting file stored privately and ready to submit."
+          : "Supporting file encrypted, stored, and ready to submit.",
+      );
+    } catch (error) {
+      setUploadError(error instanceof Error ? error.message : "The upload failed.");
+    } finally {
+      setIsUploading(false);
+    }
+  }
 
   const fields = (
     <>
-      <label>
-        Evidence description (kept private; only a verification hash is sent onchain)
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          placeholder="e.g. 'Move-out inspection notes, unit 4B, water damage in kitchen ceiling'"
-          rows={3}
-        />
-      </label>
-      {access && (
-        <div className="evidence-upload">
-          <label>
-            Invoice or supporting document
-            <input
-              type="file"
-              accept=".pdf,.png,.jpg,.jpeg,.webp"
-              onChange={(event) => {
-                setFile(event.target.files?.[0] || null);
-                setUploadedFileHash(null);
-                setUri("");
-                setUploadMessage(null);
-              }}
-            />
-          </label>
-          <button
-            className="btn btn-secondary"
-            type="button"
-            disabled={!file || isUploading}
-            onClick={async () => {
-              if (!file) return;
-              setIsUploading(true);
-              setUploadError(null);
-              setUploadMessage(null);
-              try {
-                const uploaded = await uploadEvidenceDocument(access, file);
-                setUri(uploaded.uri);
-                setUploadedFileHash(uploaded.sha256 as `0x${string}`);
-                setUploadMessage(
-                  (uploaded.storageKind === "private" ||
-                    uploaded.storageKind === "encrypted-private")
-                    ? `Stored privately. SHA-256 receipt: ${uploaded.sha256.slice(0, 14)}…`
-                    : `Encrypted before decentralized storage. CID: ${uploaded.reference}`,
-                );
-              } catch (error) {
-                setUploadError(error instanceof Error ? error.message : "The upload failed.");
-              } finally {
-                setIsUploading(false);
-              }
-            }}
-          >
-            {isUploading ? "Uploading..." : "Store supporting documentation"}
-          </button>
-          {uploadMessage && <p className="tx-success">{uploadMessage}</p>}
-          {uploadError && <p className="tx-error">{uploadError}</p>}
-        </div>
-      )}
-      <label>
-        Evidence pointer / URI (required)
-        <input value={uri} onChange={(e) => setUri(e.target.value)} placeholder="ipfs://... or a privacy-safe document pointer" />
-      </label>
+      <div className="evidence-upload">
+        <label>
+          Supporting file
+          <input
+            type="file"
+            accept=".pdf,.png,.jpg,.jpeg,.webp"
+            disabled={isUploading}
+            onChange={(event) =>
+              void selectAndStoreFile(event.target.files?.[0] || null)
+            }
+          />
+        </label>
+        <p className="field-help">
+          Attach one PDF, invoice, receipt, estimate, labor record, or photo. OpenEscrow
+          stores it automatically; no document link or technical reference is required.
+        </p>
+        {isUploading && <p className="hint">Storing supporting file…</p>}
+        {uploadMessage && <p className="tx-success">{uploadMessage}</p>}
+        {uploadError && <p className="tx-error">{uploadError}</p>}
+      </div>
       <p className="warning">
-        The evidence vault limits readable retrieval to agreement parties and verifies every
-        file against its SHA-256 receipt. Decentralized mode stores encrypted ciphertext, never
-        a readable invoice or photograph. A manually entered public IPFS URI is not protected.
-        This remains a testnet demo, so do not upload real tenancy records.
+        Supporting files are available only to agreement parties through OpenEscrow. This
+        remains a testnet demo, so do not upload real tenancy records.
       </p>
     </>
   );

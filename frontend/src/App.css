@@ -2400,8 +2400,160 @@ a.btn.disabled {
   scroll-margin-top: 86px;
 }
 
+.record-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 4px;
+}
+
+.record-list-heading h3 {
+  margin: 0;
+  color: var(--text-h);
+}
+
+.record-list-heading span {
+  color: var(--text);
+  font-size: 13px;
+}
+
+.record-list {
+  display: grid;
+  gap: 10px;
+}
+
+.record-list-item {
+  overflow: hidden;
+  padding: 0;
+}
+
+.record-list-item.is-archived {
+  background: color-mix(in srgb, var(--surface) 90%, var(--bg));
+}
+
+.record-list-row {
+  align-items: center;
+  margin-bottom: 0;
+  padding: 15px 16px;
+}
+
+.record-expand-button {
+  display: flex;
+  flex: 1 1 auto;
+  min-width: 0;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.record-expand-button:hover .record-list-identity > strong,
+.record-expand-button:focus-visible .record-list-identity > strong {
+  color: var(--accent);
+}
+
+.record-expand-button:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid var(--accent);
+  outline-offset: 5px;
+}
+
+.record-list-identity {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.record-list-identity > strong {
+  overflow: hidden;
+  color: var(--text-h);
+  font-size: 17px;
+  text-overflow: ellipsis;
+  transition: color 150ms ease;
+  white-space: nowrap;
+}
+
+.record-list-identity small {
+  overflow: hidden;
+  color: var(--text);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.record-expand-label {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 7px;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.record-expand-chevron {
+  color: var(--accent);
+  font-size: 18px;
+  line-height: 1;
+  transition: transform 160ms ease;
+}
+
+.record-expand-button[aria-expanded="true"] .record-expand-chevron {
+  transform: rotate(180deg);
+}
+
+.record-workspace-body {
+  border-top: 1px solid var(--border);
+  padding: 20px;
+}
+
+.record-archive-error {
+  margin: 0;
+  border-top: 1px solid var(--border);
+  padding: 12px 16px;
+}
+
+.record-archive-section {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 82%, var(--bg));
+}
+
+.record-archive-section > summary {
+  padding: 16px 18px;
+  color: var(--text-h);
+  cursor: pointer;
+  font-weight: 800;
+}
+
+.record-archive-section[open] > summary {
+  border-bottom: 1px solid var(--border);
+}
+
+.record-archive-section > p {
+  margin: 14px 18px 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.record-archive-section > .record-list {
+  padding: 14px;
+}
+
 .record-workspace-header {
   margin-bottom: 18px;
+}
+
+.record-workspace-header.record-list-row {
+  margin-bottom: 0;
 }
 
 .record-workspace-header small,
@@ -2980,6 +3132,23 @@ a.btn.disabled {
   .record-workspace-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .record-list-row {
+    padding: 14px;
+  }
+
+  .record-expand-button {
+    width: 100%;
+    align-items: flex-start;
+  }
+
+  .record-expand-label {
+    padding-top: 4px;
+  }
+
+  .record-workspace-body {
+    padding: 16px 14px;
   }
 
   .participant-grid,

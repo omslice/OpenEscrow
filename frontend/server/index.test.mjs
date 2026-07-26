@@ -30,6 +30,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0004_tenant_deposit_shares.sql",
     "0005_encrypted_evidence.sql",
     "0006_compliance_source_monitor.sql",
+    "0007_account_record_archives.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -47,6 +48,7 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.ok(tables.includes("notification_unsubscribe_tokens"));
   assert.ok(tables.includes("scheduled_job_runs"));
   assert.ok(tables.includes("compliance_source_checks"));
+  assert.ok(tables.includes("account_record_archives"));
 });
 
 class Statement {
@@ -1064,6 +1066,41 @@ test("verified Privy accounts discover finalized landlord and tenant agreements"
     assert.equal(discovery.accesses.length, 1);
     assert.equal(discovery.accesses[0].proposalId, created.record.id);
     assert.equal(discovery.accesses[0].role, "landlord");
+    assert.equal(discovery.accesses[0].archived, false);
+
+    const archivedPreference = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/profile/record-archives", {
+          method: "PUT",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": identityToken,
+          },
+          body: JSON.stringify({
+            proposalId: created.record.id,
+            role: "landlord",
+            archived: true,
+          }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(archivedPreference.archived, true);
+
+    const archivedDiscovery = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/negotiations/discover", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": identityToken,
+          },
+          body: JSON.stringify({ role: "landlord" }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(archivedDiscovery.accesses[0].archived, true);
 
     const recovered = await jsonResponse(
       await worker.fetch(
@@ -1091,6 +1128,7 @@ test("verified Privy accounts discover finalized landlord and tenant agreements"
       ),
     );
     assert.equal(tenantDiscovery.accesses.length, 1);
+    assert.equal(tenantDiscovery.accesses[0].archived, false);
     const tenantRecord = await jsonResponse(
       await worker.fetch(
         request(
@@ -1101,6 +1139,33 @@ test("verified Privy accounts discover finalized landlord and tenant agreements"
     );
     assert.equal(tenantRecord.status, "finalized");
     assert.equal(tenantRecord.onchainAgreementId, "0");
+
+    const restoredPreference = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/profile/record-archives", {
+          method: "PUT",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": identityToken,
+          },
+          body: JSON.stringify({
+            proposalId: created.record.id,
+            role: "landlord",
+            archived: false,
+          }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(restoredPreference.archived, false);
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM account_record_archives WHERE negotiation_id = ?",
+        )
+        .get(created.record.id).count,
+      0,
+    );
 
     const savedPreferences = await jsonResponse(
       await worker.fetch(
@@ -2822,7 +2887,12 @@ test("documented claim, tenant decision, and email attempts are included in the 
     }),
   );
   assert.equal(claimed.events.at(-1).action, "deduction_claim_submitted");
-  assert.match(claimed.events.at(-1).summary, /ipfs:\/\/bafy-test-invoice/);
+  assert.match(claimed.events.at(-1).summary, /Supporting documentation attached/);
+  assert.doesNotMatch(claimed.events.at(-1).summary, /ipfs:\/\//);
+  assert.equal(
+    claimed.events.at(-1).metadata.evidenceUri,
+    "ipfs://bafy-test-invoice",
+  );
   assert.equal(claimed.events.at(-1).metadata.items.length, 2);
   const claimReport = await worker.fetch(
     request(
@@ -2838,6 +2908,8 @@ test("documented claim, tenant decision, and email attempts are included in the 
   assert.match(claimReportHtml, /tenant@example\.com/);
   assert.match(claimReportHtml, /0x1111111111111111111111111111111111111111/);
   assert.match(claimReportHtml, /Recorded transaction receipts/);
+  assert.match(claimReportHtml, /External supporting documentation recorded/);
+  assert.doesNotMatch(claimReportHtml, /ipfs:\/\/bafy-test-invoice/);
   assert.match(claimReportHtml, new RegExp(`0x${"9".repeat(64)}`));
   const downloadedReport = await worker.fetch(
     request(

@@ -141,6 +141,7 @@ export interface NegotiationAccess {
   proposalId: string;
   role: NegotiationRole;
   token: string;
+  archived?: boolean;
 }
 
 export interface CreatedNegotiation {
@@ -472,6 +473,27 @@ export async function discoverNegotiationsForAccount(
   );
   result.accesses.forEach((access) => storeNegotiationAccess(access, true));
   return result.accesses;
+}
+
+export function updateRecordArchivePreference(
+  identityToken: string,
+  access: Pick<NegotiationAccess, "proposalId" | "role">,
+  archived: boolean,
+) {
+  return request<{
+    proposalId: string;
+    role: NegotiationRole;
+    archived: boolean;
+    archivedAt: string | null;
+  }>("/api/profile/record-archives", {
+    method: "PUT",
+    headers: { "privy-id-token": identityToken },
+    body: JSON.stringify({
+      proposalId: access.proposalId,
+      role: access.role,
+      archived,
+    }),
+  });
 }
 
 export function loadNotificationPreferences(identityToken: string) {

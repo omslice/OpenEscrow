@@ -65,6 +65,20 @@ const ACCOUNT_ACCESS_INDEX = `
 CREATE INDEX IF NOT EXISTS negotiation_account_access_lookup_idx
 ON negotiation_account_access (negotiation_id, token_hash, expires_at)`;
 
+const ACCOUNT_RECORD_ARCHIVES_SCHEMA = `
+CREATE TABLE IF NOT EXISTS account_record_archives (
+  user_id TEXT NOT NULL,
+  negotiation_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  archived_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, negotiation_id, role),
+  FOREIGN KEY (negotiation_id) REFERENCES agreement_negotiations(id) ON DELETE CASCADE
+)`;
+
+const ACCOUNT_RECORD_ARCHIVES_INDEX = `
+CREATE INDEX IF NOT EXISTS account_record_archives_user_idx
+ON account_record_archives (user_id, role, archived_at)`;
+
 const NOTIFICATION_PREFERENCES_SCHEMA = `
 CREATE TABLE IF NOT EXISTS notification_preferences (
   user_id TEXT PRIMARY KEY,
@@ -936,6 +950,8 @@ async function initialize(db) {
     db.prepare(EVENTS_INDEX),
     db.prepare(ACCOUNT_ACCESS_SCHEMA),
     db.prepare(ACCOUNT_ACCESS_INDEX),
+    db.prepare(ACCOUNT_RECORD_ARCHIVES_SCHEMA),
+    db.prepare(ACCOUNT_RECORD_ARCHIVES_INDEX),
     db.prepare(NOTIFICATION_PREFERENCES_SCHEMA),
     db.prepare(EVIDENCE_FILES_SCHEMA),
     db.prepare(EVIDENCE_FILES_INDEX),
@@ -1254,7 +1270,6 @@ async function discoverNegotiations(request, env) {
          FROM agreement_negotiations negotiation
          JOIN negotiation_tenants tenant ON tenant.negotiation_id = negotiation.id
          WHERE lower(tenant.email) IN (${placeholders})
-           AND negotiation.status NOT IN ('cancelled', 'superseded')
          ORDER BY negotiation.updated_at DESC`,
       )
       .bind(...identity.emails)
@@ -1273,7 +1288,6 @@ async function discoverNegotiations(request, env) {
       .prepare(
         `SELECT * FROM agreement_negotiations
          WHERE lower(${emailColumn}) IN (${placeholders})
-           AND status NOT IN ('cancelled', 'superseded')
          ORDER BY updated_at DESC`,
       )
       .bind(...identity.emails)
@@ -1283,6 +1297,17 @@ async function discoverNegotiations(request, env) {
   const now = new Date();
   const expiresAt = new Date(now.getTime() + ACCOUNT_ACCESS_LIFETIME_MS).toISOString();
   const accesses = [];
+  const archiveResult = await env.DB
+    .prepare(
+      `SELECT negotiation_id
+       FROM account_record_archives
+       WHERE user_id = ? AND role = ?`,
+    )
+    .bind(identity.userId, role)
+    .all();
+  const archivedNegotiationIds = new Set(
+    (archiveResult.results || []).map((archive) => archive.negotiation_id),
+  );
 
   await env.DB
     .prepare("DELETE FROM negotiation_account_access WHERE expires_at <= ?")
@@ -1305,10 +1330,92 @@ async function discoverNegotiations(request, env) {
         .bind(tokenHash, row.participant_id)
         .run();
     }
-    accesses.push({ proposalId: row.id, role, token });
+    accesses.push({
+      proposalId: row.id,
+      role,
+      token,
+      archived: archivedNegotiationIds.has(row.id),
+    });
   }
 
   return json({ accesses });
+}
+
+async function identityCanAccessRecord(db, identity, row, role) {
+  if (role === "landlord") {
+    return identity.emails.includes(normalizeEmail(row.landlord_email));
+  }
+  if (role === "arbiter") {
+    return identity.emails.includes(normalizeEmail(row.arbiter_email));
+  }
+  if (role !== "tenant") return false;
+  const placeholders = identity.emails.map(() => "?").join(", ");
+  const tenant = await db
+    .prepare(
+      `SELECT id
+       FROM negotiation_tenants
+       WHERE negotiation_id = ? AND lower(email) IN (${placeholders})
+       LIMIT 1`,
+    )
+    .bind(row.id, ...identity.emails)
+    .first();
+  return Boolean(tenant?.id);
+}
+
+async function recordArchivePreference(request, env) {
+  let identity;
+  try {
+    identity = await verifyPrivyIdentity(request, env);
+  } catch (error) {
+    return json(
+      {
+        error:
+          error instanceof Error ? error.message : "The signed-in account could not be verified.",
+      },
+      401,
+    );
+  }
+
+  const body = await request.json();
+  const proposalId = cleanText(body.proposalId, 80);
+  const role = cleanText(body.role, 20);
+  if (
+    !proposalId ||
+    (role !== "landlord" && role !== "tenant" && role !== "arbiter") ||
+    typeof body.archived !== "boolean"
+  ) {
+    return json({ error: "Choose a valid agreement record and archive state." }, 400);
+  }
+
+  const row = await rowFor(env.DB, proposalId);
+  if (!row) return json({ error: "This agreement record was not found." }, 404);
+  if (!(await identityCanAccessRecord(env.DB, identity, row, role))) {
+    return json({ error: "This account cannot change that agreement record view." }, 403);
+  }
+
+  const archivedAt = body.archived ? new Date().toISOString() : null;
+  if (body.archived) {
+    await env.DB
+      .prepare(
+        `INSERT INTO account_record_archives
+         (user_id, negotiation_id, role, archived_at)
+         VALUES (?, ?, ?, ?)
+         ON CONFLICT(user_id, negotiation_id, role) DO UPDATE SET
+           archived_at = excluded.archived_at`,
+      )
+      .bind(identity.userId, proposalId, role, archivedAt)
+      .run();
+  } else {
+    await env.DB
+      .prepare(
+        `DELETE FROM account_record_archives
+         WHERE user_id = ? AND negotiation_id = ? AND role = ?`,
+      )
+      .bind(identity.userId, proposalId, role)
+      .run();
+  }
+
+  return json({ proposalId, role, archived: body.archived, archivedAt });
 }
 
 async function rowFor(db, id) {
@@ -3658,7 +3765,7 @@ async function applyAction(request, env, id) {
         now,
         role,
         "deduction_claim_submitted",
-        `Submitted an itemized ${amount}-share deduction claim with ${items.length} line item${items.length === 1 ? "" : "s"} (${category})${note ? `: ${note}` : "."}${evidenceUri ? ` Evidence: ${evidenceUri}.` : ""}`,
+        `Submitted an itemized ${amount}-share deduction claim with ${items.length} line item${items.length === 1 ? "" : "s"} (${category})${note ? `: ${note}` : "."}${evidenceUri ? " Supporting documentation attached." : ""}`,
         revision,
         {
           amount,
@@ -3755,7 +3862,7 @@ async function applyAction(request, env, id) {
         now,
         role,
         "deduction_claim_amended",
-        `Amended the itemized deduction claim to ${amount} shares across ${items.length} line item${items.length === 1 ? "" : "s"}${note ? `: ${note}` : "."}${evidenceUri ? ` Evidence: ${evidenceUri}.` : ""}`,
+        `Amended the itemized deduction claim to ${amount} shares across ${items.length} line item${items.length === 1 ? "" : "s"}${note ? `: ${note}` : "."}${evidenceUri ? " Supporting documentation attached." : ""}`,
         revision,
         {
           amount,
@@ -4214,7 +4321,7 @@ async function uploadEvidence(request, env) {
     return json(
       {
         error:
-          "Secure evidence storage is not configured yet. Add the evidence bucket, a Pinata JWT, or paste an existing privacy-safe IPFS URI.",
+          "Secure evidence storage is not configured yet. Configure the OpenEscrow evidence vault before attaching a supporting file.",
       },
       503,
     );
@@ -4344,7 +4451,7 @@ async function uploadEvidence(request, env) {
         now,
         role,
         "evidence_uploaded",
-        `Uploaded a private ${contentType} evidence file${encryptionVersion ? " encrypted at rest" : ""}. Its SHA-256 receipt is ${sha256}.`,
+        `Uploaded a private ${contentType} supporting file${encryptionVersion ? " encrypted at rest" : ""}. OpenEscrow verified its integrity.`,
         row.revision,
         {
           evidenceId,
@@ -4427,7 +4534,7 @@ async function uploadEvidence(request, env) {
       now,
       role,
       "evidence_uploaded",
-      `Encrypted a ${contentType} evidence file and stored the ciphertext on IPFS as ${uri}.`,
+      `Encrypted a ${contentType} supporting file and stored it in decentralized evidence storage. OpenEscrow verified its integrity.`,
       row.revision,
       {
         evidenceId,
@@ -4955,10 +5062,16 @@ ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordExc
             `<tr><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.description)}</td><td>${escapeHtml(item.amount)} shares</td></tr>`,
         )
         .join("");
+      const evidenceStatus = event.metadata.evidenceUri
+        ? event.metadata.evidenceUri.startsWith("openescrow://evidence/") ||
+          event.metadata.evidenceUri.startsWith("openescrow+ipfs://")
+          ? "Stored privately in OpenEscrow"
+          : "External supporting documentation recorded"
+        : "No supporting file recorded";
       return `<h3>${event.action === "deduction_claim_amended" ? "Amended claim" : "Original claim"} · ${escapeHtml(event.createdAt)}</h3>
 <table><thead><tr><th>Category</th><th>Description</th><th>Amount</th></tr></thead><tbody>${rows}</tbody>
 <tfoot><tr><th colspan="2">Total</th><th>${escapeHtml(event.metadata.amount)} shares</th></tr></tfoot></table>
-<p class="meta">Evidence: ${escapeHtml(event.metadata.evidenceUri || "No pointer recorded")} · Transaction: ${escapeHtml(event.metadata.transactionHash || "Not recorded")}</p>`;
+<p class="meta">Supporting file: ${escapeHtml(evidenceStatus)} · Transaction: ${escapeHtml(event.metadata.transactionHash || "Not recorded")}</p>`;
     })
     .join("");
   const revisionSnapshots = record.events
@@ -5272,6 +5385,17 @@ const worker = {
       }
       await initialize(env.DB);
       return notificationPreferences(request, env);
+    }
+    if (
+      url.pathname === "/api/profile/record-archives" &&
+      request.method === "PUT"
+    ) {
+      if (!env.DB) return json({ error: "Account preference storage is not available." }, 503);
+      if (!sameOriginPost(request)) {
+        return json({ error: "Cross-origin writes are not allowed." }, 403);
+      }
+      await initialize(env.DB);
+      return recordArchivePreference(request, env);
     }
     if (url.pathname === "/api/notifications/claim" && request.method === "POST") {
       if (!sameOriginPost(request)) return json({ error: "Cross-origin writes are not allowed." }, 403);
