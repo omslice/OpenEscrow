@@ -3,6 +3,7 @@ import {
   depositAssetAvailability,
   type DepositAssetId,
 } from "../../shared/deposit-assets.js";
+import { createFundingPlan } from "../../shared/funding-routes.js";
 
 export function DepositAssetSelector({
   selectedAssetId,
@@ -89,6 +90,7 @@ export function DepositAssetSelector({
               >
                 Official documentation
               </a>
+              <FundingRouteSummary asset={asset} />
             </label>
           );
         })}
@@ -131,5 +133,31 @@ export function DepositAssetSelector({
         </details>
       )}
     </fieldset>
+  );
+}
+
+function FundingRouteSummary({ asset }: { asset: (typeof DEPOSIT_ASSETS)[number] }) {
+  const plan = createFundingPlan(asset.id, {
+    onrampEnabled: true,
+    environment: "sandbox",
+  });
+  const onramp = plan.onramp;
+  const conversion = plan.conversion;
+  const routeDisplay = plan.routeSteps.join(" → ");
+
+  return (
+    <p className="asset-route-summary">
+      Funding path: {routeDisplay || "No active funding path is modeled for this option."}
+      <br />
+      On-ramp: {onramp.name} ({onramp.id}) — {onramp.description}
+      <br />
+      Conversion:{" "}
+      {conversion === null
+        ? "n/a"
+        : `${conversion.label} (${conversion.id}) — ${conversion.description}`}
+      <br />
+      Settlement destination: {plan.settlementAsset}
+      {!plan.checkoutAvailable ? ` (${plan.reason ?? "Unavailable in this build"})` : ""}
+    </p>
   );
 }

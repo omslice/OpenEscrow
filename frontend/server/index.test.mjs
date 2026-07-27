@@ -665,10 +665,10 @@ function base64UrlJson(value) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
 
-async function identityTokenFor(privateKey, appId, kid, email) {
+async function identityTokenFor(privateKey, appId, kid, email, options = {}) {
   const encodedHeader = base64UrlJson({ alg: "ES256", typ: "JWT", kid });
   const encodedPayload = base64UrlJson({
-    sub: "did:privy:test-landlord",
+    sub: options.sub || "did:privy:test-landlord",
     iss: "privy.io",
     aud: appId,
     iat: Math.floor(Date.now() / 1000),
@@ -2140,6 +2140,213 @@ test("verified Privy accounts discover finalized landlord and tenant agreements"
     );
     assert.equal(restoredPreferences.deadlineReminders, true);
     assert.equal(restoredPreferences.consentedAt, savedPreferences.consentedAt);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("discovery and archive permissions are isolated by signed-in account", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const appId = "test-privy-separate-accounts-app";
+  const kid = "test-separate-accounts-key";
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  const landlordIdentityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "landlord@example.com",
+    { sub: "did:privy:separate-landlord" },
+  );
+  const tenantIdentityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "tenant@example.com",
+    { sub: "did:privy:separate-tenant" },
+  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    assert.equal(
+      String(input),
+      `https://auth.privy.io/api/v1/apps/${appId}/jwks.json`,
+    );
+    return Response.json({ keys: [{ ...publicJwk, kid, alg: "ES256", use: "sig" }] });
+  };
+  try {
+    const landlordDiscovery = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/negotiations/discover", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": landlordIdentityToken,
+          },
+          body: JSON.stringify({ role: "landlord" }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(landlordDiscovery.accesses.length, 1);
+    assert.equal(landlordDiscovery.accesses[0].role, "landlord");
+
+    const landlordAsTenant = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/negotiations/discover", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": landlordIdentityToken,
+          },
+          body: JSON.stringify({ role: "tenant" }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(landlordAsTenant.accesses.length, 0);
+
+    const tenantDiscovery = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/negotiations/discover", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": tenantIdentityToken,
+          },
+          body: JSON.stringify({ role: "tenant" }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(tenantDiscovery.accesses.length, 1);
+    assert.equal(tenantDiscovery.accesses[0].role, "tenant");
+
+    const tenantDiscoveryAsLandlord = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/negotiations/discover", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": tenantIdentityToken,
+          },
+          body: JSON.stringify({ role: "landlord" }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(tenantDiscoveryAsLandlord.accesses.length, 0);
+
+    const tenantArchiveByLandlord = await worker.fetch(
+      new Request("https://openescrow.example/api/profile/record-archives", {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          "privy-id-token": landlordIdentityToken,
+        },
+        body: JSON.stringify({
+          proposalId: created.record.id,
+          role: "tenant",
+          archived: true,
+        }),
+      }),
+      { DB: db, PRIVY_APP_ID: appId },
+    );
+    assert.equal(tenantArchiveByLandlord.status, 403);
+    assert.match((await tenantArchiveByLandlord.json()).error, /cannot change that agreement/);
+
+    const landlordArchiveByTenant = await worker.fetch(
+      new Request("https://openescrow.example/api/profile/record-archives", {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          "privy-id-token": tenantIdentityToken,
+        },
+        body: JSON.stringify({
+          proposalId: created.record.id,
+          role: "landlord",
+          archived: true,
+        }),
+      }),
+      { DB: db, PRIVY_APP_ID: appId },
+    );
+    assert.equal(landlordArchiveByTenant.status, 403);
+    assert.match((await landlordArchiveByTenant.json()).error, /cannot change that agreement/);
+
+    const landlordArchive = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/profile/record-archives", {
+          method: "PUT",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": landlordIdentityToken,
+          },
+          body: JSON.stringify({
+            proposalId: created.record.id,
+            role: "landlord",
+            archived: true,
+          }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(landlordArchive.archived, true);
+
+    const tenantArchive = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/profile/record-archives", {
+          method: "PUT",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": tenantIdentityToken,
+          },
+          body: JSON.stringify({
+            proposalId: created.record.id,
+            role: "tenant",
+            archived: true,
+          }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(tenantArchive.archived, true);
+
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM negotiation_account_access WHERE negotiation_id = ? AND user_id = ? AND role = ?",
+        )
+        .get(created.record.id, "did:privy:separate-landlord", "landlord").count,
+      1,
+    );
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM negotiation_account_access WHERE negotiation_id = ? AND user_id = ? AND role = ?",
+        )
+        .get(created.record.id, "did:privy:separate-tenant", "tenant").count,
+      1,
+    );
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM account_record_archives WHERE user_id = ? AND negotiation_id = ? AND role = ?",
+        )
+        .get("did:privy:separate-landlord", created.record.id, "landlord").count,
+      1,
+    );
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM account_record_archives WHERE user_id = ? AND negotiation_id = ? AND role = ?",
+        )
+        .get("did:privy:separate-tenant", created.record.id, "tenant").count,
+      1,
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -3867,6 +4074,66 @@ test("landlord revisions reset approvals and generic timing remains editable", a
   assert.equal(revised.revision, 3);
   assert.equal(revised.status, "draft");
   assert.equal(revised.tenantApproved, false);
+});
+
+test("role-bound actions are strictly enforced by session role", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const id = created.record.id;
+
+  await jsonResponse(
+    await act(db, id, created.access.tenant, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+
+  const tenantCannotFinalize = await act(
+    db,
+    id,
+    created.access.tenant,
+    {
+      type: "finalize",
+      agreementId: "99",
+      transactionHash: `0x${"f".repeat(64)}`,
+    },
+  );
+  assert.equal(tenantCannotFinalize.status, 403);
+  assert.match(
+    (await tenantCannotFinalize.json()).error,
+    /Only the landlord may finalize/,
+  );
+
+  const landlordCannotFundOperationsReserve = await act(
+    db,
+    id,
+    created.access.landlord,
+    {
+      type: "operations_reserve_paid",
+      amount: "2.5",
+      transactionHash: `0x${"1".repeat(64)}`,
+    },
+  );
+  assert.equal(landlordCannotFundOperationsReserve.status, 403);
+  assert.match(
+    (await landlordCannotFundOperationsReserve.json()).error,
+    /Only the tenant may record the operations reserve payment/,
+  );
+
+  const landlordCannotProposeChange = await act(
+    db,
+    id,
+    created.access.landlord,
+    {
+      type: "propose_change",
+      summary: "Landlord should not be able to propose revisions as a tenant.",
+    },
+  );
+  assert.equal(landlordCannotProposeChange.status, 403);
+  assert.match(
+    (await landlordCannotProposeChange.json()).error,
+    /Only the invited tenant or arbiter may propose changes/,
+  );
 });
 
 test("deduction claim email includes every tenant", async () => {

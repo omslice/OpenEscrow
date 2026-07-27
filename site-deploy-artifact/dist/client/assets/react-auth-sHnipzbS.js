@@ -1,0 +1,1 @@
+var e={};throw Error(`Could not resolve "@farcaster/mini-app-solana" imported by "@privy-io/react-auth". Is it installed?`);export{e as default};

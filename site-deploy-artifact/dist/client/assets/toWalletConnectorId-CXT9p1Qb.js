@@ -1,0 +1,1 @@
+var e=e=>e.walletClientType===`privy`?`${e.meta.id}.${e.address}`:e.meta.id;export{e as t};

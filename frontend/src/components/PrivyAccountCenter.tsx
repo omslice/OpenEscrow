@@ -17,6 +17,12 @@ import {
   type ServiceReadiness,
 } from "../lib/negotiations";
 import {
+  getServiceReadinessBlockers,
+  getServiceReadinessActions,
+  formatComplianceIssueSummary,
+  summarizeServiceReadiness,
+} from "../lib/serviceReadiness";
+import {
   clearInviteRole,
   roleLabel,
   useInviteRole,
@@ -30,9 +36,11 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
 export function PrivyAccountCenter({
   workspaceRole,
   onChangeWorkspaceRole,
+  onReadinessChange,
 }: {
   workspaceRole?: string;
   onChangeWorkspaceRole?: () => void;
+  onReadinessChange?: (serviceReadiness: ServiceReadiness | null) => void;
 }) {
   const { ready, authenticated, user, linkGoogle, linkWallet, logout } = usePrivy();
   const { identityToken } = useIdentityToken();
@@ -66,51 +74,18 @@ export function PrivyAccountCenter({
   const sourceReadinessUpdated = sourceReadiness?.lastRunAt
     ? new Date(sourceReadiness.lastRunAt).toLocaleString()
     : "No successful check yet";
-  const readinessBlockers = useMemo(() => {
-    const blockers: string[] = [];
-    if (!serviceReadiness) return blockers;
-    if (!serviceReadiness.email.configured) {
-      blockers.push(
-        "Configure an automatic email provider (for production delivery and test-email checks).",
-      );
-    }
-    if (
-      serviceReadiness.email.schedulerConfigured &&
-      !serviceReadiness.email.schedulerHealthy
-    ) {
-      const age =
-        serviceReadiness.email.schedulerAgeMinutes !== null
-          ? ` (last run ${serviceReadiness.email.schedulerAgeMinutes} min ago)`
-          : "";
-      blockers.push(
-        `Verify the hosted scheduler is active and running about every ${serviceReadiness.email.schedulerExpectedIntervalMinutes} minutes${age}.`,
-      );
-    }
-    if (!serviceReadiness.email.schedulerLastRunAt) {
-      blockers.push(
-        "Enable the hosted scheduler so notification cron jobs can run after deployment.",
-      );
-    }
-    if (!serviceReadiness.evidence.encryptedAtRest) {
-      blockers.push(
-        "Set the evidence encryption key so stored deposit evidence is encrypted at rest.",
-      );
-    }
-    if (!serviceReadiness.recordIntegrity.activityRegistry.ready) {
-      blockers.push(
-        "Verify the onchain activity registry binding is deployed and matched to the escrow contract.",
-      );
-    }
-    if (!serviceReadiness.addressValidation.configured) {
-      blockers.push("Configure address attestation so property checks are tamper-resistant.");
-    }
-    if (!serviceReadiness.complianceSources.ready) {
-      blockers.push(
-        "Resolve compliance source monitoring alerts for changed/stale/unreachable/blocked profiles.",
-      );
-    }
-    return blockers;
-  }, [serviceReadiness]);
+  const readinessBlockers = useMemo(
+    () => getServiceReadinessBlockers(serviceReadiness),
+    [serviceReadiness],
+  );
+  const readinessSummary = useMemo(
+    () => summarizeServiceReadiness(serviceReadiness),
+    [serviceReadiness],
+  );
+  const readinessActions = useMemo(
+    () => getServiceReadinessActions(serviceReadiness),
+    [serviceReadiness],
+  );
 
   useEffect(() => {
     if (!preferenceKey) {
@@ -165,6 +140,10 @@ export function PrivyAccountCenter({
       setIsRefreshingReadiness(false);
     }
   }, []);
+
+  useEffect(() => {
+    onReadinessChange?.(serviceReadiness);
+  }, [onReadinessChange, serviceReadiness]);
 
   useEffect(() => {
     void refreshServiceReadiness();
@@ -261,7 +240,7 @@ export function PrivyAccountCenter({
           <span className="disclosure-cue" aria-hidden="true" />
         </summary>
         <div className="account-workspace-content">
-          <section className="account-center account-center-embedded" aria-label="Account details">
+          <section className="account-center account-center-embedded" aria-label="Account and workspace settings">
             {inviteRole && (
               <div className="invite-role-notice">
                 <div>
@@ -389,19 +368,6 @@ export function PrivyAccountCenter({
               </div>
             </div>
           </section>
-        </div>
-      </details>
-
-      <details className="card account-workspace-disclosure settings-disclosure">
-        <summary>
-          <span>
-            <span className="eyebrow">Preferences</span>
-            <strong>Settings</strong>
-            <small>Workspace and notification options</small>
-          </span>
-          <span className="disclosure-cue" aria-hidden="true" />
-        </summary>
-        <div className="account-workspace-content settings-content">
           <section className="settings-group" aria-labelledby="workspace-settings-title">
             <div>
               <h3 id="workspace-settings-title">Workspace</h3>
@@ -430,7 +396,10 @@ export function PrivyAccountCenter({
             </div>
           </section>
 
-          <section className="settings-group notification-preferences" aria-labelledby="notification-settings-title">
+          <section
+            className="settings-group notification-preferences"
+            aria-labelledby="notification-settings-title"
+          >
             <h3 id="notification-settings-title">Email notifications</h3>
         <label>
           <input
@@ -514,15 +483,15 @@ export function PrivyAccountCenter({
             </div>
           </div>
         )}
-        {preferenceStatus && (
-          <p
-            className={
-              preferenceStatus.includes("could not") ? "tx-error" : "field-help"
-            }
-          >
-            {preferenceStatus}
-          </p>
-        )}
+            {preferenceStatus && (
+              <p
+                className={
+                  preferenceStatus.includes("could not") ? "tx-error" : "field-help"
+                }
+              >
+                {preferenceStatus}
+              </p>
+            )}
           </section>
 
           <section
@@ -575,14 +544,13 @@ export function PrivyAccountCenter({
                 </button>
               </div>
             )}
-            {!sourceReadiness ? null : (
+            {sourceReadiness === null ? null : (
               <p className="notification-boundary">
-                Issue counts are from the latest monitor snapshot: {sourceReadiness.pending} pending,{" "}
-                {sourceReadiness.changed} changed, {sourceReadiness.unreachable} unreachable,{" "}
-                {sourceReadiness.stale} stale, {sourceReadiness.blocked} blocked.
+                Issue counts are from the latest monitor snapshot:{" "}
+                {formatComplianceIssueSummary(sourceReadiness)}.
               </p>
             )}
-            {readinessBlockers.length > 0 ? (
+            {readinessSummary.ready ? null : (
               <div className="notification-boundary">
                 <p>
                   <strong>Pilot blockers to clear:</strong>
@@ -592,8 +560,22 @@ export function PrivyAccountCenter({
                     <li key={`${blocker}:${index}`}>{blocker}</li>
                   ))}
                 </ul>
+                {readinessActions.length > 0 && (
+                  <>
+                    <p>
+                      <strong>Immediate next steps:</strong>
+                    </p>
+                    <ul>
+                      {readinessActions.map((action) => (
+                        <li key={action.label}>
+                          <strong>{action.label}:</strong> {action.detail}
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
               </div>
-            ) : null}
+            )}
           </section>
         </div>
       </details>

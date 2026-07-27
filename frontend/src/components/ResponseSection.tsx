@@ -246,6 +246,8 @@ export function ResponseSection({
   }
 
   const email = responseForNotice ? responseEmail(responseForNotice) : null;
+  const claimDecisionName = `claim-decision-${id.toString()}`;
+  const claimDecisionLabelId = `claim-decision-label-${id.toString()}`;
 
   return (
     <div className="action-section" id={`agreement-${id.toString()}-response`} tabIndex={-1}>
@@ -271,21 +273,43 @@ export function ResponseSection({
       {!tenantResponded && agreement.phase === Phase.ClaimOpen ? (
         <>
           <div className="claim-response-step">
-            <span className="eyebrow">2. Choose your decision</span>
-            <div className="radio-row">
-              <label>
-                <input type="radio" checked={mode === "accept"} onChange={() => setMode("accept")} />{" "}
-                Approve in full
-              </label>
-              <label>
-                <input type="radio" checked={mode === "partial"} onChange={() => setMode("partial")} />{" "}
-                Approve part
-              </label>
-              <label>
-                <input type="radio" checked={mode === "dispute"} onChange={() => setMode("dispute")} />{" "}
-                Dispute in full
-              </label>
-            </div>
+            <fieldset className="claim-decision-choice">
+              <legend className="eyebrow" id={claimDecisionLabelId}>
+                2. Choose your decision
+              </legend>
+              <div className="radio-row" role="radiogroup" aria-labelledby={claimDecisionLabelId}>
+                <label htmlFor={`${claimDecisionName}-accept`}>
+                  <input
+                    id={`${claimDecisionName}-accept`}
+                    type="radio"
+                    name={claimDecisionName}
+                    checked={mode === "accept"}
+                    onChange={() => setMode("accept")}
+                  />{" "}
+                  Approve in full
+                </label>
+                <label htmlFor={`${claimDecisionName}-partial`}>
+                  <input
+                    id={`${claimDecisionName}-partial`}
+                    type="radio"
+                    name={claimDecisionName}
+                    checked={mode === "partial"}
+                    onChange={() => setMode("partial")}
+                  />{" "}
+                  Approve part
+                </label>
+                <label htmlFor={`${claimDecisionName}-dispute`}>
+                  <input
+                    id={`${claimDecisionName}-dispute`}
+                    type="radio"
+                    name={claimDecisionName}
+                    checked={mode === "dispute"}
+                    onChange={() => setMode("dispute")}
+                  />{" "}
+                  Dispute in full
+                </label>
+              </div>
+            </fieldset>
             {mode === "partial" && (
               <label>
                 Amount to approve (USDC; the rest becomes disputed)

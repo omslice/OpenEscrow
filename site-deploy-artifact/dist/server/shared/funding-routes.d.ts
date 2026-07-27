@@ -1,0 +1,115 @@
+import type { DepositAssetId } from "./deposit-assets.js";
+
+export type FundingEnvironment = "sandbox" | "production";
+export type FundingCheckoutMode = "sandbox_preview" | "production";
+
+export interface FundingProviderCatalogEntry {
+  id: string;
+  name: string;
+  providerSelection: string;
+  destinationAsset: "usdc";
+  destinationChain: "eip155:8453";
+  enabled: boolean;
+  status: string;
+  description: string;
+  notes?: readonly string[];
+}
+
+export interface ConversionCatalogEntry {
+  id: string;
+  kind: string;
+  enabled: boolean;
+  status: string;
+  label: string;
+  description: string;
+}
+
+export interface ValidatedFiatOnrampConfig {
+  asset: "usdc";
+  chain: "eip155:8453";
+  environment: FundingEnvironment;
+  providerStrategy: string;
+  providerCatalogVersion: string;
+  conversionCatalogVersion: string;
+}
+
+export interface FundingPlan {
+  assetId: string;
+  status: string;
+  checkoutAvailable: boolean;
+  checkoutMode: FundingCheckoutMode | null;
+  reason: string | null;
+  onramp: FundingProviderCatalogEntry;
+  onrampProvider: FundingProviderCatalogEntry;
+  conversion: ConversionCatalogEntry | null;
+  settlementAsset: string | null;
+  routeSteps: string[];
+}
+
+export const FUNDING_ROUTE_CATALOG_VERSION: string;
+export const ONRAMP_PROVIDER_CATALOG_VERSION: string;
+export const CONVERSION_ADAPTER_CATALOG_VERSION: string;
+export const ONRAMP_STRATEGY: Readonly<FundingProviderCatalogEntry>;
+
+export function validateFiatOnrampConfig(input?: {
+  enabled?: boolean;
+  environment?: unknown;
+  asset?: unknown;
+  chain?: unknown;
+  productionApproved?: boolean;
+}): {
+  enabled: boolean;
+  environment: FundingEnvironment;
+  reason: string | null;
+  config: ValidatedFiatOnrampConfig | null;
+};
+
+export function listFundingProviders(): {
+  version: string;
+  onramp: Record<string, Readonly<FundingProviderCatalogEntry>>;
+  aliases: Record<string, string>;
+  conversion: Record<string, Readonly<ConversionCatalogEntry>>;
+};
+
+export function getFundingRouteServices(assetId: unknown):
+  | {
+      onramp: FundingProviderCatalogEntry;
+      conversion: ConversionCatalogEntry;
+    }
+  | null;
+
+export function createFundingPlan(
+  assetId: unknown,
+  options?: {
+    onrampEnabled?: boolean;
+    environment?: FundingEnvironment;
+    productionApproved?: boolean;
+  },
+): FundingPlan;
+
+export function createFundingIntent(input: {
+  assetId: DepositAssetId;
+  walletAddress: string;
+  amountMicros: bigint;
+  environment?: FundingEnvironment;
+  onrampEnabled?: boolean;
+  productionApproved?: boolean;
+}): Readonly<{
+  schema: "openescrow.funding-intent.v1";
+  routeCatalogVersion: string;
+  assetId: string;
+  environment: FundingEnvironment;
+  providerStrategy: string;
+  conversionKind: string;
+  source: Readonly<{
+    assets: readonly ["usd"];
+    defaultAsset: "usd";
+  }>;
+  destination: Readonly<{
+    asset: "usdc";
+    chain: "eip155:8453";
+    address: string;
+  }>;
+  amountMicros: bigint;
+  checkoutMode: FundingCheckoutMode;
+}>;

@@ -66,8 +66,8 @@ export function EvidenceList({
     <div className="evidence-list">
       <h4>Evidence trail ({entries.length})</h4>
       <p className="hint">
-        Only a hash and pointer are ever stored on-chain - the contract never sees or validates the
-        underlying content.
+        Only a cryptographic hash and encrypted content reference are stored on-chain - the contract
+        never sees or validates the underlying supporting file.
       </p>
       <ul>
         {entries.map((e, i) => {
@@ -78,19 +78,14 @@ export function EvidenceList({
             {shortAddr(e.submittedBy)} at {formatTimestamp(e.timestamp)}
             <br />
             hash: <code>{e.contentHash}</code>
-            {e.uri && (
+            {documentUrl ? (
               <>
                 <br />
-                pointer:{" "}
-                {documentUrl ? (
-                  <a href={documentUrl} target="_blank" rel="noreferrer">
-                    Open supporting document
-                  </a>
-                ) : (
-                  <code>{e.uri}</code>
-                )}
+                <a href={documentUrl} target="_blank" rel="noreferrer">
+                  Open supporting document
+                </a>
               </>
-            )}
+            ) : null}
           </li>
           );
         })}

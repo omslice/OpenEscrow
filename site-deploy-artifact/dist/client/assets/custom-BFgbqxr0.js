@@ -1,0 +1,1 @@
+import{r as e}from"./_esm-CXovkjhI.js";function t(t,n={}){let{key:r=`custom`,methods:i,name:a=`Custom Provider`,retryDelay:o}=n;return({retryCount:s})=>e({key:r,methods:i,name:a,request:t.request.bind(t),retryCount:n.retryCount??s,retryDelay:o,type:`custom`})}export{t};

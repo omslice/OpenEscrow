@@ -1,0 +1,1 @@
+var e=new Set([`https:`,`mailto:`]);function t(t){if(!t)return null;try{if(e.has(new URL(t).protocol))return t}catch{}return null}export{t};

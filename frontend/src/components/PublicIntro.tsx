@@ -1,13 +1,44 @@
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 
 export function PublicIntro({ onStart }: { onStart: () => void }) {
   const yieldDialogRef = useRef<HTMLDialogElement>(null);
+  const yieldHash = "yield-stablecoins";
 
-  function openYieldExplainer() {
-    if (!yieldDialogRef.current?.open) {
-      yieldDialogRef.current?.showModal();
+  function ensureYieldHashOpened(shouldOpen: boolean) {
+    const baseHref = `${window.location.pathname}${window.location.search}`;
+    if (shouldOpen) {
+      if (window.location.hash !== `#${yieldHash}`) {
+        window.history.replaceState({}, "", `${baseHref}#${yieldHash}`);
+      }
+      if (!yieldDialogRef.current?.open) {
+        yieldDialogRef.current?.showModal();
+      }
+      return;
+    }
+    if (window.location.hash === `#${yieldHash}`) {
+      window.history.replaceState({}, "", baseHref);
+    }
+    if (yieldDialogRef.current?.open) {
+      yieldDialogRef.current.close();
     }
   }
+
+  function openYieldExplainer() {
+    ensureYieldHashOpened(true);
+  }
+
+  function closeYieldExplainer() {
+    ensureYieldHashOpened(false);
+  }
+
+  useEffect(() => {
+    const applyHashState = () => {
+      ensureYieldHashOpened(window.location.hash === `#${yieldHash}`);
+    };
+    applyHashState();
+    window.addEventListener("hashchange", applyHashState);
+    return () => window.removeEventListener("hashchange", applyHashState);
+  }, [yieldHash]);
 
   return (
     <section className="public-intro" aria-labelledby="public-intro-title">
@@ -46,16 +77,17 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
                     All parties can agree to hold the funds in a yield-bearing stablecoin so
                     tenants earn yield on their security deposit.
                   </p>
-                  <button
+                  <a
+                    href={`#${yieldHash}`}
                     className="yield-tooltip-link"
-                    type="button"
                     onClick={(event) => {
+                      event.preventDefault();
                       event.currentTarget.closest("details")?.removeAttribute("open");
                       openYieldExplainer();
                     }}
                   >
                     Learn more
-                  </button>
+                  </a>
                 </div>
               </details>
             </div>
@@ -84,9 +116,10 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
         className="yield-dialog"
         ref={yieldDialogRef}
         aria-labelledby="yield-explainer-title"
+        onClose={closeYieldExplainer}
         onClick={(event) => {
           if (event.target === event.currentTarget) {
-            event.currentTarget.close();
+            closeYieldExplainer();
           }
         }}
       >
@@ -95,9 +128,9 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
             className="yield-dialog-close"
             type="button"
             aria-label="Close yield explanation"
-            onClick={() => yieldDialogRef.current?.close()}
+            onClick={closeYieldExplainer}
           >
-            Close
+            {"\u00d7"}
           </button>
           <section className="yield-explainer" id="yield-stablecoins">
         <header className="yield-explainer-heading">

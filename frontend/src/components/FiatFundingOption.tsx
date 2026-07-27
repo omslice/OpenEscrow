@@ -145,16 +145,26 @@ function FundingRouteSummary({
   readinessReason?: string | null;
 }) {
   if (!depositAsset) return null;
+  const routeText = fundingPlan.routeSteps.length
+    ? fundingPlan.routeSteps.join(" → ")
+    : "No active production funding route is enabled for this option.";
+  const onramp = fundingPlan.onramp;
+  const conversion = fundingPlan.conversion;
+
   return (
     <div className="funding-route-summary">
       <strong>Planned production route</strong>
       <span>
-        {depositAsset.id === "usdc"
-          ? "USD → USDC in your wallet → OpenEscrow"
-          : depositAsset.id === "aave-usdc"
-            ? "USD → USDC in your wallet → direct Aave supply → aUSDC escrow → direct Aave withdrawal → USDC settlement"
-            : "No production route is enabled."}
+        {routeText}
       </span>
+      <small>
+        On-ramp: {onramp.name} ({onramp.id}) — {onramp.status}
+      </small>
+      {conversion && (
+        <small>
+          Conversion: {conversion.label} ({conversion.id}) — {conversion.status}
+        </small>
+      )}
       <small>
         Privy chooses an available regulated on-ramp provider by region. OpenEscrow does not take
         custody of payment credentials or pool gas funds. Asset conversion remains disabled in

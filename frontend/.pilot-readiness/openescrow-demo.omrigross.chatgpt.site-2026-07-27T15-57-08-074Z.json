@@ -1,0 +1,141 @@
+{
+  "baseUrl": "https://openescrow-demo.omrigross.chatgpt.site",
+  "ok": false,
+  "requiredActionCount": 7,
+  "optionalAvailable": 1,
+  "required": [
+    {
+      "label": "Automatic email provider",
+      "detail": "not configured"
+    },
+    {
+      "label": "Hosted notification scheduler",
+      "detail": "no hosted run recorded"
+    },
+    {
+      "label": "Evidence encryption at rest",
+      "detail": "master key not configured"
+    },
+    {
+      "label": "Version-matched onchain record registry",
+      "detail": "registry binding not verified"
+    },
+    {
+      "label": "Server-attested property addresses",
+      "detail": "ADDRESS_ATTESTATION_SECRET is not configured"
+    },
+    {
+      "label": "Official compliance source release gate",
+      "detail": "unknown source checks block new compliance profiles"
+    },
+    {
+      "label": "Compliance source monitor freshness",
+      "detail": "monitor not enabled"
+    }
+  ],
+  "optional": [
+    {
+      "label": "Encrypted decentralized evidence",
+      "detail": "optional pilot experiment not configured"
+    }
+  ],
+  "checks": [
+    {
+      "label": "Automatic email provider",
+      "ready": false,
+      "detail": "not configured",
+      "required": true,
+      "action": "Set one of: RESEND_API_KEY OR EMAIL_WEBHOOK_URL + EMAIL_WEBHOOK_TOKEN in runtime env.",
+      "validate": "readiness.email.configured === true"
+    },
+    {
+      "label": "Hosted notification scheduler",
+      "ready": false,
+      "detail": "no hosted run recorded",
+      "required": true,
+      "action": "Create a host cron for `*/15 * * * *` hitting deployed `/api/system/run-scheduler` and keep it running in deployment.",
+      "validate": "readiness.email.schedulerConfigured === true and readiness.email.schedulerHealthy === true"
+    },
+    {
+      "label": "Private evidence storage",
+      "ready": true,
+      "detail": "private-r2",
+      "required": true,
+      "action": "Verify private evidence storage binding (R2/S3) exists and read/write credentials are set in deployment.",
+      "validate": "readiness.evidence.configured === true"
+    },
+    {
+      "label": "Evidence encryption at rest",
+      "ready": false,
+      "detail": "master key not configured",
+      "required": true,
+      "action": "Set EVIDENCE_ENCRYPTION_KEY (32+ random bytes) and restart deployment.",
+      "validate": "readiness.evidence.encryptedAtRest === true"
+    },
+    {
+      "label": "Evidence file-content validation",
+      "ready": true,
+      "detail": "PDF and image signatures enforced",
+      "required": true,
+      "action": "No action expected; this is managed by code and build.",
+      "validate": "readiness.evidence.contentTypeValidation === true"
+    },
+    {
+      "label": "Agreement lifecycle state guards",
+      "ready": true,
+      "detail": "enabled",
+      "required": true,
+      "action": "No owner action expected; verify deployed build includes latest server commit for lifecycle guard enforcement.",
+      "validate": "readiness.recordIntegrity.lifecycleStateGuards === true"
+    },
+    {
+      "label": "Onchain transaction receipt verification",
+      "ready": true,
+      "detail": "enabled for Base Sepolia",
+      "required": true,
+      "action": "No owner action expected from this rollout; confirm RPC and chain mapping are healthy after deploy.",
+      "validate": "readiness.recordIntegrity.transactionReceiptVerification === true"
+    },
+    {
+      "label": "Version-matched onchain record registry",
+      "ready": false,
+      "detail": "registry binding not verified",
+      "required": true,
+      "action": "Set VERIFY_ACTIVITY_REGISTRY_BINDING=true and confirm expected escrow contract binding in deployment settings.",
+      "validate": "readiness.recordIntegrity.activityRegistry.configured === true and readiness.recordIntegrity.activityRegistry.ready === true"
+    },
+    {
+      "label": "Server-attested property addresses",
+      "ready": false,
+      "detail": "ADDRESS_ATTESTATION_SECRET is not configured",
+      "required": true,
+      "action": "Set ADDRESS_ATTESTATION_SECRET (32+ byte secret) in production-like deployment environment.",
+      "validate": "readiness.addressValidation.configured === true"
+    },
+    {
+      "label": "Official compliance source release gate",
+      "ready": false,
+      "detail": "unknown source checks block new compliance profiles",
+      "required": true,
+      "action": "Confirm compliance release gate source allowlist and last pull is successful after source refresh.",
+      "validate": "readiness.complianceSources.ready === true"
+    },
+    {
+      "label": "Compliance source monitor freshness",
+      "ready": false,
+      "detail": "monitor not enabled",
+      "required": true,
+      "action": "Set COMPLIANCE_SOURCE_MONITOR_ENABLED=true and schedule the configured compliance monitor job.",
+      "validate": "readiness.complianceSources.monitorHealthy === true and readiness.complianceSources.monitorConfigured === true"
+    },
+    {
+      "label": "Encrypted decentralized evidence",
+      "ready": false,
+      "detail": "optional pilot experiment not configured",
+      "required": false,
+      "action": "Optional Phase-2 hardening only.",
+      "validate": "readiness.evidence.decentralizedReady === true"
+    }
+  ],
+  "checkedAt": "2026-07-27T15:57:08.072Z"
+}

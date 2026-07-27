@@ -109,6 +109,27 @@ test("FRNT-specific on-ramp and conversion remain disabled until approved", () =
   assert.match(frnt.reason || "", /blocked|restricted|not approved/i);
 });
 
+test("routing steps are assembled from on-ramp and conversion catalog metadata", () => {
+  const usdc = createFundingPlan("usdc", {
+    onrampEnabled: true,
+    environment: "sandbox",
+  });
+  assert.deepEqual(usdc.routeSteps, [
+    "USD",
+    "Base USDC in user wallet",
+    "OpenEscrow",
+    "USDC settlement",
+  ]);
+
+  const usdy = createFundingPlan("usdy", {
+    onrampEnabled: true,
+    environment: "sandbox",
+  });
+  assert.equal(usdy.routeSteps[0], "USD");
+  assert.match(usdy.routeSteps[1] || "", /Base USDC in user wallet|USDC/);
+  assert.equal(usdy.routeSteps.includes("OpenEscrow"), true);
+});
+
 test("asset-level service resolution includes explicit catalog references", () => {
   const services = getFundingRouteServices("aave-usdc");
   assert.ok(services);
