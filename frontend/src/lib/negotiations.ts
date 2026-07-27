@@ -76,6 +76,9 @@ export interface ServiceReadiness {
     provider: "resend" | "webhook" | null;
     schedulerConfigured: boolean;
     schedulerLastRunAt: string | null;
+    schedulerHealthy: boolean;
+    schedulerExpectedIntervalMinutes: number;
+    schedulerAgeMinutes: number | null;
   };
   evidence: {
     configured: boolean;

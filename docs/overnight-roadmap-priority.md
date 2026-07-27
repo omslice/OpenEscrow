@@ -26,12 +26,14 @@ boundaries.
 - **[Verified]** Stability baseline
   - `npm run lint`, `npm run test:client-logic`, `npm run test:server`, and `npm run build`
     currently pass on this branch.
+- **[In progress]** Host safety readiness hardening
+  - Added readiness health checks for scheduler cadence and surfaced stale-run blockers in account settings.
 
 ## Remaining
 
 - **[Planned]** Close remaining hosted production-boundary gates before any controlled pilot:
   - Configure automatic email provider + 15-minute hosted Cron.
-  - Generate/set `EVIDENCE_ENCRYPTION_KEY`.
+  - Configure and rotate `EVIDENCE_ENCRYPTION_KEY`.
   - Validate and pin the activity registry binding.
   - Set `ADDRESS_ATTESTATION_SECRET`.
   - Resolve official compliance source alert states (pending/changed/stale/blocked).

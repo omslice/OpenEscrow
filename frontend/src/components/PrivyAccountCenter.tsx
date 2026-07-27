@@ -74,6 +74,18 @@ export function PrivyAccountCenter({
         "Configure an automatic email provider (for production delivery and test-email checks).",
       );
     }
+    if (
+      serviceReadiness.email.schedulerConfigured &&
+      !serviceReadiness.email.schedulerHealthy
+    ) {
+      const age =
+        serviceReadiness.email.schedulerAgeMinutes !== null
+          ? ` (last run ${serviceReadiness.email.schedulerAgeMinutes} min ago)`
+          : "";
+      blockers.push(
+        `Verify the hosted scheduler is active and running about every ${serviceReadiness.email.schedulerExpectedIntervalMinutes} minutes${age}.`,
+      );
+    }
     if (!serviceReadiness.email.schedulerLastRunAt) {
       blockers.push(
         "Enable the hosted scheduler so notification cron jobs can run after deployment.",
@@ -454,6 +466,9 @@ export function PrivyAccountCenter({
                 {serviceReadiness.email.provider === "resend"
                   ? "Resend"
                   : "Configured email webhook"}
+                {serviceReadiness.email.schedulerHealthy
+                  ? ` · scheduler healthy (${serviceReadiness.email.schedulerExpectedIntervalMinutes} min cadence)`
+                  : " · scheduler stale"}
                 {serviceReadiness.email.schedulerLastRunAt
                   ? ` · scheduler checked ${new Date(serviceReadiness.email.schedulerLastRunAt).toLocaleString()}`
                   : " · scheduler awaits its first hosted run"}

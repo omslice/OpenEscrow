@@ -2215,6 +2215,10 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     assert.equal(readiness.recordIntegrity.activityRegistry.ready, true);
     assert.equal(readiness.addressValidation.configured, true);
     assert.equal(readiness.addressValidation.tamperResistantProfiles, true);
+    assert.equal(readiness.email.schedulerConfigured, true);
+    assert.equal(readiness.email.schedulerHealthy, false);
+    assert.equal(readiness.email.schedulerExpectedIntervalMinutes, 15);
+    assert.equal(readiness.email.schedulerAgeMinutes, null);
     assert.equal(
       readiness.recordIntegrity.activityRegistry.boundEscrowAddress,
       "0xf18bfdbfd3ff84c603cbdf895d2a96ac7260ae99",
@@ -2287,6 +2291,59 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     assert.equal(deliveries.at(-1).authorization, "Bearer webhook-secret");
   } finally {
     globalThis.fetch = originalFetch;
+  }
+});
+
+test("readiness tracks notification scheduler freshness against the 15-minute cadence", async () => {
+  const now = Date.parse("2027-07-02T12:00:00.000Z");
+  const freshDb = new TestD1();
+  const staleDb = new TestD1();
+
+  await jsonResponse(await worker.fetch(request("/api/system/readiness"), {
+    DB: freshDb,
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  }));
+  await jsonResponse(await worker.fetch(request("/api/system/readiness"), {
+    DB: staleDb,
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  }));
+
+  freshDb.prepare(
+    "INSERT OR REPLACE INTO scheduled_job_runs (name, last_started_at) VALUES (?, ?)",
+  ).bind("notification-reminders", new Date(now - 5 * 60 * 1000).toISOString()).run();
+  staleDb.prepare(
+    "INSERT OR REPLACE INTO scheduled_job_runs (name, last_started_at) VALUES (?, ?)",
+  ).bind("notification-reminders", new Date(now - 45 * 60 * 1000).toISOString()).run();
+
+  const env = {
+    DB: freshDb,
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  };
+
+  const originalDateNow = Date.now;
+  Date.now = () => now;
+  try {
+    const freshReadiness = await jsonResponse(
+      await worker.fetch(request("/api/system/readiness"), env),
+    );
+    assert.equal(freshReadiness.email.schedulerConfigured, true);
+    assert.equal(freshReadiness.email.schedulerHealthy, true);
+    assert.equal(freshReadiness.email.schedulerAgeMinutes, 5);
+
+    const staleReadiness = await jsonResponse(
+      await worker.fetch(
+        request("/api/system/readiness"),
+        {
+          ...env,
+          DB: staleDb,
+        },
+      ),
+    );
+    assert.equal(staleReadiness.email.schedulerConfigured, true);
+    assert.equal(staleReadiness.email.schedulerHealthy, false);
+    assert.equal(staleReadiness.email.schedulerAgeMinutes, 45);
+  } finally {
+    Date.now = originalDateNow;
   }
 });
 
