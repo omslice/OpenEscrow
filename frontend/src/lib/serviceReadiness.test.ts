@@ -105,6 +105,13 @@ test("formatComplianceIssueSummary uses all source counters", () => {
   );
 });
 
+test("formatComplianceIssueSummary tolerates readiness before the source snapshot loads", () => {
+  assert.equal(
+    formatComplianceIssueSummary(undefined),
+    "No compliance source snapshot is available.",
+  );
+});
+
 test("getServiceReadinessBlockers returns no issues when readiness is null", () => {
   assert.deepEqual(getServiceReadinessBlockers(null), []);
 });

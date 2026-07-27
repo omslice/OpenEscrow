@@ -544,7 +544,7 @@ export function PrivyAccountCenter({
                 </button>
               </div>
             )}
-            {sourceReadiness === null ? null : (
+            {!sourceReadiness ? null : (
               <p className="notification-boundary">
                 Issue counts are from the latest monitor snapshot:{" "}
                 {formatComplianceIssueSummary(sourceReadiness)}.

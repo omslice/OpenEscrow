@@ -133,88 +133,139 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
             {"\u00d7"}
           </button>
           <section className="yield-explainer" id="yield-stablecoins">
-        <header className="yield-explainer-heading">
-          <div>
-            <span className="eyebrow">Optional yield, in plain English</span>
-            <h3 id="yield-explainer-title">How a yield-bearing stablecoin can work</h3>
-          </div>
-          <span className="test-example-badge">ytUSDC · test example</span>
-        </header>
+            <header className="yield-explainer-heading">
+              <div>
+                <span className="eyebrow">Stablecoins and optional yield</span>
+                <h3 id="yield-explainer-title">How the deposit asset choices work</h3>
+              </div>
+              <span className="test-example-badge">Educational · testnet</span>
+            </header>
 
-        <p className="yield-explainer-intro">
-          A stablecoin such as USDC is designed to track the U.S. dollar. A yield-bearing version
-          represents stablecoins supplied to an onchain lending market, where borrowers pay
-          interest and part of that interest goes to suppliers. OpenEscrow&apos;s ytUSDC is only a
-          testnet illustration; it has no real value and is not currently an Aave integration.
-        </p>
+            <div className="yield-concept-grid">
+              <article className="yield-reference-example">
+                <span className="eyebrow">Stablecoins, briefly</span>
+                <h4>A digital token designed to track a reference currency</h4>
+                <p>
+                  A dollar stablecoin is intended to stay close to one U.S. dollar. With a
+                  reserve-backed token, an issuer holds cash or other eligible reserve assets and
+                  issues tokens that can move between blockchain wallets. “Stable” describes the
+                  price goal—not a guarantee that the token, issuer, wallet, or network cannot fail.
+                </p>
+              </article>
+              <article className="yield-reference-example">
+                <span className="eyebrow">Treasury-backed yield, briefly</span>
+                <h4>Reserve earnings are passed through to eligible holders</h4>
+                <p>
+                  Some products invest their backing in short-duration U.S. Treasury-related assets
+                  and bank deposits. Net earnings may appear as more tokens or as a rising
+                  per-token redemption price. The yield changes with underlying rates and costs,
+                  and adds issuer, custody, liquidity, smart-contract, and eligibility risk.
+                </p>
+              </article>
+            </div>
 
-        <div className="yield-reference-example">
-          <span className="eyebrow">Established reference model</span>
-          <h4>Aave&apos;s aUSDC</h4>
-          <p>
-            When USDC is supplied to an Aave liquidity pool, the supplier&apos;s position accrues
-            interest at the current market supply rate. That rate changes as borrowing demand and
-            available liquidity change. ytUSDC borrows this receipt-token idea for the demo, but it
-            does not use Aave or promise a particular return.
-          </p>
-        </div>
+            <div className="yield-options-heading">
+              <span className="eyebrow">Options discussed for OpenEscrow</span>
+              <p>
+                USDC remains the default. The other paths are comparisons or future integrations,
+                not live investment choices in this testnet demo.
+              </p>
+            </div>
 
-        <div className="yield-explainer-grid">
-          <article>
-            <span>1</span>
-            <h4>Everyone opts in</h4>
-            <p>
-              The landlord and every tenant must approve the yield option in the agreement. It is
-              never selected for one party by another.
+            <div className="yield-explainer-grid yield-asset-grid">
+              <article className="yield-asset-card">
+                <span className="yield-asset-badge no-yield">Standard · No yield</span>
+                <h4>USDC</h4>
+                <p>
+                  Circle-issued USDC is designed to be redeemable 1:1 for U.S. dollars and backed
+                  by highly liquid cash and cash-equivalent reserves. Holders do not receive the
+                  earnings on those reserves. OpenEscrow uses USDC as the default principal and
+                  settlement asset.
+                </p>
+              </article>
+              <article className="yield-asset-card">
+                <span className="yield-asset-badge variable-yield">Variable lending yield</span>
+                <h4>USDC on Aave (aUSDC)</h4>
+                <p>
+                  USDC is supplied to an Aave lending pool and the position receives aUSDC. Its
+                  balance grows from borrower-paid interest at a variable market rate. On release,
+                  aUSDC is withdrawn back to USDC, subject to smart-contract and available-liquidity
+                  risk. The demo&apos;s ytUSDC only simulates this idea; it is not a live Aave
+                  position.
+                </p>
+              </article>
+              <article className="yield-asset-card">
+                <span className="yield-asset-badge no-yield">State-issued · No holder yield</span>
+                <h4>Wyoming FRNT</h4>
+                <p>
+                  FRNT is Wyoming&apos;s state-issued, reserve-backed stable token. It is an
+                  alternative principal asset—not a yield option. Under the program terms, reserve
+                  earnings do not accrue to token holders. A future OpenEscrow route would also
+                  need approved funding, liquidity, and settlement support.
+                </p>
+              </article>
+              <article className="yield-asset-card">
+                <span className="yield-asset-badge treasury-yield">
+                  Treasury yield · Restricted
+                </span>
+                <h4>Ondo USDY</h4>
+                <p>
+                  USDY is an accumulating tokenized note backed by qualifying Treasury-related
+                  assets and bank deposits. Its token count can stay fixed while its official
+                  redemption price rises. It is not a standard $1 payment stablecoin, and U.S. and
+                  Canadian persons are prohibited from acquiring or redeeming it, so it remains
+                  unavailable for OpenEscrow&apos;s U.S. rental flow.
+                </p>
+              </article>
+            </div>
+
+            <div className="yield-risk-note">
+              <strong>OpenEscrow&apos;s rule</strong>
+              <p>
+                Non-yield USDC stays selected unless every party affirmatively approves an
+                available yield option. Principal and earned yield remain separately documented,
+                rates are never guaranteed, and the agreement still controls release, claims, and
+                disputes. This demo uses worthless test tokens and does not place funds into any
+                live yield product.
+              </p>
+            </div>
+
+            <p className="yield-source-note">
+              Plain-English summary based on official documentation from{" "}
+              <a
+                href="https://developers.circle.com/stablecoins/what-is-usdc"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Circle
+              </a>
+              ,{" "}
+              <a
+                href="https://aave.com/help/supplying/supply-tokens"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Aave
+              </a>
+              , the{" "}
+              <a
+                href="https://stabletoken.wyo.gov/pages/FRNT"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Wyoming Stable Token Commission
+              </a>
+              , and{" "}
+              <a
+                href="https://docs.ondo.finance/general-access-products/usdy/basics"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Ondo USDY
+              </a>
+              . Eligibility and product terms can change and must be checked again before any live
+              integration.
             </p>
-          </article>
-          <article>
-            <span>2</span>
-            <h4>The deposit earns</h4>
-            <p>
-              In a production model, the USDC would be supplied to a vetted lending market. The
-              mock ytUSDC balance represents each tenant&apos;s deposit share plus accrued yield.
-            </p>
-          </article>
-          <article>
-            <span>3</span>
-            <h4>The rate can change</h4>
-            <p>
-              Lending-market rates move with borrowing demand and available liquidity. A displayed
-              annual rate is an estimate, not a promise.
-            </p>
-          </article>
-          <article>
-            <span>4</span>
-            <h4>Rules still control release</h4>
-            <p>
-              The agreement determines when principal and earned yield can be released, including
-              what happens if there is a documented claim or dispute.
-            </p>
-          </article>
-        </div>
-
-        <div className="yield-risk-note">
-          <strong>What can go wrong?</strong>
-          <p>
-            Yield does not make a deposit risk-free. A production version would need clear
-            disclosures and safeguards for smart-contract failures, changing rates, stablecoin
-            price or redemption risk, withdrawal liquidity, fees, and applicable law. Returns are
-            not guaranteed, and this is not a bank account or investment offer.
-          </p>
-        </div>
-
-        <p className="yield-source-note">
-          Educational model based on{" "}
-          <a href="https://aave.com/help/supplying/supply-tokens" target="_blank" rel="noreferrer">
-            Aave&apos;s supply-token explanation
-          </a>{" "}
-          and{" "}
-          <a href="https://developers.circle.com/stablecoins/what-is-usdc" target="_blank" rel="noreferrer">
-            Circle&apos;s USDC documentation
-          </a>
-          .
-        </p>
           </section>
         </div>
       </dialog>
