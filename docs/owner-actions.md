@@ -46,11 +46,17 @@ provider or hosting control that owns the secret.
 ## Needed before fiat sandbox evaluation
 
 - [ ] **Enable a sandbox on-ramp provider in the existing Privy application**
-  and add the local and hosted OpenEscrow origins. No real-money provider mode
-  should be enabled while the contracts are on Base Sepolia.
-- [ ] **Supply provider sandbox credentials/configuration through the provider
-  and hosting controls** after Codex has finished and validated the selected
-  adapter.
+  and add the local and hosted OpenEscrow origins. Let Privy's funding layer
+  present eligible providers rather than hard-wiring a vendor in the client.
+  No real-money provider mode should be enabled while the contracts are on Base
+  Sepolia.
+- [ ] **Complete any provider sandbox approval or credential setup required by
+  the Privy dashboard.** Keep all secret material in provider/hosting controls;
+  never put a secret in a `VITE_` build variable or send it in chat.
+- [ ] **Choose whether the pilot needs ACH/bank-deposit funding in addition to
+  card and wallet checkout.** Privy's bank-deposit path currently requires
+  separate Bridge setup, API keys, and KYC operations, so it should be evaluated
+  as a second phase for full-sized deposits.
 
 ## Needed before any real-money or production pilot
 

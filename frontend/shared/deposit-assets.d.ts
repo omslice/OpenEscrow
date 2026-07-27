@@ -14,7 +14,6 @@ export interface DepositAssetConfig {
   symbol: string;
   testnetSymbol: string;
   badge: string;
-  badge: string;
   category: string;
   underlyingAsset: string;
   yieldType: YieldType;
@@ -42,6 +41,7 @@ export interface DepositAssetSnapshot {
   displayName: string;
   symbol: string;
   testnetSymbol: string;
+  badge: string;
   category: string;
   underlyingAsset: string;
   yieldType: YieldType;

@@ -210,15 +210,22 @@ test tokens. Keep the current faucet for the public demo. Only activate real fia
 VITE_FIAT_ONRAMP_ENABLED=true
 VITE_FIAT_ONRAMP_ENVIRONMENT=sandbox
 VITE_FIAT_ONRAMP_CHAIN=eip155:8453
-VITE_FIAT_ONRAMP_ASSET=0x833589fCD6EDB6E08f4c7C32D4f71b54bdA02913
+VITE_FIAT_ONRAMP_ASSET=usdc
+VITE_FIAT_ONRAMP_PRODUCTION_APPROVED=false
 ```
 
-The chain and asset above are Base mainnet USDC identifiers. Sandbox mode simulates the provider
-checkout; it must not be confused with funding the Base Sepolia escrow.
+The chain uses the CAIP-2 Base mainnet identifier and the asset uses Privy's documented `usdc`
+symbol. OpenEscrow rejects token-address and non-USDC destinations. Sandbox mode simulates the
+provider checkout; it must not be confused with funding the Base Sepolia escrow.
 
 These are Vite build-time values, not hosted Worker secrets. Changing them requires a new
 validated build and deployment. The enabled UI labels the experience as a sandbox, states that
 no real money moves, and continues to direct the tenant to the free Base Sepolia faucet.
+
+Production is deliberately double-gated: both `VITE_FIAT_ONRAMP_ENABLED=true` and
+`VITE_FIAT_ONRAMP_PRODUCTION_APPROVED=true` are required, with environment set to `production`.
+Do not set the production-approval flag until the mainnet escrow, legal/provider approvals, and
+independent security review are complete.
 
 ### Production design
 

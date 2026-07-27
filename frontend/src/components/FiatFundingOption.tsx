@@ -1,7 +1,14 @@
 import { useState } from "react";
 import { useFiatOnramp } from "@privy-io/react-auth";
-import { FIAT_ONRAMP_CONFIG } from "../lib/accountConfig";
+import {
+  FIAT_ONRAMP_CONFIG,
+  FIAT_ONRAMP_READINESS,
+} from "../lib/accountConfig";
 import type { DepositAssetConfig } from "../../shared/deposit-assets.js";
+import {
+  createFundingIntent,
+  createFundingPlan,
+} from "../../shared/funding-routes.js";
 
 function microsToDecimal(value: bigint) {
   const whole = value / 1_000_000n;
@@ -26,8 +33,13 @@ export function FiatFundingOption({
   const { fund } = useFiatOnramp();
   const [status, setStatus] = useState<string | null>(null);
   const [isOpening, setIsOpening] = useState(false);
+  const fundingPlan = createFundingPlan(depositAsset?.id, {
+    onrampEnabled: FIAT_ONRAMP_READINESS.enabled,
+    environment: FIAT_ONRAMP_READINESS.environment,
+    productionApproved: FIAT_ONRAMP_CONFIG?.environment === "production",
+  });
 
-  if (!FIAT_ONRAMP_CONFIG) {
+  if (!FIAT_ONRAMP_CONFIG || !fundingPlan.checkoutAvailable) {
     return (
       <details className="fiat-funding-option">
         <summary>Pay with debit card or bank</summary>
@@ -36,7 +48,11 @@ export function FiatFundingOption({
           agreement uses free test tokens because real card and bank payments cannot purchase
           testnet assets.
         </p>
-        <FundingRouteSummary depositAsset={depositAsset} />
+        <FundingRouteSummary
+          depositAsset={depositAsset}
+          fundingPlan={fundingPlan}
+          readinessReason={FIAT_ONRAMP_READINESS.reason}
+        />
       </details>
     );
   }
@@ -61,14 +77,21 @@ export function FiatFundingOption({
           setIsOpening(true);
           setStatus("Opening secure checkout...");
           try {
-            const result = await fund({
-              source: { assets: ["usd"], defaultAsset: "usd" },
-              destination: {
-                asset: FIAT_ONRAMP_CONFIG.asset,
-                chain: FIAT_ONRAMP_CONFIG.chain,
-                address: walletAddress,
-              },
+            const intent = createFundingIntent({
+              assetId: depositAsset?.id || "usdc",
+              walletAddress,
+              amountMicros: amount,
               environment: FIAT_ONRAMP_CONFIG.environment,
+              onrampEnabled: true,
+              productionApproved: FIAT_ONRAMP_CONFIG.environment === "production",
+            });
+            const result = await fund({
+              source: {
+                assets: [...intent.source.assets],
+                defaultAsset: intent.source.defaultAsset,
+              },
+              destination: intent.destination,
+              environment: intent.environment,
               defaultAmount: microsToDecimal(amount),
             });
             setStatus(
@@ -103,7 +126,10 @@ export function FiatFundingOption({
           ? "Sandbox mode has no charge. In production, provider fees would appear separately and would not be taken from the operations reserve."
           : "Provider processing fees are shown separately at checkout. ACH is usually better suited to a full security deposit than a debit card."}
       </small>
-      <FundingRouteSummary depositAsset={depositAsset} />
+      <FundingRouteSummary
+        depositAsset={depositAsset}
+        fundingPlan={fundingPlan}
+      />
       {status && <p className={/did not|error/i.test(status) ? "tx-error" : "field-help"}>{status}</p>}
     </div>
   );
@@ -111,8 +137,12 @@ export function FiatFundingOption({
 
 function FundingRouteSummary({
   depositAsset,
+  fundingPlan,
+  readinessReason,
 }: {
   depositAsset?: DepositAssetConfig | null;
+  fundingPlan: ReturnType<typeof createFundingPlan>;
+  readinessReason?: string | null;
 }) {
   if (!depositAsset) return null;
   return (
@@ -130,6 +160,15 @@ function FundingRouteSummary({
         custody of payment credentials or pool gas funds. Asset conversion remains disabled in
         this testnet build.
       </small>
+      {fundingPlan.conversion?.kind !== "none" && (
+        <small>
+          {fundingPlan.conversion?.description} This conversion remains disabled in the current
+          application.
+        </small>
+      )}
+      {(readinessReason || fundingPlan.reason) && (
+        <small>{readinessReason || fundingPlan.reason}</small>
+      )}
     </div>
   );
 }
