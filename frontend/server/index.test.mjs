@@ -3084,6 +3084,122 @@ test("every tenant reviewer must approve and adding a tenant resets the revision
   assert.match(await report.text(), /Tenant \(33\.3/);
 });
 
+test("the landlord can reset a tenant link without changing approved terms", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
+        tenantEmail: "tenant@example.com",
+        arbiterName: "",
+        arbiterEmail: null,
+        terms,
+      }),
+      { DB: db },
+    ),
+  );
+  const approved = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+  assert.equal(approved.status, "ready");
+
+  const tenantId = created.record.tenants[0].id;
+  const sessionToken = "tenant-account-session-before-reset";
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(sessionToken),
+  );
+  const sessionHash = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  db.database
+    .prepare(
+      `INSERT INTO negotiation_account_access
+       (negotiation_id, user_id, role, token_hash, created_at, expires_at)
+       VALUES (?, ?, 'tenant', ?, ?, ?)`,
+    )
+    .run(
+      created.record.id,
+      "did:privy:tenant",
+      sessionHash,
+      new Date().toISOString(),
+      new Date(Date.now() + 60_000).toISOString(),
+    );
+  db.database
+    .prepare(
+      `INSERT INTO negotiation_account_access_context (token_hash, tenant_id)
+       VALUES (?, ?)`,
+    )
+    .run(sessionHash, tenantId);
+
+  const unauthorized = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}/tenants/${tenantId}`,
+      "POST",
+      { token: created.access.tenant },
+    ),
+    { DB: db },
+  );
+  assert.equal(unauthorized.status, 403);
+
+  const reset = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}/tenants/${tenantId}`,
+        "POST",
+        { token: created.access.landlord },
+      ),
+      { DB: db },
+    ),
+  );
+  assert.equal(reset.record.revision, created.record.revision);
+  assert.equal(reset.record.status, "ready");
+  assert.equal(reset.record.tenants[0].approved, true);
+  assert.equal(reset.record.events.at(-1).action, "tenant_invite_reset");
+  assert.notEqual(reset.invite.token, created.access.tenant);
+
+  for (const oldToken of [created.access.tenant, sessionToken]) {
+    const oldAccess = await worker.fetch(
+      request(`/api/negotiations/${created.record.id}?token=${oldToken}`),
+      { DB: db },
+    );
+    assert.equal(oldAccess.status, 403);
+  }
+
+  const newAccess = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${reset.invite.token}`,
+      ),
+      { DB: db },
+    ),
+  );
+  assert.equal(newAccess.viewerTenantId, tenantId);
+  assert.equal(newAccess.viewerEmail, "tenant@example.com");
+  const hashes = db.database
+    .prepare(
+      `SELECT negotiation.tenant_token_hash, tenant.token_hash
+       FROM agreement_negotiations negotiation
+       JOIN negotiation_tenants tenant ON tenant.negotiation_id = negotiation.id
+       WHERE negotiation.id = ? AND tenant.id = ?`,
+    )
+    .get(created.record.id, tenantId);
+  assert.equal(hashes.tenant_token_hash, hashes.token_hash);
+  assert.equal(
+    db.database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM negotiation_account_access WHERE negotiation_id = ?",
+      )
+      .get(created.record.id).count,
+    0,
+  );
+});
+
 test("the landlord can edit and remove tenants without creating duplicate proposals", async () => {
   const db = new TestD1();
   const created = await jsonResponse(

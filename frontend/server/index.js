@@ -2423,6 +2423,76 @@ async function updateTenant(request, env, id, tenantId) {
   });
 }
 
+async function rotateTenantInvite(request, env, id, tenantId) {
+  const body = await request.json();
+  const row = await rowFor(env.DB, id);
+  const role = await authorize(env.DB, row, body.token);
+  if (role !== "landlord") {
+    return json({ error: "Only the landlord may reset a tenant invitation link." }, 403);
+  }
+
+  const target = await env.DB
+    .prepare("SELECT * FROM negotiation_tenants WHERE negotiation_id = ? AND id = ?")
+    .bind(id, tenantId)
+    .first();
+  if (!target) return json({ error: "That tenant is not part of this proposal." }, 404);
+
+  const replacementToken = randomToken();
+  const replacementHash = await hashToken(replacementToken);
+  const now = new Date().toISOString();
+  await env.DB.batch([
+    env.DB
+      .prepare(
+        `DELETE FROM negotiation_account_access
+         WHERE token_hash IN (
+           SELECT token_hash FROM negotiation_account_access_context WHERE tenant_id = ?
+         )`,
+      )
+      .bind(tenantId),
+    env.DB
+      .prepare(
+        `UPDATE negotiation_tenants
+         SET token_hash = ?
+         WHERE negotiation_id = ? AND id = ?`,
+      )
+      .bind(replacementHash, id, tenantId),
+    env.DB
+      .prepare(
+        `UPDATE agreement_negotiations
+         SET tenant_token_hash = CASE WHEN ? THEN ? ELSE tenant_token_hash END,
+             updated_at = ?
+         WHERE id = ?`,
+      )
+      .bind(target.is_funding_tenant === 1 ? 1 : 0, replacementHash, now, id),
+    eventStatement(
+      env.DB,
+      id,
+      now,
+      "landlord",
+      "tenant_invite_reset",
+      `Reset the invitation link for ${target.email}. Prior bearer links and active tenant record sessions were invalidated.`,
+      Number(row.revision),
+      {
+        tenantId,
+        email: target.email,
+        isFundingTenant: target.is_funding_tenant === 1,
+      },
+    ),
+  ]);
+
+  return json({
+    record: await serialize(env.DB, await rowFor(env.DB, id)),
+    invite: {
+      id: tenantId,
+      name: target.name || null,
+      email: target.email,
+      token: replacementToken,
+      isFundingTenant: target.is_funding_tenant === 1,
+      depositShareBps: Number(target.deposit_share_bps),
+    },
+  });
+}
+
 async function removeTenant(request, env, id, tenantId) {
   const body = await request.json();
   const row = await rowFor(env.DB, id);
@@ -6318,6 +6388,9 @@ const worker = {
       }
       if (action === "tenants" && resourceId && request.method === "PATCH") {
         return updateTenant(request, env, id, resourceId);
+      }
+      if (action === "tenants" && resourceId && request.method === "POST") {
+        return rotateTenantInvite(request, env, id, resourceId);
       }
       if (action === "tenants" && resourceId && request.method === "DELETE") {
         return removeTenant(request, env, id, resourceId);

@@ -488,6 +488,22 @@ export function removeNegotiationTenant(
   );
 }
 
+export function resetNegotiationTenantInvite(
+  access: NegotiationAccess,
+  tenantId: string,
+) {
+  return request<{
+    record: NegotiationRecord;
+    invite: CreatedNegotiation["access"]["tenants"][number];
+  }>(
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}/tenants/${encodeURIComponent(tenantId)}`,
+    {
+      method: "POST",
+      body: JSON.stringify({ token: access.token }),
+    },
+  );
+}
+
 export async function loadNegotiation(access: NegotiationAccess) {
   return request<NegotiationRecord>(
     `/api/negotiations/${encodeURIComponent(access.proposalId)}?token=${encodeURIComponent(access.token)}`,

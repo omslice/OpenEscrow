@@ -45,6 +45,7 @@ import {
   buildNegotiationInviteUrl,
   addNegotiationTenant,
   removeNegotiationTenant,
+  resetNegotiationTenantInvite,
   updateNegotiationTenant,
   clearLandlordBundle,
   createNegotiation,
@@ -1223,6 +1224,54 @@ function AgreementForm({
       : null;
   }
 
+  async function resetTenantInvite(tenantId: string) {
+    if (!landlordAccess || !draft || !accessBundle) return;
+    const tenant = draft.tenants.find((item) => item.id === tenantId);
+    if (!tenant) return;
+    if (
+      !window.confirm(
+        `Reset the link for ${tenant.email}? The prior link and any current tenant record session will stop working. The invited email can still find this agreement after signing in.`,
+      )
+    ) {
+      return;
+    }
+
+    setIsSavingDraft(true);
+    setFormError(null);
+    setFormMessage(null);
+    try {
+      const result = await resetNegotiationTenantInvite(landlordAccess, tenantId);
+      const existingInvites = accessBundle.tenants || [];
+      const nextTenants = existingInvites.some((item) => item.id === tenantId)
+        ? existingInvites.map((item) =>
+            item.id === tenantId ? result.invite : item,
+          )
+        : [...existingInvites, result.invite];
+      const nextBundle = {
+        ...accessBundle,
+        tenant: result.invite.isFundingTenant
+          ? result.invite.token
+          : accessBundle.tenant,
+        tenants: nextTenants,
+      };
+      setDraft(result.record);
+      setAccessBundle(nextBundle);
+      rememberLandlordBundle({ record: result.record, access: nextBundle });
+      setCopiedInvite(null);
+      setFormMessage(
+        `Reset the link for ${tenant.email}. Send the new link; every prior copy is invalid.`,
+      );
+    } catch (cause) {
+      setFormError(
+        cause instanceof Error
+          ? cause.message
+          : "The tenant invitation link could not be reset.",
+      );
+    } finally {
+      setIsSavingDraft(false);
+    }
+  }
+
   function recordInvitation(
     role: InviteRole,
     method: "gmail" | "copy",
@@ -1238,8 +1287,6 @@ function AgreementForm({
   }
 
   async function copyTenantInvite(tenantId: string) {
-    const tenant = draft?.tenants.find((item) => item.id === tenantId);
-    if (tenant?.approved) return;
     const invitation = tenantInvite(tenantId);
     if (!invitation) return;
     await navigator.clipboard.writeText(invitation.body);
@@ -1248,8 +1295,6 @@ function AgreementForm({
   }
 
   function openTenantInvite(tenantId: string) {
-    const tenant = draft?.tenants.find((item) => item.id === tenantId);
-    if (tenant?.approved) return;
     const invitation = tenantInvite(tenantId);
     if (!invitation) return;
     window.open(invitation.gmailUrl, "_blank", "noopener,noreferrer");
@@ -2835,30 +2880,36 @@ function AgreementForm({
                   <button
                     className="btn btn-secondary"
                     type="button"
-                    disabled={tenant.approved || !tenantInvite(tenant.id)}
+                    disabled={!tenantInvite(tenant.id)}
                     title={
-                      tenant.approved
-                        ? "This tenant already approved the current revision."
-                        : !tenantInvite(tenant.id)
-                          ? "The original invitation token is not available on this device. The tenant can still find the proposal after signing in with the invited email."
-                          : undefined
+                      !tenantInvite(tenant.id)
+                        ? "The original invitation token is not available on this device. Reset the link to create a new one, or the tenant can sign in with the invited email."
+                        : undefined
                     }
                     onClick={() => openTenantInvite(tenant.id)}
                   >
-                    Open invite in Gmail
+                    {tenant.approved ? "Open record email" : "Open invite in Gmail"}
                   </button>
                   <button
                     className="btn btn-secondary"
                     type="button"
-                    disabled={tenant.approved || !tenantInvite(tenant.id)}
-                    title={
-                      tenant.approved
-                        ? "This tenant already approved the current revision."
-                        : undefined
-                    }
+                    disabled={!tenantInvite(tenant.id)}
                     onClick={() => void copyTenantInvite(tenant.id)}
                   >
-                    {copiedInvite === tenant.id ? "Invite copied" : "Copy invite"}
+                    {copiedInvite === tenant.id
+                      ? "Link copied"
+                      : tenant.approved
+                        ? "Copy record link"
+                        : "Copy invite"}
+                  </button>
+                  <button
+                    className="btn btn-ghost"
+                    type="button"
+                    disabled={isSavingDraft}
+                    title="Create a new link and invalidate every prior copy."
+                    onClick={() => void resetTenantInvite(tenant.id)}
+                  >
+                    Reset link
                   </button>
                 </div>
               </div>

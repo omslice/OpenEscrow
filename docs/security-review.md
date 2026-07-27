@@ -248,9 +248,11 @@ response, dispute, ruling, refund, and withdrawal scenario.
 - Receipt verification depends on a Base Sepolia RPC endpoint. A temporary provider outage can
   delay saving the readable receipt record, although it does not alter the completed onchain
   transaction and the UI retains a retry path.
-- Invitation URLs are bearer credentials. Account-discovery access expires, but direct invitation
-  revocation and a complete recovery flow still need product design. Invitations must not be
-  forwarded or logged.
+- Invitation URLs are bearer credentials. A landlord can now reset any tenant link without
+  changing approved terms; the reset invalidates the prior direct link and every active
+  account-discovery session scoped to that tenant, while the invited email can authenticate and
+  discover a fresh session. Landlord/arbiter link rotation and a complete support recovery flow
+  still need product design. Invitations must not be forwarded or logged.
 - The server record cannot prove that the human-readable note or uploaded document accurately
   describes the onchain action. Its hash and transaction receipt prove integrity and occurrence,
   not truth.
