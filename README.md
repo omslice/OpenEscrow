@@ -52,6 +52,7 @@ The current source includes:
 - [`docs/usability-test-plan.md`](docs/usability-test-plan.md) — moderated research script and success gate
 - [`docs/pilot-readiness-brief.md`](docs/pilot-readiness-brief.md) — legal, partner, privacy, and audit handoff
 - [`docs/pilot-services-setup.md`](docs/pilot-services-setup.md) — email, fiat sandbox, and encrypted evidence setup
+- [`docs/owner-actions.md`](docs/owner-actions.md) — running list of owner-only credentials, signatures, decisions, and external reviews
 
 ### Verification snapshot
 
