@@ -1744,20 +1744,48 @@ async function discoverNegotiations(request, env) {
           .bind(tokenHash, row.participant_id),
       );
     }
-    statements.push(
-      env.DB
-        .prepare(
-          `DELETE FROM negotiation_account_access
-           WHERE id IN (
-             SELECT id
-             FROM negotiation_account_access
-             WHERE negotiation_id = ? AND user_id = ? AND role = ?
-             ORDER BY created_at DESC, id DESC
-             LIMIT -1 OFFSET ?
-           )`,
-        )
-        .bind(row.id, identity.userId, role, ACCOUNT_ACCESS_SESSION_LIMIT),
-    );
+    if (role === "tenant" && row.participant_id) {
+      statements.push(
+        env.DB
+          .prepare(
+            `DELETE FROM negotiation_account_access
+             WHERE id IN (
+               SELECT acc.id
+               FROM negotiation_account_access AS acc
+               JOIN negotiation_account_access_context AS context
+                 ON context.token_hash = acc.token_hash
+               WHERE acc.negotiation_id = ?
+                 AND acc.user_id = ?
+                 AND acc.role = ?
+                 AND context.tenant_id = ?
+               ORDER BY acc.created_at DESC, acc.id DESC
+               LIMIT -1 OFFSET ?
+             )`,
+          )
+          .bind(
+            row.id,
+            identity.userId,
+            role,
+            row.participant_id,
+            ACCOUNT_ACCESS_SESSION_LIMIT,
+          ),
+      );
+    } else {
+      statements.push(
+        env.DB
+          .prepare(
+            `DELETE FROM negotiation_account_access
+             WHERE id IN (
+               SELECT id
+               FROM negotiation_account_access
+               WHERE negotiation_id = ? AND user_id = ? AND role = ?
+               ORDER BY created_at DESC, id DESC
+               LIMIT -1 OFFSET ?
+             )`,
+          )
+          .bind(row.id, identity.userId, role, ACCOUNT_ACCESS_SESSION_LIMIT),
+      );
+    }
     await env.DB.batch(statements);
     accesses.push({
       proposalId: row.id,

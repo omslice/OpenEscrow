@@ -253,9 +253,10 @@ response, dispute, ruling, refund, and withdrawal scenario.
   account-discovery session scoped to that tenant, while the invited email can authenticate and
   discover a fresh session. Landlord/arbiter link rotation and a complete support recovery flow
   still need product design. Account-discovery sessions expire after 24 hours and are capped at
-  the five newest sessions per user, role, and agreement so normal tabs/devices keep working
-  without letting repeated refreshes accumulate long-lived bearer tokens. Invitations must not
-  be forwarded or logged.
+  the five newest sessions per user, role, and tenant context when a tenant identity context is
+  present, while landlord sessions remain capped per agreement and role. Normal tabs and devices
+  keep working without letting repeated refreshes accumulate long-lived bearer tokens. Invitations
+  must not be forwarded or logged.
 - The server record cannot prove that the human-readable note or uploaded document accurately
   describes the onchain action. Its hash and transaction receipt prove integrity and occurrence,
   not truth.
