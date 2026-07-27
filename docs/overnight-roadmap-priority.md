@@ -1,5 +1,16 @@
 # Overnight priorities (next in-progress focus)
 
+## Overnight goal
+
+Objective: advance the highest-impact roadmap items needed for a safe, testnet-ready MVP release without enabling any production-money behavior.
+
+Acceptance criteria (for this goal):
+
+- We finish one high-risk/high-value item end-to-end or, if blocked, document a clear blocker and next action.
+- We keep the active app demo and existing bindings/production boundaries unchanged.
+- We run `npm run lint`, `npm run test:client-logic`, `npm run test:server`, and `npm run build` before handing over.
+- We report what changed, what is still blocked, and what still requires your manual action.
+
 This is the operational list for continuing work tonight while we keep the current testnet
 boundaries.
 
