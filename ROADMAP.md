@@ -27,6 +27,7 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Version-bound onchain record receipts and private proof verification
 - [x] Private R2 evidence with file-signature validation and optional encryption/decentralized mode
 - [x] Landlord-controlled tenant invitation reset with old-link and active-session invalidation
+- [x] Short-lived, capped account-discovery sessions per user, role, and agreement
 - [ ] Configure and test the hosted evidence master key, backup, rotation, retention, and deletion
 - [ ] Design landlord/arbiter recovery and exercise privacy requests and incident response
 

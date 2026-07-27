@@ -1971,10 +1971,35 @@ test("verified Privy accounts discover finalized landlord and tenant agreements"
     );
     assert.equal(archivedDiscovery.accesses[0].archived, true);
 
+    let latestLandlordSession = archivedDiscovery.accesses[0];
+    for (let index = 0; index < 4; index += 1) {
+      const refresh = await jsonResponse(
+        await worker.fetch(
+          new Request("https://openescrow.example/api/negotiations/discover", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "privy-id-token": identityToken,
+            },
+            body: JSON.stringify({ role: "landlord" }),
+          }),
+          { DB: db, PRIVY_APP_ID: appId },
+        ),
+      );
+      latestLandlordSession = refresh.accesses[0];
+    }
+    const staleSession = await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${discovery.accesses[0].token}`,
+      ),
+      { DB: db },
+    );
+    assert.equal(staleSession.status, 403);
+
     const recovered = await jsonResponse(
       await worker.fetch(
         request(
-          `/api/negotiations/${created.record.id}?token=${discovery.accesses[0].token}`,
+          `/api/negotiations/${created.record.id}?token=${latestLandlordSession.token}`,
         ),
         { DB: db },
       ),
@@ -1982,6 +2007,16 @@ test("verified Privy accounts discover finalized landlord and tenant agreements"
     assert.equal(recovered.landlordEmail, "landlord@example.com");
     assert.equal(recovered.status, "finalized");
     assert.equal(recovered.onchainAgreementId, "0");
+    assert.equal(
+      db.database
+        .prepare(
+          `SELECT COUNT(*) AS count
+           FROM negotiation_account_access
+           WHERE negotiation_id = ? AND user_id = ? AND role = ?`,
+        )
+        .get(created.record.id, "did:privy:test-landlord", "landlord").count,
+      5,
+    );
 
     const tenantDiscovery = await jsonResponse(
       await worker.fetch(
@@ -1998,16 +2033,52 @@ test("verified Privy accounts discover finalized landlord and tenant agreements"
     );
     assert.equal(tenantDiscovery.accesses.length, 1);
     assert.equal(tenantDiscovery.accesses[0].archived, false);
+    let latestTenantSession = tenantDiscovery.accesses[0];
+    for (let index = 0; index < 5; index += 1) {
+      const refresh = await jsonResponse(
+        await worker.fetch(
+          new Request("https://openescrow.example/api/negotiations/discover", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "privy-id-token": tenantIdentityToken,
+            },
+            body: JSON.stringify({ role: "tenant" }),
+          }),
+          { DB: db, PRIVY_APP_ID: appId },
+        ),
+      );
+      latestTenantSession = refresh.accesses[0];
+    }
+    const staleTenantSession = await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${tenantDiscovery.accesses[0].token}`,
+      ),
+      { DB: db },
+    );
+    assert.equal(staleTenantSession.status, 403);
     const tenantRecord = await jsonResponse(
       await worker.fetch(
         request(
-          `/api/negotiations/${created.record.id}?token=${tenantDiscovery.accesses[0].token}`,
+          `/api/negotiations/${created.record.id}?token=${latestTenantSession.token}`,
         ),
         { DB: db },
       ),
     );
     assert.equal(tenantRecord.status, "finalized");
     assert.equal(tenantRecord.onchainAgreementId, "0");
+    assert.equal(
+      db.database
+        .prepare(
+          `SELECT COUNT(*) AS count
+           FROM negotiation_account_access access
+           JOIN negotiation_account_access_context context
+             ON context.token_hash = access.token_hash
+           WHERE access.negotiation_id = ? AND access.user_id = ? AND access.role = ?`,
+        )
+        .get(created.record.id, "did:privy:test-landlord", "tenant").count,
+      5,
+    );
 
     const restoredPreference = await jsonResponse(
       await worker.fetch(

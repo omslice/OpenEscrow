@@ -252,7 +252,10 @@ response, dispute, ruling, refund, and withdrawal scenario.
   changing approved terms; the reset invalidates the prior direct link and every active
   account-discovery session scoped to that tenant, while the invited email can authenticate and
   discover a fresh session. Landlord/arbiter link rotation and a complete support recovery flow
-  still need product design. Invitations must not be forwarded or logged.
+  still need product design. Account-discovery sessions expire after 24 hours and are capped at
+  the five newest sessions per user, role, and agreement so normal tabs/devices keep working
+  without letting repeated refreshes accumulate long-lived bearer tokens. Invitations must not
+  be forwarded or logged.
 - The server record cannot prove that the human-readable note or uploaded document accurately
   describes the onchain action. Its hash and transaction receipt prove integrity and occurrence,
   not truth.

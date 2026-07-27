@@ -232,7 +232,8 @@ const DEDUCTION_CATEGORY_ID_BY_LABEL = Object.freeze(
   ),
 );
 const PRIVY_APP_ID = "cmrzdp7ss00670cju098baqsr";
-const ACCOUNT_ACCESS_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
+const ACCOUNT_ACCESS_LIFETIME_MS = 24 * 60 * 60 * 1000;
+const ACCOUNT_ACCESS_SESSION_LIMIT = 5;
 const DEFAULT_GEOCODER_BASE_URL = "https://photon.komoot.io";
 const ADDRESS_SUGGESTION_CACHE_TTL_MS = 10 * 60 * 1000;
 const ADDRESS_SUGGESTION_CACHE_LIMIT = 200;
@@ -1727,20 +1728,37 @@ async function discoverNegotiations(request, env) {
   for (const row of rows) {
     const token = randomToken();
     const tokenHash = await hashToken(token);
-    await env.DB
-      .prepare(
-        "INSERT INTO negotiation_account_access (negotiation_id, user_id, role, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
-      )
-      .bind(row.id, identity.userId, role, tokenHash, now.toISOString(), expiresAt)
-      .run();
-    if (role === "tenant" && row.participant_id) {
-      await env.DB
+    const statements = [
+      env.DB
         .prepare(
-          "INSERT INTO negotiation_account_access_context (token_hash, tenant_id) VALUES (?, ?)",
+          "INSERT INTO negotiation_account_access (negotiation_id, user_id, role, token_hash, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)",
         )
-        .bind(tokenHash, row.participant_id)
-        .run();
+        .bind(row.id, identity.userId, role, tokenHash, now.toISOString(), expiresAt),
+    ];
+    if (role === "tenant" && row.participant_id) {
+      statements.push(
+        env.DB
+          .prepare(
+            "INSERT INTO negotiation_account_access_context (token_hash, tenant_id) VALUES (?, ?)",
+          )
+          .bind(tokenHash, row.participant_id),
+      );
     }
+    statements.push(
+      env.DB
+        .prepare(
+          `DELETE FROM negotiation_account_access
+           WHERE id IN (
+             SELECT id
+             FROM negotiation_account_access
+             WHERE negotiation_id = ? AND user_id = ? AND role = ?
+             ORDER BY created_at DESC, id DESC
+             LIMIT -1 OFFSET ?
+           )`,
+        )
+        .bind(row.id, identity.userId, role, ACCOUNT_ACCESS_SESSION_LIMIT),
+    );
+    await env.DB.batch(statements);
     accesses.push({
       proposalId: row.id,
       role,
