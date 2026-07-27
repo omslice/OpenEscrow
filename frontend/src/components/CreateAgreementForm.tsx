@@ -353,6 +353,8 @@ function AgreementForm({
   const [invalidField, setInvalidField] = useState<ProposalField | null>(null);
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
+  const [isPreflightingFinalization, setIsPreflightingFinalization] =
+    useState(false);
   const [isEditingRevision, setIsEditingRevision] = useState(false);
   const [proposalStep, setProposalStep] = useState<ProposalStep>("participants");
   const submittedJurisdiction = useRef<JurisdictionCode>(GENERIC_TEST_POLICY.jurisdiction);
@@ -1271,7 +1273,7 @@ function AgreementForm({
     recordInvitation("arbiter", "gmail");
   }
 
-  function finalizeOnchain() {
+  async function finalizeOnchain() {
     setFormError(null);
     setCreatedId(null);
     if (!draft || draft.status !== "ready") {
@@ -1340,6 +1342,22 @@ function AgreementForm({
     if (startSec < nowSec) return setFormError("The expected possession-return date must still be in the future.");
     if (startSec - nowSec > MAX_CLAIM_WINDOW_OFFSET_SECONDS) {
       return setFormError("The expected possession-return date is too far in the future.");
+    }
+    if (!landlordAccess || isPreflightingFinalization) return;
+    setIsPreflightingFinalization(true);
+    try {
+      await negotiationAction(landlordAccess, {
+        type: "preflight_finalize",
+      });
+    } catch (cause) {
+      setFormError(
+        cause instanceof Error
+          ? cause.message
+          : "OpenEscrow could not validate this proposal for finalization.",
+      );
+      return;
+    } finally {
+      setIsPreflightingFinalization(false);
     }
 
     submittedJurisdiction.current = isJurisdictionCode(draft.terms.jurisdiction)
@@ -2598,10 +2616,17 @@ function AgreementForm({
           <button
             className="btn btn-primary"
             type="button"
-            disabled={!isConnected || isPending || isMining}
-            onClick={finalizeOnchain}
+            disabled={
+              !isConnected ||
+              isPreflightingFinalization ||
+              isPending ||
+              isMining
+            }
+            onClick={() => void finalizeOnchain()}
           >
-            {isPending
+            {isPreflightingFinalization
+              ? "Checking compliance sources..."
+              : isPending
               ? "Confirm in wallet..."
               : isMining
                 ? "Finalizing onchain..."

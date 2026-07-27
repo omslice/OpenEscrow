@@ -206,6 +206,7 @@ CREATE TABLE IF NOT EXISTS compliance_source_checks (
   http_status INTEGER,
   status TEXT NOT NULL DEFAULT 'pending',
   last_checked_at TEXT,
+  last_verified_at TEXT,
   last_changed_at TEXT,
   error TEXT
 )`;
@@ -229,6 +230,7 @@ const DEFAULT_GEOCODER_BASE_URL = "https://photon.komoot.io";
 const ADDRESS_SUGGESTION_CACHE_TTL_MS = 10 * 60 * 1000;
 const ADDRESS_SUGGESTION_CACHE_LIMIT = 200;
 const ADDRESS_GEOCODER_TIMEOUT_MS = 3_000;
+const COMPLIANCE_SOURCE_FRESHNESS_MS = 21 * 24 * 60 * 60 * 1000;
 const DEFAULT_BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org";
 const FALLBACK_BASE_SEPOLIA_RPC_URL = "https://base-sepolia-rpc.publicnode.com";
 const DEFAULT_OPEN_ESCROW_ADDRESS = "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99";
@@ -924,6 +926,127 @@ async function validTerms(terms, env) {
   );
 }
 
+function requiredComplianceSources(terms) {
+  if (
+    !terms ||
+    terms.jurisdiction === GENERIC_TEST_POLICY.jurisdiction ||
+    !terms.complianceSnapshot
+  ) {
+    return [];
+  }
+  const expectedVersions = new Map([
+    [cleanText(terms.jurisdiction, 100), cleanText(terms.policyVersion, 100)],
+    ...(Array.isArray(terms.complianceSnapshot.overlays)
+      ? terms.complianceSnapshot.overlays.map((overlay) => [
+          cleanText(overlay?.id, 100),
+          cleanText(overlay?.version, 100),
+        ])
+      : []),
+  ]);
+  return COMPLIANCE_SOURCE_REGISTRY.filter(
+    (sourceItem) =>
+      expectedVersions.get(sourceItem.jurisdiction) === sourceItem.version,
+  );
+}
+
+async function complianceSourceGate(terms, env, now = new Date()) {
+  if (
+    terms?.jurisdiction === GENERIC_TEST_POLICY.jurisdiction ||
+    env.COMPLIANCE_SOURCE_MONITOR_ENABLED !== "true"
+  ) {
+    return { allowed: true, enforced: false, sources: [] };
+  }
+  const requiredSources = requiredComplianceSources(terms);
+  const expectedSourceCount =
+    1 +
+    (Array.isArray(terms?.complianceSnapshot?.overlays)
+      ? terms.complianceSnapshot.overlays.reduce(
+          (total, overlay) =>
+            total + (Array.isArray(overlay?.sources) ? overlay.sources.length : 0),
+          0,
+        )
+      : 0);
+  if (!env.DB || requiredSources.length !== expectedSourceCount) {
+    return {
+      allowed: false,
+      enforced: true,
+      sources: [],
+      reason: "registry-incomplete",
+    };
+  }
+  const rows = await Promise.all(
+    requiredSources.map((sourceItem) =>
+      env.DB
+        .prepare(
+          `SELECT source_key, profile_version, url, baseline_signature,
+                  current_signature, status, last_verified_at
+           FROM compliance_source_checks WHERE source_key = ?`,
+        )
+        .bind(sourceItem.key)
+        .first(),
+    ),
+  );
+  const staleBefore = now.getTime() - COMPLIANCE_SOURCE_FRESHNESS_MS;
+  const sources = requiredSources.map((sourceItem, index) => {
+    const row = rows[index];
+    const verifiedAt = row?.last_verified_at
+      ? new Date(row.last_verified_at).getTime()
+      : Number.NaN;
+    let status = cleanText(row?.status, 40) || "pending";
+    if (
+      !row ||
+      row.profile_version !== sourceItem.version ||
+      row.url !== sourceItem.url
+    ) {
+      status = "pending";
+    } else if (status !== "changed" && (
+      !row.baseline_signature ||
+      row.baseline_signature !== row.current_signature
+    )) {
+      status = "pending";
+    } else if (status !== "changed" && (
+      !Number.isFinite(verifiedAt) ||
+      verifiedAt < staleBefore
+    )) {
+      status = "stale";
+    }
+    return {
+      key: sourceItem.key,
+      citation: sourceItem.citation,
+      status,
+      lastVerifiedAt: row?.last_verified_at || null,
+    };
+  });
+  return {
+    allowed: sources.every(
+      (sourceItem) =>
+        sourceItem.status === "unchanged" ||
+        sourceItem.status === "unreachable",
+    ),
+    enforced: true,
+    sources,
+    reason: sources.find(
+      (sourceItem) =>
+        sourceItem.status !== "unchanged" &&
+        sourceItem.status !== "unreachable",
+    )?.status,
+  };
+}
+
+function complianceSourceGateResponse(gate) {
+  const changed = gate.sources?.some((sourceItem) => sourceItem.status === "changed");
+  return json(
+    {
+      error: changed
+        ? "An official compliance source changed after this rule version was reviewed. Publish a reviewed profile version before creating or finalizing an agreement."
+        : "The official sources for this compliance profile need a fresh successful check before creating or finalizing an agreement.",
+      code: "compliance-source-review-required",
+      sourceStatus: gate.sources || [],
+    },
+    503,
+  );
+}
+
 function randomToken() {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
@@ -1246,6 +1369,9 @@ async function serviceReadiness(env) {
     tracked: 0,
     changed: 0,
     unreachable: 0,
+    pending: 0,
+    stale: 0,
+    blocked: 0,
   };
   if (env.DB) {
     await initialize(env.DB);
@@ -1259,18 +1385,61 @@ async function serviceReadiness(env) {
       .bind("compliance-source-monitor")
       .first();
     complianceSourceLastRunAt = sourceRun?.last_started_at || null;
-    const sourceStats = await env.DB
+    const sourceRows = await env.DB
       .prepare(
-        `SELECT COUNT(*) AS tracked,
-                SUM(CASE WHEN status = 'changed' THEN 1 ELSE 0 END) AS changed,
-                SUM(CASE WHEN status = 'unreachable' THEN 1 ELSE 0 END) AS unreachable
+        `SELECT source_key, profile_version, url, baseline_signature,
+                current_signature, status, last_verified_at
          FROM compliance_source_checks`,
       )
-      .first();
+      .all();
+    const rows = sourceRows.results || [];
+    const rowByKey = new Map(rows.map((row) => [row.source_key, row]));
+    const staleBefore = Date.now() - COMPLIANCE_SOURCE_FRESHNESS_MS;
+    const blockedKeys = new Set();
+    let tracked = 0;
+    let changed = 0;
+    let unreachable = 0;
+    let pending = 0;
+    let stale = 0;
+    for (const expected of COMPLIANCE_SOURCE_REGISTRY) {
+      const row = rowByKey.get(expected.key);
+      if (!row) {
+        blockedKeys.add(expected.key);
+        continue;
+      }
+      tracked += 1;
+      const verifiedAt = row.last_verified_at
+        ? new Date(row.last_verified_at).getTime()
+        : Number.NaN;
+      const versionMatches =
+        expected.version === row.profile_version && expected.url === row.url;
+      const signatureMatches = Boolean(
+        row.baseline_signature &&
+          row.baseline_signature === row.current_signature,
+      );
+      if (row.status === "changed") changed += 1;
+      if (row.status === "unreachable") unreachable += 1;
+      if (row.status === "pending") pending += 1;
+      const isStale =
+        !Number.isFinite(verifiedAt) || verifiedAt < staleBefore;
+      if (isStale) stale += 1;
+      if (
+        !versionMatches ||
+        !signatureMatches ||
+        row.status === "changed" ||
+        row.status === "pending" ||
+        isStale
+      ) {
+        blockedKeys.add(expected.key);
+      }
+    }
     complianceSourceStats = {
-      tracked: Number(sourceStats?.tracked || 0),
-      changed: Number(sourceStats?.changed || 0),
-      unreachable: Number(sourceStats?.unreachable || 0),
+      tracked,
+      changed,
+      unreachable,
+      pending,
+      stale,
+      blocked: blockedKeys.size,
     };
   }
   const provider = emailProvider(env);
@@ -1316,9 +1485,22 @@ async function serviceReadiness(env) {
     },
     complianceSources: {
       configured: env.COMPLIANCE_SOURCE_MONITOR_ENABLED === "true",
+      proposalGateEnforced:
+        env.COMPLIANCE_SOURCE_MONITOR_ENABLED === "true",
       total: COMPLIANCE_SOURCE_REGISTRY.length,
       ...complianceSourceStats,
       lastRunAt: complianceSourceLastRunAt,
+      maxVerificationAgeDays:
+        COMPLIANCE_SOURCE_FRESHNESS_MS / (24 * 60 * 60 * 1000),
+      ready:
+        env.COMPLIANCE_SOURCE_MONITOR_ENABLED === "true" &&
+        complianceSourceStats.tracked === COMPLIANCE_SOURCE_REGISTRY.length &&
+        complianceSourceStats.blocked === 0 &&
+        Boolean(
+          complianceSourceLastRunAt &&
+            Date.now() - new Date(complianceSourceLastRunAt).getTime() <
+              48 * 60 * 60 * 1000,
+        ),
     },
   });
 }
@@ -1810,6 +1992,10 @@ async function createNegotiation(request, env) {
   }
   if (!(await validTerms(body.terms, env))) {
     return json({ error: "The agreement terms are incomplete or invalid." }, 400);
+  }
+  const sourceGate = await complianceSourceGate(body.terms, env);
+  if (!sourceGate.allowed) {
+    return complianceSourceGateResponse(sourceGate);
   }
 
   const id = crypto.randomUUID().split("-")[0];
@@ -3046,8 +3232,40 @@ async function seedComplianceSources(db) {
          ON CONFLICT(source_key) DO UPDATE SET
            scope = excluded.scope,
            jurisdiction = excluded.jurisdiction,
-           profile_version = excluded.profile_version,
            citation = excluded.citation,
+           baseline_signature = CASE
+             WHEN compliance_source_checks.profile_version <> excluded.profile_version
+               OR compliance_source_checks.url <> excluded.url
+             THEN NULL ELSE compliance_source_checks.baseline_signature END,
+           current_signature = CASE
+             WHEN compliance_source_checks.profile_version <> excluded.profile_version
+               OR compliance_source_checks.url <> excluded.url
+             THEN NULL ELSE compliance_source_checks.current_signature END,
+           http_status = CASE
+             WHEN compliance_source_checks.profile_version <> excluded.profile_version
+               OR compliance_source_checks.url <> excluded.url
+             THEN NULL ELSE compliance_source_checks.http_status END,
+           status = CASE
+             WHEN compliance_source_checks.profile_version <> excluded.profile_version
+               OR compliance_source_checks.url <> excluded.url
+             THEN 'pending' ELSE compliance_source_checks.status END,
+           last_checked_at = CASE
+             WHEN compliance_source_checks.profile_version <> excluded.profile_version
+               OR compliance_source_checks.url <> excluded.url
+             THEN NULL ELSE compliance_source_checks.last_checked_at END,
+           last_verified_at = CASE
+             WHEN compliance_source_checks.profile_version <> excluded.profile_version
+               OR compliance_source_checks.url <> excluded.url
+             THEN NULL ELSE compliance_source_checks.last_verified_at END,
+           last_changed_at = CASE
+             WHEN compliance_source_checks.profile_version <> excluded.profile_version
+               OR compliance_source_checks.url <> excluded.url
+             THEN NULL ELSE compliance_source_checks.last_changed_at END,
+           error = CASE
+             WHEN compliance_source_checks.profile_version <> excluded.profile_version
+               OR compliance_source_checks.url <> excluded.url
+             THEN NULL ELSE compliance_source_checks.error END,
+           profile_version = excluded.profile_version,
            url = excluded.url`,
       )
       .bind(
@@ -3139,6 +3357,7 @@ async function checkComplianceSource(db, sourceRow, now) {
         `UPDATE compliance_source_checks
          SET baseline_signature = ?, current_signature = ?, http_status = ?,
              status = ?, last_checked_at = ?,
+             last_verified_at = CASE WHEN ? THEN last_verified_at ELSE ? END,
              last_changed_at = CASE WHEN ? THEN ? ELSE last_changed_at END,
              error = NULL
          WHERE source_key = ?`,
@@ -3148,6 +3367,8 @@ async function checkComplianceSource(db, sourceRow, now) {
         signature,
         response.status,
         changed ? "changed" : "unchanged",
+        now.toISOString(),
+        changed ? 1 : 0,
         now.toISOString(),
         changed ? 1 : 0,
         now.toISOString(),
@@ -3273,7 +3494,57 @@ async function applyAction(request, env, id) {
   const revision = Number(row.revision);
   const statements = [];
 
-  if (body.type === "cancel_proposal") {
+  if (body.type === "preflight_finalize") {
+    if (role !== "landlord") {
+      return json({ error: "Only the landlord may validate finalization readiness." }, 403);
+    }
+    if (row.status !== "ready") {
+      return json(
+        { error: "The current revision must be approved before it can be finalized." },
+        409,
+      );
+    }
+    let approvedTerms;
+    try {
+      approvedTerms = JSON.parse(row.terms_json);
+    } catch {
+      approvedTerms = null;
+    }
+    if (!(await validTerms(approvedTerms, env))) {
+      return json(
+        {
+          error:
+            "This approved revision does not match a current jurisdiction policy. Publish a new revision and collect fresh approvals before finalizing.",
+        },
+        409,
+      );
+    }
+    const sourceGate = await complianceSourceGate(approvedTerms, env);
+    if (!sourceGate.allowed) {
+      return complianceSourceGateResponse(sourceGate);
+    }
+    const expiresAt = new Date(
+      new Date(now).getTime() + 10 * 60 * 1000,
+    ).toISOString();
+    statements.push(
+      db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "finalization_preflight_passed",
+        `Validated revision ${revision} for onchain finalization.`,
+        revision,
+        {
+          policyVersion: approvedTerms.policyVersion,
+          sourceGateEnforced: sourceGate.enforced,
+          sourceKeys: sourceGate.sources.map((sourceItem) => sourceItem.key),
+          expiresAt,
+        },
+      ),
+    );
+  } else if (body.type === "cancel_proposal") {
     if (role !== "landlord") {
       return json({ error: "Only the landlord may cancel a proposal." }, 403);
     }
@@ -3501,6 +3772,10 @@ async function applyAction(request, env, id) {
     if (!(await validTerms(body.terms, env))) {
       return json({ error: "The revised agreement terms are invalid." }, 400);
     }
+    const sourceGate = await complianceSourceGate(body.terms, env);
+    if (!sourceGate.allowed) {
+      return complianceSourceGateResponse(sourceGate);
+    }
     const summary = cleanText(body.summary, 1000);
     if (summary.length < 8) return json({ error: "Describe what changed in this revision." }, 400);
     const participants = {
@@ -3589,6 +3864,31 @@ async function applyAction(request, env, id) {
         },
         409,
       );
+    }
+    const sourceGate = await complianceSourceGate(approvedTerms, env);
+    if (!sourceGate.allowed) {
+      const recentPreflight = recordedEvents.some(
+        (event) => {
+          const sourceKeys = Array.isArray(event.metadata?.sourceKeys)
+            ? event.metadata.sourceKeys
+            : [];
+          return (
+            event.action === "finalization_preflight_passed" &&
+            Number(event.revision) === revision &&
+            event.metadata?.sourceGateEnforced === true &&
+            sourceGate.sources.length > 0 &&
+            sourceKeys.length === sourceGate.sources.length &&
+            sourceGate.sources.every((sourceItem) =>
+              sourceKeys.includes(sourceItem.key),
+            ) &&
+            new Date(event.metadata?.expiresAt || 0).getTime() >=
+              new Date(now).getTime()
+          );
+        },
+      );
+      if (!recentPreflight) {
+        return complianceSourceGateResponse(sourceGate);
+      }
     }
     const agreementId = cleanText(body.agreementId, 80);
     const transactionHash = cleanText(body.transactionHash, 100);

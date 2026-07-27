@@ -104,11 +104,17 @@ export interface ServiceReadiness {
   };
   complianceSources: {
     configured: boolean;
+    proposalGateEnforced: boolean;
     total: number;
     tracked: number;
     changed: number;
     unreachable: number;
+    pending: number;
+    stale: number;
+    blocked: number;
     lastRunAt: string | null;
+    maxVerificationAgeDays: number;
+    ready: boolean;
   };
 }
 
@@ -587,6 +593,7 @@ export type NegotiationAction =
         invitedTenantId?: string;
         method: "gmail" | "copy";
       }
+    | { type: "preflight_finalize" }
     | { type: "finalize"; agreementId: string; transactionHash: string }
     | { type: "operations_reserve_paid"; amount?: string; transactionHash: string }
     | { type: "tenant_share_funded"; amount?: string; transactionHash: string }

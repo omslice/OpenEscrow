@@ -174,11 +174,34 @@ rotating batch of four official sources once per day. It samples response
 metadata and up to 256 KiB, stores a SHA-256 signature, and marks a source
 `changed`, `unchanged`, or `unreachable`. It never automatically edits a rule.
 The public readiness response reports the configured state, source count,
-changed count, unreachable count, and last run time.
+changed count, unreachable count, pending count, stale count, blocking count,
+and last run time.
 
 The first successful check establishes a baseline. A later signature change is
 an alert for a new official-source review and profile version, not proof that
 the law changed.
+
+When monitoring is enabled, new, revised, and finalizing address-routed
+agreements fail closed unless every statewide and applicable overlay source in
+their exact snapshot has a successful verification no more than 21 days old.
+A detected change blocks that profile until its rule review produces a new
+profile or overlay version. Updating a source URL or version clears the old
+baseline so the replacement must be checked from scratch. A temporary source
+outage may use the last successful signature during the 21-day window; once
+that window expires, the profile is blocked until the source can be verified
+again. Generic test agreements are not subject to this release gate.
+
+Before the wallet is asked to create an onchain agreement, the landlord client
+runs a server preflight for the exact approved revision. A successful preflight
+is recorded with a ten-minute expiry so a transaction authorized immediately
+before a monitor update can still have its receipt saved without leaving the
+onchain and private records inconsistent. Without that exact, unexpired
+preflight, finalization rechecks the source gate and refuses the action.
+
+The pilot-readiness check requires monitoring to be enabled, every registered
+source to be baselined and current, no blocking source state, and a successful
+monitor run within the previous 48 hours. This gate detects source-page drift;
+it does not determine what changed or update legal rules without a new review.
 
 ## Contract limitation
 

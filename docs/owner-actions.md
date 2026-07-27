@@ -35,6 +35,10 @@ provider or hosting control that owns the secret.
   only when the corresponding development release is approved for deployment.
 - [ ] **Activate the 15-minute hosted Cron Trigger** and confirm its first
   successful run after the notification/source-monitor release is deployed.
+- [ ] **Let the official-source baseline complete and resolve every blocking
+  source alert.** Ask Codex for the deployed readiness report after each
+  scheduled batch; a changed source needs a new official-source review and
+  versioned rule update, not a configuration bypass.
 - [ ] **Run the separate-account operator test.** Use invented identities,
   separate landlord and tenant Google accounts, and worthless Base Sepolia
   tokens; follow [`testnet-pilot-runbook.md`](./testnet-pilot-runbook.md).

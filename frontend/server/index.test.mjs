@@ -24,6 +24,7 @@ import {
   DYNAMIC_COMPLIANCE_FACTS,
   STATIC_COMPLIANCE_FACT_KEYS,
 } from "../shared/us-compliance-facts.js";
+import { COMPLIANCE_SOURCE_REGISTRY } from "../shared/compliance-sources.js";
 
 const TEST_ADDRESS_ATTESTATION_SECRET =
   "openescrow-test-address-attestation-secret-2026";
@@ -48,6 +49,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0005_encrypted_evidence.sql",
     "0006_compliance_source_monitor.sql",
     "0007_account_record_archives.sql",
+    "0008_compliance_source_release_gate.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -527,6 +529,60 @@ async function create(db, arbiterEmail = null) {
   );
 }
 
+async function seedVerifiedComplianceSources(
+  db,
+  agreementTerms,
+  verifiedAt = new Date().toISOString(),
+) {
+  const expectedVersions = new Map([
+    [agreementTerms.jurisdiction, agreementTerms.policyVersion],
+    ...(agreementTerms.complianceSnapshot?.overlays || []).map((overlay) => [
+      overlay.id,
+      overlay.version,
+    ]),
+  ]);
+  const sourceItems = COMPLIANCE_SOURCE_REGISTRY.filter(
+    (sourceItem) =>
+      expectedVersions.get(sourceItem.jurisdiction) === sourceItem.version,
+  );
+  await db.batch(
+    sourceItems.map((sourceItem) =>
+      db
+        .prepare(
+          `INSERT INTO compliance_source_checks
+           (source_key, scope, jurisdiction, profile_version, citation, url,
+            baseline_signature, current_signature, http_status, status,
+            last_checked_at, last_verified_at, last_changed_at, error)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, 200, 'unchanged', ?, ?, NULL, NULL)
+           ON CONFLICT(source_key) DO UPDATE SET
+             profile_version = excluded.profile_version,
+             citation = excluded.citation,
+             url = excluded.url,
+             baseline_signature = excluded.baseline_signature,
+             current_signature = excluded.current_signature,
+             http_status = 200,
+             status = 'unchanged',
+             last_checked_at = excluded.last_checked_at,
+             last_verified_at = excluded.last_verified_at,
+             error = NULL`,
+        )
+        .bind(
+          sourceItem.key,
+          sourceItem.scope,
+          sourceItem.jurisdiction,
+          sourceItem.version,
+          sourceItem.citation,
+          sourceItem.url,
+          `baseline:${sourceItem.key}`,
+          `baseline:${sourceItem.key}`,
+          verifiedAt,
+          verifiedAt,
+        ),
+    ),
+  );
+  return sourceItems;
+}
+
 function base64UrlJson(value) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
 }
@@ -864,6 +920,221 @@ test("address-routed compliance profiles require their exact version and deadlin
     stateEnv,
   );
   assert.equal(forgedAttestation.status, 400);
+});
+
+test("monitored compliance sources fail closed for pending, changed, and stale profiles", async () => {
+  const db = new TestD1();
+  const monitoredEnv = {
+    DB: db,
+    ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+    COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  };
+  const proposalBody = {
+    landlordName: "Lena Landlord",
+    landlordEmail: "landlord@example.com",
+    tenantName: "Terry Tenant",
+    tenantEmail: "tenant@example.com",
+    arbiterName: "",
+    arbiterEmail: null,
+    terms: newYorkResearchTerms,
+  };
+
+  const pending = await worker.fetch(
+    request("/api/negotiations", "POST", proposalBody),
+    monitoredEnv,
+  );
+  assert.equal(pending.status, 503);
+  assert.equal(
+    (await pending.json()).code,
+    "compliance-source-review-required",
+  );
+
+  const sourceItems = await seedVerifiedComplianceSources(
+    db,
+    newYorkResearchTerms,
+  );
+  assert.ok(sourceItems.length >= 2);
+  const created = await worker.fetch(
+    request("/api/negotiations", "POST", proposalBody),
+    monitoredEnv,
+  );
+  assert.equal(created.status, 201);
+  const createdProposal = await created.json();
+  await jsonResponse(
+    await act(
+      db,
+      createdProposal.record.id,
+      createdProposal.access.tenant,
+      {
+        type: "approve",
+        wallet: "0x1111111111111111111111111111111111111111",
+      },
+      { COMPLIANCE_SOURCE_MONITOR_ENABLED: "true" },
+    ),
+  );
+
+  await db
+    .prepare(
+      `UPDATE compliance_source_checks
+       SET status = 'changed',
+           current_signature = 'changed:state:ny',
+           last_changed_at = ?
+       WHERE source_key = 'state:ny'`,
+    )
+    .bind(new Date().toISOString())
+    .run();
+  const changed = await worker.fetch(
+    request("/api/negotiations", "POST", proposalBody),
+    monitoredEnv,
+  );
+  assert.equal(changed.status, 503);
+  assert.match((await changed.json()).error, /source changed/i);
+  const blockedPreflight = await act(
+    db,
+    createdProposal.record.id,
+    createdProposal.access.landlord,
+    { type: "preflight_finalize" },
+    { COMPLIANCE_SOURCE_MONITOR_ENABLED: "true" },
+  );
+  assert.equal(blockedPreflight.status, 503);
+
+  await db
+    .prepare(
+      `UPDATE compliance_source_checks
+       SET status = 'unreachable',
+           current_signature = baseline_signature,
+           last_verified_at = ?
+       WHERE source_key = 'state:ny'`,
+    )
+    .bind(new Date().toISOString())
+    .run();
+  const recentOutage = await worker.fetch(
+    request("/api/negotiations", "POST", proposalBody),
+    monitoredEnv,
+  );
+  assert.equal(recentOutage.status, 201);
+  const disabledGateProposal = await recentOutage.json();
+  await jsonResponse(
+    await act(
+      db,
+      disabledGateProposal.record.id,
+      disabledGateProposal.access.tenant,
+      {
+        type: "approve",
+        wallet: "0x2222222222222222222222222222222222222222",
+      },
+      { COMPLIANCE_SOURCE_MONITOR_ENABLED: "true" },
+    ),
+  );
+  const disabledGatePreflight = await jsonResponse(
+    await act(
+      db,
+      disabledGateProposal.record.id,
+      disabledGateProposal.access.landlord,
+      { type: "preflight_finalize" },
+    ),
+  );
+  assert.equal(
+    disabledGatePreflight.events.at(-1).metadata.sourceGateEnforced,
+    false,
+  );
+  await db
+    .prepare(
+      `UPDATE compliance_source_checks
+       SET status = 'changed',
+           current_signature = 'changed-after-disabled-preflight:state:ny',
+           last_changed_at = ?
+       WHERE source_key = 'state:ny'`,
+    )
+    .bind(new Date().toISOString())
+    .run();
+  const blockedAfterDisabledPreflight = await act(
+    db,
+    disabledGateProposal.record.id,
+    disabledGateProposal.access.landlord,
+    {
+      type: "finalize",
+      agreementId: "73",
+      transactionHash: `0x${"6".repeat(64)}`,
+    },
+    { COMPLIANCE_SOURCE_MONITOR_ENABLED: "true" },
+  );
+  assert.equal(blockedAfterDisabledPreflight.status, 503);
+  await db
+    .prepare(
+      `UPDATE compliance_source_checks
+       SET status = 'unreachable',
+           current_signature = baseline_signature,
+           last_verified_at = ?
+       WHERE source_key = 'state:ny'`,
+    )
+    .bind(new Date().toISOString())
+    .run();
+
+  const preflight = await jsonResponse(
+    await act(
+      db,
+      createdProposal.record.id,
+      createdProposal.access.landlord,
+      { type: "preflight_finalize" },
+      { COMPLIANCE_SOURCE_MONITOR_ENABLED: "true" },
+    ),
+  );
+  assert.equal(
+    preflight.events.at(-1).action,
+    "finalization_preflight_passed",
+  );
+  assert.equal(
+    preflight.events.at(-1).metadata.sourceGateEnforced,
+    true,
+  );
+
+  await db
+    .prepare(
+      `UPDATE compliance_source_checks
+       SET status = 'changed',
+           current_signature = 'changed-again:state:ny',
+           last_changed_at = ?
+       WHERE source_key = 'state:ny'`,
+    )
+    .bind(new Date().toISOString())
+    .run();
+  const finalizedAfterPreflight = await jsonResponse(
+    await act(
+      db,
+      createdProposal.record.id,
+      createdProposal.access.landlord,
+      {
+        type: "finalize",
+        agreementId: "74",
+        transactionHash: `0x${"7".repeat(64)}`,
+      },
+      { COMPLIANCE_SOURCE_MONITOR_ENABLED: "true" },
+    ),
+  );
+  assert.equal(finalizedAfterPreflight.status, "finalized");
+
+  await db
+    .prepare(
+      `UPDATE compliance_source_checks
+       SET status = 'unreachable',
+           current_signature = baseline_signature,
+           last_verified_at = '2020-01-01T00:00:00.000Z'
+       WHERE source_key = 'state:ny'`,
+    )
+    .run();
+  const stale = await worker.fetch(
+    request("/api/negotiations", "POST", proposalBody),
+    monitoredEnv,
+  );
+  assert.equal(stale.status, 503);
+  assert.equal(
+    (await stale.json()).sourceStatus.find(
+      (sourceItem) => sourceItem.key === "state:ny",
+    ).status,
+    "stale",
+  );
 });
 
 test("actual compliance events require confirmation by the other agreement side", async () => {
@@ -1755,12 +2026,14 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
     const counts = await db
       .prepare(
         `SELECT COUNT(*) AS total,
-                SUM(CASE WHEN status = 'unchanged' THEN 1 ELSE 0 END) AS baselined
+                SUM(CASE WHEN status = 'unchanged' THEN 1 ELSE 0 END) AS baselined,
+                SUM(CASE WHEN last_verified_at IS NOT NULL THEN 1 ELSE 0 END) AS verified
          FROM compliance_source_checks`,
       )
       .first();
     assert.ok(Number(counts.total) >= 57);
     assert.equal(Number(counts.baselined), 4);
+    assert.equal(Number(counts.verified), 4);
 
     const readiness = await jsonResponse(
       await worker.fetch(request("/api/system/readiness"), {
@@ -1770,10 +2043,56 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
     );
     assert.equal(readiness.complianceSources.configured, true);
     assert.equal(readiness.complianceSources.tracked, counts.total);
+    assert.equal(readiness.complianceSources.proposalGateEnforced, true);
+    assert.equal(readiness.complianceSources.ready, false);
+    assert.ok(readiness.complianceSources.blocked > 0);
     assert.equal(
       readiness.complianceSources.lastRunAt,
       "2027-07-02T12:00:00.000Z",
     );
+
+    const earliestRow = await db
+      .prepare(
+        `SELECT source_key FROM compliance_source_checks
+         ORDER BY source_key ASC LIMIT 1`,
+      )
+      .first();
+    const expectedSource = COMPLIANCE_SOURCE_REGISTRY.find(
+      (sourceItem) => sourceItem.key === earliestRow.source_key,
+    );
+    await db
+      .prepare(
+        `UPDATE compliance_source_checks
+         SET profile_version = 'retired-version', status = 'changed'
+         WHERE source_key = ?`,
+      )
+      .bind(earliestRow.source_key)
+      .run();
+    const nextWaits = [];
+    await worker.scheduled(
+      { scheduledTime: Date.parse("2027-07-03T12:00:00.000Z") },
+      {
+        DB: db,
+        COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+        VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+      },
+      {
+        waitUntil(promise) {
+          nextWaits.push(promise);
+        },
+      },
+    );
+    await Promise.all(nextWaits);
+    const refreshed = await db
+      .prepare(
+        `SELECT profile_version, status, last_verified_at
+         FROM compliance_source_checks WHERE source_key = ?`,
+      )
+      .bind(earliestRow.source_key)
+      .first();
+    assert.equal(refreshed.profile_version, expectedSource.version);
+    assert.equal(refreshed.status, "unchanged");
+    assert.equal(refreshed.last_verified_at, "2027-07-03T12:00:00.000Z");
   } finally {
     globalThis.fetch = originalFetch;
   }

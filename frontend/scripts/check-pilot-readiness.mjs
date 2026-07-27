@@ -86,6 +86,14 @@ const checks = [
     required: true,
   },
   {
+    label: "Official compliance source release gate",
+    ready: readiness.complianceSources?.ready === true,
+    detail: readiness.complianceSources?.ready
+      ? `${readiness.complianceSources.tracked}/${readiness.complianceSources.total} sources verified`
+      : `${readiness.complianceSources?.blocked ?? "unknown"} source checks block new compliance profiles`,
+    required: true,
+  },
+  {
     label: "Encrypted decentralized evidence",
     ready: readiness.evidence?.decentralizedReady === true,
     detail: readiness.evidence?.decentralizedReady

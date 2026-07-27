@@ -16,6 +16,9 @@ before a controlled pilot:
 3. **Activate the 15-minute Cron Trigger** and wait for its first successful run.
 4. **Generate and back up the evidence master key**, then add it as
    `EVIDENCE_ENCRYPTION_KEY`.
+5. **Wait for every official compliance source to establish a baseline** and
+   resolve any source marked changed, pending, stale, or persistently
+   unreachable before using address-routed profiles in a pilot.
 
 Do email first, encryption second, and the optional fiat sandbox last. Do not send API keys or
 the evidence master key in chat, screenshots, email, or Git. Enter them only in the provider and
@@ -35,7 +38,8 @@ runtime, not the developer machine.
 
 ### What the automated release gate now covers
 
-The repository test gate includes 38 server/workflow scenarios and 173 contract tests. The
+The repository test gate includes 50 server/workflow scenarios and 220 passing
+contract tests, with one opt-in fork test skipped by default. The
 workflow suite exercises a landlord, two tenants, and an optional arbiter through proposal
 revision, unanimous approval, finalization, each tenant's reserve and deposit contribution,
 deduction claim, different tenant responses, dispute, ruling, withdrawal, no-claim refund,
@@ -135,6 +139,13 @@ each logical notice has an idempotency key, so repeated checks do not create dup
 When the compliance monitor is enabled, the same trigger starts at most one rotating
 official-source batch per day. Source monitoring stores signatures and status metadata in D1;
 it does not change an agreement or compliance profile automatically.
+
+The monitor checks four sources per daily batch, so the first nationwide
+baseline takes multiple scheduled runs. While monitoring is enabled, a
+state-profile proposal is blocked until its exact statewide and applicable
+overlay sources have fresh successful checks. A source-page signature change
+requires a reviewed, newly versioned rule profile; do not bypass the gate by
+turning monitoring off.
 
 If the Sites dashboard does not expose Cron Triggers, add the trigger from the underlying
 Cloudflare Worker dashboard after deployment. Normal homepage traffic also performs a safe
