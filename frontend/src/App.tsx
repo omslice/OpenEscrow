@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useIdentityToken } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
 import { Layout, type AppNotification } from "./components/Layout";
@@ -29,20 +29,14 @@ import {
   discoverNegotiationsForAccount,
   listNegotiationAccesses,
   loadNegotiation,
-  loadServiceReadiness,
   readNegotiationAccess,
   updateRecordArchivePreference,
   type NegotiationAccess,
   type NegotiationRecord,
-  type ServiceReadiness,
 } from "./lib/negotiations";
 import { agreementReference, proposalReference } from "./lib/displayIds";
 import { ARBITER_UI_ENABLED } from "./lib/featureFlags";
 import { ACCOUNT_AUTH_ENABLED } from "./lib/accountConfig";
-import {
-  summarizeServiceReadiness,
-  getServiceReadinessActions,
-} from "./lib/serviceReadiness";
 import { useOnchainActivityNotifications } from "./lib/useOnchainActivityNotifications";
 import "./App.css";
 
@@ -154,13 +148,6 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     key: string;
     message: string;
   } | null>(null);
-  const [serviceReadiness, setServiceReadiness] = useState<ServiceReadiness | null>(null);
-  const [isRefreshingServiceReadiness, setIsRefreshingServiceReadiness] = useState(false);
-  const [serviceReadinessCheckedAt, setServiceReadinessCheckedAt] = useState("");
-  const [serviceReadinessCopyStatus, setServiceReadinessCopyStatus] = useState<string | null>(
-    null,
-  );
-  const serviceReadinessRefreshInFlight = useRef(false);
   const [agreementPanels, setAgreementPanels] = useState<
     Record<string, AgreementPanel>
   >({});
@@ -176,8 +163,6 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   const displayedIds = ACCOUNT_AUTH_ENABLED
     ? mergeAgreementIds(participantAgreementIds, ids)
     : ids;
-  const serviceReadinessSummary = summarizeServiceReadiness(serviceReadiness);
-  const serviceReadinessActions = getServiceReadinessActions(serviceReadiness);
   const notificationAgreementIds = displayedIds;
   const onchainNotifications =
     useOnchainActivityNotifications(notificationAgreementIds);
@@ -381,61 +366,9 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     }
   }
 
-  const refreshServiceReadiness = useCallback(async () => {
-    if (serviceReadinessRefreshInFlight.current) return;
-    serviceReadinessRefreshInFlight.current = true;
-    setIsRefreshingServiceReadiness(true);
-    try {
-      const readiness = await loadServiceReadiness();
-      setServiceReadiness(readiness);
-      setServiceReadinessCheckedAt(new Date().toISOString());
-    } catch {
-      setServiceReadiness(null);
-      setServiceReadinessCheckedAt(new Date().toISOString());
-    } finally {
-      serviceReadinessRefreshInFlight.current = false;
-      setIsRefreshingServiceReadiness(false);
-    }
-  }, []);
-
-  function serviceReadinessLastCheckedLabel() {
-    if (!serviceReadinessCheckedAt) return "Not checked in this session.";
-    return `Last checked ${new Date(serviceReadinessCheckedAt).toLocaleString(undefined, {
-      dateStyle: "short",
-      timeStyle: "short",
-    })}`;
-  }
-
   function refreshOverviewData() {
     void findProposalsAndAgreements();
-    void refreshServiceReadiness();
   }
-
-  async function copyServiceReadinessSnapshot() {
-    if (!serviceReadiness) {
-      setServiceReadinessCopyStatus("Readiness snapshot is not loaded yet.");
-      return;
-    }
-    try {
-      const payload = {
-        checkedAt: serviceReadinessCheckedAt || new Date().toISOString(),
-        source: "frontend-readiness-overlay",
-        ...serviceReadiness,
-      };
-      await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
-      setServiceReadinessCopyStatus("Readiness snapshot copied to clipboard.");
-    } catch {
-      setServiceReadinessCopyStatus(
-        "Copy failed. Please retry in a secure browser context.",
-      );
-    } finally {
-      window.setTimeout(() => setServiceReadinessCopyStatus(null), 3000);
-    }
-  }
-
-  useEffect(() => {
-    void refreshServiceReadiness();
-  }, [refreshServiceReadiness]);
 
   function openSavedProposal(item: SavedProposal) {
     if (item.access.role === "landlord") {
@@ -1048,14 +981,6 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   }
 
   function renderOverview() {
-    const readinessLoading = serviceReadiness === null;
-    const readinessMessage = serviceReadinessSummary.ready
-      ? "Pilot-readiness checks are currently passing. Keep this state green for a production review."
-      : readinessLoading
-        ? "Loading pilot-readiness status..."
-        : `${serviceReadinessSummary.issueCount} pilot blocker${
-            serviceReadinessSummary.issueCount === 1 ? "" : "s"
-          } remain for pilot mode.`;
     return (
       <div className="workspace-overview">
         <section className="workspace-welcome">
@@ -1078,70 +1003,11 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             type="button"
             aria-label="Refresh overview counts and agreements"
             title="Refresh overview"
-            disabled={isScanning || isFinding || isRefreshingServiceReadiness}
+            disabled={isScanning || isFinding}
             onClick={() => void refreshOverviewData()}
           >
             <span aria-hidden="true">↻</span>
           </button>
-        </section>
-        <section
-          className={`card readiness-summary ${
-            serviceReadinessSummary.ready ? "ready" : "blocked"
-          }`}
-          aria-live="polite"
-        >
-          <div className="readiness-tools">
-            <div>
-              <span className="eyebrow">Operational status</span>
-              <h3>Pilot readiness</h3>
-            </div>
-            <button
-              className="btn btn-ghost small"
-              type="button"
-              onClick={() => void copyServiceReadinessSnapshot()}
-              disabled={!serviceReadiness}
-              title="Copy readiness snapshot JSON for audit review"
-            >
-              Copy snapshot
-            </button>
-          </div>
-          <p className="readiness-detail">{serviceReadinessLastCheckedLabel()}</p>
-          {serviceReadinessCopyStatus ? (
-            <p className="readiness-detail" role="status">
-              {serviceReadinessCopyStatus}
-            </p>
-          ) : null}
-          <p>{readinessMessage}</p>
-          {serviceReadinessSummary.blockers.length > 0 && (
-            <ul>
-              {serviceReadinessSummary.blockers.map((blocker) => (
-                <li key={blocker}>{blocker}</li>
-              ))}
-            </ul>
-          )}
-          {serviceReadinessActions.length > 0 && (
-            <div className="readiness-actions">
-              <p>
-                <strong>Pilot hardening actions</strong>
-              </p>
-              <ul>
-                {serviceReadinessActions.map((action) => (
-                  <li key={`${action.label}:${action.detail}`}>
-                    <strong>{action.label}:</strong> {action.detail}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-          {serviceReadiness?.complianceSources ? (
-            <p className="readiness-detail">
-              Source checks: {serviceReadiness.complianceSources.changed} changed,{" "}
-              {serviceReadiness.complianceSources.unreachable} unreachable,{" "}
-              {serviceReadiness.complianceSources.stale} stale,{" "}
-              {serviceReadiness.complianceSources.blocked} blocked,{" "}
-              {serviceReadiness.complianceSources.pending} pending.
-            </p>
-          ) : null}
         </section>
         <div className="workspace-stat-grid">
           <button
@@ -1298,10 +1164,6 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
         <AccountCenter
           workspaceRole={roleLabel[workspaceRole]}
           onChangeWorkspaceRole={() => setIsChangingRole(true)}
-          onReadinessChange={(nextReadiness) => {
-            setServiceReadiness(nextReadiness);
-            setServiceReadinessCheckedAt(new Date().toISOString());
-          }}
         />
       )}
       {!inviteRole && (!workspaceRole || isChangingRole) && (
@@ -1368,12 +1230,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
         </section>
       )}
       {(inviteRole || !workspaceRole || isChangingRole) && (
-        <AccountCenter
-          onReadinessChange={(nextReadiness) => {
-            setServiceReadiness(nextReadiness);
-            setServiceReadinessCheckedAt(new Date().toISOString());
-          }}
-        />
+        <AccountCenter />
       )}
 
       {workspaceRole && (

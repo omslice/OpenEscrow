@@ -2566,56 +2566,6 @@ a.btn.disabled {
   line-height: 1.6;
 }
 
-.readiness-summary {
-  display: grid;
-  gap: 10px;
-  margin-bottom: 18px;
-  border: 1px solid color-mix(in srgb, var(--warning) 30%, var(--border));
-  background: color-mix(in srgb, var(--warning) 12%, var(--surface));
-}
-
-.readiness-tools {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-}
-
-.readiness-summary.ready {
-  border-color: color-mix(in srgb, var(--success) 30%, var(--border));
-  background: color-mix(in srgb, var(--success) 12%, var(--surface));
-}
-
-.readiness-summary h3 {
-  margin: 0;
-  color: var(--text-h);
-  font-size: 20px;
-}
-
-.readiness-summary p {
-  margin: 0;
-  color: var(--text);
-  line-height: 1.5;
-}
-
-.readiness-summary ul {
-  margin: 0;
-  padding-inline-start: 20px;
-  color: var(--text);
-  display: grid;
-  gap: 6px;
-}
-
-.readiness-summary li {
-  line-height: 1.45;
-  font-size: 13px;
-}
-
-.readiness-detail {
-  color: var(--muted);
-  font-size: 12px;
-}
-
 .workspace-stat-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
