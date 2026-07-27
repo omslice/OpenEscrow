@@ -1,5 +1,7 @@
+import { buildClaimPolicy } from "./claim-policies.js";
+
 const RESEARCH_DATE = "2026-07-26";
-const PROFILE_VERSION = "rules-2026-07-26.v3";
+const PROFILE_VERSION = "rules-2026-07-26.v4";
 
 // These are implemented, official-source-reviewed routing profiles, not legal
 // conclusions. A profile's
@@ -309,8 +311,16 @@ export const US_JURISDICTION_PROFILES = Object.freeze(
       statuteUrl,
       depositCapSummary,
       deadlineSummary,
-    ]) =>
-      Object.freeze({
+    ]) => {
+      const metadataOverride = PROFILE_METADATA_OVERRIDES[postalCode] || {};
+      const requirements = Object.freeze([
+        ...COMMON_REQUIREMENTS,
+        ...(STATE_REQUIREMENTS[postalCode] || []),
+      ]);
+      const resolvedCitation =
+        metadataOverride.statuteCitation || statuteCitation;
+      const resolvedUrl = metadataOverride.statuteUrl || statuteUrl;
+      return Object.freeze({
         code: `us-${postalCode.toLowerCase()}`,
         postalCode,
         name,
@@ -327,18 +337,20 @@ export const US_JURISDICTION_PROFILES = Object.freeze(
         deadlineSummary,
         depositCap: depositCapFor(postalCode, depositCapSummary),
         deadlines: deadlinesFor(postalCode, statutoryDeadlineDays ?? defaultClaimDays),
-        requirements: Object.freeze([
-          ...COMMON_REQUIREMENTS,
-          ...(STATE_REQUIREMENTS[postalCode] || []),
-        ]),
+        requirements,
         exceptions: GENERIC_EXCEPTIONS,
         researchStatus: "implemented-research",
         reviewMethod: "OpenAI review of cited official source; not attorney-reviewed",
         researchedOn: RESEARCH_DATE,
         localOverlayRequired: true,
         legalReviewRequired: true,
-        ...(PROFILE_METADATA_OVERRIDES[postalCode] || {}),
-      }),
+        ...metadataOverride,
+        claimPolicy: buildClaimPolicy(postalCode, requirements, {
+          citation: resolvedCitation,
+          url: resolvedUrl,
+        }),
+      });
+    },
   ),
 );
 

@@ -6,9 +6,11 @@ import {
   addressResolutionMatchesProfile,
   complianceSnapshotMatchesProfile,
   evaluateComplianceSnapshot,
+  isVersionedComplianceSnapshot,
   normalizeAddressResolution,
 } from "../shared/us-compliance-engine.js";
 import { COMPLIANCE_SOURCE_REGISTRY } from "../shared/compliance-sources.js";
+import { requiredClaimAttestations } from "../shared/claim-policies.js";
 import {
   dynamicComplianceFactForProfile,
 } from "../shared/us-compliance-facts.js";
@@ -224,6 +226,11 @@ const DEDUCTION_CATEGORY_LABEL = {
   "13": "Lease-authorized restoration or replacement of landlord property",
   "14": "Other documented test deduction",
 };
+const DEDUCTION_CATEGORY_ID_BY_LABEL = Object.freeze(
+  Object.fromEntries(
+    Object.entries(DEDUCTION_CATEGORY_LABEL).map(([id, label]) => [label, id]),
+  ),
+);
 const PRIVY_APP_ID = "cmrzdp7ss00670cju098baqsr";
 const ACCOUNT_ACCESS_LIFETIME_MS = 30 * 24 * 60 * 60 * 1000;
 const DEFAULT_GEOCODER_BASE_URL = "https://photon.komoot.io";
@@ -817,11 +824,69 @@ function validGenericTestClaim(items, confirmations, evidenceUri, evidenceHash) 
   );
 }
 
+function validVersionedStateClaim(
+  items,
+  confirmations,
+  evidenceUri,
+  evidenceHash,
+  terms,
+) {
+  const policy = terms?.complianceSnapshot?.claimPolicy;
+  if (
+    policy?.schema !== "openescrow.claim-policy.v1" ||
+    !Array.isArray(policy.allowedCategoryIds)
+  ) {
+    return false;
+  }
+  const categoryIds = items.map(
+    (item) => DEDUCTION_CATEGORY_ID_BY_LABEL[item.category] || "",
+  );
+  const allowedCategories = new Set(policy.allowedCategoryIds);
+  const requiredAttestations = requiredClaimAttestations(
+    policy,
+    categoryIds,
+  );
+  return (
+    categoryIds.every(
+      (categoryId) => categoryId && allowedCategories.has(categoryId),
+    ) &&
+    requiredAttestations.length > 0 &&
+    requiredAttestations.every(
+      (attestation) =>
+        confirmations?.attestations?.[attestation.id] === true,
+    ) &&
+    Boolean(evidenceUri) &&
+    /^0x[a-fA-F0-9]{64}$/.test(evidenceHash)
+  );
+}
+
 function validClaimForTerms(items, confirmations, evidenceUri, evidenceHash, terms) {
-  return terms?.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
+  if (
+    terms?.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
     terms?.policyVersion === CALIFORNIA_POLICY.version
-    ? validCaliforniaClaim(items, confirmations, evidenceUri, evidenceHash)
-    : validGenericTestClaim(items, confirmations, evidenceUri, evidenceHash);
+  ) {
+    return validCaliforniaClaim(
+      items,
+      confirmations,
+      evidenceUri,
+      evidenceHash,
+    );
+  }
+  if (terms?.complianceSnapshot?.claimPolicy) {
+    return validVersionedStateClaim(
+      items,
+      confirmations,
+      evidenceUri,
+      evidenceHash,
+      terms,
+    );
+  }
+  return validGenericTestClaim(
+    items,
+    confirmations,
+    evidenceUri,
+    evidenceHash,
+  );
 }
 
 function normalizeEmail(value) {
@@ -944,7 +1009,7 @@ function requiredComplianceSources(terms) {
 
 function complianceEventKeysForSnapshot(snapshot) {
   if (
-    snapshot?.schema !== "openescrow.us-compliance-profile.v3" ||
+    !isVersionedComplianceSnapshot(snapshot) ||
     !Array.isArray(snapshot.deadlines) ||
     !Array.isArray(snapshot.overlays)
   ) {
@@ -3028,7 +3093,7 @@ function complianceDeadlineCandidates(row, events, now, tenantRows = []) {
   } catch {
     return [];
   }
-  if (terms.complianceSnapshot?.schema !== "openescrow.us-compliance-profile.v3") {
+  if (!isVersionedComplianceSnapshot(terms.complianceSnapshot)) {
     return [];
   }
   const confirmedEvents = Object.fromEntries(
@@ -4464,7 +4529,8 @@ async function applyAction(request, env, id) {
     const note = cleanText(body.note, 1000);
     const evidenceUri = cleanText(body.evidenceUri, 500);
     const evidenceHash = cleanText(body.evidenceHash, 100);
-    const californiaConfirmations = body.californiaConfirmations;
+    const claimConfirmations =
+      body.claimConfirmations || body.californiaConfirmations;
     const transactionHash = cleanText(body.transactionHash, 100);
     const agreementTerms = JSON.parse(row.terms_json);
     const amountMicros = tokenMicros(amount);
@@ -4481,7 +4547,7 @@ async function applyAction(request, env, id) {
       items.some((item) => tokenMicros(item.amount) === 0n) ||
       !validClaimForTerms(
         items,
-        californiaConfirmations,
+        claimConfirmations,
         evidenceUri,
         evidenceHash,
         agreementTerms,
@@ -4507,7 +4573,7 @@ async function applyAction(request, env, id) {
           note,
           evidenceUri,
           evidenceHash,
-          californiaConfirmations,
+          claimConfirmations,
           transactionHash,
           policyVersion: agreementTerms.policyVersion,
         },
@@ -4564,7 +4630,8 @@ async function applyAction(request, env, id) {
     const note = cleanText(body.note, 1000);
     const evidenceUri = cleanText(body.evidenceUri, 500);
     const evidenceHash = cleanText(body.evidenceHash, 100);
-    const californiaConfirmations = body.californiaConfirmations;
+    const claimConfirmations =
+      body.claimConfirmations || body.californiaConfirmations;
     const transactionHash = cleanText(body.transactionHash, 100);
     const agreementTerms = JSON.parse(row.terms_json);
     const amendedMicros = tokenMicros(amount);
@@ -4578,7 +4645,7 @@ async function applyAction(request, env, id) {
       !deductionItemsMatchAmount(items, amount) ||
       !validClaimForTerms(
         items,
-        californiaConfirmations,
+        claimConfirmations,
         evidenceUri,
         evidenceHash,
         agreementTerms,
@@ -4603,7 +4670,7 @@ async function applyAction(request, env, id) {
           note,
           evidenceUri,
           evidenceHash,
-          californiaConfirmations,
+          claimConfirmations,
           transactionHash,
           policyVersion: agreementTerms.policyVersion,
         },
@@ -5730,8 +5797,9 @@ async function report(db, id, token, download = false) {
       candidate.policyVersion === CALIFORNIA_POLICY.version;
     const researchProfile = US_JURISDICTION_PROFILE_BY_CODE[candidate.jurisdiction];
     const complianceSnapshot =
-      (candidate.complianceSnapshot?.schema === "openescrow.us-compliance-profile.v2" ||
-        candidate.complianceSnapshot?.schema === "openescrow.us-compliance-profile.v3")
+      candidate.complianceSnapshot?.schema ===
+        "openescrow.us-compliance-profile.v2" ||
+      isVersionedComplianceSnapshot(candidate.complianceSnapshot)
         ? candidate.complianceSnapshot
         : null;
     const jurisdiction =
@@ -5748,6 +5816,19 @@ async function report(db, id, token, download = false) {
     ];
     const recordedRequirements =
       complianceSnapshot?.requirements || researchProfile?.requirements || [];
+    const claimPolicy = complianceSnapshot?.claimPolicy;
+    const claimPacket =
+      claimPolicy?.schema === "openescrow.claim-policy.v1"
+        ? `<p><strong>${escapeHtml(claimPolicy.version)}</strong></p><ul>${[
+            ...(claimPolicy.commonAttestations || []),
+            ...(claimPolicy.stateAttestations || []),
+          ]
+            .map(
+              (attestation) =>
+                `<li>${escapeHtml(attestation.label)} <small>(${escapeHtml(attestation.basis)})</small></li>`,
+            )
+            .join("")}</ul>`
+        : "";
     const deadlinePaths = deadlineRules.length
       ? deadlineRules
           .map(
@@ -5782,6 +5863,7 @@ ${record.arbiterEmail ? `<tr><th>OpenEscrow arbiter period</th><td>${escapeHtml(
 <tr><th>Jurisdiction</th><td>${escapeHtml(jurisdiction)}</td></tr>
 <tr><th>Policy profile</th><td>${escapeHtml(candidate.policyVersion || "Legacy proposal")}</td></tr>
 ${resolvedLocation ? `<tr><th>Validated location</th><td>${escapeHtml([resolvedLocation.city, resolvedLocation.county, resolvedLocation.stateCode, resolvedLocation.postalCode].filter(Boolean).join(", "))}<br><small>Photon/OpenStreetMap feature ${escapeHtml(resolvedLocation.providerFeatureId)}</small></td></tr>` : ""}
+${claimPacket ? `<tr><th>Versioned claim packet</th><td>${claimPacket}</td></tr>` : ""}
 ${deadlineRules.length ? `<tr><th>Compliance deadline paths</th><td>${deadlinePaths}</td></tr><tr><th>Applied statewide requirements</th><td>${requirements}</td></tr>${overlayRequirements ? `<tr><th>Federal and program overlays</th><td>${overlayRequirements}</td></tr>` : ""}<tr><th>Unresolved coverage</th><td>${(complianceSnapshot?.unresolvedOverlays || ["Confirm local, federal, housing-program, and fact-specific overlays."]).map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")}<small>Software output is not legal advice.</small></td></tr>` : ""}
 ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordException ? "Qualifying small-landlord exception asserted" : "Standard one-month cap"}${candidate.tenantIsServiceMember ? " · tenant is a service member" : ""}</td></tr>` : ""}`;
   };
@@ -5790,6 +5872,12 @@ ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordExc
       (event) => `<tr><td>${escapeHtml(event.createdAt)}</td><td>${escapeHtml(event.actorRole)}</td><td>${escapeHtml(event.summary)}</td></tr>`,
     )
     .join("");
+  const claimAttestationLabels = new Map(
+    [
+      ...(terms.complianceSnapshot?.claimPolicy?.commonAttestations || []),
+      ...(terms.complianceSnapshot?.claimPolicy?.stateAttestations || []),
+    ].map((attestation) => [attestation.id, attestation.label]),
+  );
   const claimBreakdowns = record.events
     .filter(
       (event) =>
@@ -5810,9 +5898,18 @@ ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordExc
           ? "Stored privately in OpenEscrow"
           : "External supporting documentation recorded"
         : "No supporting file recorded";
+      const recordedAttestations = Object.entries(
+        event.metadata.claimConfirmations?.attestations || {},
+      )
+        .filter(([, confirmed]) => confirmed === true)
+        .map(
+          ([attestationId]) =>
+            claimAttestationLabels.get(attestationId) || attestationId,
+        );
       return `<h3>${event.action === "deduction_claim_amended" ? "Amended claim" : "Original claim"} · ${escapeHtml(event.createdAt)}</h3>
 <table><thead><tr><th>Category</th><th>Description</th><th>Amount</th></tr></thead><tbody>${rows}</tbody>
 <tfoot><tr><th colspan="2">Total</th><th>${escapeHtml(event.metadata.amount)} shares</th></tr></tfoot></table>
+${recordedAttestations.length ? `<p><strong>Recorded claim attestations</strong></p><ul>${recordedAttestations.map((attestation) => `<li>${escapeHtml(attestation)}</li>`).join("")}</ul>` : ""}
 <p class="meta">Supporting file: ${escapeHtml(evidenceStatus)} · Transaction: ${escapeHtml(event.metadata.transactionHash || "Not recorded")}</p>`;
     })
     .join("");

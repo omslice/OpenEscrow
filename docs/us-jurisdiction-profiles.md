@@ -34,7 +34,8 @@ server-only HMAC attestation over those exact fields. The proposal builder then:
    status rather than inferring those facts from the address;
 4. applies and locks the profile's onchain safeguard window;
 5. records every statewide requirement, federal/program overlay, reviewed local
-   overlay, and conditional/multi-stage deadline in a versioned v3 snapshot;
+   overlay, conditional/multi-stage deadline, and claim-packet policy in a
+   versioned v4 snapshot;
 6. shows the resolved locality, deadline paths, deposit baseline, official
    sources, unresolved questions, and requirement checklists; and
 7. rejects new or revised state-profile proposals when the address state,
@@ -76,6 +77,26 @@ legal determination. The other party can reject an incorrect pending proposal,
 after which either side can submit a corrected value. Confirmed facts are
 immutable in this version; an incorrectly confirmed fact requires a later
 corrective workflow rather than silent editing.
+
+## Versioned claim packets
+
+Every v4 state snapshot includes a claim-packet policy selected from the
+validated property state. All 51 policies require an itemized claim, a private
+supporting file, and an ordinary-wear/unsupported-charge safeguard when the
+claim concerns condition, cleaning, or restoration. The server accepts only
+the four modeled residential-deposit categories and verifies every applicable
+attestation before saving the onchain claim receipt.
+
+The state policy also carries the relevant delivery and process instructions
+from that profile and adds structured packet checks where the reviewed source
+identifies them. The initial special checks cover California photographs and
+cost records, Georgia and Kentucky damage lists, Idaho signed itemization,
+Illinois damage records, Massachusetts sworn itemization and written cost
+evidence, and Washington condition/cost documentation. These state checks are
+stored with the agreement so later registry updates do not rewrite an existing
+claim packet. OpenEscrow safeguards are labeled separately from state-source
+requirements, and an attestation records what the landlord asserted; it is not
+proof that a deduction, notice, or delivery is legally sufficient.
 
 ## Federal and program overlays
 

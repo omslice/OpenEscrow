@@ -4,6 +4,10 @@ import {
 } from "./us-compliance-overlays.js";
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})?)?$/;
+const VERSIONED_COMPLIANCE_SNAPSHOT_SCHEMAS = new Set([
+  "openescrow.us-compliance-profile.v3",
+  "openescrow.us-compliance-profile.v4",
+]);
 
 function cleanString(value, maxLength = 300) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
@@ -47,6 +51,14 @@ export function normalizeAddressResolution(value) {
     longitude,
     attestation: cleanString(value.attestation, 200) || null,
   });
+}
+
+export function isVersionedComplianceSnapshot(value) {
+  return Boolean(
+    value &&
+      typeof value === "object" &&
+      VERSIONED_COMPLIANCE_SNAPSHOT_SCHEMAS.has(value.schema),
+  );
 }
 
 export function addressResolutionMatchesProfile(resolution, profile) {
@@ -101,7 +113,7 @@ export function buildComplianceSnapshot(profile, resolution, context = {}) {
     ),
   ];
   return Object.freeze({
-    schema: "openescrow.us-compliance-profile.v3",
+    schema: "openescrow.us-compliance-profile.v4",
     jurisdiction: profile.code,
     profileVersion: profile.version,
     researchedOn: profile.researchedOn,
@@ -118,6 +130,7 @@ export function buildComplianceSnapshot(profile, resolution, context = {}) {
     deadlines: profile.deadlines,
     requirements: profile.requirements,
     exceptions: profile.exceptions,
+    claimPolicy: profile.claimPolicy,
     overlays: Object.freeze(overlays),
     missingFacts: Object.freeze(missingFacts),
     unresolvedOverlays: Object.freeze([
@@ -366,7 +379,7 @@ export function evaluateCompliance(profile, input = {}) {
 export function evaluateComplianceSnapshot(snapshot, input = {}) {
   if (
     !snapshot ||
-    snapshot.schema !== "openescrow.us-compliance-profile.v3" ||
+    !isVersionedComplianceSnapshot(snapshot) ||
     !Array.isArray(snapshot.deadlines) ||
     !Array.isArray(snapshot.overlays)
   ) {

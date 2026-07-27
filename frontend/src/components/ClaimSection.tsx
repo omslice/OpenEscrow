@@ -18,6 +18,7 @@ import {
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
 import { useEvidenceInputs } from "./EvidenceInputs";
+import { requiredClaimAttestations } from "../../shared/claim-policies.js";
 
 const CATEGORY_LABEL: Record<string, string> = {
   "10": "Unpaid rent",
@@ -74,6 +75,9 @@ export function ClaimSection({
   const [moveInPhotosConfirmed, setMoveInPhotosConfirmed] = useState(false);
   const [preRepairPhotosConfirmed, setPreRepairPhotosConfirmed] = useState(false);
   const [postRepairPhotosConfirmed, setPostRepairPhotosConfirmed] = useState(false);
+  const [claimAttestations, setClaimAttestations] = useState<
+    Record<string, boolean>
+  >({});
   const restoredClaim = useRef(false);
 
   useEffect(() => {
@@ -117,18 +121,38 @@ export function ClaimSection({
   const isCaliforniaPolicy =
     record?.terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
     record.terms.policyVersion === CALIFORNIA_POLICY.version;
+  const versionedClaimPolicy = record?.terms.complianceSnapshot?.claimPolicy;
+  const isClaimPolicyLoading = Boolean(negotiationAccess && !record);
   const amount = amountRaw === null ? "" : formatUSDC(amountRaw);
   const evidenceType =
     items.length === 1 ? Number(items[0].category) : Number("13");
   const hasConditionBasedDeduction = items.some((item) =>
     ["11", "12", "13"].includes(item.category),
   );
-  const californiaRequirementsConfirmed =
-    itemizationConfirmed &&
-    documentsConfirmed &&
-    (!isCaliforniaPolicy ||
-      !hasConditionBasedDeduction ||
-      (moveInPhotosConfirmed && preRepairPhotosConfirmed && postRepairPhotosConfirmed));
+  const requiredVersionedAttestations = versionedClaimPolicy
+    ? requiredClaimAttestations(
+        versionedClaimPolicy,
+        items.map((item) => item.category),
+      )
+    : [];
+  const claimRequirementsConfirmed = versionedClaimPolicy
+    ? requiredVersionedAttestations.length > 0 &&
+      requiredVersionedAttestations.every(
+        (attestation) => claimAttestations[attestation.id] === true,
+      )
+    : itemizationConfirmed &&
+      documentsConfirmed &&
+      (!isCaliforniaPolicy ||
+        !hasConditionBasedDeduction ||
+        (moveInPhotosConfirmed &&
+          preRepairPhotosConfirmed &&
+          postRepairPhotosConfirmed));
+  const allowedCategoryIds = new Set(
+    versionedClaimPolicy?.allowedCategoryIds ||
+      Object.keys(CATEGORY_LABEL).filter(
+        (categoryId) => !isCaliforniaPolicy || categoryId !== "14",
+      ),
+  );
 
   function updateItem(index: number, patch: Partial<DeductionLineItem>) {
     setItems((current) =>
@@ -166,17 +190,26 @@ export function ClaimSection({
 
   function recordClaim(transactionHash: `0x${string}`, amended = false) {
     if (!negotiationAccess || negotiationAccess.role !== "landlord" || amountRaw === null) return;
-    const californiaConfirmations = {
-      itemizedStatement: true as const,
-      supportingDocuments: true as const,
-      ...(isCaliforniaPolicy && hasConditionBasedDeduction
-        ? {
-            moveInPhotos: true as const,
-            preRepairPhotos: true as const,
-            postRepairPhotos: true as const,
-          }
-        : {}),
-    };
+    const claimConfirmations = versionedClaimPolicy
+      ? {
+          attestations: Object.fromEntries(
+            requiredVersionedAttestations.map((attestation) => [
+              attestation.id,
+              true as const,
+            ]),
+          ),
+        }
+      : {
+          itemizedStatement: true as const,
+          supportingDocuments: true as const,
+          ...(isCaliforniaPolicy && hasConditionBasedDeduction
+            ? {
+                moveInPhotos: true as const,
+                preRepairPhotos: true as const,
+                postRepairPhotos: true as const,
+              }
+            : {}),
+        };
     const action: NegotiationAction = amended
       ? {
           type: "claim_amended" as const,
@@ -185,7 +218,7 @@ export function ClaimSection({
           note: note.trim(),
           evidenceUri: uri,
           evidenceHash: contentHash,
-          californiaConfirmations,
+          claimConfirmations,
           transactionHash,
         }
       : {
@@ -199,7 +232,7 @@ export function ClaimSection({
           note: note.trim(),
           evidenceUri: uri,
           evidenceHash: contentHash,
-          californiaConfirmations,
+          claimConfirmations,
           transactionHash,
         };
     setPendingRecord(action);
@@ -285,7 +318,7 @@ export function ClaimSection({
               onChange={(event) => updateItem(index, { category: event.target.value })}
             >
               {Object.entries(CATEGORY_LABEL)
-                .filter(([value]) => !isCaliforniaPolicy || value !== "14")
+                .filter(([value]) => allowedCategoryIds.has(value))
                 .map(([value, label]) => (
                 <option key={value} value={value}>{label}</option>
               ))}
@@ -327,63 +360,135 @@ export function ClaimSection({
       </div>
       <fieldset className="california-claim-checklist">
         <legend>
-          {isCaliforniaPolicy
+          {versionedClaimPolicy
+            ? "Address-routed claim packet · required"
+            : isCaliforniaPolicy
             ? "California deduction record · required"
             : "Test deduction record · required"}
         </legend>
-        <label>
-          <input
-            type="checkbox"
-            checked={itemizationConfirmed}
-            onChange={(event) => setItemizationConfirmed(event.target.checked)}
-          />
-          <span>
-            {isCaliforniaPolicy
-              ? "Every deduction is itemized and limited to a reasonable, authorized purpose."
-              : "Every test deduction is separately itemized and described."}
-          </span>
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={documentsConfirmed}
-            onChange={(event) => setDocumentsConfirmed(event.target.checked)}
-          />
-          <span>
-            The supporting file includes applicable invoices, receipts, labor details,
-            photographs, or a permitted good-faith estimate.
-          </span>
-        </label>
-        {isCaliforniaPolicy && hasConditionBasedDeduction && (
+        {isClaimPolicyLoading && (
+          <p className="field-help">
+            Loading the agreement’s address-routed claim requirements…
+          </p>
+        )}
+        {isClaimPolicyLoading ? null : versionedClaimPolicy ? (
+          <>
+            {requiredVersionedAttestations.map((attestation) => (
+              <label key={attestation.id}>
+                <input
+                  type="checkbox"
+                  checked={claimAttestations[attestation.id] === true}
+                  onChange={(event) =>
+                    setClaimAttestations((current) => ({
+                      ...current,
+                      [attestation.id]: event.target.checked,
+                    }))
+                  }
+                />
+                <span>
+                  {attestation.label}
+                  <small>
+                    {attestation.basis === "state-source"
+                      ? " State-profile requirement."
+                      : " OpenEscrow evidence safeguard."}
+                  </small>
+                </span>
+              </label>
+            ))}
+            {versionedClaimPolicy.stateInstructions.length > 0 && (
+              <details>
+                <summary>Review delivery and state process instructions</summary>
+                <ul>
+                  {versionedClaimPolicy.stateInstructions.map((instruction) => (
+                    <li key={instruction}>{instruction}</li>
+                  ))}
+                </ul>
+                <p className="field-help">
+                  Source: {versionedClaimPolicy.source.citation}. The app records
+                  the packet; it does not prove mailing, service, inspection, or
+                  legal sufficiency.
+                </p>
+              </details>
+            )}
+          </>
+        ) : (
           <>
             <label>
               <input
                 type="checkbox"
-                checked={moveInPhotosConfirmed}
-                onChange={(event) => setMoveInPhotosConfirmed(event.target.checked)}
+                checked={itemizationConfirmed}
+                onChange={(event) =>
+                  setItemizationConfirmed(event.target.checked)
+                }
               />
-              <span>The record includes the required move-in condition photographs.</span>
+              <span>
+                {isCaliforniaPolicy
+                  ? "Every deduction is itemized and limited to a reasonable, authorized purpose."
+                  : "Every test deduction is separately itemized and described."}
+              </span>
             </label>
             <label>
               <input
                 type="checkbox"
-                checked={preRepairPhotosConfirmed}
-                onChange={(event) => setPreRepairPhotosConfirmed(event.target.checked)}
+                checked={documentsConfirmed}
+                onChange={(event) =>
+                  setDocumentsConfirmed(event.target.checked)
+                }
               />
-              <span>The record includes photographs taken after possession returned and before work.</span>
+              <span>
+                The supporting file includes applicable invoices, receipts,
+                labor details, photographs, or a permitted good-faith estimate.
+              </span>
             </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={postRepairPhotosConfirmed}
-                onChange={(event) => setPostRepairPhotosConfirmed(event.target.checked)}
-              />
-              <span>The record includes photographs taken after repairs or cleaning were completed.</span>
-            </label>
+            {isCaliforniaPolicy && hasConditionBasedDeduction && (
+              <>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={moveInPhotosConfirmed}
+                    onChange={(event) =>
+                      setMoveInPhotosConfirmed(event.target.checked)
+                    }
+                  />
+                  <span>
+                    The record includes the required move-in condition
+                    photographs.
+                  </span>
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={preRepairPhotosConfirmed}
+                    onChange={(event) =>
+                      setPreRepairPhotosConfirmed(event.target.checked)
+                    }
+                  />
+                  <span>
+                    The record includes photographs taken after possession
+                    returned and before work.
+                  </span>
+                </label>
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={postRepairPhotosConfirmed}
+                    onChange={(event) =>
+                      setPostRepairPhotosConfirmed(event.target.checked)
+                    }
+                  />
+                  <span>
+                    The record includes photographs taken after repairs or
+                    cleaning were completed.
+                  </span>
+                </label>
+              </>
+            )}
           </>
         )}
         <p className="field-help">
-          {isCaliforniaPolicy
+          {versionedClaimPolicy
+            ? "The exact checklist and source are stored with this agreement's compliance snapshot. Combine the itemization and supporting records into one private PDF or supported image for this pilot."
+            : isCaliforniaPolicy
             ? "Combine multiple pages and photographs into one PDF for this pilot. Checking these boxes creates a timestamped attestation; it does not prove the deduction is lawful."
             : "Attach one supporting test file. This non-specific profile records the test lifecycle but does not validate legal compliance."}
         </p>
@@ -446,7 +551,8 @@ export function ClaimSection({
           disabled={
             !valid ||
              !itemsValid ||
-             !californiaRequirementsConfirmed ||
+             isClaimPolicyLoading ||
+             !claimRequirementsConfirmed ||
              amountRaw === null ||
             amountRaw <= 0n ||
             amountRaw > agreement.depositAmount
@@ -544,6 +650,8 @@ export function ClaimSection({
           disabled={
             !valid ||
             !itemsValid ||
+            isClaimPolicyLoading ||
+            !claimRequirementsConfirmed ||
             amountRaw === null ||
             amountRaw > agreement.claimedAmount
           }

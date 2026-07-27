@@ -54,12 +54,13 @@ export interface DeductionLineItem {
   amount: string;
 }
 
-export interface CaliforniaClaimConfirmations {
-  itemizedStatement: true;
-  supportingDocuments: true;
+export interface ClaimPacketConfirmations {
+  itemizedStatement?: true;
+  supportingDocuments?: true;
   moveInPhotos?: true;
   preRepairPhotos?: true;
   postRepairPhotos?: true;
+  attestations?: Record<string, true>;
 }
 
 export interface NotificationPreferences {
@@ -642,7 +643,7 @@ export type NegotiationAction =
         note: string;
         evidenceUri: string;
         evidenceHash: string;
-        californiaConfirmations: CaliforniaClaimConfirmations;
+        claimConfirmations: ClaimPacketConfirmations;
         transactionHash: string;
       }
     | {
@@ -652,7 +653,7 @@ export type NegotiationAction =
         note: string;
         evidenceUri: string;
         evidenceHash: string;
-        californiaConfirmations: CaliforniaClaimConfirmations;
+        claimConfirmations: ClaimPacketConfirmations;
         transactionHash: string;
       }
     | { type: "claim_notification_prepared"; method: "gmail" | "copy" }

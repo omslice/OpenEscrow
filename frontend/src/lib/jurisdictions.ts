@@ -90,8 +90,28 @@ export type ComplianceOverlaySnapshot = {
   privacyNote: string | null;
 };
 
+export type ClaimAttestation = {
+  id: string;
+  label: string;
+  basis: "openescrow-safeguard" | "state-source";
+  appliesToCategoryIds: readonly string[];
+};
+
+export type ClaimPolicy = {
+  schema: "openescrow.claim-policy.v1";
+  version: string;
+  allowedCategoryIds: readonly string[];
+  commonAttestations: readonly ClaimAttestation[];
+  stateAttestations: readonly ClaimAttestation[];
+  stateInstructions: readonly string[];
+  source: { citation: string; url: string };
+  legalReviewRequired: true;
+};
+
 export type ComplianceSnapshot = {
-  schema: "openescrow.us-compliance-profile.v3";
+  schema:
+    | "openescrow.us-compliance-profile.v3"
+    | "openescrow.us-compliance-profile.v4";
   jurisdiction: string;
   profileVersion: string;
   researchedOn: string;
@@ -105,6 +125,7 @@ export type ComplianceSnapshot = {
   deadlines: readonly ComplianceDeadlineRule[];
   requirements: readonly string[];
   exceptions: readonly string[];
+  claimPolicy?: ClaimPolicy;
   overlays: readonly ComplianceOverlaySnapshot[];
   missingFacts: readonly string[];
   unresolvedOverlays: readonly string[];
@@ -130,6 +151,7 @@ export type USJurisdictionProfile = {
   deadlines: readonly ComplianceDeadlineRule[];
   requirements: readonly string[];
   exceptions: readonly string[];
+  claimPolicy: ClaimPolicy;
   researchStatus: "implemented-research";
   reviewMethod: string;
   researchedOn: string;

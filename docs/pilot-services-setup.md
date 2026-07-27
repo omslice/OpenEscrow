@@ -38,7 +38,7 @@ runtime, not the developer machine.
 
 ### What the automated release gate now covers
 
-The repository test gate includes 50 server/workflow scenarios and 220 passing
+The repository test gate includes 51 server/workflow scenarios and 220 passing
 contract tests, with one opt-in fork test skipped by default. The
 workflow suite exercises a landlord, two tenants, and an optional arbiter through proposal
 revision, unanimous approval, finalization, each tenant's reserve and deposit contribution,

@@ -265,7 +265,7 @@ test("the implemented registry covers every state and the District of Columbia",
       (profile) =>
         profile.statuteUrl.startsWith("https://") &&
         profile.statuteCitation.length >= 8 &&
-        profile.version.endsWith("rules-2026-07-26.v3"),
+        profile.version.endsWith("rules-2026-07-26.v4"),
     ),
   );
   assert.ok(US_JURISDICTION_PROFILES.every((profile) => profile.legalReviewRequired));
@@ -307,7 +307,22 @@ test("the implemented registry covers every state and the District of Columbia",
       .deadlines.find((deadlineRule) => deadlineRule.id === "seasonal-return").days,
     60,
   );
-  assert.equal(newYorkResearchTerms.complianceSnapshot.schema, "openescrow.us-compliance-profile.v3");
+  assert.equal(newYorkResearchTerms.complianceSnapshot.schema, "openescrow.us-compliance-profile.v4");
+  assert.ok(
+    US_JURISDICTION_PROFILES.every(
+      (profile) =>
+        profile.claimPolicy.schema === "openescrow.claim-policy.v1" &&
+        profile.claimPolicy.commonAttestations.length >= 3 &&
+        profile.claimPolicy.stateInstructions.length >= 1,
+    ),
+  );
+  assert.ok(
+    US_JURISDICTION_PROFILES.find(
+      (profile) => profile.postalCode === "CA",
+    ).claimPolicy.stateAttestations.some(
+      (attestation) => attestation.id === "ca-pre-repair-photos",
+    ),
+  );
   assert.ok(
     newYorkResearchTerms.complianceSnapshot.overlays.some(
       (overlay) =>
@@ -495,6 +510,18 @@ test("the compliance evaluator schedules all statewide profiles deterministicall
     },
     events: { possessionReturnedAt: "2027-01-02T12:00:00Z" },
   });
+  const { claimPolicy: _claimPolicy, ...legacySnapshotFields } =
+    maineSnapshot;
+  const legacySnapshotEvaluation = evaluateComplianceSnapshot(
+    {
+      ...legacySnapshotFields,
+      schema: "openescrow.us-compliance-profile.v3",
+    },
+    {
+      facts: { writtenRentalAgreement: true },
+      events: { possessionReturnedAt: "2027-01-02T12:00:00Z" },
+    },
+  );
   const changedCurrentProfile = {
     ...maineProfile,
     deadlines: maineProfile.deadlines.map((deadlineRule) =>
@@ -510,6 +537,12 @@ test("the compliance evaluator schedules all statewide profiles deterministicall
   });
   assert.equal(
     snapshotEvaluation.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "written-lease-return",
+    ).dueAt,
+    "2027-02-01T12:00:00.000Z",
+  );
+  assert.equal(
+    legacySnapshotEvaluation.deadlines.find(
       (deadlineRule) => deadlineRule.id === "written-lease-return",
     ).dueAt,
     "2027-02-01T12:00:00.000Z",
@@ -1248,6 +1281,143 @@ test("actual compliance events require confirmation by the other agreement side"
     confirmed.events.at(-1).metadata.occurredAt,
     new Date(occurredAt).toISOString(),
   );
+});
+
+test("versioned state claim packets enforce the stored address-routed checklist", async () => {
+  const db = new TestD1();
+  const californiaProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "CA",
+  );
+  const unsignedAddress = {
+    ...unsignedNewYorkAddressResolution,
+    providerFeatureId: "W:california-claim",
+    label: "1 Market Street, San Francisco, CA 94105",
+    stateCode: "CA",
+    city: "San Francisco",
+    county: "San Francisco County",
+    postalCode: "94105",
+    latitude: 37.7936,
+    longitude: -122.3958,
+  };
+  const californiaAddress = {
+    ...unsignedAddress,
+    attestation: await createAddressAttestation(
+      unsignedAddress,
+      TEST_ADDRESS_ATTESTATION_SECRET,
+    ),
+  };
+  const californiaFacts = {
+    ...newYorkComplianceFacts,
+    housingProgram: "conventional",
+  };
+  const californiaTerms = {
+    ...terms,
+    jurisdiction: californiaProfile.code,
+    policyVersion: californiaProfile.version,
+    propertyAddress: californiaAddress.label,
+    addressResolution: californiaAddress,
+    complianceFacts: californiaFacts,
+    complianceSnapshot: buildComplianceSnapshot(
+      californiaProfile,
+      californiaAddress,
+      { facts: californiaFacts },
+    ),
+    claimDays: californiaProfile.defaultClaimDays,
+  };
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
+        tenantEmail: "tenant@example.com",
+        arbiterName: "",
+        arbiterEmail: null,
+        terms: californiaTerms,
+      }),
+      {
+        DB: db,
+        ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+      },
+    ),
+  );
+  await finalizeWithoutArbiter(db, created);
+  const claimBody = {
+    type: "claim_submitted",
+    amount: "100",
+    category: "Damage beyond ordinary wear",
+    items: [
+      {
+        category: "11",
+        description: "Documented door repair",
+        amount: "100",
+      },
+    ],
+    note: "",
+    evidenceUri: "openescrow://evidence/california-packet",
+    evidenceHash: `0x${"b".repeat(64)}`,
+    transactionHash: `0x${"c".repeat(64)}`,
+  };
+  const incomplete = await act(
+    db,
+    created.record.id,
+    created.access.landlord,
+    {
+      ...claimBody,
+      claimConfirmations: {
+        attestations: {
+          "itemized-statement": true,
+          "supporting-documents": true,
+          "ordinary-wear-excluded": true,
+        },
+      },
+    },
+  );
+  assert.equal(incomplete.status, 400);
+
+  const requiredIds = californiaTerms.complianceSnapshot.claimPolicy
+    .commonAttestations
+    .concat(
+      californiaTerms.complianceSnapshot.claimPolicy.stateAttestations,
+    )
+    .map((attestation) => attestation.id);
+  const claimed = await jsonResponse(
+    await act(
+      db,
+      created.record.id,
+      created.access.landlord,
+      {
+        ...claimBody,
+        claimConfirmations: {
+          attestations: Object.fromEntries(
+            requiredIds.map((attestationId) => [attestationId, true]),
+          ),
+        },
+      },
+    ),
+  );
+  assert.equal(claimed.events.at(-1).action, "deduction_claim_submitted");
+  assert.equal(
+    claimed.events.at(-1).metadata.policyVersion,
+    californiaProfile.version,
+  );
+  assert.equal(
+    claimed.events.at(-1).metadata.claimConfirmations.attestations[
+      "ca-post-repair-photos"
+    ],
+    true,
+  );
+  const report = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}/report?token=${created.access.landlord}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(report.status, 200);
+  const reportHtml = await report.text();
+  assert.match(reportHtml, /Versioned claim packet/);
+  assert.match(reportHtml, /Recorded claim attestations/);
+  assert.match(reportHtml, /pre-repair/i);
 });
 
 test("conditional state facts require confirmation by the other agreement side", async () => {
