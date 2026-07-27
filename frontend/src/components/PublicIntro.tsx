@@ -1,4 +1,14 @@
+import { useRef } from "react";
+
 export function PublicIntro({ onStart }: { onStart: () => void }) {
+  const yieldDialogRef = useRef<HTMLDialogElement>(null);
+
+  function openYieldExplainer() {
+    if (!yieldDialogRef.current?.open) {
+      yieldDialogRef.current?.showModal();
+    }
+  }
+
   return (
     <section className="public-intro" aria-labelledby="public-intro-title">
       <div className="intro-copy">
@@ -36,9 +46,16 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
                     All parties can agree to hold the funds in a yield-bearing stablecoin so
                     tenants earn yield on their security deposit.
                   </p>
-                  <a className="yield-tooltip-link" href="#yield-stablecoins">
+                  <button
+                    className="yield-tooltip-link"
+                    type="button"
+                    onClick={(event) => {
+                      event.currentTarget.closest("details")?.removeAttribute("open");
+                      openYieldExplainer();
+                    }}
+                  >
                     Learn more
-                  </a>
+                  </button>
                 </div>
               </details>
             </div>
@@ -63,7 +80,26 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
         </ol>
       </div>
 
-      <section className="yield-explainer" id="yield-stablecoins" aria-labelledby="yield-explainer-title">
+      <dialog
+        className="yield-dialog"
+        ref={yieldDialogRef}
+        aria-labelledby="yield-explainer-title"
+        onClick={(event) => {
+          if (event.target === event.currentTarget) {
+            event.currentTarget.close();
+          }
+        }}
+      >
+        <div className="yield-dialog-shell">
+          <button
+            className="yield-dialog-close"
+            type="button"
+            aria-label="Close yield explanation"
+            onClick={() => yieldDialogRef.current?.close()}
+          >
+            Close
+          </button>
+          <section className="yield-explainer" id="yield-stablecoins">
         <header className="yield-explainer-heading">
           <div>
             <span className="eyebrow">Optional yield, in plain English</span>
@@ -146,7 +182,9 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
           </a>
           .
         </p>
-      </section>
+          </section>
+        </div>
+      </dialog>
 
       <p className="intro-boundary">
         This is a Base Sepolia demonstration using worthless test tokens. It is not a bank,

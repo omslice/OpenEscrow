@@ -454,15 +454,71 @@
 
 .yield-tooltip-link {
   display: inline-flex;
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--accent);
+  font: inherit;
   font-size: 12px;
   font-weight: 800;
+  cursor: pointer;
   text-decoration: none;
 }
 
 .yield-tooltip-link:hover,
 .yield-tooltip-link:focus-visible {
   text-decoration: underline;
+}
+
+.yield-dialog {
+  width: min(920px, calc(100vw - 32px));
+  max-width: none;
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  background: transparent;
+  color: inherit;
+  overflow: hidden;
+}
+
+.yield-dialog::backdrop {
+  background: rgb(5 7 12 / 78%);
+  backdrop-filter: blur(7px);
+}
+
+.yield-dialog-shell {
+  position: relative;
+  max-height: calc(100dvh - 32px);
+  overflow: auto;
+}
+
+.yield-dialog-close {
+  position: absolute;
+  z-index: 2;
+  top: 16px;
+  right: 16px;
+  min-height: 36px;
+  padding: 7px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  color: var(--text-h);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.yield-dialog-close:hover,
+.yield-dialog-close:focus-visible {
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.yield-dialog .yield-explainer {
+  min-height: 100%;
+  padding-top: 64px;
 }
 
 .yield-explainer {
