@@ -31,20 +31,51 @@
 }
 
 .app-title {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
+  display: inline-block;
 }
 
-.app-title span {
-  font-size: inherit;
-  letter-spacing: inherit;
-  line-height: inherit;
+.app-brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  min-height: 76px;
+  color: var(--text-h);
+  line-height: 0.76;
+}
+
+.app-wordmark-copy {
+  display: grid;
+  margin-left: -18px;
+  font-size: 43px;
+  font-weight: 850;
+  letter-spacing: -2.8px;
+}
+
+.app-wordmark-open,
+.app-wordmark-escrow {
+  display: block;
+}
+
+.app-wordmark-escrow {
+  color: var(--brand);
 }
 
 .app-logo {
-  width: 36px;
-  height: 36px;
+  width: 86px;
+  height: 86px;
+  margin-inline: -20px 0;
+  flex: 0 0 auto;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .header-actions {
@@ -3670,8 +3701,19 @@ a.btn.disabled {
   }
 
   .app-logo {
-    width: 30px;
-    height: 30px;
+    width: 72px;
+    height: 72px;
+    margin-left: -17px;
+  }
+
+  .app-brand-lockup {
+    min-height: 64px;
+  }
+
+  .app-wordmark-copy {
+    margin-left: -15px;
+    font-size: 36px;
+    letter-spacing: -2.4px;
   }
 
   .header-actions {
