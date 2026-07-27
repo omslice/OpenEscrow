@@ -63,6 +63,7 @@ function defaultPanelForAgreement(
 export function AgreementCard({
   id,
   onRemove,
+  onUnavailable,
   negotiationAccess,
   participantRecord,
   activePanel,
@@ -71,6 +72,7 @@ export function AgreementCard({
 }: {
   id: bigint;
   onRemove?: () => void;
+  onUnavailable?: () => void;
   negotiationAccess?: NegotiationAccess | null;
   participantRecord?: NegotiationRecord | null;
   activePanel?: AgreementPanel;
@@ -101,18 +103,24 @@ export function AgreementCard({
     isLoading,
   ]);
 
+  useEffect(() => {
+    if (isLoading || error || exists || agreement) return;
+    onUnavailable?.();
+  }, [agreement, error, exists, isLoading, onUnavailable]);
+
   if (isLoading) {
-    return <div className="card">Loading {agreementReference(id)}...</div>;
+    return null;
   }
-  if (error || !exists || !agreement) {
+  if (!error && (!exists || !agreement)) {
+    return null;
+  }
+  if (error) {
     return (
       <div className="card">
-        <p>{agreementReference(id)} was not found on this contract.</p>
-        {onRemove && (
-          <button className="btn btn-ghost" onClick={onRemove}>
-            Remove from tracked list
-          </button>
-        )}
+        <p>{agreementReference(id)} could not be loaded right now.</p>
+        <button className="btn btn-ghost" onClick={() => void refetch()}>
+          Try again
+        </button>
       </div>
     );
   }

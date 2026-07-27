@@ -154,15 +154,21 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   const [agreementFocusRequests, setAgreementFocusRequests] = useState<
     Record<string, AgreementFocusRequest>
   >({});
+  const [unavailableAgreementIds, setUnavailableAgreementIds] = useState<
+    Set<string>
+  >(() => new Set());
   const finalizedProposals = compactActiveProposals(
     savedRecords.filter((item) => item.record.status === "finalized"),
   );
   const participantAgreementIds = finalizedProposals.flatMap(({ record }) =>
     record.onchainAgreementId ? [BigInt(record.onchainAgreementId)] : [],
   );
-  const displayedIds = ACCOUNT_AUTH_ENABLED
+  const discoveredAgreementIds = ACCOUNT_AUTH_ENABLED
     ? mergeAgreementIds(participantAgreementIds, ids)
     : ids;
+  const displayedIds = discoveredAgreementIds.filter(
+    (id) => !unavailableAgreementIds.has(id.toString()),
+  );
   const notificationAgreementIds = displayedIds;
   const onchainNotifications =
     useOnchainActivityNotifications(notificationAgreementIds);
@@ -730,6 +736,16 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
               key={id.toString()}
               id={id}
               onRemove={() => removeId(id)}
+              onUnavailable={() => {
+                removeId(id);
+                setUnavailableAgreementIds((current) => {
+                  const key = id.toString();
+                  if (current.has(key)) return current;
+                  const next = new Set(current);
+                  next.add(key);
+                  return next;
+                });
+              }}
               negotiationAccess={proposal?.access}
               participantRecord={proposal?.record}
               activePanel={agreementPanels[id.toString()]}
