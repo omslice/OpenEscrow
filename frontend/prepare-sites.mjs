@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,6 +14,9 @@ if (dirname(target) !== repository || target !== join(repository, "dist")) {
 
 await rm(target, { recursive: true, force: true });
 await mkdir(target, { recursive: true });
+if (existsSync(join(frontend, "package.json"))) {
+  await cp(join(frontend, "package.json"), join(target, "package.json"));
+}
 await cp(source, join(target, "client"), { recursive: true });
 await cp(join(frontend, "server"), join(target, "server"), { recursive: true });
 const serverTarget = join(target, "server");
