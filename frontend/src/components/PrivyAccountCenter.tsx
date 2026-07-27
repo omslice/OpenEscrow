@@ -17,12 +17,6 @@ import {
   type ServiceReadiness,
 } from "../lib/negotiations";
 import {
-  getServiceReadinessBlockers,
-  getServiceReadinessActions,
-  formatComplianceIssueSummary,
-  summarizeServiceReadiness,
-} from "../lib/serviceReadiness";
-import {
   clearInviteRole,
   roleLabel,
   useInviteRole,
@@ -51,7 +45,6 @@ export function PrivyAccountCenter({
   const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES);
   const [preferenceStatus, setPreferenceStatus] = useState<string | null>(null);
   const [serviceReadiness, setServiceReadiness] = useState<ServiceReadiness | null>(null);
-  const [isRefreshingReadiness, setIsRefreshingReadiness] = useState(false);
   const [isTestingEmail, setIsTestingEmail] = useState(false);
   const preferenceWrite = useRef(0);
   const isRefreshingReadinessRef = useRef(false);
@@ -67,26 +60,6 @@ export function PrivyAccountCenter({
     () => (user ? `openescrow:notifications:${user.id}` : null),
     [user],
   );
-  const sourceReadiness = serviceReadiness?.complianceSources;
-  const sourceReadinessSummary = sourceReadiness
-    ? `${sourceReadiness.changed + sourceReadiness.stale + sourceReadiness.unreachable + sourceReadiness.blocked} issue(s)`
-    : "Unknown";
-  const sourceReadinessUpdated = sourceReadiness?.lastRunAt
-    ? new Date(sourceReadiness.lastRunAt).toLocaleString()
-    : "No successful check yet";
-  const readinessBlockers = useMemo(
-    () => getServiceReadinessBlockers(serviceReadiness),
-    [serviceReadiness],
-  );
-  const readinessSummary = useMemo(
-    () => summarizeServiceReadiness(serviceReadiness),
-    [serviceReadiness],
-  );
-  const readinessActions = useMemo(
-    () => getServiceReadinessActions(serviceReadiness),
-    [serviceReadiness],
-  );
-
   useEffect(() => {
     if (!preferenceKey) {
       setPreferences(DEFAULT_PREFERENCES);
@@ -129,7 +102,6 @@ export function PrivyAccountCenter({
   const refreshServiceReadiness = useCallback(async () => {
     if (isRefreshingReadinessRef.current) return;
     isRefreshingReadinessRef.current = true;
-    setIsRefreshingReadiness(true);
     try {
       const readiness = await loadServiceReadiness();
       setServiceReadiness(readiness);
@@ -137,7 +109,6 @@ export function PrivyAccountCenter({
       setServiceReadiness(null);
     } finally {
       isRefreshingReadinessRef.current = false;
-      setIsRefreshingReadiness(false);
     }
   }, []);
 
@@ -494,89 +465,6 @@ export function PrivyAccountCenter({
             )}
           </section>
 
-          <section
-            className="settings-group compliance-readiness"
-            aria-labelledby="compliance-readiness-title"
-          >
-            <div>
-              <h3 id="compliance-readiness-title">Compliance source readiness</h3>
-              <p>
-                Source checks are required before an agreement can be created or finalized with
-                reviewed overlays. Keep this summary green before pilots.
-              </p>
-            </div>
-            {!sourceReadiness ? (
-              <div className="notification-delivery-status">
-                <div>
-                  <strong>Source checks unavailable</strong>
-                  <span>Readiness data is not yet available from the backend.</span>
-                </div>
-              </div>
-            ) : (
-              <div className="notification-delivery-status">
-                <div>
-                  <strong>
-                    {sourceReadiness.ready
-                      ? "Compliance sources are ready"
-                      : "Compliance sources need review"}
-                  </strong>
-                  <span>
-                    {sourceReadiness.configured && sourceReadiness.proposalGateEnforced
-                      ? "Monitor and source-gate are enabled"
-                      : "Monitor or gate is not fully enabled"}{" "}
-                    {" · "}
-                    {sourceReadinessSummary}
-                  </span>
-                  <small>
-                    Checked {sourceReadinessUpdated} and allows {sourceReadiness.tracked}/
-                    {sourceReadiness.total} source profiles to stay current.
-                  </small>
-                </div>
-                <button
-                  className="btn btn-ghost small"
-                  type="button"
-                  disabled={isRefreshingReadiness}
-                  onClick={() => {
-                    void refreshServiceReadiness();
-                  }}
-                >
-                  {isRefreshingReadiness ? "Refreshing..." : "Refresh"}
-                </button>
-              </div>
-            )}
-            {!sourceReadiness ? null : (
-              <p className="notification-boundary">
-                Issue counts are from the latest monitor snapshot:{" "}
-                {formatComplianceIssueSummary(sourceReadiness)}.
-              </p>
-            )}
-            {readinessSummary.ready ? null : (
-              <div className="notification-boundary">
-                <p>
-                  <strong>Pilot blockers to clear:</strong>
-                </p>
-                <ul>
-                  {readinessBlockers.map((blocker, index) => (
-                    <li key={`${blocker}:${index}`}>{blocker}</li>
-                  ))}
-                </ul>
-                {readinessActions.length > 0 && (
-                  <>
-                    <p>
-                      <strong>Immediate next steps:</strong>
-                    </p>
-                    <ul>
-                      {readinessActions.map((action) => (
-                        <li key={action.label}>
-                          <strong>{action.label}:</strong> {action.detail}
-                        </li>
-                      ))}
-                    </ul>
-                  </>
-                )}
-              </div>
-            )}
-          </section>
         </div>
       </details>
     </>

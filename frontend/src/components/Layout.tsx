@@ -56,7 +56,6 @@ export function Layout({
     <div className="app-shell">
       <header className="app-header">
         <div>
-          <p className="eyebrow">Rental deposit protection · Base Sepolia</p>
           <h1 className="app-title">
             <img
               src="/openescrow-wordmark.svg"

@@ -37,7 +37,7 @@
 
 .app-wordmark-logo {
   display: block;
-  width: clamp(260px, 34vw, 330px);
+  width: clamp(230px, 28vw, 275px);
   max-width: 100%;
   height: auto;
 }
@@ -3665,7 +3665,7 @@ a.btn.disabled {
   }
 
   .app-wordmark-logo {
-    width: min(280px, 82vw);
+    width: min(240px, 78vw);
   }
 
   .header-actions {
