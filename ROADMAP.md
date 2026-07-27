@@ -1,80 +1,76 @@
 # OpenEscrow roadmap
 
-This roadmap is organized around evidence and release gates rather than speculative features or calendar promises.
+This roadmap is organized by dependency and release evidence. Checked items are implemented in
+the repository; they are not claims of legal approval or production readiness.
 
-## Gate 1 — Testnet technical MVP
+## 1. Testnet protocol and optional-yield foundation
 
-**Status: implemented; awaiting moderated external evaluation**
+**Status: implemented and internally validated; external evaluation still required**
 
-- [x] Normative claim/dispute state machine
-- [x] Shared escrow contract with one pinned token
-- [x] Explicit arbiter acceptance and mutual-consent replacement
-- [x] Tenant-default no-response and arbiter-timeout behavior
-- [x] Pull-based withdrawals and reentrancy protection
-- [x] Unit, fuzz, deadline-boundary, authorization, and invariant tests
-- [x] Base Sepolia deployment and source verification
-- [x] Minimal frontend and full lifecycle demonstration
-- [x] Second implementation review and documented addendum
-- [x] Continuous integration for contracts and frontend
-- [x] Public hosted testnet demo
-- [ ] Five moderated usability sessions
+- [x] Pinned-token non-custodial escrow, claims, disputes, deadlines, and pull withdrawals
+- [x] Multi-tenant funding shares and operations-reserve receipts
+- [x] Authorization, boundary, fuzz, and stateful invariant coverage
+- [x] Base Sepolia deployment and public testnet demonstration
+- [x] Isolated yield-enabled V2 escrow and official Base Sepolia Aave adapter prototype
+- [x] Principal/yield/loss allocation and direct USDC redemption tests
+- [ ] Five moderated usability sessions across no-claim, accepted-claim, and disputed-claim paths
+- [ ] Independent smart-contract audit of the exact release candidate
 
-**Exit criterion:** an outside evaluator can complete the no-claim, accepted-claim, and disputed-claim scenarios without developer intervention, and all automated checks remain green.
+## 2. Agreement discovery, records, and private evidence
 
-## Gate 2 — One-jurisdiction pilot design
+**Status: implemented for testnet; hosted operations remain**
 
-**Status: not started**
+- [x] Account-based proposal and finalized-agreement discovery
+- [x] Role-safe multi-tenant records and lifecycle receipt verification
+- [x] Collapsed agreement list with local archive/restore controls
+- [x] Timestamped report plus encrypted canonical JSON archive and verification key
+- [x] Version-bound onchain record receipts and private proof verification
+- [x] Private R2 evidence with file-signature validation and optional encryption/decentralized mode
+- [ ] Configure and test the hosted evidence master key, backup, rotation, retention, and deletion
+- [ ] Exercise invitation revocation/recovery, privacy requests, and incident response
 
-- [x] Select California residential tenancies as the first jurisdiction and user segment
-- [ ] Retain qualified legal counsel
-- [ ] Resolve Category A in [`docs/open-questions.md`](docs/open-questions.md)
-- [ ] Identify a mediation, legal-aid, housing, or property-management partner
-- [ ] Define evidence privacy, access, and retention
-- [ ] Define user disclosures and informed consent
-- [ ] Decide whether blockchain custody is legally permissible and operationally useful
-- [x] Encode a versioned California policy profile in the proposal, server validation, and claim checklist
-- [ ] Have California housing counsel review and approve the encoded policy profile
+## 3. Validated-address nationwide compliance
 
-**Exit criterion:** counsel and the pilot partner approve a written workflow that maps applicable law to product behavior.
+**Status: statewide engineering complete for 50 states plus D.C.; local/legal review remains**
 
-## Gate 3 — Pilot-ready product
+- [x] Server-attested U.S. address validation and deterministic state routing
+- [x] Versioned immutable compliance snapshots attached to accepted agreements
+- [x] Statewide profiles for all 50 states plus D.C.
+- [x] Versioned claim packets, source monitoring, freshness checks, and fail-closed release gates
+- [x] Deadline events that require party confirmation when based on off-chain facts
+- [ ] Select initial cities/counties and implement approved local overlays
+- [ ] Complete official-source baselines and resolve every change/unreachable-source alert
+- [ ] Obtain qualified counsel review for each launched jurisdiction and tenancy segment
 
-**Status: blocked on Gate 2**
+## 4. Funding and asset routing
 
-- [ ] Replace developer terminology with role-based guided tasks
-- [ ] Add production-grade wallet and mobile flows
-- [ ] Add notifications for every required deadline and action
-- [ ] Add a scalable agreement indexer
-- [ ] Implement access-controlled evidence storage
-- [ ] Add structured, itemized landlord claims
-- [ ] Add operational monitoring and support procedures
-- [ ] Commission an independent smart-contract audit
-- [ ] Complete accessibility, privacy, and threat-model reviews
+**Status: provider-neutral sandbox architecture implemented; production disabled**
 
-**Exit criterion:** a narrowly scoped pilot can operate without exposing personal information or depending on a developer to move agreements forward.
+- [x] USDC remains the default principal and settlement asset
+- [x] Privy-brokered Base USDC onramp intent with provider-managed regional selection
+- [x] Exact wallet, asset, chain, amount, sandbox, and production release gates
+- [x] Direct Aave supply/withdrawal route modeled without a DEX swap
+- [x] FRNT and USDY routes fail closed pending official availability and eligibility
+- [ ] Enable and validate provider sandbox checkout in the Privy dashboard
+- [ ] Decide whether the pilot needs separate ACH/bank-deposit support
+- [ ] Complete provider approval, KYC/AML, fees, refunds, webhooks, reconciliation, and support
+- [ ] Audit and deploy mainnet contracts before any real-money route can be enabled
 
-## Gate 4 — Supervised real-world pilot
+## 5. Security, privacy, reliability, and release readiness
 
-**Status: future**
+**Status: local testnet gate implemented; external and hosted gates remain**
 
-- [ ] Start with a small participant cohort and explicit limits
-- [ ] Monitor completion, dispute, abandonment, and support rates
-- [ ] Compare the workflow with existing deposit handling
-- [ ] Record legal, operational, and user-experience failures
-- [ ] Publish a transparent pilot evaluation
+- [x] CI contract tests and `frontend` release check
+- [x] High/critical production-dependency advisory gate with moderate-advisory reporting
+- [x] Fail-closed Sites project/binding, asset, eligibility, and fiat-production configuration checks
+- [x] Hosted readiness endpoint for email, scheduler, evidence, receipts, registry, address, and sources
+- [ ] Configure hosted email, Cron, encryption, registry, address, and compliance-source services
+- [ ] Run separate-account testnet pilot and accessibility/usability reviews
+- [ ] Commission independent contract/application security and privacy/threat-model reviews
+- [ ] Approve operating policies, support, incident response, stop conditions, and release envelope
 
-**Exit criterion:** evidence supports continuing, changing the custody model, or stopping.
+## Production boundary
 
-## Explicitly deferred
-
-These features are not part of the viable MVP and should not be built until the pilot demonstrates a need:
-
-- Yield-bearing deposits
-- Multiple tokens
-- Multi-chain deployments
-- Fiat ramps
-- Reputation systems
-- DAO governance
-- Decentralized arbitration
-- Protocol fees
-- Upgradeability
+OpenEscrow remains a Base Sepolia demonstration until legal, provider, security, privacy,
+operational, and supervised-pilot evidence is complete. No roadmap checkbox, automated test, or
+AI-assisted review is authorization to hold real rental deposits.

@@ -187,6 +187,23 @@ dependencies pulled through Privy/wagmi. The suggested forced remediation would 
 critical advisory was reported. This should be rechecked when Privy/wagmi publish a compatible
 dependency update and is another reason the current build remains testnet-only.
 
+## Testnet release gate addendum — 2026-07-26
+
+The frontend CI now runs `npm run release:check`, which combines:
+
+- lint, all hosted/server tests, all client-logic tests, and a production build;
+- `npm audit --omit=dev --audit-level=high`, which blocks high or critical production-dependency
+  advisories while continuing to report the known moderate transitive advisories;
+- exact preservation of the existing Sites project ID and D1/R2 binding names;
+- a fail-closed testnet configuration check that rejects an enabled real-fiat onramp or production
+  approval flag;
+- catalog checks that preserve USDC as the non-yield default, keep USDY unavailable for U.S. and
+  Canadian contexts, and keep FRNT without a funding route.
+
+This is a local release-candidate gate, not the hosted pilot-service gate. After deployment,
+`npm run pilot:check` separately verifies email, Cron, evidence encryption, registry binding,
+address attestations, and official-source baselines against the live readiness endpoint.
+
 ## Hosted workflow and evidence addendum — 2026-07-25
 
 A separate review covered the hosted D1 agreement record, notification scheduler, private evidence
