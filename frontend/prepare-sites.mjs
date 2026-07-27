@@ -1,4 +1,4 @@
-import { cp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -14,15 +14,22 @@ if (dirname(target) !== repository || target !== join(repository, "dist")) {
 await rm(target, { recursive: true, force: true });
 await mkdir(target, { recursive: true });
 await cp(source, join(target, "client"), { recursive: true });
-await mkdir(join(target, "server"), { recursive: true });
-const serverEntrypoint = join(target, "server", "index.js");
-await cp(join(frontend, "server", "index.js"), serverEntrypoint);
-const serverSource = await readFile(serverEntrypoint, "utf8");
-const packagedServerSource = serverSource.replaceAll("../shared/", "./shared/");
-if (packagedServerSource === serverSource) {
-  throw new Error("The Sites server entrypoint did not contain the expected shared imports.");
+await cp(join(frontend, "server"), join(target, "server"), { recursive: true });
+const serverTarget = join(target, "server");
+const serverEntries = await readdir(serverTarget, { recursive: true, withFileTypes: true });
+for (const entry of serverEntries) {
+  if (!entry.isFile() || !entry.name.endsWith(".js")) continue;
+  const sourcePath = join(entry.parentPath || serverTarget, entry.name);
+  let serverSource = await readFile(sourcePath, "utf8");
+  const packagedServerSource = serverSource.replaceAll("../shared/", "./shared/");
+  if (sourcePath.endsWith("index.js") && packagedServerSource === serverSource) {
+    throw new Error("The Sites server entrypoint did not contain the expected shared imports.");
+  }
+  if (packagedServerSource !== serverSource) {
+    await writeFile(sourcePath, packagedServerSource);
+  }
 }
-await writeFile(serverEntrypoint, packagedServerSource);
+await rm(join(serverTarget, "index.test.mjs"), { force: true });
 await cp(join(frontend, "shared"), join(target, "server", "shared"), {
   recursive: true,
 });
