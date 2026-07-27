@@ -564,6 +564,18 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             agreements: "Cases",
             record: "Record",
           };
+  const workspaceTabIcons = {
+    overview: "🏠",
+    proposals:
+      workspaceRole === "landlord"
+        ? "📝"
+        : workspaceRole === "tenant"
+          ? "📬"
+          : "📂",
+    agreements:
+      workspaceRole === "landlord" ? "💼" : workspaceRole === "tenant" ? "🏦" : "⚖️",
+    record: "📜",
+  };
 
   function renderAgreementDiscovery() {
     return (
@@ -922,7 +934,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     );
   }
 
-  function renderOverview() {
+function renderOverview() {
     return (
       <div className="workspace-overview">
         <section className="workspace-welcome">
@@ -1030,7 +1042,11 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             <b aria-hidden="true">→</b>
           </button>
         </div>
-        {workspaceRole === "tenant" && !inviteRole && <TenantLandlordInvite />}
+        {workspaceRole === "tenant" && !inviteRole && (
+          <div className="overview-invite-section">
+            <TenantLandlordInvite />
+          </div>
+        )}
       </div>
     );
   }
@@ -1123,7 +1139,10 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                 aria-current={tab === workspaceTab ? "page" : undefined}
                 onClick={() => setTab(workspaceTab)}
               >
-                {workspaceTabLabels[workspaceTab]}
+                <span className="tab-icon" aria-hidden="true">
+                  {workspaceTabIcons[workspaceTab]}
+                </span>
+                <span>{workspaceTabLabels[workspaceTab]}</span>
                 {workspaceTab === "proposals" && readyProposals.length > 0 && (
                   <span
                     className="tab-count"

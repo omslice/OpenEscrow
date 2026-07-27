@@ -117,6 +117,9 @@ export interface ServiceReadiness {
     stale: number;
     blocked: number;
     lastRunAt: string | null;
+    monitorHealthy: boolean;
+    monitorExpectedIntervalMinutes: number;
+    monitorLastRunAgeMinutes: number | null;
     maxVerificationAgeDays: number;
     ready: boolean;
   };

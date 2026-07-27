@@ -14,6 +14,16 @@ if (!response.ok) {
 }
 
 const readiness = await response.json();
+
+function minutesLabel(minutes) {
+  if (!Number.isFinite(minutes)) return "unknown";
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const remaining = minutes % 60;
+  if (remaining === 0) return `${hours}h`;
+  return `${hours}h ${remaining}m`;
+}
+
 const checks = [
   {
     label: "Automatic email provider",
@@ -23,9 +33,9 @@ const checks = [
   },
   {
     label: "Hosted notification scheduler",
-    ready: Boolean(readiness.email?.schedulerLastRunAt),
+    ready: readiness.email?.schedulerHealthy === true,
     detail: readiness.email?.schedulerLastRunAt
-      ? `last ran ${readiness.email.schedulerLastRunAt}`
+      ? `last ran ${readiness.email.schedulerLastRunAt} (${minutesLabel(readiness.email.schedulerAgeMinutes)} ago)`
       : "no hosted run recorded",
     required: true,
   },
@@ -90,7 +100,22 @@ const checks = [
     ready: readiness.complianceSources?.ready === true,
     detail: readiness.complianceSources?.ready
       ? `${readiness.complianceSources.tracked}/${readiness.complianceSources.total} sources verified`
-      : `${readiness.complianceSources?.blocked ?? "unknown"} source checks block new compliance profiles`,
+      : `${readiness.complianceSources?.blocked ?? "unknown"} source checks block new compliance profiles` +
+        (readiness.complianceSources?.lastRunAt
+          ? ` (${minutesLabel(readiness.complianceSources.maxVerificationAgeDays * 24 * 60)} max source age)`
+          : ""),
+    required: true,
+  },
+  {
+    label: "Compliance source monitor freshness",
+    ready:
+      readiness.complianceSources?.monitorHealthy === true &&
+      readiness.complianceSources?.configured === true,
+    detail: readiness.complianceSources?.configured
+      ? readiness.complianceSources?.monitorLastRunAgeMinutes == null
+        ? `monitor ${readiness.complianceSources?.monitorExpectedIntervalMinutes ? `target interval ${readiness.complianceSources?.monitorExpectedIntervalMinutes}m` : "has not run"}`
+        : `last monitor run ${minutesLabel(readiness.complianceSources.monitorLastRunAgeMinutes)} ago`
+      : "monitor not enabled",
     required: true,
   },
   {

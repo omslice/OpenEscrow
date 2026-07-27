@@ -719,7 +719,7 @@
   flex: 1 1 0;
   align-items: center;
   justify-content: center;
-  gap: 7px;
+  gap: 10px;
   min-height: 56px;
   padding: 14px 20px;
   border-color: color-mix(in srgb, var(--border) 70%, transparent);
@@ -734,6 +734,10 @@
     background 150ms ease,
     color 150ms ease,
     transform 150ms ease;
+}
+
+.workspace-tabs .tab-icon {
+  font-size: 18px;
 }
 
 .workspace-tabs .tab:hover {
@@ -2528,6 +2532,7 @@ a.btn.disabled {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  margin-bottom: 8px;
 }
 
 .workspace-route-grid > button {
@@ -2579,6 +2584,10 @@ a.btn.disabled {
   background: color-mix(in srgb, var(--accent) 16%, transparent);
   color: var(--accent);
   font-weight: 800;
+}
+
+.overview-invite-section {
+  margin-top: 14px;
 }
 
 .urgent-work {

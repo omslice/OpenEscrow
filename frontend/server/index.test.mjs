@@ -2347,6 +2347,51 @@ test("readiness tracks notification scheduler freshness against the 15-minute ca
   }
 });
 
+test("readiness reports compliance monitor freshness and configuration", async () => {
+  const now = Date.parse("2027-07-03T14:20:00.000Z");
+  const db = new TestD1();
+  const baseEnv = {
+    DB: db,
+    COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  };
+  await jsonResponse(await worker.fetch(request("/api/system/readiness"), baseEnv));
+  db.prepare(
+    "INSERT OR REPLACE INTO scheduled_job_runs (name, last_started_at) VALUES (?, ?)",
+  ).bind("compliance-source-monitor", new Date(now - 65 * 60 * 1000).toISOString())
+    .run();
+
+  const originalDateNow = Date.now;
+  Date.now = () => now;
+  try {
+    const readiness = await jsonResponse(
+      await worker.fetch(request("/api/system/readiness"), baseEnv),
+    );
+    assert.equal(readiness.complianceSources.configured, true);
+    assert.equal(readiness.complianceSources.monitorHealthy, true);
+    assert.equal(readiness.complianceSources.monitorExpectedIntervalMinutes, 1440);
+    assert.equal(readiness.complianceSources.monitorLastRunAgeMinutes, 65);
+    assert.equal(readiness.complianceSources.ready, false);
+
+    db.prepare(
+      "INSERT OR REPLACE INTO scheduled_job_runs (name, last_started_at) VALUES (?, ?)",
+    )
+      .bind(
+        "compliance-source-monitor",
+        new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString(),
+      )
+      .run();
+    const staleReadiness = await jsonResponse(
+      await worker.fetch(request("/api/system/readiness"), baseEnv),
+    );
+    assert.equal(staleReadiness.complianceSources.configured, true);
+    assert.equal(staleReadiness.complianceSources.monitorHealthy, false);
+    assert.equal(staleReadiness.complianceSources.monitorLastRunAgeMinutes, 4320);
+  } finally {
+    Date.now = originalDateNow;
+  }
+});
+
 test("the scheduled compliance monitor baselines a rotating official-source batch", async () => {
   const db = new TestD1();
   const originalFetch = globalThis.fetch;

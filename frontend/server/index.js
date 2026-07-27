@@ -250,6 +250,8 @@ const ACTIVITY_REGISTRY_ESCROW_SELECTOR = "0xe681c4aa";
 const ACTIVITY_REGISTRY_READINESS_TTL_MS = 60_000;
 const HOSTED_NOTIFICATION_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000;
 const HOSTED_NOTIFICATION_SCHEDULER_GRACE_MS = 2 * HOSTED_NOTIFICATION_SCHEDULER_INTERVAL_MS;
+const COMPLIANCE_SOURCE_MONITOR_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const COMPLIANCE_SOURCE_MONITOR_GRACE_MS = 2 * COMPLIANCE_SOURCE_MONITOR_INTERVAL_MS;
 const RECEIPT_EVENT_TOPICS = Object.freeze({
   agreementProposed:
     "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6",
@@ -1528,15 +1530,29 @@ async function serviceReadiness(env) {
   const schedulerLastRunMs = schedulerLastRunAt
     ? Date.parse(schedulerLastRunAt)
     : Number.NaN;
+  const complianceSourceLastRunMs = complianceSourceLastRunAt
+    ? Date.parse(complianceSourceLastRunAt)
+    : Number.NaN;
   const schedulerHealthy =
     env.DB &&
     Number.isFinite(schedulerLastRunMs) &&
     nowMs - schedulerLastRunMs <= HOSTED_NOTIFICATION_SCHEDULER_GRACE_MS &&
     nowMs >= schedulerLastRunMs;
+  const complianceSourceMonitorHealthy =
+    env.DB &&
+    env.COMPLIANCE_SOURCE_MONITOR_ENABLED === "true" &&
+    Number.isFinite(complianceSourceLastRunMs) &&
+    nowMs - complianceSourceLastRunMs <= COMPLIANCE_SOURCE_MONITOR_GRACE_MS &&
+    nowMs >= complianceSourceLastRunMs;
   const schedulerAgeMinutes =
     !Number.isFinite(schedulerLastRunMs)
       ? null
       : Math.max(0, Math.round((nowMs - schedulerLastRunMs) / (60 * 1000)));
+  const complianceSourceMonitorAgeMinutes = !Number.isFinite(
+    complianceSourceLastRunMs,
+  )
+    ? null
+    : Math.max(0, Math.round((nowMs - complianceSourceLastRunMs) / (60 * 1000)));
   const decentralizedReady = Boolean(
     env.PINATA_JWT && env.EVIDENCE_ENCRYPTION_KEY,
   );
@@ -1588,6 +1604,10 @@ async function serviceReadiness(env) {
       total: COMPLIANCE_SOURCE_REGISTRY.length,
       ...complianceSourceStats,
       lastRunAt: complianceSourceLastRunAt,
+      monitorHealthy: complianceSourceMonitorHealthy,
+      monitorExpectedIntervalMinutes:
+        COMPLIANCE_SOURCE_MONITOR_INTERVAL_MS / (60 * 1000),
+      monitorLastRunAgeMinutes: complianceSourceMonitorAgeMinutes,
       maxVerificationAgeDays:
         COMPLIANCE_SOURCE_FRESHNESS_MS / (24 * 60 * 60 * 1000),
       ready:
