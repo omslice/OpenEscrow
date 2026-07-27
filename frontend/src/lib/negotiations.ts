@@ -602,6 +602,21 @@ export type NegotiationAction =
         proposalEventId: number;
       }
     | {
+        type: "propose_compliance_fact";
+        factName: string;
+        value: boolean;
+        note?: string;
+      }
+    | {
+        type: "confirm_compliance_fact";
+        proposalEventId: number;
+      }
+    | {
+        type: "reject_compliance_fact";
+        proposalEventId: number;
+        note?: string;
+      }
+    | {
         type: "record_snapshot_anchored";
         snapshotHash: string;
         transactionHash: string;

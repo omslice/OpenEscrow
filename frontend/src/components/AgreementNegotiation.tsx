@@ -18,6 +18,9 @@ import {
 import { agreementReference, proposalReference } from "../lib/displayIds";
 import { roleLabel } from "../lib/inviteContext";
 import { getDepositAssetForTerms } from "../../shared/deposit-assets.js";
+import {
+  dynamicComplianceFactsForProfile,
+} from "../../shared/us-compliance-facts.js";
 
 function approvalLabel(record: NegotiationRecord, role: "tenant" | "arbiter") {
   const approved = role === "tenant" ? record.tenantApproved : record.arbiterApproved;
@@ -180,6 +183,9 @@ function AgreementNegotiationView({
   const [complianceEventName, setComplianceEventName] = useState("");
   const [complianceEventOccurredAt, setComplianceEventOccurredAt] = useState("");
   const [complianceEventNote, setComplianceEventNote] = useState("");
+  const [complianceFactName, setComplianceFactName] = useState("");
+  const [complianceFactValue, setComplianceFactValue] = useState("");
+  const [complianceFactNote, setComplianceFactNote] = useState("");
   const [isWorking, setIsWorking] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -275,6 +281,92 @@ function AgreementNegotiationView({
     }
   }
 
+  async function proposeComplianceFact() {
+    if (
+      !complianceFactName ||
+      (complianceFactValue !== "true" && complianceFactValue !== "false")
+    ) {
+      return;
+    }
+    setIsWorking(true);
+    setMessage(null);
+    setError(null);
+    try {
+      setRecord(
+        await negotiationAction(access, {
+          type: "propose_compliance_fact",
+          factName: complianceFactName,
+          value: complianceFactValue === "true",
+          note: complianceFactNote.trim() || undefined,
+        }),
+      );
+      setComplianceFactName("");
+      setComplianceFactValue("");
+      setComplianceFactNote("");
+      setMessage(
+        "The conditional fact is recorded and awaiting confirmation by the other party.",
+      );
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "The conditional fact could not be recorded.",
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function confirmComplianceFact(proposalEventId: number) {
+    setIsWorking(true);
+    setMessage(null);
+    setError(null);
+    try {
+      setRecord(
+        await negotiationAction(access, {
+          type: "confirm_compliance_fact",
+          proposalEventId,
+        }),
+      );
+      setMessage(
+        "The conditional fact is confirmed and its deadline branch is active.",
+      );
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "The conditional fact could not be confirmed.",
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function rejectComplianceFact(proposalEventId: number) {
+    setIsWorking(true);
+    setMessage(null);
+    setError(null);
+    try {
+      setRecord(
+        await negotiationAction(access, {
+          type: "reject_compliance_fact",
+          proposalEventId,
+        }),
+      );
+      setMessage(
+        "The conditional fact was not confirmed. Either party may record a corrected proposal.",
+      );
+    } catch (actionError) {
+      setError(
+        actionError instanceof Error
+          ? actionError.message
+          : "The conditional fact response could not be recorded.",
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
   if (!record) {
     return (
       <section className="card negotiation-workspace">
@@ -319,6 +411,9 @@ function AgreementNegotiationView({
   );
   const complianceSnapshot = record.terms.complianceSnapshot;
   const activeComplianceProfile = jurisdictionProfile(record.terms.jurisdiction);
+  const dynamicFactOptions = dynamicComplianceFactsForProfile(
+    complianceSnapshot || activeComplianceProfile,
+  );
   const eventOptions = [
     ...(complianceSnapshot?.deadlines || []),
     ...(complianceSnapshot?.overlays || []).flatMap((overlay) => overlay.deadlines),
@@ -344,12 +439,46 @@ function AgreementNegotiationView({
         String(event.metadata?.occurredAt || ""),
       ]),
   );
+  const resolvedFactProposalIds = new Set(
+    record.events
+      .filter(
+        (event) =>
+          event.action === "compliance_fact_confirmed" ||
+          event.action === "compliance_fact_rejected",
+      )
+      .map((event) => Number(event.metadata?.proposalEventId)),
+  );
+  const pendingComplianceFacts = record.events.filter(
+    (event) =>
+      event.action === "compliance_fact_proposed" &&
+      !resolvedFactProposalIds.has(event.id),
+  );
+  const confirmedFactValues = Object.fromEntries(
+    record.events
+      .filter(
+        (event) =>
+          event.action === "compliance_fact_confirmed" &&
+          typeof event.metadata?.value === "boolean",
+      )
+      .map((event) => [
+        String(event.metadata?.factName || ""),
+        event.metadata?.value,
+      ]),
+  );
+  const unresolvedDynamicFactOptions = dynamicFactOptions.filter(
+    (definition) =>
+      typeof confirmedFactValues[definition.key] !== "boolean" &&
+      !pendingComplianceFacts.some(
+        (event) => event.metadata?.factName === definition.key,
+      ),
+  );
   const complianceEvaluation =
     complianceSnapshot && activeComplianceProfile
       ? evaluateJurisdictionCompliance(activeComplianceProfile, {
           address: record.terms.addressResolution,
           facts: {
             ...(record.terms.complianceFacts || {}),
+            ...confirmedFactValues,
             monthlyRent: record.terms.monthlyRent || null,
             deposit: record.terms.deposit,
           },
@@ -514,6 +643,131 @@ function AgreementNegotiationView({
                 )}
               </div>
             ))}
+            {dynamicFactOptions.length > 0 && (
+              <section>
+                <h4>Resolve a conditional deadline branch</h4>
+                <p className="field-help">
+                  Some state deadlines depend on a fact that the property address
+                  cannot establish. One agreement party records a yes/no fact and
+                  the other confirms it before OpenEscrow uses that branch.
+                </p>
+                {unresolvedDynamicFactOptions.length > 0 && (
+                  <>
+                    <label>
+                      Conditional fact
+                      <select
+                        value={complianceFactName}
+                        onChange={(event) => {
+                          setComplianceFactName(event.target.value);
+                          setComplianceFactValue("");
+                        }}
+                      >
+                        <option value="">Choose a fact</option>
+                        {unresolvedDynamicFactOptions.map((definition) => (
+                          <option key={definition.key} value={definition.key}>
+                            {definition.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {complianceFactName && (
+                      <>
+                        <p className="field-help">
+                          {
+                            dynamicFactOptions.find(
+                              (definition) =>
+                                definition.key === complianceFactName,
+                            )?.question
+                          }
+                        </p>
+                        <label>
+                          Answer
+                          <select
+                            value={complianceFactValue}
+                            onChange={(event) =>
+                              setComplianceFactValue(event.target.value)
+                            }
+                          >
+                            <option value="">Choose yes or no</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                          </select>
+                        </label>
+                        <label>
+                          Non-sensitive note
+                          <textarea
+                            rows={2}
+                            value={complianceFactNote}
+                            onChange={(event) =>
+                              setComplianceFactNote(event.target.value)
+                            }
+                            placeholder="Reference the private record or delivery step; do not enter protected details."
+                          />
+                        </label>
+                        <p className="field-help">
+                          {
+                            dynamicFactOptions.find(
+                              (definition) =>
+                                definition.key === complianceFactName,
+                            )?.guidance
+                          }
+                        </p>
+                        <button
+                          className="btn btn-secondary"
+                          type="button"
+                          disabled={!complianceFactValue || isWorking}
+                          onClick={() => void proposeComplianceFact()}
+                        >
+                          Propose conditional fact
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+                {pendingComplianceFacts.map((event) => (
+                  <div className="role-mismatch" key={event.id}>
+                    <p>
+                      <strong>{String(event.metadata?.label)}</strong>:{" "}
+                      {event.metadata?.value === true ? "Yes" : "No"} · proposed
+                      by {event.actorRole}
+                    </p>
+                    {event.actorRole !== access.role && (
+                      <div className="button-row">
+                        <button
+                          className="btn btn-primary"
+                          type="button"
+                          disabled={isWorking}
+                          onClick={() => void confirmComplianceFact(event.id)}
+                        >
+                          Confirm fact
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          type="button"
+                          disabled={isWorking}
+                          onClick={() => void rejectComplianceFact(event.id)}
+                        >
+                          Not correct
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {Object.entries(confirmedFactValues).map(
+                  ([factName, value]) => {
+                    const definition = dynamicFactOptions.find(
+                      (candidate) => candidate.key === factName,
+                    );
+                    return definition ? (
+                      <p className="field-help" key={factName}>
+                        Confirmed: <strong>{definition.label}</strong> —{" "}
+                        {value === true ? "Yes" : "No"}
+                      </p>
+                    ) : null;
+                  },
+                )}
+              </section>
+            )}
             {complianceEvaluation && (
               <ul>
                 {[

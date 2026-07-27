@@ -10,6 +10,9 @@ import {
 } from "../shared/us-compliance-engine.js";
 import { COMPLIANCE_SOURCE_REGISTRY } from "../shared/compliance-sources.js";
 import {
+  dynamicComplianceFactForProfile,
+} from "../shared/us-compliance-facts.js";
+import {
   getDepositAssetForTerms,
   validateDepositAssetTerms,
 } from "../shared/deposit-assets.js";
@@ -2840,10 +2843,24 @@ function complianceDeadlineCandidates(row, events, now, tenantRows = []) {
       ])
       .filter(([eventName, occurredAt]) => eventName && occurredAt),
   );
+  const confirmedFacts = Object.fromEntries(
+    events
+      .filter(
+        (event) =>
+          event.action === "compliance_fact_confirmed" &&
+          typeof event.metadata?.value === "boolean",
+      )
+      .map((event) => [
+        cleanText(event.metadata?.factName, 80),
+        event.metadata.value,
+      ])
+      .filter(([factName]) => factName),
+  );
   const evaluation = evaluateCompliance(profile, {
     address: terms.addressResolution,
     facts: {
       ...(terms.complianceFacts || {}),
+      ...confirmedFacts,
       monthlyRent: terms.monthlyRent,
       deposit: terms.deposit,
     },
@@ -3696,6 +3713,227 @@ async function applyAction(request, env, id) {
           occurredAt: proposal.metadata.occurredAt,
           proposedBy: proposal.actorRole,
           confirmedBy: role,
+        },
+      ),
+    );
+  } else if (body.type === "propose_compliance_fact") {
+    if (row.status !== "finalized") {
+      return json(
+        { error: "Conditional compliance facts can be recorded only after onchain finalization." },
+        409,
+      );
+    }
+    if (role !== "landlord" && role !== "tenant") {
+      return json(
+        { error: "Only a landlord or tenant may propose a conditional compliance fact." },
+        403,
+      );
+    }
+    let agreementTerms;
+    try {
+      agreementTerms = JSON.parse(row.terms_json);
+    } catch {
+      agreementTerms = null;
+    }
+    const factName = cleanText(body.factName, 80);
+    const definition = dynamicComplianceFactForProfile(
+      agreementTerms?.complianceSnapshot,
+      factName,
+    );
+    if (!definition || typeof body.value !== "boolean") {
+      return json(
+        { error: "That conditional fact is not used by this agreement's compliance profile." },
+        400,
+      );
+    }
+    const resolvedProposalIds = new Set(
+      recordedEvents
+        .filter(
+          (event) =>
+            event.action === "compliance_fact_confirmed" ||
+            event.action === "compliance_fact_rejected",
+        )
+        .map((event) => Number(event.metadata?.proposalEventId)),
+    );
+    if (
+      recordedEvents.some(
+        (event) =>
+          event.action === "compliance_fact_confirmed" &&
+          event.metadata?.factName === factName,
+      ) ||
+      recordedEvents.some(
+        (event) =>
+          event.action === "compliance_fact_proposed" &&
+          event.metadata?.factName === factName &&
+          !resolvedProposalIds.has(Number(event.id)),
+      )
+    ) {
+      return json(
+        { error: "This conditional fact is already confirmed or awaiting confirmation." },
+        409,
+      );
+    }
+    const note = cleanText(body.note, 500);
+    statements.push(
+      db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "compliance_fact_proposed",
+        `Proposed ${definition.label}: ${body.value ? definition.trueLabel : definition.falseLabel}; awaiting confirmation by the other party.`,
+        revision,
+        {
+          factName,
+          label: definition.label,
+          value: body.value,
+          note: note || null,
+        },
+      ),
+    );
+  } else if (body.type === "confirm_compliance_fact") {
+    if (row.status !== "finalized") {
+      return json(
+        { error: "Conditional compliance facts can be confirmed only after onchain finalization." },
+        409,
+      );
+    }
+    if (role !== "landlord" && role !== "tenant") {
+      return json(
+        { error: "Only a landlord or tenant may confirm a conditional compliance fact." },
+        403,
+      );
+    }
+    const proposalEventId = Number(body.proposalEventId);
+    const proposal = recordedEvents.find(
+      (event) =>
+        Number(event.id) === proposalEventId &&
+        event.action === "compliance_fact_proposed",
+    );
+    if (!proposal) {
+      return json(
+        { error: "The proposed conditional fact could not be found." },
+        404,
+      );
+    }
+    if (proposal.actorRole === role) {
+      return json(
+        { error: "The other party must confirm this conditional fact." },
+        409,
+      );
+    }
+    let agreementTerms;
+    try {
+      agreementTerms = JSON.parse(row.terms_json);
+    } catch {
+      agreementTerms = null;
+    }
+    const factName = cleanText(proposal.metadata?.factName, 80);
+    const definition = dynamicComplianceFactForProfile(
+      agreementTerms?.complianceSnapshot,
+      factName,
+    );
+    if (
+      !definition ||
+      typeof proposal.metadata?.value !== "boolean"
+    ) {
+      return json(
+        { error: "That conditional fact is no longer valid for this agreement." },
+        409,
+      );
+    }
+    if (recordedEvents.some(
+      (event) =>
+        (event.action === "compliance_fact_confirmed" ||
+          event.action === "compliance_fact_rejected") &&
+        Number(event.metadata?.proposalEventId) === proposalEventId,
+    )) {
+      return json(
+        { error: "This conditional fact proposal is already resolved." },
+        409,
+      );
+    }
+    statements.push(
+      db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "compliance_fact_confirmed",
+        `Confirmed ${definition.label}: ${proposal.metadata.value ? definition.trueLabel : definition.falseLabel}; conditional deadline branches can now use this fact.`,
+        revision,
+        {
+          proposalEventId,
+          factName,
+          label: definition.label,
+          value: proposal.metadata.value,
+          proposedBy: proposal.actorRole,
+          confirmedBy: role,
+        },
+      ),
+    );
+  } else if (body.type === "reject_compliance_fact") {
+    if (row.status !== "finalized") {
+      return json(
+        { error: "Conditional compliance facts can be rejected only after onchain finalization." },
+        409,
+      );
+    }
+    if (role !== "landlord" && role !== "tenant") {
+      return json(
+        { error: "Only a landlord or tenant may reject a conditional compliance fact." },
+        403,
+      );
+    }
+    const proposalEventId = Number(body.proposalEventId);
+    const proposal = recordedEvents.find(
+      (event) =>
+        Number(event.id) === proposalEventId &&
+        event.action === "compliance_fact_proposed",
+    );
+    if (!proposal) {
+      return json(
+        { error: "The proposed conditional fact could not be found." },
+        404,
+      );
+    }
+    if (proposal.actorRole === role) {
+      return json(
+        { error: "The other party must respond to this conditional fact." },
+        409,
+      );
+    }
+    if (recordedEvents.some(
+      (event) =>
+        (event.action === "compliance_fact_confirmed" ||
+          event.action === "compliance_fact_rejected") &&
+        Number(event.metadata?.proposalEventId) === proposalEventId,
+    )) {
+      return json(
+        { error: "This conditional fact proposal is already resolved." },
+        409,
+      );
+    }
+    const note = cleanText(body.note, 500);
+    statements.push(
+      db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "compliance_fact_rejected",
+        `Did not confirm ${cleanText(proposal.metadata?.label, 120) || "the proposed conditional fact"}; a corrected proposal may now be recorded.`,
+        revision,
+        {
+          proposalEventId,
+          factName: cleanText(proposal.metadata?.factName, 80),
+          value: proposal.metadata?.value,
+          proposedBy: proposal.actorRole,
+          rejectedBy: role,
+          note: note || null,
         },
       ),
     );

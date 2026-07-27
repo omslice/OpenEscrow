@@ -1835,6 +1835,105 @@ function AgreementForm({
               <option value="other-assisted">Other assisted housing</option>
             </select>
           </label>
+          {selectedJurisdiction.deadlines.some(
+            (deadline) =>
+              deadline.condition?.fact === "writtenRentalAgreement",
+          ) && (
+            <label>
+              <span>
+                <strong>Written rental agreement</strong>
+                <small>
+                  Maine uses different return paths for a written rental agreement
+                  and a tenancy at will.
+                </small>
+              </span>
+              <select
+                value={String(complianceFacts.writtenRentalAgreement)}
+                disabled={approvedTermsLocked}
+                onChange={(event) =>
+                  setComplianceFacts((current) => ({
+                    ...current,
+                    writtenRentalAgreement:
+                      event.target.value === "true"
+                        ? true
+                        : event.target.value === "false"
+                          ? false
+                          : "unknown",
+                  }))
+                }
+              >
+                <option value="unknown">Unknown / confirm</option>
+                <option value="true">Yes</option>
+                <option value="false">No / tenancy at will</option>
+              </select>
+            </label>
+          )}
+          {selectedJurisdiction.deadlines.some(
+            (deadline) =>
+              deadline.condition?.fact === "leaseExtendsDepositDeadline",
+          ) && (
+            <label>
+              <span>
+                <strong>Lease extends the deposit-return period</strong>
+                <small>
+                  Record this only when the written lease expressly uses the
+                  longer period allowed by the state profile.
+                </small>
+              </span>
+              <select
+                value={String(complianceFacts.leaseExtendsDepositDeadline)}
+                disabled={approvedTermsLocked}
+                onChange={(event) =>
+                  setComplianceFacts((current) => ({
+                    ...current,
+                    leaseExtendsDepositDeadline:
+                      event.target.value === "true"
+                        ? true
+                        : event.target.value === "false"
+                          ? false
+                          : "unknown",
+                  }))
+                }
+              >
+                <option value="unknown">Unknown / confirm</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+          )}
+          {selectedJurisdiction.deadlines.some(
+            (deadline) =>
+              deadline.condition?.fact === "seasonalNonPrimaryOccupancy",
+          ) && (
+            <label>
+              <span>
+                <strong>Qualifying seasonal non-primary occupancy</strong>
+                <small>
+                  Vermont’s longer seasonal path is narrow; confirm both seasonal
+                  use and non-primary-residence status.
+                </small>
+              </span>
+              <select
+                value={String(complianceFacts.seasonalNonPrimaryOccupancy)}
+                disabled={approvedTermsLocked}
+                onChange={(event) =>
+                  setComplianceFacts((current) => ({
+                    ...current,
+                    seasonalNonPrimaryOccupancy:
+                      event.target.value === "true"
+                        ? true
+                        : event.target.value === "false"
+                          ? false
+                          : "unknown",
+                  }))
+                }
+              >
+                <option value="unknown">Unknown / confirm</option>
+                <option value="true">Yes</option>
+                <option value="false">No</option>
+              </select>
+            </label>
+          )}
           <label>
             <span>
               <strong>Property type</strong>
@@ -2271,6 +2370,14 @@ function AgreementForm({
                   <p className="field-help">
                     The resolved city and county do not yet have a reviewed local overlay.
                     Their rules remain a required manual check.
+                  </p>
+                )}
+                {compliancePreview.missingFacts.length > 0 && (
+                  <p className="field-help">
+                    {compliancePreview.missingFacts.length} conditional rule{" "}
+                    {compliancePreview.missingFacts.length === 1 ? "fact is" : "facts are"}{" "}
+                    still unresolved. Agreement facts can be completed here; facts that occur
+                    later require confirmation by both parties on the compliance timeline.
                   </p>
                 )}
               </details>

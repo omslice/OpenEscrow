@@ -15,6 +15,7 @@ Canonical data and evaluator:
 - `frontend/shared/us-jurisdiction-profiles.js`
 - `frontend/shared/us-compliance-engine.js`
 - `frontend/shared/us-compliance-overlays.js`
+- `frontend/shared/us-compliance-facts.js`
 - `frontend/shared/compliance-sources.js`
 
 ## What is automated
@@ -28,8 +29,9 @@ server-only HMAC attestation over those exact fields. The proposal builder then:
 2. records the normalized address resolution and exact profile version in the
    private proposal;
 3. asks for the property type, tenancy type, unit count, housing program,
-   assistance-animal deposit treatment, and asserted SCRA termination status
-   rather than inferring those facts from the address;
+   assistance-animal deposit treatment, asserted SCRA termination status, and
+   profile-specific facts such as written-agreement or seasonal-occupancy
+   status rather than inferring those facts from the address;
 4. applies and locks the profile's onchain safeguard window;
 5. records every statewide requirement, federal/program overlay, reviewed local
    overlay, and conditional/multi-stage deadline in a versioned v3 snapshot;
@@ -62,6 +64,18 @@ compliance timeline schedules deadlines. The proposal and confirmation remain
 separate immutable events. This avoids silently replacing the forecast with one
 party's unverified date. Confirmed deadlines feed the existing opt-in,
 privacy-minimal three-day, one-day, and due-date reminder system.
+
+The same two-party process now resolves later facts used by conditional state
+deadlines, including whether a deposit is being claimed, whether a tenant
+disputes a damage list, or whether a qualifying displacement or condemnation
+occurred. The active profile defines which facts may be proposed. One party
+records a yes/no value and an optional neutral note; the other party must
+confirm that exact value before the evaluator uses it. A confirmed value is a
+procedural input to the software timeline, not an adjudication, admission, or
+legal determination. The other party can reject an incorrect pending proposal,
+after which either side can submit a corrected value. Confirmed facts are
+immutable in this version; an incorrectly confirmed fact requires a later
+corrective workflow rather than silent editing.
 
 ## Federal and program overlays
 
@@ -133,6 +147,9 @@ address records.
 
 The review corrected several stale assumptions in the earlier draft:
 
+- [Maine's statute](https://legislature.maine.gov/legis/statutes/14/title14sec6033.html)
+  now routes a 21-day tenancy-at-will path separately from a written
+  rental-agreement path, which may set a return period of up to 30 days.
 - Colorado now records the statewide two-month cap and the 2026
   walk-through/documentation rules.
 - Illinois records the current statewide 30-day damage-accounting and 45-day

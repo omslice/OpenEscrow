@@ -72,6 +72,9 @@ export type ComplianceFacts = {
   furnished: boolean | "unknown";
   assistanceAnimalAccommodation: boolean | "unknown";
   scraQualifiedTermination: boolean | "unknown";
+  writtenRentalAgreement: boolean | "unknown";
+  leaseExtendsDepositDeadline: boolean | "unknown";
+  seasonalNonPrimaryOccupancy: boolean | "unknown";
 };
 
 export type ComplianceOverlaySnapshot = {

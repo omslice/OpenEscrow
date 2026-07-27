@@ -20,6 +20,10 @@ import {
   createAddressAttestation,
   verifyAddressAttestation,
 } from "./address-attestation.js";
+import {
+  DYNAMIC_COMPLIANCE_FACTS,
+  STATIC_COMPLIANCE_FACT_KEYS,
+} from "../shared/us-compliance-facts.js";
 
 const TEST_ADDRESS_ATTESTATION_SECRET =
   "openescrow-test-address-attestation-secret-2026";
@@ -258,10 +262,23 @@ test("the implemented registry covers every state and the District of Columbia",
       (profile) =>
         profile.statuteUrl.startsWith("https://") &&
         profile.statuteCitation.length >= 8 &&
-        profile.version.endsWith("rules-2026-07-26.v2"),
+        profile.version.endsWith("rules-2026-07-26.v3"),
     ),
   );
   assert.ok(US_JURISDICTION_PROFILES.every((profile) => profile.legalReviewRequired));
+  const recognizedConditionFacts = new Set([
+    ...STATIC_COMPLIANCE_FACT_KEYS,
+    ...Object.keys(DYNAMIC_COMPLIANCE_FACTS),
+  ]);
+  assert.ok(
+    US_JURISDICTION_PROFILES.every((profile) =>
+      profile.deadlines.every(
+        (deadlineRule) =>
+          !deadlineRule.condition ||
+          recognizedConditionFacts.has(deadlineRule.condition.fact),
+      ),
+    ),
+  );
   assert.ok(
     US_JURISDICTION_PROFILES.every(
       (profile) => profile.depositCap.summary === profile.depositCapSummary,
@@ -363,6 +380,55 @@ test("the compliance evaluator schedules all statewide profiles deterministicall
     assert.equal(evaluated.address.stateCode, profile.postalCode);
     assert.ok(evaluated.deadlines.length >= 1);
   }
+  const maineProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "ME",
+  );
+  const maineAddress = {
+    provider: "photon-openstreetmap",
+    providerFeatureId: "R:maine",
+    label: "1 Main Street, Portland, ME 04101",
+    countryCode: "US",
+    stateCode: "ME",
+    city: "Portland",
+    county: "Cumberland County",
+    postalCode: "04101",
+    latitude: 43.6591,
+    longitude: -70.2568,
+  };
+  const maineWritten = evaluateCompliance(maineProfile, {
+    address: maineAddress,
+    facts: { writtenRentalAgreement: true },
+    events: { possessionReturnedAt: "2027-01-02T12:00:00Z" },
+  });
+  assert.equal(
+    maineWritten.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "written-lease-return",
+    ).status,
+    "scheduled",
+  );
+  assert.equal(
+    maineWritten.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "at-will-return",
+    ).applicability,
+    "not-applicable",
+  );
+  const maineAtWill = evaluateCompliance(maineProfile, {
+    address: maineAddress,
+    facts: { writtenRentalAgreement: false },
+    events: { possessionReturnedAt: "2027-01-02T12:00:00Z" },
+  });
+  assert.equal(
+    maineAtWill.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "at-will-return",
+    ).status,
+    "scheduled",
+  );
+  assert.equal(
+    maineAtWill.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "written-lease-return",
+    ).applicability,
+    "not-applicable",
+  );
   assert.equal(
     calculateDeadline("2027-01-08T12:00:00Z", 1, "business"),
     "2027-01-11T12:00:00.000Z",
@@ -853,6 +919,130 @@ test("actual compliance events require confirmation by the other agreement side"
   assert.equal(
     confirmed.events.at(-1).metadata.occurredAt,
     new Date(occurredAt).toISOString(),
+  );
+});
+
+test("conditional state facts require confirmation by the other agreement side", async () => {
+  const db = new TestD1();
+  const floridaProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "FL",
+  );
+  const unsignedAddress = {
+    ...unsignedNewYorkAddressResolution,
+    providerFeatureId: "W:florida",
+    label: "1 Ocean Drive, Miami Beach, FL 33139",
+    stateCode: "FL",
+    city: "Miami Beach",
+    county: "Miami-Dade County",
+    postalCode: "33139",
+    latitude: 25.7907,
+    longitude: -80.13,
+  };
+  const floridaAddress = {
+    ...unsignedAddress,
+    attestation: await createAddressAttestation(
+      unsignedAddress,
+      TEST_ADDRESS_ATTESTATION_SECRET,
+    ),
+  };
+  const floridaFacts = {
+    ...newYorkComplianceFacts,
+    housingProgram: "conventional",
+  };
+  const floridaTerms = {
+    ...terms,
+    jurisdiction: floridaProfile.code,
+    policyVersion: floridaProfile.version,
+    propertyAddress: floridaAddress.label,
+    addressResolution: floridaAddress,
+    complianceFacts: floridaFacts,
+    complianceSnapshot: buildComplianceSnapshot(
+      floridaProfile,
+      floridaAddress,
+      { facts: floridaFacts },
+    ),
+    claimDays: floridaProfile.defaultClaimDays,
+  };
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
+        tenantEmail: "tenant@example.com",
+        arbiterName: "",
+        arbiterEmail: null,
+        terms: floridaTerms,
+      }),
+      {
+        DB: db,
+        ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+      },
+    ),
+  );
+  await finalizeWithoutArbiter(db, created);
+
+  const invalid = await act(
+    db,
+    created.record.id,
+    created.access.landlord,
+    {
+      type: "propose_compliance_fact",
+      factName: "qualifyingCondemnation",
+      value: true,
+    },
+  );
+  assert.equal(invalid.status, 400);
+
+  const firstProposal = await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "propose_compliance_fact",
+      factName: "landlordClaimsDeposit",
+      value: false,
+    }),
+  );
+  const firstProposalEvent = firstProposal.events.at(-1);
+  const rejected = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "reject_compliance_fact",
+      proposalEventId: firstProposalEvent.id,
+    }),
+  );
+  assert.equal(rejected.events.at(-1).action, "compliance_fact_rejected");
+
+  const proposed = await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "propose_compliance_fact",
+      factName: "landlordClaimsDeposit",
+      value: true,
+      note: "A documented deduction claim was submitted.",
+    }),
+  );
+  const proposalEvent = proposed.events.at(-1);
+  assert.equal(proposalEvent.action, "compliance_fact_proposed");
+  assert.equal(proposalEvent.metadata.value, true);
+
+  const selfConfirmation = await act(
+    db,
+    created.record.id,
+    created.access.landlord,
+    {
+      type: "confirm_compliance_fact",
+      proposalEventId: proposalEvent.id,
+    },
+  );
+  assert.equal(selfConfirmation.status, 409);
+
+  const confirmed = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "confirm_compliance_fact",
+      proposalEventId: proposalEvent.id,
+    }),
+  );
+  assert.equal(confirmed.events.at(-1).action, "compliance_fact_confirmed");
+  assert.equal(
+    confirmed.events.at(-1).metadata.factName,
+    "landlordClaimsDeposit",
   );
 });
 

@@ -40,6 +40,9 @@ export const DEFAULT_COMPLIANCE_FACTS = Object.freeze({
   furnished: "unknown",
   assistanceAnimalAccommodation: "unknown",
   scraQualifiedTermination: "unknown",
+  writtenRentalAgreement: "unknown",
+  leaseExtendsDepositDeadline: "unknown",
+  seasonalNonPrimaryOccupancy: "unknown",
 });
 
 const source = (citation, url) => Object.freeze({ citation, url });
@@ -356,6 +359,9 @@ export function normalizeComplianceFacts(value) {
     furnished: triState("furnished"),
     assistanceAnimalAccommodation: triState("assistanceAnimalAccommodation"),
     scraQualifiedTermination: triState("scraQualifiedTermination"),
+    writtenRentalAgreement: triState("writtenRentalAgreement"),
+    leaseExtendsDepositDeadline: triState("leaseExtendsDepositDeadline"),
+    seasonalNonPrimaryOccupancy: triState("seasonalNonPrimaryOccupancy"),
   });
 }
 

@@ -1,5 +1,5 @@
 const RESEARCH_DATE = "2026-07-26";
-const PROFILE_VERSION = "rules-2026-07-26.v2";
+const PROFILE_VERSION = "rules-2026-07-26.v3";
 
 // These are implemented, official-source-reviewed routing profiles, not legal
 // conclusions. A profile's
@@ -178,8 +178,8 @@ const DEADLINE_OVERRIDES = Object.freeze({
     deadline("unclaimed-balance", "Complete unclaimed-deposit procedure after tenant notice", 60, "tenantDepositNoticeSentAt"),
   ],
   ME: [
-    deadline("at-will-return", "Return for tenancy at will", 21, "possessionReturnedAt", { condition: { fact: "tenancyType", equals: "at-will" } }),
-    deadline("written-lease-return", "Return under a written lease", 30, "possessionReturnedAt", { condition: { fact: "tenancyType", equals: "written-lease" } }),
+    deadline("at-will-return", "Return for tenancy at will", 21, "possessionReturnedAt", { condition: { fact: "writtenRentalAgreement", equals: false } }),
+    deadline("written-lease-return", "Return under a written rental agreement", 30, "possessionReturnedAt", { condition: { fact: "writtenRentalAgreement", equals: true } }),
   ],
   MI: [
     deadline("damage-notice", "Send damage list", 30, "tenancyTerminatedAt"),

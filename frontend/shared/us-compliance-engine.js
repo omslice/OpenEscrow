@@ -86,10 +86,18 @@ export function buildComplianceSnapshot(profile, resolution, context = {}) {
     );
   const missingFacts = [
     ...new Set(
-      [...overlayResolution.federal, ...overlayResolution.local]
-        .filter((overlay) => overlay.applicability === "needs-fact")
-        .map((overlay) => overlay.condition?.fact)
-        .filter(Boolean),
+      [
+        ...profile.deadlines
+          .filter(
+            (deadline) =>
+              conditionStatus(deadline.condition, overlayResolution.facts) ===
+              "needs-fact",
+          )
+          .map((deadline) => deadline.condition?.fact),
+        ...[...overlayResolution.federal, ...overlayResolution.local]
+          .filter((overlay) => overlay.applicability === "needs-fact")
+          .map((overlay) => overlay.condition?.fact),
+      ].filter(Boolean),
     ),
   ];
   return Object.freeze({
