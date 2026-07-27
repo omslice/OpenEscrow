@@ -612,33 +612,6 @@
   line-height: 1.55;
 }
 
-.yield-concept-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.yield-concept-grid .yield-reference-example {
-  margin-bottom: 0;
-}
-
-.yield-options-heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 20px;
-  margin: 20px 0 10px;
-}
-
-.yield-options-heading p {
-  max-width: 560px;
-  margin: 0;
-  color: var(--muted);
-  font-size: 12px;
-  line-height: 1.5;
-  text-align: right;
-}
-
 .yield-explainer-grid article {
   padding: 15px;
   border: 1px solid var(--border);
@@ -3810,18 +3783,9 @@ a.btn.disabled {
     grid-template-columns: 1fr;
   }
 
-  .yield-concept-grid {
-    grid-template-columns: 1fr;
-  }
-
-  .yield-options-heading,
   .account-center-recovery {
     align-items: flex-start;
     flex-direction: column;
-  }
-
-  .yield-options-heading p {
-    text-align: left;
   }
 
   .settings-actions {

@@ -138,39 +138,7 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
                 <span className="eyebrow">Stablecoins and optional yield</span>
                 <h3 id="yield-explainer-title">How the deposit asset choices work</h3>
               </div>
-              <span className="test-example-badge">Educational · testnet</span>
             </header>
-
-            <div className="yield-concept-grid">
-              <article className="yield-reference-example">
-                <span className="eyebrow">Stablecoins, briefly</span>
-                <h4>A digital token designed to track a reference currency</h4>
-                <p>
-                  A dollar stablecoin is intended to stay close to one U.S. dollar. With a
-                  reserve-backed token, an issuer holds cash or other eligible reserve assets and
-                  issues tokens that can move between blockchain wallets. “Stable” describes the
-                  price goal—not a guarantee that the token, issuer, wallet, or network cannot fail.
-                </p>
-              </article>
-              <article className="yield-reference-example">
-                <span className="eyebrow">Treasury-backed yield, briefly</span>
-                <h4>Reserve earnings are passed through to eligible holders</h4>
-                <p>
-                  Some products invest their backing in short-duration U.S. Treasury-related assets
-                  and bank deposits. Net earnings may appear as more tokens or as a rising
-                  per-token redemption price. The yield changes with underlying rates and costs,
-                  and adds issuer, custody, liquidity, smart-contract, and eligibility risk.
-                </p>
-              </article>
-            </div>
-
-            <div className="yield-options-heading">
-              <span className="eyebrow">Options discussed for OpenEscrow</span>
-              <p>
-                USDC remains the default. The other paths are comparisons or future integrations,
-                not live investment choices in this testnet demo.
-              </p>
-            </div>
 
             <div className="yield-explainer-grid yield-asset-grid">
               <article className="yield-asset-card">
@@ -195,16 +163,6 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
                 </p>
               </article>
               <article className="yield-asset-card">
-                <span className="yield-asset-badge no-yield">State-issued · No holder yield</span>
-                <h4>Wyoming FRNT</h4>
-                <p>
-                  FRNT is Wyoming&apos;s state-issued, reserve-backed stable token. It is an
-                  alternative principal asset—not a yield option. Under the program terms, reserve
-                  earnings do not accrue to token holders. A future OpenEscrow route would also
-                  need approved funding, liquidity, and settlement support.
-                </p>
-              </article>
-              <article className="yield-asset-card">
                 <span className="yield-asset-badge treasury-yield">
                   Treasury yield · Restricted
                 </span>
@@ -215,6 +173,16 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
                   redemption price rises. It is not a standard $1 payment stablecoin, and U.S. and
                   Canadian persons are prohibited from acquiring or redeeming it, so it remains
                   unavailable for OpenEscrow&apos;s U.S. rental flow.
+                </p>
+              </article>
+              <article className="yield-asset-card">
+                <span className="yield-asset-badge no-yield">State-issued · No holder yield</span>
+                <h4>Wyoming FRNT</h4>
+                <p>
+                  FRNT is Wyoming&apos;s state-issued, reserve-backed stable token. It is an
+                  alternative principal asset—not a yield option. Under the program terms, reserve
+                  earnings do not accrue to token holders. A future OpenEscrow route would also
+                  need approved funding, liquidity, and settlement support.
                 </p>
               </article>
             </div>
