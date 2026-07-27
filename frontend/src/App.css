@@ -32,70 +32,14 @@
 
 .app-title {
   display: inline-block;
+  line-height: 0;
 }
 
-.app-brand-lockup {
-  display: inline-flex;
-  align-items: center;
-  min-height: 112px;
-  color: var(--text-h);
-  line-height: 0.78;
-}
-
-.app-wordmark-copy {
-  display: grid;
-  margin-left: -27px;
-  font-family: Arial, Helvetica, sans-serif;
-  font-size: 58px;
-  font-weight: 700;
-  letter-spacing: -1.5px;
-}
-
-.app-wordmark-open,
-.app-wordmark-escrow {
+.app-wordmark-logo {
   display: block;
-  width: max-content;
-  background-clip: text;
-  color: transparent;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-}
-
-.app-wordmark-open {
-  background-image: linear-gradient(180deg, #201c24 0%, #08060d 100%);
-}
-
-.app-wordmark-escrow {
-  background-image: linear-gradient(180deg, #9d40df 0%, #8522cc 100%);
-}
-
-.app-logo {
-  width: 132px;
-  height: 132px;
-  margin-inline: -31px 0;
-  flex: 0 0 auto;
-}
-
-@media (prefers-color-scheme: dark) {
-  .app-wordmark-open {
-    background-image: linear-gradient(180deg, #ffffff 0%, #e5e7eb 100%);
-  }
-
-  .app-wordmark-escrow {
-    background-image: linear-gradient(180deg, #c084fc 0%, #a855f7 100%);
-  }
-}
-
-.visually-hidden {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0 0 0 0);
-  white-space: nowrap;
-  border: 0;
+  width: clamp(260px, 34vw, 330px);
+  max-width: 100%;
+  height: auto;
 }
 
 .header-actions {
@@ -3720,20 +3664,8 @@ a.btn.disabled {
     flex-direction: column;
   }
 
-  .app-logo {
-    width: 106px;
-    height: 106px;
-    margin-left: -25px;
-  }
-
-  .app-brand-lockup {
-    min-height: 92px;
-  }
-
-  .app-wordmark-copy {
-    margin-left: -22px;
-    font-size: 46px;
-    letter-spacing: -1.2px;
+  .app-wordmark-logo {
+    width: min(280px, 82vw);
   }
 
   .header-actions {
