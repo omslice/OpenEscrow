@@ -28,16 +28,21 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
             <span className="step-number">01</span>
             <div className="how-it-works-heading">
               <strong>Agree &amp; fund</strong>
-              <span className="yield-option">Optional yield</span>
+              <details className="yield-tooltip">
+                <summary className="yield-option">Earn yield?</summary>
+                <div className="yield-tooltip-panel">
+                  <strong>Optional, with everyone&apos;s approval</strong>
+                  <p>
+                    All parties can agree to hold the funds in a yield-bearing stablecoin so
+                    tenants earn yield on their security deposit.
+                  </p>
+                  <a className="yield-tooltip-link" href="#yield-stablecoins">
+                    Learn more
+                  </a>
+                </div>
+              </details>
             </div>
             <p>All parties agree to the deposit terms, and the deposit is funded.</p>
-            <p className="yield-choice-copy">
-              All parties can optionally agree to hold the funds in a yield-bearing stablecoin so
-              tenants earn yield on their security deposit.
-            </p>
-            <a className="btn btn-ghost small yield-learn-more" href="#yield-stablecoins">
-              Learn more
-            </a>
           </li>
           <li>
             <span className="step-number">02</span>

@@ -350,6 +350,7 @@
 
 .how-it-works li:hover,
 .how-it-works li:focus-within {
+  z-index: 10;
   border-color: color-mix(in srgb, var(--accent) 46%, var(--border));
   background: color-mix(in srgb, var(--accent) 8%, var(--surface));
   box-shadow: 0 12px 26px rgb(0 0 0 / 16%);
@@ -394,18 +395,74 @@
   color: var(--accent);
   font-size: 11px;
   font-weight: 800;
+  cursor: help;
+  list-style: none;
 }
 
-.how-it-works .yield-choice-copy {
+.yield-option::-webkit-details-marker {
+  display: none;
+}
+
+.yield-tooltip {
+  position: relative;
+}
+
+.yield-tooltip-panel {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 9px);
+  left: 0;
+  display: none;
+  width: min(310px, calc(100vw - 48px));
+  padding: 14px;
+  border: 1px solid color-mix(in srgb, var(--accent) 48%, var(--border));
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 16px 36px rgb(0 0 0 / 34%);
+}
+
+.yield-tooltip-panel::before {
+  position: absolute;
+  top: -5px;
+  left: 22px;
+  width: 9px;
+  height: 9px;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 48%, var(--border));
+  border-left: 1px solid color-mix(in srgb, var(--accent) 48%, var(--border));
+  background: var(--surface);
+  content: "";
+  transform: rotate(45deg);
+}
+
+.yield-tooltip:hover .yield-tooltip-panel,
+.yield-tooltip:focus-within .yield-tooltip-panel,
+.yield-tooltip[open] .yield-tooltip-panel {
+  display: block;
+}
+
+.yield-tooltip-panel strong {
+  margin: 0 0 5px;
   color: var(--text-h);
-  line-height: 1.55;
+  font-size: 12px;
 }
 
-.yield-learn-more {
+.how-it-works .yield-tooltip-panel p {
+  margin: 0 0 10px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.yield-tooltip-link {
   display: inline-flex;
-  align-items: center;
-  margin-top: 4px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 800;
   text-decoration: none;
+}
+
+.yield-tooltip-link:hover,
+.yield-tooltip-link:focus-visible {
+  text-decoration: underline;
 }
 
 .yield-explainer {
