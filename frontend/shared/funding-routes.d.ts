@@ -3,11 +3,34 @@ import type { DepositAssetId } from "./deposit-assets.js";
 export type FundingEnvironment = "sandbox" | "production";
 export type FundingCheckoutMode = "sandbox_preview" | "production";
 
+export interface FundingProviderCatalogEntry {
+  id: string;
+  name: string;
+  providerSelection: string;
+  destinationAsset: "usdc";
+  destinationChain: "eip155:8453";
+  enabled: boolean;
+  status: string;
+  description: string;
+  notes?: readonly string[];
+}
+
+export interface ConversionCatalogEntry {
+  id: string;
+  kind: string;
+  enabled: boolean;
+  status: string;
+  label: string;
+  description: string;
+}
+
 export interface ValidatedFiatOnrampConfig {
   asset: "usdc";
   chain: "eip155:8453";
   environment: FundingEnvironment;
-  providerStrategy: "privy-brokered-fiat";
+  providerStrategy: string;
+  providerCatalogVersion: string;
+  conversionCatalogVersion: string;
 }
 
 export interface FundingPlan {
@@ -16,33 +39,17 @@ export interface FundingPlan {
   checkoutAvailable: boolean;
   checkoutMode: FundingCheckoutMode | null;
   reason: string | null;
-  onramp: {
-    id: string;
-    providerSelection: string;
-    destinationAsset: string;
-    destinationChain: string;
-    description: string;
-  };
-  conversion: {
-    id: string;
-    kind: string;
-    enabled: boolean;
-    status: string;
-    label: string;
-    description: string;
-  } | null;
+  onramp: FundingProviderCatalogEntry;
+  onrampProvider: FundingProviderCatalogEntry;
+  conversion: ConversionCatalogEntry | null;
   settlementAsset: string | null;
   routeSteps: string[];
 }
 
 export const FUNDING_ROUTE_CATALOG_VERSION: string;
-export const ONRAMP_STRATEGY: Readonly<{
-  id: "privy-brokered-fiat";
-  providerSelection: "provider-managed";
-  destinationAsset: "usdc";
-  destinationChain: "eip155:8453";
-  description: string;
-}>;
+export const ONRAMP_PROVIDER_CATALOG_VERSION: string;
+export const CONVERSION_ADAPTER_CATALOG_VERSION: string;
+export const ONRAMP_STRATEGY: Readonly<FundingProviderCatalogEntry>;
 
 export function validateFiatOnrampConfig(input?: {
   enabled?: boolean;
@@ -56,6 +63,20 @@ export function validateFiatOnrampConfig(input?: {
   reason: string | null;
   config: ValidatedFiatOnrampConfig | null;
 };
+
+export function listFundingProviders(): {
+  version: string;
+  onramp: Record<string, Readonly<FundingProviderCatalogEntry>>;
+  aliases: Record<string, string>;
+  conversion: Record<string, Readonly<ConversionCatalogEntry>>;
+};
+
+export function getFundingRouteServices(assetId: unknown):
+  | {
+      onramp: FundingProviderCatalogEntry;
+      conversion: ConversionCatalogEntry;
+    }
+  | null;
 
 export function createFundingPlan(
   assetId: unknown,
@@ -78,7 +99,8 @@ export function createFundingIntent(input: {
   routeCatalogVersion: string;
   assetId: string;
   environment: FundingEnvironment;
-  providerStrategy: "privy-brokered-fiat";
+  providerStrategy: string;
+  conversionKind: string;
   source: Readonly<{
     assets: readonly ["usd"];
     defaultAsset: "usd";

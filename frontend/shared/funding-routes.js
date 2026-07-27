@@ -4,17 +4,56 @@ import {
 } from "./deposit-assets.js";
 
 export const FUNDING_ROUTE_CATALOG_VERSION = "2026-07-26.1";
+export const ONRAMP_PROVIDER_CATALOG_VERSION = FUNDING_ROUTE_CATALOG_VERSION;
+export const CONVERSION_ADAPTER_CATALOG_VERSION = FUNDING_ROUTE_CATALOG_VERSION;
 
-export const ONRAMP_STRATEGY = Object.freeze({
-  id: "privy-brokered-fiat",
-  providerSelection: "provider-managed",
-  destinationAsset: "usdc",
-  destinationChain: "eip155:8453",
-  description:
-    "Privy presents an eligible regulated provider for the user's region and sends purchased Base USDC to the user's own wallet.",
+const ONRAMP_PROVIDERS = Object.freeze({
+  "privy-brokered-fiat": Object.freeze({
+    id: "privy-brokered-fiat",
+    name: "Privy (provider-managed)",
+    providerSelection: "provider-managed",
+    destinationAsset: "usdc",
+    destinationChain: "eip155:8453",
+    enabled: true,
+    status: "ready",
+    description:
+      "Privy presents an eligible regulated provider for the user's region and sends purchased Base USDC to the user's own wallet.",
+    notes: Object.freeze([
+      "Provider selection is delegated to Privy by region and provider coverage.",
+      "OpenEscrow never stores payment card or bank credentials.",
+    ]),
+  }),
+  "kraken-swap-external": Object.freeze({
+    id: "kraken-swap-external",
+    name: "Kraken + Stargate bridge",
+    providerSelection: "external-bridge",
+    destinationAsset: "usdc",
+    destinationChain: "eip155:8453",
+    enabled: false,
+    status: "not_approved",
+    description:
+      "FRNT requires a reviewed Base-native purchase route; this external bridge path is intentionally blocked until approval.",
+  }),
 });
 
-const conversionAdapters = Object.freeze({
+const ONRAMP_PROVIDER_ALIASES = Object.freeze({
+  "privy-usdc-base": "privy-brokered-fiat",
+  "privy-usdc-eligible-network": "privy-brokered-fiat",
+  "external-kraken-solana": "kraken-swap-external",
+});
+
+const ONRAMP_UNKNOWN = Object.freeze({
+  id: "unknown-onramp",
+  name: "Unknown provider",
+  providerSelection: "unknown",
+  destinationAsset: "usdc",
+  destinationChain: "eip155:8453",
+  enabled: false,
+  status: "unknown",
+  description: "The configured on-ramp alias is not recognized in this build.",
+});
+
+const SWAP_CONVERSION_PROVIDERS = Object.freeze({
   none: Object.freeze({
     id: "none",
     kind: "none",
@@ -39,7 +78,7 @@ const conversionAdapters = Object.freeze({
     status: "not_approved",
     label: "External FRNT route",
     description:
-      "No reviewed Base-native FRNT purchase and bridge route is approved for OpenEscrow.",
+      "No reviewed Base-native FRNT bridge and purchase route is approved for OpenEscrow.",
   }),
   "ondo-direct-subscribe": Object.freeze({
     id: "ondo-direct-subscribe",
@@ -52,8 +91,50 @@ const conversionAdapters = Object.freeze({
   }),
 });
 
+function resolveOnrampProvider(inputId) {
+  const providerId =
+    ONRAMP_PROVIDER_ALIASES[String(inputId || "").trim()] ||
+    String(inputId || "").trim();
+  return ONRAMP_PROVIDERS[providerId] || ONRAMP_UNKNOWN;
+}
+
+function resolveConversionProvider(inputId) {
+  const conversionId = String(inputId || "").trim();
+  return (
+    SWAP_CONVERSION_PROVIDERS[conversionId] ||
+    Object.freeze({
+      id: conversionId,
+      kind: "unknown",
+      enabled: false,
+      status: "unknown",
+      label: "Unreviewed conversion",
+      description: "This conversion route has not been modeled or approved.",
+    })
+  );
+}
+
 function normalizeEnvironment(value) {
   return value === "production" ? "production" : "sandbox";
+}
+
+export const ONRAMP_STRATEGY = ONRAMP_PROVIDERS["privy-brokered-fiat"];
+
+export function getFundingRouteServices(assetId) {
+  const asset = getDepositAsset(assetId);
+  if (!asset) return null;
+  return {
+    onramp: resolveOnrampProvider(asset.fundingRoute.onramp),
+    conversion: resolveConversionProvider(asset.fundingRoute.conversion),
+  };
+}
+
+export function listFundingProviders() {
+  return {
+    version: ONRAMP_PROVIDER_CATALOG_VERSION,
+    onramp: ONRAMP_PROVIDERS,
+    aliases: ONRAMP_PROVIDER_ALIASES,
+    conversion: SWAP_CONVERSION_PROVIDERS,
+  };
 }
 
 export function validateFiatOnrampConfig(input = {}) {
@@ -75,7 +156,8 @@ export function validateFiatOnrampConfig(input = {}) {
     return {
       enabled: false,
       environment,
-      reason: "Fiat funding must deliver USDC; token addresses and alternate assets are rejected.",
+      reason:
+        "Fiat funding must deliver USDC; token addresses and alternate assets are rejected.",
       config: null,
     };
   }
@@ -106,6 +188,8 @@ export function validateFiatOnrampConfig(input = {}) {
       chain,
       environment,
       providerStrategy: ONRAMP_STRATEGY.id,
+      providerCatalogVersion: ONRAMP_PROVIDER_CATALOG_VERSION,
+      conversionCatalogVersion: CONVERSION_ADAPTER_CATALOG_VERSION,
     },
   };
 }
@@ -126,7 +210,8 @@ export function createFundingPlan(
       checkoutAvailable: false,
       checkoutMode: null,
       reason: "Unknown deposit asset.",
-      onramp: ONRAMP_STRATEGY,
+      onramp: ONRAMP_UNKNOWN,
+      onrampProvider: ONRAMP_UNKNOWN,
       conversion: null,
       settlementAsset: null,
       routeSteps: [],
@@ -134,26 +219,21 @@ export function createFundingPlan(
   }
 
   const normalizedEnvironment = normalizeEnvironment(environment);
-  const conversion =
-    conversionAdapters[asset.fundingRoute.conversion] ||
-    Object.freeze({
-      id: asset.fundingRoute.conversion,
-      kind: "unknown",
-      enabled: false,
-      status: "unknown",
-      label: "Unreviewed conversion",
-      description: "This conversion route has not been modeled or approved.",
-    });
+  const onramp = resolveOnrampProvider(asset.fundingRoute.onramp);
+  const conversion = resolveConversionProvider(asset.fundingRoute.conversion);
   const sandboxPreviewEligible =
-    asset.id === DEPOSIT_ASSET_IDS.USDC ||
-    asset.id === DEPOSIT_ASSET_IDS.AAVE_USDC;
+    asset.id === DEPOSIT_ASSET_IDS.USDC || asset.id === DEPOSIT_ASSET_IDS.AAVE_USDC;
   const checkoutMode =
-    onrampEnabled && normalizedEnvironment === "sandbox" && sandboxPreviewEligible
+    onrampEnabled &&
+    normalizedEnvironment === "sandbox" &&
+    sandboxPreviewEligible &&
+    onramp.enabled
       ? "sandbox_preview"
       : onrampEnabled &&
           normalizedEnvironment === "production" &&
           productionApproved &&
-          asset.id === DEPOSIT_ASSET_IDS.USDC
+          asset.id === DEPOSIT_ASSET_IDS.USDC &&
+          onramp.enabled
         ? "production"
         : null;
 
@@ -168,6 +248,8 @@ export function createFundingPlan(
   } else if (checkoutMode === "production") {
     status = "ready";
     reason = null;
+  } else if (!onramp.enabled) {
+    reason = onramp.description || "The selected funding provider is unavailable.";
   } else if (!sandboxPreviewEligible) {
     reason =
       asset.unavailableReason ||
@@ -187,7 +269,8 @@ export function createFundingPlan(
     checkoutAvailable: checkoutMode !== null,
     checkoutMode,
     reason,
-    onramp: ONRAMP_STRATEGY,
+    onramp: onramp,
+    onrampProvider: onramp,
     conversion,
     settlementAsset: asset.settlementAsset,
     routeSteps:
@@ -222,6 +305,10 @@ export function createFundingIntent({
   if (!plan.checkoutAvailable) {
     throw new Error(plan.reason || "This funding route is unavailable.");
   }
+  const services = getFundingRouteServices(assetId);
+  if (!services || !services.onramp.enabled) {
+    throw new Error("No active on-ramp provider is configured for this asset.");
+  }
   if (!/^0x[a-fA-F0-9]{40}$/.test(String(walletAddress || ""))) {
     throw new Error("A valid EVM destination wallet is required.");
   }
@@ -229,12 +316,14 @@ export function createFundingIntent({
     throw new Error("The funding amount must be greater than zero.");
   }
 
+  const onrampProvider = services.onramp;
+
   return Object.freeze({
     schema: "openescrow.funding-intent.v1",
     routeCatalogVersion: FUNDING_ROUTE_CATALOG_VERSION,
     assetId: plan.assetId,
     environment: normalizeEnvironment(environment),
-    providerStrategy: ONRAMP_STRATEGY.id,
+    providerStrategy: onrampProvider.id,
     source: Object.freeze({
       assets: Object.freeze(["usd"]),
       defaultAsset: "usd",
@@ -246,5 +335,6 @@ export function createFundingIntent({
     }),
     amountMicros,
     checkoutMode: plan.checkoutMode,
+    conversionKind: services.conversion.id,
   });
 }
