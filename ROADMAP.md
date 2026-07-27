@@ -53,7 +53,7 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Exact wallet, asset, chain, amount, sandbox, and production release gates
 - [x] Direct Aave supply/withdrawal route modeled without a DEX swap
 - [x] FRNT and USDY routes fail closed pending official availability and eligibility
-- [ ] Enable and validate provider sandbox checkout in the Privy dashboard
+- [x] Enable and validate provider sandbox checkout in the Privy dashboard
 - [ ] Decide whether the pilot needs separate ACH/bank-deposit support
 - [ ] Complete provider approval, KYC/AML, fees, refunds, webhooks, reconciliation, and support
 - [ ] Audit and deploy mainnet contracts before any real-money route can be enabled

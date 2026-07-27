@@ -65,6 +65,14 @@ record(
 const productionEnv = parsePublicEnv(
   await readFile(join(frontend, ".env.production"), "utf8"),
 );
+const fiatOnrampEnabled = productionEnv.VITE_FIAT_ONRAMP_ENABLED === "true";
+const fiatOnrampEnvironment =
+  productionEnv.VITE_FIAT_ONRAMP_ENVIRONMENT === "production"
+    ? "production"
+    : "sandbox";
+const fiatOnrampProductionApproved =
+  productionEnv.VITE_FIAT_ONRAMP_PRODUCTION_APPROVED === "true";
+
 record(
   typeof productionEnv.VITE_PRIVY_APP_ID === "string" &&
     productionEnv.VITE_PRIVY_APP_ID.length > 0,
@@ -72,28 +80,49 @@ record(
   "VITE_PRIVY_APP_ID is missing",
 );
 record(
-  productionEnv.VITE_FIAT_ONRAMP_ENABLED !== "true",
-  "Real fiat onramp is disabled",
-  "testnet releases cannot enable real fiat funding",
+  !(
+    fiatOnrampEnabled &&
+    fiatOnrampEnvironment === "production" &&
+    !fiatOnrampProductionApproved
+  ),
+  "Real-money fiat onramp is not enabled without production approval",
+  "production onramp is enabled without explicit approval",
 );
 record(
-  productionEnv.VITE_FIAT_ONRAMP_PRODUCTION_APPROVED !== "true",
-  "Fiat production approval gate is closed",
-  "testnet releases cannot carry the production-approval flag",
+  !(fiatOnrampProductionApproved && fiatOnrampEnvironment !== "production"),
+  "Production approval flag only applies in production mode",
+  "testnet build carries a production approval flag outside production mode",
 );
 
 const disabledOnramp = validateFiatOnrampConfig({
-  enabled: productionEnv.VITE_FIAT_ONRAMP_ENABLED === "true",
-  environment: productionEnv.VITE_FIAT_ONRAMP_ENVIRONMENT,
+  enabled: fiatOnrampEnabled,
+  environment: fiatOnrampEnvironment,
   asset: productionEnv.VITE_FIAT_ONRAMP_ASSET,
   chain: productionEnv.VITE_FIAT_ONRAMP_CHAIN,
-  productionApproved:
-    productionEnv.VITE_FIAT_ONRAMP_PRODUCTION_APPROVED === "true",
+  productionApproved: fiatOnrampProductionApproved,
 });
+if (fiatOnrampEnabled) {
+  record(
+    disabledOnramp.config !== null && disabledOnramp.reason === null,
+    "Compiled fiat configuration is enabled and valid",
+    "the fiat onramp settings are invalid in their current mode",
+  );
+} else {
+  record(
+    disabledOnramp.enabled === false && disabledOnramp.config === null,
+    "Compiled fiat configuration fails closed",
+    "the production environment unexpectedly creates an onramp config",
+  );
+}
+
 record(
-  disabledOnramp.enabled === false && disabledOnramp.config === null,
-  "Compiled fiat configuration fails closed",
-  "the production environment unexpectedly creates an onramp config",
+  createFundingPlan(DEPOSIT_ASSET_IDS.USDC, {
+    onrampEnabled: fiatOnrampEnabled,
+    environment: fiatOnrampEnvironment,
+    productionApproved: fiatOnrampProductionApproved,
+  }).checkoutAvailable === (fiatOnrampEnabled && fiatOnrampEnvironment === "sandbox"),
+  "USDC checkout aligns with onramp mode",
+  "USDC checkout mode does not match configured fiat intent",
 );
 
 const defaultAsset = getDepositAsset(DEPOSIT_ASSET_IDS.USDC);
@@ -103,13 +132,6 @@ record(
     defaultAsset.settlementAsset === "USDC",
   "USDC remains the enabled non-yield default",
   "the default deposit asset safety properties changed",
-);
-record(
-  createFundingPlan(DEPOSIT_ASSET_IDS.USDC, {
-    onrampEnabled: false,
-  }).checkoutAvailable === false,
-  "USDC checkout remains closed in the testnet build",
-  "a disabled onramp unexpectedly produced a checkout",
 );
 record(
   depositAssetAvailability(DEPOSIT_ASSET_IDS.USDY, {
