@@ -66,6 +66,39 @@ export function PrivyAccountCenter({
   const sourceReadinessUpdated = sourceReadiness?.lastRunAt
     ? new Date(sourceReadiness.lastRunAt).toLocaleString()
     : "No successful check yet";
+  const readinessBlockers = useMemo(() => {
+    const blockers: string[] = [];
+    if (!serviceReadiness) return blockers;
+    if (!serviceReadiness.email.configured) {
+      blockers.push(
+        "Configure an automatic email provider (for production delivery and test-email checks).",
+      );
+    }
+    if (!serviceReadiness.email.schedulerLastRunAt) {
+      blockers.push(
+        "Enable the hosted scheduler so notification cron jobs can run after deployment.",
+      );
+    }
+    if (!serviceReadiness.evidence.encryptedAtRest) {
+      blockers.push(
+        "Set the evidence encryption key so stored deposit evidence is encrypted at rest.",
+      );
+    }
+    if (!serviceReadiness.recordIntegrity.activityRegistry.ready) {
+      blockers.push(
+        "Verify the onchain activity registry binding is deployed and matched to the escrow contract.",
+      );
+    }
+    if (!serviceReadiness.addressValidation.configured) {
+      blockers.push("Configure address attestation so property checks are tamper-resistant.");
+    }
+    if (!serviceReadiness.complianceSources.ready) {
+      blockers.push(
+        "Resolve compliance source monitoring alerts for changed/stale/unreachable/blocked profiles.",
+      );
+    }
+    return blockers;
+  }, [serviceReadiness]);
 
   useEffect(() => {
     if (!preferenceKey) {
@@ -534,6 +567,18 @@ export function PrivyAccountCenter({
                 {sourceReadiness.stale} stale, {sourceReadiness.blocked} blocked.
               </p>
             )}
+            {readinessBlockers.length > 0 ? (
+              <div className="notification-boundary">
+                <p>
+                  <strong>Pilot blockers to clear:</strong>
+                </p>
+                <ul>
+                  {readinessBlockers.map((blocker, index) => (
+                    <li key={`${blocker}:${index}`}>{blocker}</li>
+                  ))}
+                </ul>
+              </div>
+            ) : null}
           </section>
         </div>
       </details>
