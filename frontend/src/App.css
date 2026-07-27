@@ -30,6 +30,23 @@
   color: var(--text-h);
 }
 
+.app-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.app-title span {
+  font-size: inherit;
+  letter-spacing: inherit;
+  line-height: inherit;
+}
+
+.app-logo {
+  width: 36px;
+  height: 36px;
+}
+
 .header-actions {
   position: relative;
   display: flex;
@@ -3482,6 +3499,11 @@ a.btn.disabled {
   .app-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .app-logo {
+    width: 30px;
+    height: 30px;
   }
 
   .header-actions {

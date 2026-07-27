@@ -57,7 +57,15 @@ export function Layout({
       <header className="app-header">
         <div>
           <p className="eyebrow">Rental deposit protection · Base Sepolia</p>
-          <h1>OpenEscrow</h1>
+          <h1 className="app-title">
+            <img
+              src="/openescrow-logo.svg"
+              alt=""
+              className="app-logo"
+              aria-hidden="true"
+            />
+            <span>OpenEscrow</span>
+          </h1>
           <p className="tagline">
             OpenEscrow is a free, open-source platform for fair and transparent management of rental
             security deposits.
