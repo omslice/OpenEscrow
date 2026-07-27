@@ -37,33 +37,53 @@
 .app-brand-lockup {
   display: inline-flex;
   align-items: center;
-  min-height: 76px;
+  min-height: 112px;
   color: var(--text-h);
-  line-height: 0.76;
+  line-height: 0.78;
 }
 
 .app-wordmark-copy {
   display: grid;
-  margin-left: -18px;
-  font-size: 43px;
-  font-weight: 850;
-  letter-spacing: -2.8px;
+  margin-left: -27px;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 58px;
+  font-weight: 700;
+  letter-spacing: -1.5px;
 }
 
 .app-wordmark-open,
 .app-wordmark-escrow {
   display: block;
+  width: max-content;
+  background-clip: text;
+  color: transparent;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.app-wordmark-open {
+  background-image: linear-gradient(180deg, #201c24 0%, #08060d 100%);
 }
 
 .app-wordmark-escrow {
-  color: var(--brand);
+  background-image: linear-gradient(180deg, #9d40df 0%, #8522cc 100%);
 }
 
 .app-logo {
-  width: 86px;
-  height: 86px;
-  margin-inline: -20px 0;
+  width: 132px;
+  height: 132px;
+  margin-inline: -31px 0;
   flex: 0 0 auto;
+}
+
+@media (prefers-color-scheme: dark) {
+  .app-wordmark-open {
+    background-image: linear-gradient(180deg, #ffffff 0%, #e5e7eb 100%);
+  }
+
+  .app-wordmark-escrow {
+    background-image: linear-gradient(180deg, #c084fc 0%, #a855f7 100%);
+  }
 }
 
 .visually-hidden {
@@ -3701,19 +3721,19 @@ a.btn.disabled {
   }
 
   .app-logo {
-    width: 72px;
-    height: 72px;
-    margin-left: -17px;
+    width: 106px;
+    height: 106px;
+    margin-left: -25px;
   }
 
   .app-brand-lockup {
-    min-height: 64px;
+    min-height: 92px;
   }
 
   .app-wordmark-copy {
-    margin-left: -15px;
-    font-size: 36px;
-    letter-spacing: -2.4px;
+    margin-left: -22px;
+    font-size: 46px;
+    letter-spacing: -1.2px;
   }
 
   .header-actions {
