@@ -16,7 +16,7 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
         <h2 id="public-intro-title">A better way to handle rental deposits.</h2>
         <p className="intro-summary">
           A clear, documented process from agreement to refund, with fair dispute resolution and
-          optional yield. Automated, tracked, and secured by Ethereum.
+          automated, tracked, and secured by Ethereum.
         </p>
         <div className="intro-actions">
           <button className="btn btn-primary" onClick={onStart}>

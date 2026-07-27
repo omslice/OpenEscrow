@@ -2,7 +2,8 @@
 
 ## Overnight goal
 
-Objective: advance the highest-impact roadmap items needed for a safe, testnet-ready MVP release without enabling any production-money behavior.
+Objective: advance the highest-impact roadmap items needed for a safe, testnet-ready MVP release without
+enabling any production-money behavior.
 
 Acceptance criteria (for this goal):
 
@@ -11,7 +12,7 @@ Acceptance criteria (for this goal):
 - We run `npm run lint`, `npm run test:client-logic`, `npm run test:server`, and `npm run build` before handing over.
 - We report what changed, what is still blocked, and what still requires your manual action.
 
-This is the operational list for continuing work tonight while we keep the current testnet
+This is the operational list for continuing work overnight while we keep the current testnet
 boundaries.
 
 ## In progress
@@ -28,6 +29,10 @@ boundaries.
     currently pass on this branch.
 - **[In progress]** Host safety readiness hardening
   - Added readiness health checks for scheduler cadence and surfaced stale-run blockers in account settings.
+- **[In progress]** Yield education path clarity on unauthenticated landing page
+  - Yield content should stay out of the main dashboard landing view until users choose
+    "Learn more" from the “Earn yield?” link in “How it works.”
+  - Keep details discoverable while reducing default cognitive load.
 
 ## Remaining
 
@@ -43,6 +48,9 @@ boundaries.
 - **[Planned]** Decide the long-lived onboarding/fiat path
   - Confirm whether a separate ACH/bank-deposit funding path is required for your target pilot
     market and add provider-specific safeguards.
+- **[Planned]** Keep non-urgent UI polish changes staged
+  - Refine dashboard tab prominence and onboarding affordances only after landing-page yield clarity
+    remains stable in smoke checks and user testing.
 
 ## Unknowns (need partner/owner decisions)
 
