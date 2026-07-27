@@ -278,17 +278,41 @@ Save the output in a password manager and add it to the hosted runtime as:
 
 ```dotenv
 EVIDENCE_ENCRYPTION_KEY=replace_with_the_generated_base64_value
+EVIDENCE_ENCRYPTION_KEY_ID=primary
 ```
 
 Losing this value makes encrypted evidence unrecoverable. Changing it after uploads exist also
-prevents those existing files from being decrypted. Key rotation and participant-controlled
-recovery are not implemented yet.
+prevents those existing files from being decrypted unless the prior key remains in the versioned
+decryption keyring. Participant-controlled recovery and an approved retention/deletion schedule
+are not implemented yet.
+
+### Rotate the evidence key without losing older files
+
+Each encrypted evidence row records the non-secret ID of the key that protected it. To rotate:
+
+1. Keep the current key and its ID in the project password manager.
+2. Generate a new 32-byte base64 key.
+3. Set `EVIDENCE_ENCRYPTION_KEY` to the new key and give it a new stable ID, such as
+   `EVIDENCE_ENCRYPTION_KEY_ID=2026-q3`.
+4. Add every retired key to the server-only `EVIDENCE_DECRYPTION_KEYS` secret as a JSON object:
+
+   ```dotenv
+   EVIDENCE_DECRYPTION_KEYS={"primary":"replace_with_the_prior_base64_key"}
+   ```
+
+5. Redeploy, then verify one invented file uploaded before rotation and one uploaded after
+   rotation. Both must download with matching SHA-256 receipts.
+
+Never reuse one ID for different key bytes. Never remove a retained key merely to simplify the
+configuration; remove it only after every file encrypted with that ID has been handled under an
+approved retention/deletion policy and any required recovery backup has been verified.
 
 ### Recommended pilot mode: encrypted private R2
 
 ```dotenv
 EVIDENCE_STORAGE_MODE=private-r2
 EVIDENCE_ENCRYPTION_KEY=replace_with_the_generated_base64_value
+EVIDENCE_ENCRYPTION_KEY_ID=primary
 ```
 
 The application encrypts the document before persistent storage and verifies the original
@@ -308,6 +332,7 @@ becomes the only copy of evidence.
 PINATA_JWT=replace_with_the_server_side_jwt
 EVIDENCE_STORAGE_MODE=encrypted-ipfs
 EVIDENCE_ENCRYPTION_KEY=replace_with_the_generated_base64_value
+EVIDENCE_ENCRYPTION_KEY_ID=primary
 IPFS_GATEWAY_URL=https://gateway.pinata.cloud/ipfs
 ```
 

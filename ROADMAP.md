@@ -28,7 +28,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Private R2 evidence with file-signature validation and optional encryption/decentralized mode
 - [x] Landlord-controlled tenant invitation reset with old-link and active-session invalidation
 - [x] Short-lived, capped account-discovery sessions per user, role, and agreement
-- [ ] Configure and test the hosted evidence master key, backup, rotation, retention, and deletion
+- [ ] Configure and test the hosted evidence master key, backup, versioned rotation, retention,
+  and deletion (rotation/keyring support is implemented; hosted operations remain)
 - [ ] Design landlord/arbiter recovery and exercise privacy requests and incident response
 
 ## 3. Validated-address nationwide compliance

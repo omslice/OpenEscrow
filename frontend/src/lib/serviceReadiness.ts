@@ -95,9 +95,10 @@ export function getServiceReadinessActions(
 
   if (!serviceReadiness.evidence.encryptedAtRest) {
     actions.push({
-      label: "Rotate encrypted evidence key",
+      label: "Configure encrypted evidence key",
       detail:
-        "Set EVIDENCE_ENCRYPTION_KEY (at least 32 random bytes) and keep it unchanged for the life of the deployment.",
+        serviceReadiness.evidence.encryptionError ||
+        "Set a base64-encoded 32-byte EVIDENCE_ENCRYPTION_KEY and a stable EVIDENCE_ENCRYPTION_KEY_ID. Retain prior keys in EVIDENCE_DECRYPTION_KEYS during rotation.",
     });
   }
 

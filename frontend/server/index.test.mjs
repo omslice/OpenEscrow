@@ -51,6 +51,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0006_compliance_source_monitor.sql",
     "0007_account_record_archives.sql",
     "0008_compliance_source_release_gate.sql",
+    "0009_evidence_key_rotation.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -2705,6 +2706,64 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
   }
 });
 
+test("homepage traffic safely advances an enabled compliance-source baseline", async () => {
+  const db = new TestD1();
+  const originalFetch = globalThis.fetch;
+  const checkedUrls = [];
+  globalThis.fetch = async (input) => {
+    checkedUrls.push(String(input));
+    return new Response(`<html><body>${String(input)}</body></html>`, {
+      status: 200,
+      headers: {
+        "content-type": "text/html",
+        etag: `"fallback-source-${checkedUrls.length}"`,
+      },
+    });
+  };
+  const env = {
+    DB: db,
+    COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+    ASSETS: {
+      fetch: async () => new Response("<main>OpenEscrow</main>", { status: 200 }),
+    },
+  };
+  try {
+    const waits = [];
+    const response = await worker.fetch(request("/"), env, {
+      waitUntil(promise) {
+        waits.push(promise);
+      },
+    });
+    assert.equal(response.status, 200);
+    await Promise.all(waits);
+    assert.equal(checkedUrls.length, 4);
+
+    const monitorRun = await db
+      .prepare(
+        "SELECT last_started_at FROM scheduled_job_runs WHERE name = ?",
+      )
+      .bind("compliance-source-monitor")
+      .first();
+    assert.ok(monitorRun?.last_started_at);
+
+    const repeatedWaits = [];
+    await worker.fetch(request("/index.html"), env, {
+      waitUntil(promise) {
+        repeatedWaits.push(promise);
+      },
+    });
+    await Promise.all(repeatedWaits);
+    assert.equal(
+      checkedUrls.length,
+      4,
+      "repeat homepage traffic must not run a second source batch inside 24 hours",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("private evidence is stored in R2 and only an agreement party can retrieve it", async () => {
   const db = new TestD1();
   const evidence = new TestR2();
@@ -2822,6 +2881,137 @@ test("configured evidence encryption stores only ciphertext and decrypts for an 
   assert.equal(authorized.status, 200);
   assert.equal(await authorized.text(), "%PDF-1.7\nprivate encrypted invoice");
   assert.equal(authorized.headers.get("x-openescrow-storage"), "encrypted-r2");
+});
+
+test("evidence key rotation preserves access through retained decryption keys", async () => {
+  const db = new TestD1();
+  const evidence = new TestR2();
+  const created = await create(db);
+  const originalKey = Buffer.alloc(32, 17).toString("base64");
+  const rotatedKey = Buffer.alloc(32, 23).toString("base64");
+  const form = new FormData();
+  form.set("proposalId", created.record.id);
+  form.set("token", created.access.landlord);
+  form.set(
+    "file",
+    new File(["%PDF-1.7\npre-rotation evidence"], "before.pdf", {
+      type: "application/pdf",
+    }),
+  );
+  const uploaded = await jsonResponse(
+    await worker.fetch(
+      new Request("https://openescrow.example/api/evidence", {
+        method: "POST",
+        body: form,
+      }),
+      {
+        DB: db,
+        EVIDENCE: evidence,
+        EVIDENCE_ENCRYPTION_KEY: originalKey,
+      },
+    ),
+  );
+  const storedMetadata = await db
+    .prepare(
+      "SELECT encryption_key_id FROM evidence_files WHERE id = ?",
+    )
+    .bind(uploaded.cid)
+    .first();
+  assert.equal(storedMetadata.encryption_key_id, "primary");
+
+  const rotatedEnvironment = {
+    DB: db,
+    EVIDENCE: evidence,
+    EVIDENCE_ENCRYPTION_KEY: rotatedKey,
+    EVIDENCE_ENCRYPTION_KEY_ID: "2026-q3",
+    EVIDENCE_DECRYPTION_KEYS: JSON.stringify({ primary: originalKey }),
+  };
+  const authorized = await worker.fetch(
+    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    rotatedEnvironment,
+  );
+  assert.equal(authorized.status, 200);
+  assert.equal(await authorized.text(), "%PDF-1.7\npre-rotation evidence");
+
+  const rotatedForm = new FormData();
+  rotatedForm.set("proposalId", created.record.id);
+  rotatedForm.set("token", created.access.landlord);
+  rotatedForm.set(
+    "file",
+    new File(["%PDF-1.7\npost-rotation evidence"], "after.pdf", {
+      type: "application/pdf",
+    }),
+  );
+  const rotatedUpload = await jsonResponse(
+    await worker.fetch(
+      new Request("https://openescrow.example/api/evidence", {
+        method: "POST",
+        body: rotatedForm,
+      }),
+      rotatedEnvironment,
+    ),
+  );
+  const rotatedMetadata = await db
+    .prepare(
+      "SELECT encryption_key_id FROM evidence_files WHERE id = ?",
+    )
+    .bind(rotatedUpload.cid)
+    .first();
+  assert.equal(rotatedMetadata.encryption_key_id, "2026-q3");
+  const rotatedDownload = await worker.fetch(
+    new Request(`https://openescrow.example${rotatedUpload.gatewayUrl}`),
+    rotatedEnvironment,
+  );
+  assert.equal(rotatedDownload.status, 200);
+  assert.equal(await rotatedDownload.text(), "%PDF-1.7\npost-rotation evidence");
+
+  const missingRetainedKey = await worker.fetch(
+    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    {
+      ...rotatedEnvironment,
+      EVIDENCE_DECRYPTION_KEYS: undefined,
+    },
+  );
+  assert.equal(missingRetainedKey.status, 503);
+  assert.match(
+    (await missingRetainedKey.json()).error,
+    /decryption key "primary" is not configured/,
+  );
+
+  const readiness = await jsonResponse(
+    await worker.fetch(request("/api/system/readiness"), {
+      ...rotatedEnvironment,
+      VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+    }),
+  );
+  assert.equal(readiness.evidence.encryptedAtRest, true);
+  assert.equal(readiness.evidence.activeEncryptionKeyId, "2026-q3");
+  assert.equal(readiness.evidence.retainedDecryptionKeyCount, 1);
+  assert.equal(readiness.evidence.encryptionError, null);
+
+  const invalidReadiness = await jsonResponse(
+    await worker.fetch(request("/api/system/readiness"), {
+      DB: db,
+      EVIDENCE: evidence,
+      EVIDENCE_ENCRYPTION_KEY: "not-a-32-byte-key",
+      VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+    }),
+  );
+  assert.equal(invalidReadiness.evidence.encryptedAtRest, false);
+  assert.match(invalidReadiness.evidence.encryptionError, /base64-encoded 32-byte key/);
+
+  const duplicateKeyIdReadiness = await jsonResponse(
+    await worker.fetch(request("/api/system/readiness"), {
+      ...rotatedEnvironment,
+      EVIDENCE_DECRYPTION_KEYS: JSON.stringify({ "2026-q3": originalKey }),
+      VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+    }),
+  );
+  assert.equal(duplicateKeyIdReadiness.evidence.encryptedAtRest, false);
+  assert.match(
+    duplicateKeyIdReadiness.evidence.encryptionError,
+    /must not repeat the active/,
+  );
 });
 
 test("decentralized evidence mode uploads only encrypted IPFS ciphertext", async () => {

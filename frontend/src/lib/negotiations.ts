@@ -84,6 +84,9 @@ export interface ServiceReadiness {
     configured: boolean;
     mode: "private-r2" | "encrypted-ipfs" | "unconfigured";
     encryptedAtRest: boolean;
+    activeEncryptionKeyId?: string | null;
+    retainedDecryptionKeyCount?: number;
+    encryptionError?: string | null;
     decentralizedReady: boolean;
   };
   recordIntegrity: {

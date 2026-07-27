@@ -117,6 +117,7 @@ CREATE TABLE IF NOT EXISTS evidence_files (
   sha256 TEXT NOT NULL,
   encryption_version TEXT,
   encryption_iv TEXT,
+  encryption_key_id TEXT,
   created_at TEXT NOT NULL,
   FOREIGN KEY (negotiation_id) REFERENCES agreement_negotiations(id)
 )`;
@@ -1156,11 +1157,150 @@ function encodeBase64(value) {
   return btoa(String.fromCharCode(...new Uint8Array(value)));
 }
 
-async function evidenceEncryptionKey(env, evidenceId) {
-  const rawKey = decodeBase64(env.EVIDENCE_ENCRYPTION_KEY);
-  if (rawKey.length !== 32) {
-    throw new Error("EVIDENCE_ENCRYPTION_KEY must be a base64-encoded 32-byte key.");
+const DEFAULT_EVIDENCE_ENCRYPTION_KEY_ID = "primary";
+const EVIDENCE_ENCRYPTION_KEY_ID_PATTERN = /^[a-zA-Z0-9._-]{1,64}$/;
+
+class EvidenceKeyConfigurationError extends Error {}
+
+function evidenceEncryptionKeyId(value) {
+  const keyId = cleanText(value, 64) || DEFAULT_EVIDENCE_ENCRYPTION_KEY_ID;
+  if (!EVIDENCE_ENCRYPTION_KEY_ID_PATTERN.test(keyId)) {
+    throw new EvidenceKeyConfigurationError(
+      "EVIDENCE_ENCRYPTION_KEY_ID may contain only letters, numbers, dots, underscores, and hyphens.",
+    );
   }
+  return keyId;
+}
+
+function decodeEvidenceMasterKey(value, variableName) {
+  if (!value) {
+    throw new EvidenceKeyConfigurationError(`${variableName} is not configured.`);
+  }
+  let rawKey;
+  try {
+    rawKey = decodeBase64(value);
+  } catch {
+    throw new EvidenceKeyConfigurationError(
+      `${variableName} must be a base64-encoded 32-byte key.`,
+    );
+  }
+  if (rawKey.length !== 32) {
+    throw new EvidenceKeyConfigurationError(
+      `${variableName} must be a base64-encoded 32-byte key.`,
+    );
+  }
+  return rawKey;
+}
+
+function retainedEvidenceDecryptionKeys(env) {
+  if (!env.EVIDENCE_DECRYPTION_KEYS) return new Map();
+  let parsed;
+  try {
+    parsed = JSON.parse(String(env.EVIDENCE_DECRYPTION_KEYS));
+  } catch {
+    throw new EvidenceKeyConfigurationError(
+      "EVIDENCE_DECRYPTION_KEYS must be a JSON object mapping key IDs to base64 keys.",
+    );
+  }
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new EvidenceKeyConfigurationError(
+      "EVIDENCE_DECRYPTION_KEYS must be a JSON object mapping key IDs to base64 keys.",
+    );
+  }
+  const entries = Object.entries(parsed);
+  if (entries.length > 20) {
+    throw new EvidenceKeyConfigurationError(
+      "EVIDENCE_DECRYPTION_KEYS is limited to 20 retained keys.",
+    );
+  }
+  return new Map(
+    entries.map(([keyId, encodedKey]) => {
+      const normalizedKeyId = cleanText(keyId, 64);
+      if (!EVIDENCE_ENCRYPTION_KEY_ID_PATTERN.test(normalizedKeyId)) {
+        throw new EvidenceKeyConfigurationError(
+          "Every EVIDENCE_DECRYPTION_KEYS key ID must contain only letters, numbers, dots, underscores, and hyphens.",
+        );
+      }
+      return [
+        normalizedKeyId,
+        decodeEvidenceMasterKey(
+          encodedKey,
+          `EVIDENCE_DECRYPTION_KEYS.${normalizedKeyId}`,
+        ),
+      ];
+    }),
+  );
+}
+
+function activeEvidenceMasterKey(env) {
+  return {
+    keyId: evidenceEncryptionKeyId(env.EVIDENCE_ENCRYPTION_KEY_ID),
+    rawKey: decodeEvidenceMasterKey(
+      env.EVIDENCE_ENCRYPTION_KEY,
+      "EVIDENCE_ENCRYPTION_KEY",
+    ),
+  };
+}
+
+function evidenceEncryptionConfiguration(env) {
+  const active = activeEvidenceMasterKey(env);
+  const retained = retainedEvidenceDecryptionKeys(env);
+  if (retained.has(active.keyId)) {
+    throw new EvidenceKeyConfigurationError(
+      "EVIDENCE_DECRYPTION_KEYS must not repeat the active EVIDENCE_ENCRYPTION_KEY_ID.",
+    );
+  }
+  return { active, retained };
+}
+
+function evidenceMasterKeyForId(env, storedKeyId) {
+  const requestedKeyId = evidenceEncryptionKeyId(storedKeyId);
+  const configuration = evidenceEncryptionConfiguration(env);
+  if (requestedKeyId === configuration.active.keyId) {
+    return configuration.active.rawKey;
+  }
+  const retainedKey = configuration.retained.get(requestedKeyId);
+  if (!retainedKey) {
+    throw new EvidenceKeyConfigurationError(
+      `The evidence decryption key "${requestedKeyId}" is not configured.`,
+    );
+  }
+  return retainedKey;
+}
+
+function evidenceEncryptionReadiness(env) {
+  if (!env.EVIDENCE_ENCRYPTION_KEY) {
+    return {
+      configured: false,
+      activeKeyId: null,
+      retainedKeyCount: 0,
+      error: env.EVIDENCE_DECRYPTION_KEYS
+        ? "EVIDENCE_ENCRYPTION_KEY is required even when retired decryption keys are retained."
+        : null,
+    };
+  }
+  try {
+    const { active, retained } = evidenceEncryptionConfiguration(env);
+    return {
+      configured: true,
+      activeKeyId: active.keyId,
+      retainedKeyCount: retained.size,
+      error: null,
+    };
+  } catch (error) {
+    return {
+      configured: false,
+      activeKeyId: null,
+      retainedKeyCount: 0,
+      error:
+        error instanceof EvidenceKeyConfigurationError
+          ? error.message
+          : "Evidence encryption key configuration is invalid.",
+    };
+  }
+}
+
+async function deriveEvidenceEncryptionKey(rawKey, evidenceId) {
   const sourceKey = await crypto.subtle.importKey("raw", rawKey, "HKDF", false, [
     "deriveKey",
   ]);
@@ -1179,7 +1319,8 @@ async function evidenceEncryptionKey(env, evidenceId) {
 }
 
 async function encryptEvidenceBytes(env, evidenceId, bytes) {
-  const key = await evidenceEncryptionKey(env, evidenceId);
+  const { active: activeKey } = evidenceEncryptionConfiguration(env);
+  const key = await deriveEvidenceEncryptionKey(activeKey.rawKey, evidenceId);
   const iv = crypto.getRandomValues(new Uint8Array(12));
   const encrypted = await crypto.subtle.encrypt(
     { name: "AES-GCM", iv },
@@ -1190,11 +1331,13 @@ async function encryptEvidenceBytes(env, evidenceId, bytes) {
     bytes: encrypted,
     version: "aes-256-gcm-hkdf-v1",
     iv: encodeBase64(iv),
+    keyId: activeKey.keyId,
   };
 }
 
-async function decryptEvidenceBytes(env, evidenceId, bytes, iv) {
-  const key = await evidenceEncryptionKey(env, evidenceId);
+async function decryptEvidenceBytes(env, evidenceId, bytes, iv, keyId) {
+  const rawKey = evidenceMasterKeyForId(env, keyId);
+  const key = await deriveEvidenceEncryptionKey(rawKey, evidenceId);
   return crypto.subtle.decrypt(
     { name: "AES-GCM", iv: decodeBase64(iv) },
     key,
@@ -1553,8 +1696,9 @@ async function serviceReadiness(env) {
   )
     ? null
     : Math.max(0, Math.round((nowMs - complianceSourceLastRunMs) / (60 * 1000)));
+  const evidenceEncryption = evidenceEncryptionReadiness(env);
   const decentralizedReady = Boolean(
-    env.PINATA_JWT && env.EVIDENCE_ENCRYPTION_KEY,
+    env.PINATA_JWT && evidenceEncryption.configured,
   );
   const evidenceMode =
     cleanText(env.EVIDENCE_STORAGE_MODE, 40) === "encrypted-ipfs" &&
@@ -1580,7 +1724,10 @@ async function serviceReadiness(env) {
     evidence: {
       configured: Boolean(env.EVIDENCE || decentralizedReady),
       mode: evidenceMode,
-      encryptedAtRest: Boolean(env.EVIDENCE_ENCRYPTION_KEY),
+      encryptedAtRest: evidenceEncryption.configured,
+      activeEncryptionKeyId: evidenceEncryption.activeKeyId,
+      retainedDecryptionKeyCount: evidenceEncryption.retainedKeyCount,
+      encryptionError: evidenceEncryption.error,
       decentralizedReady,
       contentTypeValidation: true,
     },
@@ -5340,12 +5487,14 @@ async function uploadEvidence(request, env) {
   let storedBytes = bytes;
   let encryptionVersion = null;
   let encryptionIv = null;
+  let encryptionKeyId = null;
   if (env.EVIDENCE_ENCRYPTION_KEY) {
     try {
       const encrypted = await encryptEvidenceBytes(env, evidenceId, bytes);
       storedBytes = encrypted.bytes;
       encryptionVersion = encrypted.version;
       encryptionIv = encrypted.iv;
+      encryptionKeyId = encrypted.keyId;
     } catch (error) {
       return json(
         {
@@ -5370,6 +5519,7 @@ async function uploadEvidence(request, env) {
         uploaderRole: role,
         sha256,
         encrypted: encryptionVersion ? "true" : "false",
+        ...(encryptionKeyId ? { encryptionKeyId } : {}),
       },
     });
     const uri = `openescrow://evidence/${evidenceId}`;
@@ -5380,8 +5530,8 @@ async function uploadEvidence(request, env) {
           `INSERT INTO evidence_files
            (id, negotiation_id, uploader_role, storage_kind, object_key, cid,
              original_name, content_type, size_bytes, sha256, encryption_version,
-             encryption_iv, created_at)
-           VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+             encryption_iv, encryption_key_id, created_at)
+            VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           evidenceId,
@@ -5395,6 +5545,7 @@ async function uploadEvidence(request, env) {
           sha256,
           encryptionVersion,
           encryptionIv,
+          encryptionKeyId,
           now,
         ),
       env.DB
@@ -5416,6 +5567,7 @@ async function uploadEvidence(request, env) {
           type: contentType,
           storageKind,
           encrypted: Boolean(encryptionVersion),
+          encryptionKeyId,
         },
       ),
     ]);
@@ -5444,7 +5596,11 @@ async function uploadEvidence(request, env) {
     "pinataMetadata",
     JSON.stringify({
       name: `openescrow-encrypted-${proposalId}-${crypto.randomUUID()}`,
-      keyvalues: { encrypted: "true", format: "aes-256-gcm-hkdf-v1" },
+      keyvalues: {
+        encrypted: "true",
+        format: "aes-256-gcm-hkdf-v1",
+        encryptionKeyId,
+      },
     }),
   );
   const upload = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
@@ -5464,8 +5620,8 @@ async function uploadEvidence(request, env) {
         `INSERT INTO evidence_files
          (id, negotiation_id, uploader_role, storage_kind, object_key, cid,
            original_name, content_type, size_bytes, sha256, encryption_version,
-           encryption_iv, created_at)
-         VALUES (?, ?, ?, 'encrypted-ipfs', NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           encryption_iv, encryption_key_id, created_at)
+          VALUES (?, ?, ?, 'encrypted-ipfs', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         evidenceId,
@@ -5478,6 +5634,7 @@ async function uploadEvidence(request, env) {
         sha256,
         encryptionVersion,
         encryptionIv,
+        encryptionKeyId,
         now,
       ),
     env.DB
@@ -5500,6 +5657,7 @@ async function uploadEvidence(request, env) {
         type: contentType,
         storageKind: "encrypted-ipfs",
         encrypted: true,
+        encryptionKeyId,
       },
     ),
   ]);
@@ -5558,7 +5716,7 @@ async function downloadEvidence(request, env, evidenceId) {
 
   let plaintext = storedBytes;
   if (metadata.encryption_version) {
-    if (!env.EVIDENCE_ENCRYPTION_KEY || !metadata.encryption_iv) {
+    if (!metadata.encryption_iv) {
       return json({ error: "The evidence decryption key is not configured." }, 503);
     }
     try {
@@ -5567,8 +5725,12 @@ async function downloadEvidence(request, env, evidenceId) {
         evidenceId,
         storedBytes,
         metadata.encryption_iv,
+        metadata.encryption_key_id,
       );
-    } catch {
+    } catch (error) {
+      if (error instanceof EvidenceKeyConfigurationError) {
+        return json({ error: error.message }, 503);
+      }
       return json({ error: "The evidence file could not be decrypted or was altered." }, 422);
     }
   }
@@ -6375,7 +6537,12 @@ const worker = {
       (url.pathname === "/" || url.pathname === "/index.html") &&
       context?.waitUntil
     ) {
-      context.waitUntil(runNotificationJob(env));
+      context.waitUntil(
+        Promise.all([
+          runNotificationJob(env),
+          runComplianceSourceAudit(env),
+        ]),
+      );
     }
     if (url.pathname === "/api/address-suggestions" && request.method === "GET") {
       return addressSuggestions(request, env);

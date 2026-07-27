@@ -129,7 +129,7 @@ test("getServiceReadinessActions returns remediation guidance", () => {
   const labels = actions.map((action) => action.label);
   assert(labels.includes("Configure mail delivery"));
   assert(labels.includes("Stabilize scheduler cadence"));
-  assert(labels.includes("Rotate encrypted evidence key"));
+  assert(labels.includes("Configure encrypted evidence key"));
   assert(labels.includes("Verify registry binding"));
   assert(labels.includes("Enable address attestation"));
   assert(labels.includes("Unblock compliance monitor"));

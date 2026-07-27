@@ -27,8 +27,10 @@ provider or hosting control that owns the secret.
 - [ ] **Create and safely store hosted runtime secrets.** Generate an
   `ADDRESS_ATTESTATION_SECRET` from at least 32 random bytes and an
   `EVIDENCE_ENCRYPTION_KEY` as documented. Keep the evidence key in a password
-  manager; losing or changing it makes existing encrypted evidence
-  unrecoverable.
+  manager. Give the active evidence key a stable `EVIDENCE_ENCRYPTION_KEY_ID`;
+  during rotation, retain the prior key in the secret
+  `EVIDENCE_DECRYPTION_KEYS` keyring until an approved retention/deletion policy
+  permits its removal.
 - [ ] **Enter the notification, address-attestation, and evidence values in the
   existing Sites/Worker configuration.** Required values and verification
   steps are in [`pilot-services-setup.md`](./pilot-services-setup.md). Do this
