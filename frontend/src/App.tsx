@@ -117,6 +117,14 @@ function compactActiveProposals(items: SavedProposal[]): SavedProposal[] {
   return kept;
 }
 
+function mergeAgreementIds(primary: bigint[], secondary: bigint[]) {
+  const ids = [...primary];
+  for (const id of secondary) {
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return ids;
+}
+
 function AppView({ identityToken = null }: { identityToken?: string | null }) {
   const [initialCapturedAccess] = useState(() => captureNegotiationAccessFromUrl());
   const [tab, setTab] = useState<WorkspaceTab>("overview");
@@ -153,11 +161,9 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     record.onchainAgreementId ? [BigInt(record.onchainAgreementId)] : [],
   );
   const displayedIds = ACCOUNT_AUTH_ENABLED
-    ? participantAgreementIds
+    ? mergeAgreementIds(participantAgreementIds, ids)
     : ids;
-  const notificationAgreementIds = ACCOUNT_AUTH_ENABLED
-    ? participantAgreementIds
-    : displayedIds;
+  const notificationAgreementIds = displayedIds;
   const onchainNotifications =
     useOnchainActivityNotifications(notificationAgreementIds);
   const [activeLandlordAccess, setActiveLandlordAccess] =
