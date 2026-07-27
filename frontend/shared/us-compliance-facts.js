@@ -76,9 +76,17 @@ export const STATIC_COMPLIANCE_FACT_KEYS = Object.freeze([
 
 export function dynamicComplianceFactsForProfile(profile) {
   if (!profile || !Array.isArray(profile.deadlines)) return [];
+  const deadlines = [
+    ...profile.deadlines,
+    ...(Array.isArray(profile.overlays)
+      ? profile.overlays.flatMap((overlay) =>
+          Array.isArray(overlay?.deadlines) ? overlay.deadlines : [],
+        )
+      : []),
+  ];
   const keys = [
     ...new Set(
-      profile.deadlines
+      deadlines
         .map((deadline) => deadline.condition?.fact)
         .filter((key) => DYNAMIC_COMPLIANCE_FACTS[key]),
     ),

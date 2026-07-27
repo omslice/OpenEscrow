@@ -4,7 +4,7 @@ import { useAccount } from "wagmi";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import {
   CALIFORNIA_POLICY,
-  evaluateJurisdictionCompliance,
+  evaluateSnapshotCompliance,
   jurisdictionLabel,
   jurisdictionProfile,
   type JurisdictionCode,
@@ -473,9 +473,8 @@ function AgreementNegotiationView({
       ),
   );
   const complianceEvaluation =
-    complianceSnapshot && activeComplianceProfile
-      ? evaluateJurisdictionCompliance(activeComplianceProfile, {
-          address: record.terms.addressResolution,
+    complianceSnapshot
+      ? evaluateSnapshotCompliance(complianceSnapshot, {
           facts: {
             ...(record.terms.complianceFacts || {}),
             ...confirmedFactValues,

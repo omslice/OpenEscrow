@@ -7,6 +7,7 @@ import {
   addressResolutionMatchesProfile as sharedAddressResolutionMatchesProfile,
   buildComplianceSnapshot as sharedBuildComplianceSnapshot,
   evaluateCompliance as sharedEvaluateCompliance,
+  evaluateComplianceSnapshot as sharedEvaluateComplianceSnapshot,
   normalizeAddressResolution as sharedNormalizeAddressResolution,
 } from "../../shared/us-compliance-engine.js";
 import {
@@ -254,6 +255,17 @@ export function evaluateJurisdictionCompliance(
   },
 ) {
   return sharedEvaluateCompliance(profile, input);
+}
+
+export function evaluateSnapshotCompliance(
+  snapshot: ComplianceSnapshot,
+  input: {
+    facts?: Record<string, ComplianceFactValue>;
+    events?: Record<string, string | null | undefined>;
+    holidayDates?: string[];
+  },
+) {
+  return sharedEvaluateComplianceSnapshot(snapshot, input);
 }
 
 export function rememberJurisdiction(id: bigint, code: JurisdictionCode): void {

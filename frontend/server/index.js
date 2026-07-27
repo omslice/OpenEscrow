@@ -5,7 +5,7 @@ import {
 import {
   addressResolutionMatchesProfile,
   complianceSnapshotMatchesProfile,
-  evaluateCompliance,
+  evaluateComplianceSnapshot,
   normalizeAddressResolution,
 } from "../shared/us-compliance-engine.js";
 import { COMPLIANCE_SOURCE_REGISTRY } from "../shared/compliance-sources.js";
@@ -847,13 +847,6 @@ const GENERIC_TEST_POLICY = Object.freeze({
   operationsReserve: "5",
 });
 
-const COMPLIANCE_EVENT_KEYS = new Set([
-  ...Object.values(US_JURISDICTION_PROFILE_BY_CODE).flatMap((profile) =>
-    profile.deadlines.map((deadlineRule) => deadlineRule.trigger),
-  ),
-  "scraTerminationEffectiveAt",
-]);
-
 function validPeriodDays(value) {
   const days = Number(value);
   return Number.isInteger(days) && days >= 1 && days <= 365;
@@ -946,6 +939,26 @@ function requiredComplianceSources(terms) {
   return COMPLIANCE_SOURCE_REGISTRY.filter(
     (sourceItem) =>
       expectedVersions.get(sourceItem.jurisdiction) === sourceItem.version,
+  );
+}
+
+function complianceEventKeysForSnapshot(snapshot) {
+  if (
+    snapshot?.schema !== "openescrow.us-compliance-profile.v3" ||
+    !Array.isArray(snapshot.deadlines) ||
+    !Array.isArray(snapshot.overlays)
+  ) {
+    return new Set();
+  }
+  return new Set(
+    [
+      ...snapshot.deadlines,
+      ...snapshot.overlays.flatMap((overlay) =>
+        Array.isArray(overlay?.deadlines) ? overlay.deadlines : [],
+      ),
+    ]
+      .map((deadline) => cleanText(deadline?.trigger, 80))
+      .filter(Boolean),
   );
 }
 
@@ -3018,8 +3031,6 @@ function complianceDeadlineCandidates(row, events, now, tenantRows = []) {
   if (terms.complianceSnapshot?.schema !== "openescrow.us-compliance-profile.v3") {
     return [];
   }
-  const profile = US_JURISDICTION_PROFILE_BY_CODE[terms.jurisdiction];
-  if (!profile) return [];
   const confirmedEvents = Object.fromEntries(
     events
       .filter((event) => event.action === "compliance_event_confirmed")
@@ -3042,8 +3053,7 @@ function complianceDeadlineCandidates(row, events, now, tenantRows = []) {
       ])
       .filter(([factName]) => factName),
   );
-  const evaluation = evaluateCompliance(profile, {
-    address: terms.addressResolution,
+  const evaluation = evaluateComplianceSnapshot(terms.complianceSnapshot, {
     facts: {
       ...(terms.complianceFacts || {}),
       ...confirmedFacts,
@@ -3929,7 +3939,17 @@ async function applyAction(request, env, id) {
     const occurredAt = cleanText(body.occurredAt, 40);
     const occurredTime = new Date(occurredAt).getTime();
     const note = cleanText(body.note, 500);
-    if (!COMPLIANCE_EVENT_KEYS.has(eventName)) {
+    let agreementTerms;
+    try {
+      agreementTerms = JSON.parse(row.terms_json);
+    } catch {
+      agreementTerms = null;
+    }
+    if (
+      !complianceEventKeysForSnapshot(
+        agreementTerms?.complianceSnapshot,
+      ).has(eventName)
+    ) {
       return json({ error: "That lifecycle event is not used by this compliance profile." }, 400);
     }
     if (

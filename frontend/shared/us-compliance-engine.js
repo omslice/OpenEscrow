@@ -362,3 +362,128 @@ export function evaluateCompliance(profile, input = {}) {
     generatedAt: new Date().toISOString(),
   });
 }
+
+export function evaluateComplianceSnapshot(snapshot, input = {}) {
+  if (
+    !snapshot ||
+    snapshot.schema !== "openescrow.us-compliance-profile.v3" ||
+    !Array.isArray(snapshot.deadlines) ||
+    !Array.isArray(snapshot.overlays)
+  ) {
+    return null;
+  }
+  const address = normalizeAddressResolution(snapshot.address);
+  if (!address) return null;
+  const inputFacts =
+    input.facts && typeof input.facts === "object" ? input.facts : {};
+  const rawFacts = {
+    ...(snapshot.facts && typeof snapshot.facts === "object"
+      ? snapshot.facts
+      : {}),
+    ...inputFacts,
+  };
+  const facts = Object.freeze({
+    ...rawFacts,
+    ...normalizeComplianceFacts(rawFacts),
+  });
+  const events =
+    input.events && typeof input.events === "object" ? input.events : {};
+  const holidayDates = Array.isArray(input.holidayDates)
+    ? input.holidayDates
+    : [];
+  const evaluateRules = (rules) =>
+    rules.map((rule) => {
+      const applicability = conditionStatus(rule.condition, facts);
+      const start = dateFrom(events[rule.trigger]);
+      return Object.freeze({
+        ...rule,
+        applicability,
+        status:
+          applicability !== "applies"
+            ? applicability
+            : start
+              ? "scheduled"
+              : "waiting-for-event",
+        dueAt:
+          applicability === "applies" && start
+            ? calculateDeadline(start, rule.days, rule.dayType, holidayDates)
+            : null,
+      });
+    });
+  const deadlines = evaluateRules(snapshot.deadlines);
+  const combinedDeadlines = ["earlier-of", "later-of"]
+    .map((comparison) => {
+      const members = deadlines.filter(
+        (deadline) => deadline.comparison === comparison,
+      );
+      if (members.length < 2) return null;
+      const scheduled = members.filter(
+        (deadline) => deadline.status === "scheduled" && deadline.dueAt,
+      );
+      const dueTimes = scheduled.map((deadline) =>
+        new Date(deadline.dueAt).getTime(),
+      );
+      const fullyScheduled = scheduled.length === members.length;
+      const dueTime =
+        fullyScheduled && comparison === "earlier-of"
+          ? Math.min(...dueTimes)
+          : fullyScheduled
+            ? Math.max(...dueTimes)
+            : null;
+      return Object.freeze({
+        id: `${comparison}-controlling-deadline`,
+        label: `Controlling ${comparison.replace("-", " ")} deadline`,
+        comparison,
+        memberIds: Object.freeze(members.map((deadline) => deadline.id)),
+        status: fullyScheduled ? "scheduled" : "waiting-for-event",
+        dueAt: dueTime === null ? null : new Date(dueTime).toISOString(),
+      });
+    })
+    .filter(Boolean);
+  const overlayEvaluations = snapshot.overlays.map((overlay) => {
+    const deadlines =
+      overlay.applicability === "applies" && Array.isArray(overlay.deadlines)
+        ? evaluateRules(overlay.deadlines)
+        : [];
+    return Object.freeze({
+      ...overlay,
+      deadlines: Object.freeze(deadlines),
+    });
+  });
+  const missingFacts = [
+    ...new Set(
+      deadlines
+        .filter((deadline) => deadline.applicability === "needs-fact")
+        .map((deadline) => deadline.condition?.fact)
+        .filter(Boolean),
+    ),
+  ];
+  return Object.freeze({
+    jurisdiction: snapshot.jurisdiction,
+    profileVersion: snapshot.profileVersion,
+    status: "versioned-snapshot",
+    address,
+    depositCap: evaluateDepositCap(
+      {
+        depositCap: snapshot.depositCap,
+        depositCapSummary:
+          snapshot.depositCap?.summary ||
+          "Review the recorded deposit-cap requirements.",
+      },
+      facts,
+    ),
+    deadlines: Object.freeze(deadlines),
+    combinedDeadlines: Object.freeze(combinedDeadlines),
+    requirements: Object.freeze([...(snapshot.requirements || [])]),
+    exceptions: Object.freeze([...(snapshot.exceptions || [])]),
+    facts,
+    overlays: Object.freeze(overlayEvaluations),
+    localityKeys: Object.freeze([...(snapshot.localityKeys || [])]),
+    localCoverage: snapshot.localCoverage,
+    missingFacts: Object.freeze(missingFacts),
+    unresolvedOverlays: Object.freeze([
+      ...(snapshot.unresolvedOverlays || []),
+    ]),
+    generatedAt: new Date().toISOString(),
+  });
+}

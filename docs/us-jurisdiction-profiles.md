@@ -198,6 +198,13 @@ before a monitor update can still have its receipt saved without leaving the
 onchain and private records inconsistent. Without that exact, unexpired
 preflight, finalization rechecks the source gate and refuses the action.
 
+After finalization, deadline calculations, reminders, and the agreement
+timeline use the immutable rules and overlays stored in that agreement's
+versioned compliance snapshot. A later registry release can govern new
+agreements without silently changing an existing agreement's recorded
+deadline paths. The lifecycle-event API likewise accepts only triggers present
+in that exact snapshot.
+
 The pilot-readiness check requires monitoring to be enabled, every registered
 source to be baselined and current, no blocking source state, and a successful
 monitor run within the previous 48 hours. This gate detects source-page drift;

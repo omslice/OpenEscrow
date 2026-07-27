@@ -8,6 +8,7 @@ import {
   buildComplianceSnapshot,
   calculateDeadline,
   evaluateCompliance,
+  evaluateComplianceSnapshot,
   normalizeAddressResolution,
 } from "../shared/us-compliance-engine.js";
 import {
@@ -474,6 +475,50 @@ test("the compliance evaluator schedules all statewide profiles deterministicall
   assert.equal(
     westVirginia.combinedDeadlines[0].dueAt,
     "2027-02-24T12:00:00.000Z",
+  );
+
+  const maineSnapshot = buildComplianceSnapshot(
+    maineProfile,
+    maineAddress,
+    {
+      facts: {
+        ...newYorkComplianceFacts,
+        writtenRentalAgreement: true,
+      },
+    },
+  );
+  const snapshotEvaluation = evaluateComplianceSnapshot(maineSnapshot, {
+    facts: {
+      monthlyRent: "1600",
+      deposit: "1600",
+      writtenRentalAgreement: true,
+    },
+    events: { possessionReturnedAt: "2027-01-02T12:00:00Z" },
+  });
+  const changedCurrentProfile = {
+    ...maineProfile,
+    deadlines: maineProfile.deadlines.map((deadlineRule) =>
+      deadlineRule.id === "written-lease-return"
+        ? { ...deadlineRule, days: 90 }
+        : deadlineRule,
+    ),
+  };
+  const changedCurrentEvaluation = evaluateCompliance(changedCurrentProfile, {
+    address: maineAddress,
+    facts: { writtenRentalAgreement: true },
+    events: { possessionReturnedAt: "2027-01-02T12:00:00Z" },
+  });
+  assert.equal(
+    snapshotEvaluation.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "written-lease-return",
+    ).dueAt,
+    "2027-02-01T12:00:00.000Z",
+  );
+  assert.equal(
+    changedCurrentEvaluation.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "written-lease-return",
+    ).dueAt,
+    "2027-04-02T12:00:00.000Z",
   );
 });
 
@@ -1158,6 +1203,18 @@ test("actual compliance events require confirmation by the other agreement side"
   );
   await finalizeWithoutArbiter(db, created);
   const occurredAt = new Date().toISOString();
+  const unrelatedEvent = await act(
+    db,
+    created.record.id,
+    created.access.landlord,
+    {
+      type: "propose_compliance_event",
+      eventName: "damageListReceivedAt",
+      occurredAt,
+    },
+  );
+  assert.equal(unrelatedEvent.status, 400);
+
   const proposed = await jsonResponse(
     await act(db, created.record.id, created.access.landlord, {
       type: "propose_compliance_event",
