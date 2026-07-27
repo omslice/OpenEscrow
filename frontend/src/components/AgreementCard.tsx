@@ -217,7 +217,11 @@ export function AgreementCard({
             participantRecord={participantRecord}
           />
           <AgreementNoticeCenter id={id} agreement={agreement} />
-          <NextAction id={id} agreement={agreement} />
+          <NextAction
+            id={id}
+            agreement={agreement}
+            onOpenClaims={() => selectPanel("claims", true)}
+          />
       </section>
 
       <section

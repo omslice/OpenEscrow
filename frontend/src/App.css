@@ -2342,6 +2342,20 @@ a.btn.disabled {
   color: var(--text-h);
 }
 
+.next-action-link {
+  color: var(--accent);
+  font: inherit;
+  font-weight: inherit;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+
+.next-action-link:hover,
+.next-action-link:focus-visible {
+  color: color-mix(in srgb, var(--accent) 75%, var(--text-h));
+}
+
 .next-action p {
   margin-top: 3px;
   font-size: 13px;
