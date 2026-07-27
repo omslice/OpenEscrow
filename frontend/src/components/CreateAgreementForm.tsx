@@ -2964,7 +2964,7 @@ function AgreementForm({
           {draft.onchainAgreementId
             ? agreementReference(draft.onchainAgreementId)
             : "an onchain agreement"}
-          . Open the Agreements tab to manage it.
+          . Open the Deposits tab to manage it.
         </p>
       )}
       {error && <p className="tx-error">{error.message.split("\n")[0]}</p>}

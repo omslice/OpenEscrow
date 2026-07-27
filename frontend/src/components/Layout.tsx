@@ -84,7 +84,7 @@ export function Layout({
                 )}
               </div>
               {notifications.length === 0 ? (
-                <p>Find your proposals and agreements to load recent activity.</p>
+                <p>Find your proposals and deposits to load recent activity.</p>
               ) : (
                 <ol>
                   {notifications.map((notification) => (

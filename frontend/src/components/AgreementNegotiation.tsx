@@ -881,7 +881,7 @@ function AgreementNegotiationView({
       {record.status === "finalized" && record.onchainAgreementId && (
         <p className="tx-success">
           Finalized as {agreementReference(record.onchainAgreementId)}. Open the
-          Agreements tab to manage the deposit or the Record tab to review its history.
+          Deposits tab to manage the deposit or the Record tab to review its history.
         </p>
       )}
     </section>

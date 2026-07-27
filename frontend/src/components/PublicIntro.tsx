@@ -46,8 +46,8 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
         <p className="eyebrow">Open-source public-interest prototype</p>
         <h2 id="public-intro-title">A better way to handle rental deposits.</h2>
         <p className="intro-summary">
-          A clear, documented process from agreement to refund, with fair dispute resolution and
-          automated, tracked, and secured by Ethereum.
+          A clear, documented process from agreement to refund, with fair dispute resolution.
+          Tracked, secured, and powered by Ethereum.
         </p>
         <div className="intro-actions">
           <button className="btn btn-primary" onClick={onStart}>
@@ -59,7 +59,6 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
       <div className="how-it-works-block" id="how-it-works">
         <header className="how-it-works-title">
           <div>
-            <span className="eyebrow">From agreement to outcome</span>
             <h3>How it works</h3>
           </div>
           <p>Three clear steps, one shared record.</p>

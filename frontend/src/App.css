@@ -2526,6 +2526,11 @@ a.btn.disabled {
   box-shadow: inset 5px 0 0 var(--success);
 }
 
+.saved-proposal-card.is-finalized {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+  box-shadow: inset 5px 0 0 color-mix(in srgb, var(--accent) 75%, transparent);
+}
+
 .workspace-panel {
   min-height: 420px;
 }
@@ -2614,53 +2619,6 @@ a.btn.disabled {
   line-height: 1.35;
 }
 
-.workspace-route-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.workspace-route-grid > button {
-  display: grid;
-  grid-template-columns: auto 1fr auto;
-  gap: 12px;
-  align-items: center;
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  background: transparent;
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-}
-
-.workspace-route-grid > button:hover,
-.workspace-route-grid > button:focus-visible {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 6%, transparent);
-}
-
-.workspace-route-grid > button > span:not(.route-icon) {
-  display: grid;
-  gap: 4px;
-}
-
-.workspace-route-grid strong {
-  color: var(--text-h);
-  font-size: 16px;
-}
-
-.workspace-route-grid small {
-  color: var(--text);
-  line-height: 1.4;
-}
-
-.workspace-route-grid b {
-  color: var(--accent);
-  font-size: 22px;
-}
-
 .overview-quick-access {
   margin-top: 4px;
 }
@@ -2710,17 +2668,6 @@ a.btn.disabled {
   color: var(--accent);
   font-weight: 700;
   font-size: 12px;
-}
-
-.route-icon {
-  display: grid;
-  width: 32px;
-  height: 32px;
-  place-items: center;
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent);
-  font-weight: 800;
 }
 
 .overview-invite-section {
@@ -3626,8 +3573,7 @@ a.btn.disabled {
     display: none;
   }
 
-  .workspace-stat-grid,
-  .workspace-route-grid {
+  .workspace-stat-grid {
     grid-template-columns: 1fr;
   }
 

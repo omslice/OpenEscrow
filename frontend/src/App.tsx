@@ -371,6 +371,29 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   }
 
   function openSavedProposal(item: SavedProposal) {
+    if (
+      item.record.status === "finalized" &&
+      item.record.onchainAgreementId
+    ) {
+      const agreementId = item.record.onchainAgreementId;
+      addId(BigInt(agreementId));
+      setProposalAccess(null);
+      setActiveLandlordAccess(null);
+      setIsProposalComposerOpen(false);
+      setTab("agreements");
+      setAgreementPanels((current) => ({
+        ...current,
+        [agreementId]: "summary",
+      }));
+      setAgreementFocusRequests((current) => ({
+        ...current,
+        [agreementId]: {
+          targetId: `agreement-${agreementId}-panel-summary`,
+          nonce: (current[agreementId]?.nonce || 0) + 1,
+        },
+      }));
+      return;
+    }
     if (item.access.role === "landlord") {
       setActiveLandlordAccess(item.access);
       setIsProposalComposerOpen(true);
@@ -552,7 +575,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
       ? {
           overview: "Overview",
           proposals: "Proposals",
-          agreements: "Agreements",
+          agreements: "Deposits",
           record: "Record",
         }
       : workspaceRole === "tenant"
@@ -611,34 +634,45 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   }
 
   function renderSavedProposalCards() {
-    if (activeProposals.length === 0) {
+    const accountProposals = [...savedRecords].sort(
+      (left, right) =>
+        new Date(right.record.updatedAt).getTime() -
+        new Date(left.record.updatedAt).getTime(),
+    );
+    if (accountProposals.length === 0) {
       return (
         <div className="workspace-empty">
-          <strong>No active proposals found.</strong>
+          <strong>No account proposals found.</strong>
           <span>
             {workspaceRole === "landlord"
               ? "Use Start a new proposal below, or refresh after another party responds."
-              : "Accepted invitations and proposals awaiting your review will appear here."}
+              : "Accepted invitations and proposals associated with this account will appear here."}
           </span>
         </div>
       );
     }
-    return activeProposals.map((item) => {
+    return accountProposals.map((item) => {
       const counterpart =
         item.access.role === "landlord"
           ? item.record.tenantEmail
           : item.record.landlordEmail;
+      const isFinalized =
+        item.record.status === "finalized" &&
+        Boolean(item.record.onchainAgreementId);
       const isReadyForLandlord =
         item.access.role === "landlord" && item.record.status === "ready";
       return (
         <article
-          className={`saved-proposal-card${isReadyForLandlord ? " ready-to-finalize" : ""}`}
+          className={`saved-proposal-card${
+            isReadyForLandlord ? " ready-to-finalize" : ""
+          }${isFinalized ? " is-finalized" : ""}`}
           key={`${item.access.proposalId}-${item.access.role}`}
         >
           <div className="proposal-builder-heading">
             <div>
               <span className="eyebrow">
-                Current proposal · {roleLabel[item.access.role]} access
+                {isFinalized ? "Finalized proposal" : "Current proposal"} ·{" "}
+                {roleLabel[item.access.role]} access
               </span>
               <h2>{proposalReference(item.record.id)}</h2>
             </div>
@@ -663,7 +697,11 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
               className={isReadyForLandlord ? "btn btn-primary" : "btn btn-secondary"}
               onClick={() => openSavedProposal(item)}
             >
-              {isReadyForLandlord ? "Review and finalize" : "Open proposal"}
+              {isFinalized
+                ? "Open active deposit"
+                : isReadyForLandlord
+                  ? "Review and finalize"
+                  : "Open proposal"}
             </button>
           </div>
         </article>
@@ -1114,40 +1152,6 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             </button>
           </section>
         )}
-        <div className="workspace-route-grid">
-          <button onClick={() => setTab("proposals")}>
-            <span className="route-icon" aria-hidden="true">1</span>
-            <span>
-              <strong>{workspaceTabLabels.proposals}</strong>
-              <small>
-                {workspaceRole === "landlord"
-                  ? "Create, edit, invite, approve, and finalize."
-                  : "Review terms, propose changes, and approve."}
-              </small>
-            </span>
-            <b aria-hidden="true">→</b>
-          </button>
-          <button onClick={() => setTab("agreements")}>
-            <span className="route-icon" aria-hidden="true">2</span>
-            <span>
-              <strong>{workspaceTabLabels.agreements}</strong>
-              <small>
-                {workspaceRole === "landlord"
-                  ? "Monitor funding, submit deductions, and withdraw."
-                  : "Fund shares, monitor yield, and respond to claims."}
-              </small>
-            </span>
-            <b aria-hidden="true">→</b>
-          </button>
-          <button onClick={() => setTab("record")}>
-            <span className="route-icon" aria-hidden="true">3</span>
-            <span>
-              <strong>{workspaceTabLabels.record}</strong>
-              <small>Review the complete timestamped history and reports.</small>
-            </span>
-            <b aria-hidden="true">→</b>
-          </button>
-        </div>
         {workspaceRole === "tenant" && !inviteRole && (
           <div className="overview-invite-section">
             <TenantLandlordInvite />
@@ -1296,12 +1300,13 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                     <span className="eyebrow">Account proposals</span>
                     <h2>
                       {workspaceRole === "landlord"
-                        ? "Your active proposals"
-                        : "Invitations and proposals awaiting completion"}
+                        ? "Your proposals"
+                        : "Your invitations and proposals"}
                     </h2>
                     <p>
-                      Only the latest active revision is shown. Earlier revisions remain in
-                      the Record tab.
+                      Pending and finalized proposals are listed here. Finalized proposals
+                      open their active deposit; the complete revision history remains in the
+                      Record tab.
                     </p>
                   </div>
                   <button
