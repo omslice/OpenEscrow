@@ -141,6 +141,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     {},
   );
   const [isRecordArchiveOpen, setIsRecordArchiveOpen] = useState(false);
+  const [isProposalArchiveOpen, setIsProposalArchiveOpen] = useState(false);
   const [recordArchivePendingKey, setRecordArchivePendingKey] = useState<string | null>(
     null,
   );
@@ -526,6 +527,16 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                 ...candidate,
                 access: { ...candidate.access, archived: result.archived },
               }
+          : candidate,
+        ),
+      );
+      setSavedProposals((current) =>
+        current.map((candidate) =>
+          savedRecordKey(candidate) === key
+            ? {
+                ...candidate,
+                access: { ...candidate.access, archived: result.archived },
+              }
             : candidate,
         ),
       );
@@ -538,7 +549,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
         message:
           error instanceof Error
             ? error.message
-            : "This record could not be moved between current and archived views.",
+            : "This item could not be moved between current and archived views.",
       });
     } finally {
       setRecordArchivePendingKey(null);
@@ -546,7 +557,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   }
 
   const notifications: AppNotification[] = [
-    ...savedProposals.flatMap((item) =>
+    ...savedProposals.filter((item) => !item.access.archived).flatMap((item) =>
       item.record.events
         .filter((event) => event.action !== "record_snapshot_anchored")
         .map((event) => ({
@@ -568,7 +579,10 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     )
     .slice(0, 10);
 
-  const activeProposals = savedProposals.filter(
+  const currentSavedProposals = savedProposals.filter(
+    (item) => !item.access.archived,
+  );
+  const activeProposals = currentSavedProposals.filter(
     (item) => item.record.status !== "finalized",
   );
   const readyProposals = activeProposals.filter(
@@ -597,6 +611,20 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             agreements: "Cases",
             record: "Record",
           };
+  const sortedAccountProposals = [...savedRecords].sort(
+    (left, right) =>
+      new Date(right.record.updatedAt).getTime() -
+      new Date(left.record.updatedAt).getTime(),
+  );
+  const currentAccountProposals = sortedAccountProposals.filter(
+    (item) =>
+      !item.access.archived &&
+      item.record.status !== "cancelled" &&
+      item.record.status !== "superseded",
+  );
+  const archivedAccountProposals = sortedAccountProposals.filter(
+    (item) => item.access.archived,
+  );
   const workspaceTabIcons = {
     overview: "🏠",
     proposals:
@@ -639,20 +667,24 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     );
   }
 
-  function renderSavedProposalCards() {
-    const accountProposals = [...savedRecords].sort(
-      (left, right) =>
-        new Date(right.record.updatedAt).getTime() -
-        new Date(left.record.updatedAt).getTime(),
-    );
+  function renderSavedProposalCards(
+    accountProposals: SavedProposal[],
+    archived = false,
+  ) {
     if (accountProposals.length === 0) {
       return (
         <div className="workspace-empty">
-          <strong>No account proposals found.</strong>
+          <strong>
+            {archivedAccountProposals.length
+              ? "All active and finalized proposals are archived."
+              : "No active or finalized proposals found."}
+          </strong>
           <span>
-            {workspaceRole === "landlord"
-              ? "Use Start a new proposal below, or refresh after another party responds."
-              : "Accepted invitations and proposals associated with this account will appear here."}
+            {archivedAccountProposals.length
+              ? "Open Archived proposals below to review or restore them."
+              : workspaceRole === "landlord"
+                ? "Use Start a new proposal below, or refresh after another party responds."
+                : "Accepted invitations and proposals associated with this account will appear here."}
           </span>
         </div>
       );
@@ -671,7 +703,9 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
         <article
           className={`saved-proposal-card${
             isReadyForLandlord ? " ready-to-finalize" : ""
-          }${isFinalized ? " is-finalized" : ""}`}
+          }${isFinalized ? " is-finalized" : ""}${
+            archived ? " is-archived" : ""
+          }`}
           key={`${item.access.proposalId}-${item.access.role}`}
         >
           <div className="proposal-builder-heading">
@@ -709,7 +743,28 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                   ? "Review and finalize"
                   : "Open proposal"}
             </button>
+            {identityToken && (
+              <button
+                className="btn btn-ghost"
+                type="button"
+                disabled={recordArchivePendingKey === savedRecordKey(item)}
+                onClick={() => void setRecordArchived(item, !archived)}
+              >
+                {recordArchivePendingKey === savedRecordKey(item)
+                  ? archived
+                    ? "Restoring..."
+                    : "Archiving..."
+                  : archived
+                    ? "Restore"
+                    : "Archive"}
+              </button>
+            )}
           </div>
+          {recordArchiveError?.key === savedRecordKey(item) && (
+            <p className="tx-error record-archive-error">
+              {recordArchiveError.message}
+            </p>
+          )}
         </article>
       );
     });
@@ -1091,7 +1146,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             </small>
           </button>
         </div>
-        {savedProposals.length > 0 && (
+        {currentSavedProposals.length > 0 && (
           <section className="card overview-quick-access">
             <div className="workspace-section-heading">
               <span className="eyebrow">Quick start</span>
@@ -1101,7 +1156,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
               </p>
             </div>
             <div className="overview-quick-list">
-              {savedProposals.slice(0, 4).map((item) => (
+              {currentSavedProposals.slice(0, 4).map((item) => (
                 <button
                   key={item.record.id}
                   className="overview-quick-item"
@@ -1336,7 +1391,27 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                     <span aria-hidden="true">↻</span>
                   </button>
                 </div>
-                {renderSavedProposalCards()}
+                {renderSavedProposalCards(currentAccountProposals)}
+                {archivedAccountProposals.length > 0 && (
+                  <details
+                    className="record-archive-section proposal-archive-section"
+                    open={isProposalArchiveOpen}
+                    onToggle={(event) =>
+                      setIsProposalArchiveOpen(event.currentTarget.open)
+                    }
+                  >
+                    <summary>
+                      Archived proposals ({archivedAccountProposals.length})
+                    </summary>
+                    <p>
+                      Archived proposals stay available to you and can be restored at any
+                      time. Archiving does not delete the proposal, deposit, or audit trail.
+                    </p>
+                    <div className="record-list proposal-archive-list">
+                      {renderSavedProposalCards(archivedAccountProposals, true)}
+                    </div>
+                  </details>
+                )}
                 {scanMessage && <p className="tx-success">{scanMessage}</p>}
                 {findError && <p className="tx-error">{findError}</p>}
                 {scanError && <p className="tx-error">{scanError}</p>}

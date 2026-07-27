@@ -2545,6 +2545,18 @@ a.btn.disabled {
   box-shadow: inset 5px 0 0 color-mix(in srgb, var(--accent) 75%, transparent);
 }
 
+.saved-proposal-card.is-archived {
+  background: color-mix(in srgb, var(--surface) 90%, var(--bg));
+}
+
+.proposal-archive-section {
+  margin-top: 14px;
+}
+
+.proposal-archive-list .saved-proposal-card {
+  margin-top: 0;
+}
+
 .workspace-panel {
   min-height: 420px;
 }
