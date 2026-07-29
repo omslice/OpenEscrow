@@ -8,6 +8,21 @@ const VERSIONED_COMPLIANCE_SNAPSHOT_SCHEMAS = new Set([
   "openescrow.us-compliance-profile.v3",
   "openescrow.us-compliance-profile.v4",
 ]);
+const DEADLINE_DAY_TYPES = new Set(["calendar", "business"]);
+
+function cloneAndFreeze(value) {
+  if (Array.isArray(value)) {
+    return Object.freeze(value.map((item) => cloneAndFreeze(item)));
+  }
+  if (value && typeof value === "object") {
+    return Object.freeze(
+      Object.fromEntries(
+        Object.entries(value).map(([key, item]) => [key, cloneAndFreeze(item)]),
+      ),
+    );
+  }
+  return value;
+}
 
 function cleanString(value, maxLength = 300) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
@@ -112,16 +127,16 @@ export function buildComplianceSnapshot(profile, resolution, context = {}) {
       ].filter(Boolean),
     ),
   ];
-  return Object.freeze({
+  return cloneAndFreeze({
     schema: "openescrow.us-compliance-profile.v4",
     jurisdiction: profile.code,
     profileVersion: profile.version,
     researchedOn: profile.researchedOn,
     reviewMethod: profile.reviewMethod,
-    source: Object.freeze({
+    source: {
       citation: profile.statuteCitation,
       url: profile.statuteUrl,
-    }),
+    },
     address,
     facts: overlayResolution.facts,
     localityKeys: overlayResolution.localityKeys,
@@ -131,9 +146,9 @@ export function buildComplianceSnapshot(profile, resolution, context = {}) {
     requirements: profile.requirements,
     exceptions: profile.exceptions,
     claimPolicy: profile.claimPolicy,
-    overlays: Object.freeze(overlays),
-    missingFacts: Object.freeze(missingFacts),
-    unresolvedOverlays: Object.freeze([
+    overlays,
+    missingFacts,
+    unresolvedOverlays: [
       ...(overlayResolution.localCoverage === "unreviewed-locality"
         ? ["Confirm city and county rules for the resolved property location."]
         : []),
@@ -141,7 +156,7 @@ export function buildComplianceSnapshot(profile, resolution, context = {}) {
         ? [`Resolve compliance facts: ${missingFacts.join(", ")}.`]
         : []),
       "Confirm rent-regulation, property-specific program documents, and facts that cannot be inferred from an address.",
-    ]),
+    ],
   });
 }
 
@@ -211,7 +226,15 @@ function addBusinessDays(start, days, holidays) {
 export function calculateDeadline(startValue, days, dayType = "calendar", holidayDates = []) {
   const start = dateFrom(startValue);
   const count = Number(days);
-  if (!start || !Number.isInteger(count) || count < 0 || count > 730) return null;
+  if (
+    !start ||
+    !Number.isInteger(count) ||
+    count < 0 ||
+    count > 730 ||
+    !DEADLINE_DAY_TYPES.has(dayType)
+  ) {
+    return null;
+  }
   const holidays = new Set(
     holidayDates
       .map((value) => dateFrom(value))
@@ -269,6 +292,10 @@ export function evaluateCompliance(profile, input = {}) {
   const deadlines = profile.deadlines.map((rule) => {
     const applicability = conditionStatus(rule.condition, facts);
     const start = dateFrom(events[rule.trigger]);
+    const dueAt =
+      applicability === "applies" && start
+        ? calculateDeadline(start, rule.days, rule.dayType, holidayDates)
+        : null;
     return Object.freeze({
       ...rule,
       applicability,
@@ -276,12 +303,11 @@ export function evaluateCompliance(profile, input = {}) {
         applicability !== "applies"
           ? applicability
           : start
-            ? "scheduled"
+            ? dueAt
+              ? "scheduled"
+              : "invalid-rule"
             : "waiting-for-event",
-      dueAt:
-        applicability === "applies" && start
-          ? calculateDeadline(start, rule.days, rule.dayType, holidayDates)
-          : null,
+      dueAt,
     });
   });
   const missingFacts = [
@@ -329,17 +355,22 @@ export function evaluateCompliance(profile, input = {}) {
       overlay.applicability === "applies"
         ? overlay.deadlines.map((rule) => {
             const start = dateFrom(events[rule.trigger]);
+            const dueAt = start
+              ? calculateDeadline(
+                  start,
+                  rule.days,
+                  rule.dayType,
+                  holidayDates,
+                )
+              : null;
             return Object.freeze({
               ...rule,
-              status: start ? "scheduled" : "waiting-for-event",
-              dueAt: start
-                ? calculateDeadline(
-                    start,
-                    rule.days,
-                    rule.dayType,
-                    holidayDates,
-                  )
-                : null,
+              status: start
+                ? dueAt
+                  ? "scheduled"
+                  : "invalid-rule"
+                : "waiting-for-event",
+              dueAt,
             });
           })
         : [];
@@ -408,6 +439,10 @@ export function evaluateComplianceSnapshot(snapshot, input = {}) {
     rules.map((rule) => {
       const applicability = conditionStatus(rule.condition, facts);
       const start = dateFrom(events[rule.trigger]);
+      const dueAt =
+        applicability === "applies" && start
+          ? calculateDeadline(start, rule.days, rule.dayType, holidayDates)
+          : null;
       return Object.freeze({
         ...rule,
         applicability,
@@ -415,12 +450,11 @@ export function evaluateComplianceSnapshot(snapshot, input = {}) {
           applicability !== "applies"
             ? applicability
             : start
-              ? "scheduled"
+              ? dueAt
+                ? "scheduled"
+                : "invalid-rule"
               : "waiting-for-event",
-        dueAt:
-          applicability === "applies" && start
-            ? calculateDeadline(start, rule.days, rule.dayType, holidayDates)
-            : null,
+        dueAt,
       });
     });
   const deadlines = evaluateRules(snapshot.deadlines);

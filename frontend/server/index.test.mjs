@@ -628,6 +628,129 @@ test("the compliance evaluator schedules all statewide profiles deterministicall
   );
 });
 
+test("versioned compliance snapshots detach conditional rules from the live registry", () => {
+  const mutableProfile = structuredClone(
+    US_JURISDICTION_PROFILES.find(
+      (profile) => profile.postalCode === "ME",
+    ),
+  );
+  const mutableAddress = {
+    provider: "photon-openstreetmap",
+    providerFeatureId: "R:maine:immutable",
+    label: "1 Main Street, Portland, ME 04101",
+    countryCode: "US",
+    stateCode: "ME",
+    city: "Portland",
+    county: "Cumberland County",
+    postalCode: "04101",
+    latitude: 43.6591,
+    longitude: -70.2568,
+  };
+  const snapshot = buildComplianceSnapshot(mutableProfile, mutableAddress, {
+    facts: { writtenRentalAgreement: "unknown" },
+  });
+  const originalSnapshot = JSON.stringify(snapshot);
+
+  assert.ok(Object.isFrozen(snapshot));
+  assert.ok(Object.isFrozen(snapshot.deadlines));
+  assert.ok(Object.isFrozen(snapshot.deadlines[0].condition));
+  assert.ok(Object.isFrozen(snapshot.claimPolicy.commonAttestations[0]));
+  assert.ok(Object.isFrozen(snapshot.overlays[0].sources[0]));
+  assert.notEqual(snapshot.deadlines, mutableProfile.deadlines);
+  assert.notEqual(snapshot.requirements, mutableProfile.requirements);
+
+  mutableProfile.deadlines.find(
+    (deadlineRule) => deadlineRule.id === "written-lease-return",
+  ).days = 90;
+  mutableProfile.requirements[0] = "A later registry requirement.";
+  mutableProfile.claimPolicy.commonAttestations[0].label =
+    "A later registry attestation.";
+  mutableAddress.city = "A later address edit";
+
+  assert.equal(JSON.stringify(snapshot), originalSnapshot);
+  assert.throws(() => {
+    snapshot.deadlines[0].condition.equals = true;
+  }, TypeError);
+
+  const unresolved = evaluateComplianceSnapshot(snapshot, {
+    events: { possessionReturnedAt: "2027-01-02T12:00:00Z" },
+  });
+  assert.equal(
+    unresolved.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "written-lease-return",
+    ).status,
+    "needs-fact",
+  );
+
+  const atWill = evaluateComplianceSnapshot(snapshot, {
+    facts: { writtenRentalAgreement: false },
+    events: { possessionReturnedAt: "2027-01-02T12:00:00Z" },
+  });
+  assert.equal(
+    atWill.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "at-will-return",
+    ).dueAt,
+    "2027-01-23T12:00:00.000Z",
+  );
+  assert.equal(
+    atWill.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "written-lease-return",
+    ).status,
+    "not-applicable",
+  );
+
+  const written = evaluateComplianceSnapshot(snapshot, {
+    facts: { writtenRentalAgreement: true },
+    events: { possessionReturnedAt: "2027-01-02T12:00:00Z" },
+  });
+  assert.equal(
+    written.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "written-lease-return",
+    ).dueAt,
+    "2027-02-01T12:00:00.000Z",
+  );
+});
+
+test("versioned business-day deadlines fail closed on unsupported rule metadata", () => {
+  const arizonaProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "AZ",
+  );
+  const snapshot = buildComplianceSnapshot(arizonaProfile, {
+    provider: "photon-openstreetmap",
+    providerFeatureId: "R:arizona:snapshot",
+    label: "1 Main Street, Phoenix, AZ 85001",
+    countryCode: "US",
+    stateCode: "AZ",
+    city: "Phoenix",
+    county: "Maricopa County",
+    postalCode: "85001",
+    latitude: 33.4484,
+    longitude: -112.074,
+  });
+  const evaluated = evaluateComplianceSnapshot(snapshot, {
+    events: { statutoryClockStartedAt: "2027-01-08T12:00:00Z" },
+    holidayDates: ["2027-01-11"],
+  });
+  assert.equal(evaluated.deadlines[0].dayType, "business");
+  assert.equal(evaluated.deadlines[0].dueAt, "2027-01-29T12:00:00.000Z");
+
+  const corruptedSnapshot = structuredClone(snapshot);
+  corruptedSnapshot.deadlines[0].dayType = "unsupported-day-type";
+  const rejectedRule = evaluateComplianceSnapshot(corruptedSnapshot, {
+    events: { statutoryClockStartedAt: "2027-01-08T12:00:00Z" },
+  });
+  assert.equal(rejectedRule.deadlines[0].status, "invalid-rule");
+  assert.equal(rejectedRule.deadlines[0].dueAt, null);
+  assert.equal(
+    calculateDeadline(
+      "2027-01-08T12:00:00Z",
+      14,
+      "unsupported-day-type",
+    ),
+    null,
+  );
+});
+
 test("address resolution rejects incomplete or non-US geocoder records", () => {
   assert.equal(normalizeAddressResolution({ stateCode: "CA" }), null);
   assert.equal(

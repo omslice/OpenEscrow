@@ -223,8 +223,12 @@ After finalization, deadline calculations, reminders, and the agreement
 timeline use the immutable rules and overlays stored in that agreement's
 versioned compliance snapshot. A later registry release can govern new
 agreements without silently changing an existing agreement's recorded
-deadline paths. The lifecycle-event API likewise accepts only triggers present
-in that exact snapshot.
+deadline paths. Snapshot creation recursively copies and freezes nested
+requirements, conditions, sources, overlays, and claim checks instead of
+retaining live registry references. Unsupported day-count metadata fails closed
+as an invalid rule rather than silently falling back to calendar-day
+arithmetic. The lifecycle-event API likewise accepts only triggers present in
+that exact snapshot.
 
 The pilot-readiness check requires monitoring to be enabled, every registered
 source to be baselined and current, no blocking source state, and a successful

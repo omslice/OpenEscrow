@@ -16,10 +16,14 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key rotation, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 71 server tests, 39 client-logic
+- **Verified:** The full repository release check passes with 73 server tests, 39 client-logic
   tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
   build. Accessibility is now part of the required `npm run check` path rather than a separate,
   potentially stale result.
+- **Verified:** Address-routed compliance snapshots now recursively detach and freeze nested
+  rules, sources, overlays, and claim checks. Snapshot-level regressions cover conditional Maine
+  paths, Arizona business-day and holiday arithmetic, and fail-closed handling for unsupported
+  day-count metadata without changing any legal rule.
 - **Verified:** The authenticated wallet/workspace is loaded behind a lightweight bootstrap, and
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the
