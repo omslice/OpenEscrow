@@ -58,7 +58,8 @@ the repository; they are not claims of legal approval or production readiness.
   malformed provider outcomes
 - [x] Direct Aave supply/withdrawal route modeled without a DEX swap
 - [x] FRNT and USDY routes fail closed pending official availability and eligibility
-- [x] Enable and validate provider sandbox checkout in the Privy dashboard
+- [x] Validate the provider-neutral sandbox intent, UI states, and failure handling locally
+- [ ] Enable and validate an eligible provider sandbox in the Privy dashboard
 - [ ] Decide whether the pilot needs separate ACH/bank-deposit support
 - [ ] Complete provider approval, KYC/AML, fees, refunds, webhooks, reconciliation, and support
 - [ ] Audit and deploy mainnet contracts before any real-money route can be enabled
@@ -79,6 +80,8 @@ the repository; they are not claims of legal approval or production readiness.
   proposal focus-recovery, async announcement, reduced-motion, and mobile-overflow fixes
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a
   shared deadline clock
+- [ ] Establish a browser performance budget and split the public introduction from the
+  authenticated wallet/workspace bundle
 - [ ] Configure hosted email, Cron, encryption, registry, address, and compliance-source services
 - [ ] Run separate-account testnet pilot and accessibility/usability reviews
 - [ ] Commission independent contract/application security and privacy/threat-model reviews
