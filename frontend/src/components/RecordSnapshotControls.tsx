@@ -103,7 +103,7 @@ function StandardAnchorAction({
   if (anchored.data === true) {
     return (
       <>
-        <p className="tx-success">This wallet has anchored this exact snapshot onchain.</p>
+        <p className="tx-success" role="status">This wallet has anchored this exact snapshot onchain.</p>
         {recovery.pendingTransaction && (
           <button
             className="btn btn-ghost small"
@@ -191,7 +191,7 @@ function SponsoredAnchorAction({
   if (anchored.data === true) {
     return (
       <>
-        <p className="tx-success">This wallet has anchored this exact snapshot onchain.</p>
+        <p className="tx-success" role="status">This wallet has anchored this exact snapshot onchain.</p>
         {recovery.pendingTransaction && (
           <button
             className="btn btn-ghost small"
@@ -472,6 +472,11 @@ export function RecordSnapshotControls({
             status.includes("could not") || status.includes("invalid")
               ? "tx-error"
               : "tx-success"
+          }
+          role={
+            status.includes("could not") || status.includes("invalid")
+              ? "alert"
+              : "status"
           }
         >
           {status}

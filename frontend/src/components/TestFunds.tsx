@@ -125,8 +125,8 @@ function SponsoredTestFunds({
                 ? "Confirming..."
                 : `Get 1,000 ${label}—gas covered`}
           </button>
-          {status === "success" && <p className="tx-success">{label} received.</p>}
-          {claimError && <p className="tx-error">{claimError}</p>}
+          {status === "success" && <p className="tx-success" role="status">{label} received.</p>}
+          {claimError && <p className="tx-error" role="alert">{claimError}</p>}
         </div>
       )}
     />

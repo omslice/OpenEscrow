@@ -873,10 +873,10 @@ function AgreementNegotiationView({
         </div>
       )}
 
-      {message && <p className="tx-success">{message}</p>}
-      {error && <p className="tx-error">{error}</p>}
+      {message && <p className="tx-success" role="status">{message}</p>}
+      {error && <p className="tx-error" role="alert">{error}</p>}
       {record.status === "finalized" && record.onchainAgreementId && (
-        <p className="tx-success">
+        <p className="tx-success" role="status">
           Finalized as {agreementReference(record.onchainAgreementId)}. Open the
           Deposits tab to manage the deposit or the Record tab to review its history.
         </p>

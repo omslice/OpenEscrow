@@ -149,7 +149,7 @@ export function AgreementOnchainActivity({
               </a>
             </div>
           ))}
-          {error && <p className="tx-error">{error}</p>}
+          {error && <p className="tx-error" role="alert">{error}</p>}
         </details>
       )}
     </section>

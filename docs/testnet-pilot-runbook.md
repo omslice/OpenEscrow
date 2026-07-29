@@ -54,6 +54,11 @@ For focused troubleshooting, run `npm.cmd run test:accessibility`. It covers the
 dialog and focus return, workspace tab keyboard behavior, proposal editor focus recovery,
 keyboard address selection, and mobile-width overflow.
 
+Dynamic wallet setup, transaction, proposal, negotiation, account-security, notification,
+record-export, and receipt-recovery outcomes use status or alert live regions so they are announced
+without moving keyboard focus. The automated smoke check does not replace a moderated screen-reader
+session with the separate landlord and tenant accounts.
+
 A passing local rehearsal proves that the hosted workflow state machine still behaves consistently.
 It does not prove Google/Privy login, live wallet signing, Base Sepolia contracts, hosted D1/R2,
 email delivery, Cron, or provider dashboards. Complete the separate-account steps below before any

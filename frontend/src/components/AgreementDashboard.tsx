@@ -254,7 +254,7 @@ export function AgreementDashboard({
         <strong>{actualRole ? roleLabel[actualRole] : "Not a party with this wallet"}</strong>
       </div>
       {inviteRole && actualRole && inviteRole !== actualRole && (
-        <p className="tx-error role-mismatch">
+        <p className="tx-error role-mismatch" role="alert">
           This link invited you as the {inviteRole}, but the connected wallet is registered as the{" "}
           {actualRole}. Sign out and use the {inviteRole}'s Google account or connected wallet.
         </p>

@@ -42,7 +42,7 @@ export function ProposalActions({
             <input value={newArbiter} onChange={(event) => setNewArbiter(event.target.value)} placeholder="0x..." />
           </label>
           {newArbiter.length > 0 && !validCandidate && (
-            <p className="tx-error">Enter a valid address that is different from the landlord and tenant.</p>
+            <p className="tx-error" role="alert">Enter a valid address that is different from the landlord and tenant.</p>
           )}
         </>
       )}

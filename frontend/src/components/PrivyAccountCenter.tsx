@@ -346,14 +346,14 @@ export function PrivyAccountCenter({
                   <p className="hint">Loading wallets...</p>
                 ) : !hasWallet ? (
                   <div className="wallet-setup-state">
-                    <p className="hint">
+                    <p className="hint" role="status">
                       {walletSetup === "creating"
                         ? "Creating your OpenEscrow wallet..."
                         : walletSetup === "slow"
                           ? "Wallet setup is taking longer than expected. You can retry or connect your own wallet."
                           : "No wallet is linked to this account yet."}
                     </p>
-                    {walletError && <p className="tx-error">{walletError}</p>}
+                    {walletError && <p className="tx-error" role="alert">{walletError}</p>}
                     {walletSetup !== "creating" && (
                       <button
                         className="btn btn-secondary"
@@ -533,6 +533,7 @@ export function PrivyAccountCenter({
                 className={
                   preferenceStatus.includes("could not") ? "tx-error" : "field-help"
                 }
+                role={preferenceStatus.includes("could not") ? "alert" : "status"}
               >
                 {preferenceStatus}
               </p>
@@ -558,8 +559,8 @@ export function PrivyAccountCenter({
               {securityStatus && (
                 <p
                   className={securityError ? "tx-error" : "field-help"}
-                  role="status"
-                  aria-live="polite"
+                  role={securityError ? "alert" : "status"}
+                  aria-live={securityError ? "assertive" : "polite"}
                 >
                   {securityStatus}
                 </p>

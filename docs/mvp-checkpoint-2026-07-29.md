@@ -32,6 +32,10 @@ production readiness, or authorization to hold real rental deposits.
   transactions no longer depend on writable browser storage to save their D1 receipt. Blocked
   storage degrades to an in-memory retry instead of interrupting the completed action; malformed
   persisted hashes and JSON are discarded before use.
+- **Verified:** Dynamic wallet setup, test-fund, negotiation, role-mismatch, onchain-activity,
+  record-export, account-security, notification, and receipt-recovery outcomes expose explicit
+  status or alert semantics. This improves screen-reader feedback without stealing keyboard focus;
+  moderated assistive-technology testing remains a separate pilot task.
 - **Verified:** The authenticated wallet/workspace is loaded behind a lightweight bootstrap, and
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the

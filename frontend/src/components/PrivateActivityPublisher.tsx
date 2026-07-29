@@ -110,7 +110,7 @@ function SponsoredPublishAction(props: PublishActionProps) {
       >
         {working ? "Publishing with gas covered..." : "Publish proof hash—gas covered"}
       </button>
-      {error && <p className="tx-error">{error}</p>}
+      {error && <p className="tx-error" role="alert">{error}</p>}
     </>
   );
 }
@@ -303,7 +303,7 @@ export function PrivateActivityPublisher({
       )}
       {proof && (
         <div className="private-proof-success">
-          <p className="tx-success">
+          <p className="tx-success" role="status">
             Receipt published. Download the private proof file while this text is still available.
           </p>
           <button className="btn btn-ghost small" type="button" onClick={downloadProof}>

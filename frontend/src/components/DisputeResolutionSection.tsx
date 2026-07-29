@@ -114,7 +114,7 @@ export function DisputeResolutionSection({
           Retry saving ruling receipt
         </button>
       )}
-      {recordError && <p className="tx-error">{recordError}</p>}
+      {recordError && <p className="tx-error" role="alert">{recordError}</p>}
     </div>
   );
 }

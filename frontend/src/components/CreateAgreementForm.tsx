@@ -3040,7 +3040,7 @@ function AgreementForm({
         <p className="role-pending">Onchain finalization stays locked until every tenant approves the current revision.</p>
       )}
       {draft?.status === "finalized" && (
-        <p className="tx-success">
+        <p className="tx-success" role="status">
           This proposal is finalized as{" "}
           {draft.onchainAgreementId
             ? agreementReference(draft.onchainAgreementId)
@@ -3048,7 +3048,7 @@ function AgreementForm({
           . Open the Deposits tab to manage it.
         </p>
       )}
-      {error && <p className="tx-error">{error.message.split("\n")[0]}</p>}
+      {error && <p className="tx-error" role="alert">{error.message.split("\n")[0]}</p>}
       {pendingFinalization && finalizationRecordError && (
         <div className="receipt-recovery">
           <p className="tx-error" role="alert">{finalizationRecordError}</p>
@@ -3067,7 +3067,7 @@ function AgreementForm({
         </div>
       )}
       {createdId !== null && (
-        <p className="tx-success">
+        <p className="tx-success" role="status">
           Created {agreementReference(createdId)} onchain.
         </p>
       )}
