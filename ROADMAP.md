@@ -83,6 +83,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Establish an initial browser performance budget and split the bootstrap from the
   authenticated wallet/workspace bundle
 - [x] Split infrequently used proposal, deposit, and record tools into tab-level chunks
+- [x] Prevent bootstrap and deferred workspace failures from blanking the page, with focused,
+  privacy-safe reload recovery and automated browser regression coverage
 - [ ] Configure hosted email, Cron, encryption, registry, address, and compliance-source services
 - [ ] Run separate-account testnet pilot and accessibility/usability reviews
 - [ ] Commission independent contract/application security and privacy/threat-model reviews

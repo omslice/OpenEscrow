@@ -102,6 +102,92 @@ body {
   margin: 0;
 }
 
+.app-loading {
+  max-width: 900px;
+  margin: 80px auto;
+  padding: 24px;
+  color: var(--text);
+  text-align: center;
+}
+
+.load-failure {
+  width: calc(100% - 32px);
+  max-width: 720px;
+  margin: 64px auto;
+  padding: 24px;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  border: 1px solid var(--warning-border);
+  border-radius: 16px;
+  background: var(--warning-bg);
+  text-align: left;
+}
+
+.load-failure-workspace {
+  width: 100%;
+  max-width: none;
+  margin: 16px 0;
+}
+
+.load-failure h1,
+.load-failure h2 {
+  margin: 4px 0 8px;
+  letter-spacing: -0.02em;
+}
+
+.load-failure h1 {
+  font-size: 28px;
+}
+
+.load-failure p {
+  max-width: 560px;
+  color: var(--text);
+}
+
+.load-failure-eyebrow {
+  color: var(--warning);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.load-failure-action {
+  flex: 0 0 auto;
+  min-height: 44px;
+  padding: 10px 16px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  color: var(--accent-on);
+  background: var(--accent);
+  font: 700 15px/1.2 var(--sans);
+  cursor: pointer;
+}
+
+.load-failure-action:hover {
+  filter: brightness(1.08);
+}
+
+.load-failure-action:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+
+@media (max-width: 640px) {
+  .load-failure {
+    align-items: stretch;
+    flex-direction: column;
+    margin-block: 32px;
+  }
+
+  .load-failure-action {
+    width: 100%;
+  }
+}
+
 h1,
 h2 {
   font-family: var(--heading);

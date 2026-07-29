@@ -1,4 +1,5 @@
-import { lazy, Suspense } from "react";
+import { lazy } from "react";
+import { DeferredLoadBoundary } from "./components/DeferredLoadBoundary";
 import { ACCOUNT_AUTH_ENABLED } from "./lib/accountConfig";
 
 const AuthenticatedRoot = lazy(() => import("./AuthenticatedRoot"));
@@ -6,7 +7,8 @@ const FallbackRoot = lazy(() => import("./FallbackRoot"));
 
 export function Root() {
   return (
-    <Suspense
+    <DeferredLoadBoundary
+      area="app"
       fallback={
         <div className="app-loading" role="status">
           Loading secure OpenEscrow access...
@@ -14,6 +16,6 @@ export function Root() {
       }
     >
       {ACCOUNT_AUTH_ENABLED ? <AuthenticatedRoot /> : <FallbackRoot />}
-    </Suspense>
+    </DeferredLoadBoundary>
   );
 }

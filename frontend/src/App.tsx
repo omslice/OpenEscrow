@@ -1,6 +1,5 @@
 import {
   lazy,
-  Suspense,
   useEffect,
   useRef,
   useState,
@@ -17,6 +16,7 @@ import { useTrackedAgreements } from "./lib/useTrackedAgreements";
 import { useDiscoverAgreements } from "./lib/useDiscoverAgreements";
 import { PublicIntro } from "./components/PublicIntro";
 import { AccountCenter } from "./components/AccountCenter";
+import { DeferredLoadBoundary } from "./components/DeferredLoadBoundary";
 import { isJurisdictionCode, rememberJurisdiction } from "./lib/jurisdictions";
 import {
   roleLabel,
@@ -923,7 +923,8 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             (item) => item.record.onchainAgreementId === id.toString(),
           );
           return (
-            <Suspense
+            <DeferredLoadBoundary
+              area="workspace"
               key={id.toString()}
               fallback={<WorkspaceToolFallback label="Loading deposit details..." />}
             >
@@ -951,13 +952,16 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                   }))
                 }
               />
-            </Suspense>
+            </DeferredLoadBoundary>
           );
         })}
         {workspaceRole === "tenant" && (
-          <Suspense fallback={<WorkspaceToolFallback label="Loading test funding..." />}>
+          <DeferredLoadBoundary
+            area="workspace"
+            fallback={<WorkspaceToolFallback label="Loading test funding..." />}
+          >
             <TestFunds />
-          </Suspense>
+          </DeferredLoadBoundary>
         )}
       </>
     );
@@ -1088,12 +1092,15 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           )}
           {expanded && (
             <div className="record-workspace-body" id={contentId}>
-              <Suspense fallback={<WorkspaceToolFallback label="Loading record tools..." />}>
+              <DeferredLoadBoundary
+                area="workspace"
+                fallback={<WorkspaceToolFallback label="Loading record tools..." />}
+              >
                 <RecordSnapshotControls
                   access={item.access}
                   agreementId={agreementId ? BigInt(agreementId) : undefined}
                 />
-              </Suspense>
+              </DeferredLoadBoundary>
               <details className="technical-details agreement-activity">
                 <summary>View timestamped activity ({item.record.events.length})</summary>
                 <ol className="activity-timeline">
@@ -1154,11 +1161,12 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           </header>
           {expanded && (
             <div className="record-workspace-body" id={contentId}>
-              <Suspense
+              <DeferredLoadBoundary
+                area="workspace"
                 fallback={<WorkspaceToolFallback label="Loading onchain record..." />}
               >
                 <AgreementOnchainActivity agreementId={id} isParty={false} />
-              </Suspense>
+              </DeferredLoadBoundary>
             </div>
           )}
         </article>
@@ -1380,11 +1388,12 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
         )}
         {workspaceRole === "tenant" && !inviteRole && (
           <div className="overview-invite-section">
-            <Suspense
+            <DeferredLoadBoundary
+              area="workspace"
               fallback={<WorkspaceToolFallback label="Loading invitation tools..." />}
             >
               <TenantLandlordInvite />
-            </Suspense>
+            </DeferredLoadBoundary>
           </div>
         )}
       </div>
@@ -1544,11 +1553,12 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
               <button className="btn btn-ghost review-back" onClick={closeProposalReview}>
                 Back to invitations and proposals
               </button>
-              <Suspense
+              <DeferredLoadBoundary
+                area="workspace"
                 fallback={<WorkspaceToolFallback label="Loading proposal review..." />}
               >
                 <AgreementNegotiation access={proposalAccess} />
-              </Suspense>
+              </DeferredLoadBoundary>
             </>
           ) : (
             <>
@@ -1665,7 +1675,8 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                           Close proposal editor
                         </button>
                       </div>
-                      <Suspense
+                      <DeferredLoadBoundary
+                        area="workspace"
                         fallback={<WorkspaceToolFallback label="Loading proposal editor..." />}
                       >
                         <CreateAgreementForm
@@ -1673,7 +1684,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                           initialAccess={activeLandlordAccess}
                           focusOnMount
                         />
-                      </Suspense>
+                      </DeferredLoadBoundary>
                     </>
                   )}
                 </section>

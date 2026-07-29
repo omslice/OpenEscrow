@@ -8,14 +8,6 @@
   text-align: left;
 }
 
-.app-loading {
-  max-width: 900px;
-  margin: 80px auto;
-  padding: 24px;
-  color: var(--text);
-  text-align: center;
-}
-
 .app-header {
   display: flex;
   justify-content: space-between;
