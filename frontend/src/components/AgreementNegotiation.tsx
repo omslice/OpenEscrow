@@ -17,6 +17,7 @@ import {
 } from "../lib/negotiations";
 import { agreementReference, proposalReference } from "../lib/displayIds";
 import { roleLabel } from "../lib/inviteContext";
+import { useVisiblePolling } from "../lib/visiblePolling";
 import { getDepositAssetForTerms } from "../../shared/deposit-assets.js";
 import {
   dynamicComplianceFactsForProfile,
@@ -200,11 +201,7 @@ function AgreementNegotiationView({
     }
   }, [access]);
 
-  useEffect(() => {
-    void refresh();
-    const interval = window.setInterval(() => void refresh(), 10_000);
-    return () => window.clearInterval(interval);
-  }, [refresh]);
+  useVisiblePolling(refresh, 10_000);
 
   useEffect(() => {
     setAssetConsent(false);

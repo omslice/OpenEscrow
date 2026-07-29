@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { parseAbiItem } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 import {
@@ -9,6 +9,7 @@ import type { AppNotification } from "../components/Layout";
 import { agreementReference } from "./displayIds";
 import { shortAddr } from "./format";
 import { useActivityRegistryReadiness } from "./useActivityRegistryReadiness";
+import { useVisiblePolling } from "./visiblePolling";
 
 const snapshotEvent = parseAbiItem(
   "event RecordSnapshotAnchored(uint256 indexed agreementId, bytes32 indexed snapshotHash, address indexed party, uint64 timestamp)",
@@ -97,11 +98,7 @@ export function useOnchainActivityNotifications(agreementIds: readonly bigint[])
     }
   }, [address, agreementIdsKey, publicClient, registry.isReady]);
 
-  useEffect(() => {
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 15_000);
-    return () => window.clearInterval(timer);
-  }, [refresh]);
+  useVisiblePolling(refresh, 15_000);
 
   return notifications;
 }

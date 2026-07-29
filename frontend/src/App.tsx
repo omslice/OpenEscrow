@@ -39,6 +39,7 @@ import { ARBITER_UI_ENABLED } from "./lib/featureFlags";
 import { ACCOUNT_AUTH_ENABLED } from "./lib/accountConfig";
 import { useOnchainActivityNotifications } from "./lib/useOnchainActivityNotifications";
 import { preferredScrollBehavior } from "./lib/accessibility";
+import { startVisibilityAwarePolling } from "./lib/visiblePolling";
 import "./App.css";
 
 type WorkspaceTab = "overview" | "proposals" | "agreements" | "record";
@@ -342,11 +343,15 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
       }
     }
 
-    void refreshSavedProposals();
-    const timer = window.setInterval(() => void refreshSavedProposals(), 15_000);
+    const stopPolling = startVisibilityAwarePolling({
+      callback: refreshSavedProposals,
+      intervalMs: 15_000,
+      visibilityTarget: document,
+      timers: window,
+    });
     return () => {
       active = false;
-      window.clearInterval(timer);
+      stopPolling();
     };
   }, [identityToken, workspaceRole]);
 

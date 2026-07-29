@@ -77,6 +77,8 @@ the repository; they are not claims of legal approval or production readiness.
   key-material, and digest-tamper regression coverage
 - [x] Internal keyboard/mobile accessibility smoke coverage plus workspace tab, address combobox,
   proposal focus-recovery, async announcement, reduced-motion, and mobile-overflow fixes
+- [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a
+  shared deadline clock
 - [ ] Configure hosted email, Cron, encryption, registry, address, and compliance-source services
 - [ ] Run separate-account testnet pilot and accessibility/usability reviews
 - [ ] Commission independent contract/application security and privacy/threat-model reviews

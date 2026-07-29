@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { parseAbiItem } from "viem";
 import { usePublicClient } from "wagmi";
 import {
@@ -8,6 +8,7 @@ import {
 import { formatTimestamp, shortAddr } from "../lib/format";
 import type { NegotiationAccess } from "../lib/negotiations";
 import { useActivityRegistryReadiness } from "../lib/useActivityRegistryReadiness";
+import { useVisiblePolling } from "../lib/visiblePolling";
 import { ActivityProofVerifier } from "./ActivityProofVerifier";
 import { PrivateActivityPublisher } from "./PrivateActivityPublisher";
 
@@ -102,11 +103,7 @@ export function AgreementOnchainActivity({
     }
   }, [agreementId, publicClient, registry.isReady]);
 
-  useEffect(() => {
-    void refresh();
-    const timer = window.setInterval(() => void refresh(), 12_000);
-    return () => window.clearInterval(timer);
-  }, [refresh]);
+  useVisiblePolling(refresh, 12_000);
 
   return (
     <section className="onchain-record-tools" aria-label="Onchain record tools">
