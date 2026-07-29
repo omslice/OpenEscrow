@@ -55,13 +55,16 @@ Implemented:
 
 - A landlord can rotate a tenant invitation without revising approved terms.
 - Rotation invalidates the prior tenant link and account sessions scoped to that tenant.
+- Landlord-authorized optional-arbiter rotation invalidates the prior arbiter link and every
+  active arbiter account session without changing approved terms. The arbiter UI remains disabled
+  by default.
 - A verified landlord or tenant email can discover a capped, expiring account session.
 - Evidence key rotation can retain historical decryption keys by non-secret key ID.
 
 Not implemented and therefore pilot-limiting:
 
 - recovery when a landlord loses both the original link and access to the matching verified email;
-- arbiter invitation/session recovery;
+- supervised arbiter recovery operations while the arbiter workspace remains disabled;
 - participant-controlled evidence-key recovery;
 - operator recovery after loss of every copy of an evidence master key;
 - wallet succession for death, incapacity, sanctions, court orders, or abandoned accounts.

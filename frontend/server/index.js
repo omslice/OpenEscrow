@@ -2729,6 +2729,55 @@ async function rotateTenantInvite(request, env, id, tenantId) {
   });
 }
 
+async function rotateArbiterInvite(request, env, id) {
+  const body = await request.json();
+  const row = await rowFor(env.DB, id);
+  const role = await authorize(env.DB, row, body.token);
+  if (role !== "landlord") {
+    return json({ error: "Only the landlord may reset an arbiter invitation link." }, 403);
+  }
+  if (!row.arbiter_email || !row.arbiter_token_hash) {
+    return json({ error: "This proposal does not have an optional arbiter." }, 404);
+  }
+
+  const replacementToken = randomToken();
+  const replacementHash = await hashToken(replacementToken);
+  const now = new Date().toISOString();
+  await env.DB.batch([
+    env.DB
+      .prepare(
+        `DELETE FROM negotiation_account_access
+         WHERE negotiation_id = ? AND role = 'arbiter'`,
+      )
+      .bind(id),
+    env.DB
+      .prepare(
+        `UPDATE agreement_negotiations
+         SET arbiter_token_hash = ?, updated_at = ?
+         WHERE id = ?`,
+      )
+      .bind(replacementHash, now, id),
+    eventStatement(
+      env.DB,
+      id,
+      now,
+      "landlord",
+      "arbiter_invite_reset",
+      `Reset the invitation link for ${row.arbiter_email}. Prior bearer links and active arbiter record sessions were invalidated.`,
+      Number(row.revision),
+      { email: row.arbiter_email },
+    ),
+  ]);
+
+  return json({
+    record: await serialize(env.DB, await rowFor(env.DB, id)),
+    invite: {
+      email: row.arbiter_email,
+      token: replacementToken,
+    },
+  });
+}
+
 async function removeTenant(request, env, id, tenantId) {
   const body = await request.json();
   const row = await rowFor(env.DB, id);
@@ -6654,7 +6703,7 @@ const worker = {
       }
 
       const match = url.pathname.match(
-        /^\/api\/negotiations\/([a-zA-Z0-9-]+)(?:\/(actions|report|snapshot|tenants)(?:\/([a-zA-Z0-9-]+))?)?$/,
+        /^\/api\/negotiations\/([a-zA-Z0-9-]+)(?:\/(actions|report|snapshot|tenants|arbiter)(?:\/([a-zA-Z0-9-]+))?)?$/,
       );
       if (!match) return json({ error: "Agreement record endpoint not found." }, 404);
       const [, id, action, resourceId] = match;
@@ -6672,6 +6721,9 @@ const worker = {
       }
       if (action === "tenants" && resourceId && request.method === "POST") {
         return rotateTenantInvite(request, env, id, resourceId);
+      }
+      if (action === "arbiter" && !resourceId && request.method === "POST") {
+        return rotateArbiterInvite(request, env, id);
       }
       if (action === "tenants" && resourceId && request.method === "DELETE") {
         return removeTenant(request, env, id, resourceId);

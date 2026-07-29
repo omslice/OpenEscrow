@@ -58,6 +58,11 @@ const expectedScenarios = [
     name: "pilot rehearsal: a notification outage is retryable without a phantom delivery",
     covers: ["email outage", "retry", "delivery idempotency", "event consistency"],
   },
+  {
+    id: "arbiter-invite-reset",
+    name: "pilot rehearsal: the landlord can reset an arbiter link and invalidate prior sessions",
+    covers: ["arbiter recovery", "link rotation", "session invalidation", "role authorization"],
+  },
 ];
 
 const testRun = spawnSync(

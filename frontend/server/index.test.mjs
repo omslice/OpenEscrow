@@ -4275,6 +4275,108 @@ test("the landlord can reset a tenant link without changing approved terms", asy
   );
 });
 
+test("pilot rehearsal: the landlord can reset an arbiter link and invalidate prior sessions", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
+        tenantEmail: "tenant@example.com",
+        arbiterName: "Avery Arbiter",
+        arbiterEmail: "arbiter@example.com",
+        terms,
+      }),
+      { DB: db },
+    ),
+  );
+  assert.ok(created.access.arbiter);
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+  const ready = await jsonResponse(
+    await act(db, created.record.id, created.access.arbiter, {
+      type: "approve",
+      wallet: "0x2222222222222222222222222222222222222222",
+    }),
+  );
+  assert.equal(ready.status, "ready");
+  assert.equal(ready.arbiterApproved, true);
+
+  const sessionToken = "arbiter-account-session-before-reset";
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(sessionToken),
+  );
+  const sessionHash = [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  db.database
+    .prepare(
+      `INSERT INTO negotiation_account_access
+       (negotiation_id, user_id, role, token_hash, created_at, expires_at)
+       VALUES (?, ?, 'arbiter', ?, ?, ?)`,
+    )
+    .run(
+      created.record.id,
+      "did:privy:arbiter",
+      sessionHash,
+      new Date().toISOString(),
+      new Date(Date.now() + 60_000).toISOString(),
+    );
+
+  const unauthorized = await worker.fetch(
+    request(`/api/negotiations/${created.record.id}/arbiter`, "POST", {
+      token: created.access.tenant,
+    }),
+    { DB: db },
+  );
+  assert.equal(unauthorized.status, 403);
+
+  const reset = await jsonResponse(
+    await worker.fetch(
+      request(`/api/negotiations/${created.record.id}/arbiter`, "POST", {
+        token: created.access.landlord,
+      }),
+      { DB: db },
+    ),
+  );
+  assert.equal(reset.record.revision, created.record.revision);
+  assert.equal(reset.record.status, "ready");
+  assert.equal(reset.record.arbiterApproved, true);
+  assert.equal(reset.record.events.at(-1).action, "arbiter_invite_reset");
+  assert.equal(reset.invite.email, "arbiter@example.com");
+  assert.notEqual(reset.invite.token, created.access.arbiter);
+
+  for (const oldToken of [created.access.arbiter, sessionToken]) {
+    const oldAccess = await worker.fetch(
+      request(`/api/negotiations/${created.record.id}?token=${oldToken}`),
+      { DB: db },
+    );
+    assert.equal(oldAccess.status, 403);
+  }
+
+  const newAccess = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${reset.invite.token}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(newAccess.status, 200);
+  assert.equal(
+    db.database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM negotiation_account_access WHERE negotiation_id = ? AND role = 'arbiter'",
+      )
+      .get(created.record.id).count,
+    0,
+  );
+});
+
 test("the landlord can edit and remove tenants without creating duplicate proposals", async () => {
   const db = new TestD1();
   const created = await jsonResponse(

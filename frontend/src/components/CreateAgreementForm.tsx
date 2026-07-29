@@ -46,6 +46,7 @@ import {
   buildNegotiationInviteUrl,
   addNegotiationTenant,
   removeNegotiationTenant,
+  resetNegotiationArbiterInvite,
   resetNegotiationTenantInvite,
   updateNegotiationTenant,
   clearLandlordBundle,
@@ -1284,6 +1285,43 @@ function AgreementForm({
     }
   }
 
+  async function resetArbiterInvite() {
+    if (!landlordAccess || !draft || !accessBundle || !draft.arbiterEmail) return;
+    if (
+      !window.confirm(
+        `Reset the link for ${draft.arbiterEmail}? The prior link and any current arbiter record session will stop working. The invited email can still find this agreement after signing in.`,
+      )
+    ) {
+      return;
+    }
+
+    setIsSavingDraft(true);
+    setFormError(null);
+    setFormMessage(null);
+    try {
+      const result = await resetNegotiationArbiterInvite(landlordAccess);
+      const nextBundle = {
+        ...accessBundle,
+        arbiter: result.invite.token,
+      };
+      setDraft(result.record);
+      setAccessBundle(nextBundle);
+      rememberLandlordBundle({ record: result.record, access: nextBundle });
+      setCopiedInvite(null);
+      setFormMessage(
+        `Reset the link for ${result.invite.email}. Send the new link; every prior copy is invalid.`,
+      );
+    } catch (cause) {
+      setFormError(
+        cause instanceof Error
+          ? cause.message
+          : "The arbiter invitation link could not be reset.",
+      );
+    } finally {
+      setIsSavingDraft(false);
+    }
+  }
+
   function recordInvitation(
     role: InviteRole,
     method: "gmail" | "copy",
@@ -1314,7 +1352,6 @@ function AgreementForm({
   }
 
   async function copyArbiterInvite() {
-    if (draft?.arbiterApproved) return;
     const invitation = arbiterInvite();
     if (!invitation) return;
     await navigator.clipboard.writeText(invitation.body);
@@ -1323,7 +1360,6 @@ function AgreementForm({
   }
 
   function openArbiterInvite() {
-    if (draft?.arbiterApproved) return;
     const invitation = arbiterInvite();
     if (!invitation) return;
     window.open(invitation.gmailUrl, "_blank", "noopener,noreferrer");
@@ -2953,20 +2989,36 @@ function AgreementForm({
                 <button
                   className="btn btn-secondary"
                   type="button"
-                  disabled={draft.arbiterApproved}
-                  title={draft.arbiterApproved ? "The arbiter already approved this revision." : undefined}
+                  disabled={!arbiterInvite()}
+                  title={
+                    !arbiterInvite()
+                      ? "The original invitation token is not available on this device. Reset the link to create a new one, or the arbiter can sign in with the invited email."
+                      : undefined
+                  }
                   onClick={openArbiterInvite}
                 >
-                  Open arbiter invite in Gmail
+                  {draft.arbiterApproved ? "Open record email" : "Open arbiter invite in Gmail"}
                 </button>
                 <button
                   className="btn btn-secondary"
                   type="button"
-                  disabled={draft.arbiterApproved}
-                  title={draft.arbiterApproved ? "The arbiter already approved this revision." : undefined}
+                  disabled={!arbiterInvite()}
                   onClick={() => void copyArbiterInvite()}
                 >
-                  {copiedInvite === "arbiter" ? "Arbiter invite copied" : "Copy arbiter invite"}
+                  {copiedInvite === "arbiter"
+                    ? "Arbiter link copied"
+                    : draft.arbiterApproved
+                      ? "Copy record link"
+                      : "Copy arbiter invite"}
+                </button>
+                <button
+                  className="btn btn-ghost"
+                  type="button"
+                  disabled={isSavingDraft}
+                  title="Create a new link and invalidate every prior copy."
+                  onClick={() => void resetArbiterInvite()}
+                >
+                  Reset link
                 </button>
                 </div>
               </div>

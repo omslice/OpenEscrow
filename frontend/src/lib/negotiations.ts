@@ -513,6 +513,22 @@ export function resetNegotiationTenantInvite(
   );
 }
 
+export function resetNegotiationArbiterInvite(access: NegotiationAccess) {
+  return request<{
+    record: NegotiationRecord;
+    invite: {
+      email: string;
+      token: string;
+    };
+  }>(
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}/arbiter`,
+    {
+      method: "POST",
+      body: JSON.stringify({ token: access.token }),
+    },
+  );
+}
+
 export async function loadNegotiation(access: NegotiationAccess) {
   return request<NegotiationRecord>(
     `/api/negotiations/${encodeURIComponent(access.proposalId)}?token=${encodeURIComponent(access.token)}`,
