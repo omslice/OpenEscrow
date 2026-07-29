@@ -20,7 +20,9 @@ ephemeral signed test identities. It independently exercises:
 - a fully accepted claim and both final withdrawals;
 - a two-tenant partial dispute, arbiter ruling, and all final withdrawals;
 - account-isolated archive and restore preferences; and
-- the complete report, canonical JSON snapshot, snapshot hash, and recorded receipt trail.
+- the complete report, canonical JSON snapshot, snapshot hash, and recorded receipt trail;
+- private-evidence upload and download outages that fail closed without phantom records; and
+- a notification-provider outage followed by one idempotent recovery delivery.
 
 The command writes a machine-readable summary and JUnit report under
 `frontend/.pilot-rehearsal/`. These ignored local artifacts contain no invitation tokens, private

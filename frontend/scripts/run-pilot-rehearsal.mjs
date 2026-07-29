@@ -43,6 +43,21 @@ const expectedScenarios = [
     name: "pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-time",
     covers: ["no-claim timeout", "refund", "role authorization", "idempotency"],
   },
+  {
+    id: "evidence-upload-outage",
+    name: "pilot rehearsal: an evidence upload outage is retryable without a phantom record",
+    covers: ["R2 outage", "retry", "metadata consistency", "privacy-safe error"],
+  },
+  {
+    id: "evidence-download-outage",
+    name: "pilot rehearsal: an evidence download outage fails closed without storage details",
+    covers: ["R2 outage", "fail-closed download", "privacy-safe error"],
+  },
+  {
+    id: "notification-outage",
+    name: "pilot rehearsal: a notification outage is retryable without a phantom delivery",
+    covers: ["email outage", "retry", "delivery idempotency", "event consistency"],
+  },
 ];
 
 const testRun = spawnSync(

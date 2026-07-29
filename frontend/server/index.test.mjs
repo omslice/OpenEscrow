@@ -3158,7 +3158,7 @@ test("private evidence is stored in R2 and only an agreement party can retrieve 
   assert.equal(denied.status, 403);
 });
 
-test("an evidence upload outage is retryable and never creates a phantom record", async () => {
+test("pilot rehearsal: an evidence upload outage is retryable without a phantom record", async () => {
   const db = new TestD1();
   const created = await create(db);
   const evidenceFile = () =>
@@ -3208,7 +3208,7 @@ test("an evidence upload outage is retryable and never creates a phantom record"
   assert.equal(recoveredEvidence.objects.size, 1);
 });
 
-test("an evidence download outage fails closed without exposing storage details", async () => {
+test("pilot rehearsal: an evidence download outage fails closed without storage details", async () => {
   const db = new TestD1();
   const evidence = new TestR2();
   const created = await create(db);
@@ -4887,7 +4887,7 @@ test("deduction claim email includes every tenant", async () => {
   }
 });
 
-test("a notification provider outage is retryable without recording a phantom delivery", async () => {
+test("pilot rehearsal: a notification outage is retryable without a phantom delivery", async () => {
   const db = new TestD1();
   const created = await create(db);
   const payload = {
