@@ -24,6 +24,10 @@ production readiness, or authorization to hold real rental deposits.
   rules, sources, overlays, and claim checks. Snapshot-level regressions cover conditional Maine
   paths, Arizona business-day and holiday arithmetic, and fail-closed handling for unsupported
   day-count metadata without changing any legal rule.
+- **Verified:** Provider checkout reconciliation now prevents an immediate second purchase after
+  submitted, confirmed, or indeterminate results. The user can refresh the destination wallet
+  balance without recording agreement funding; only explicit cancellation or failure permits an
+  immediate retry. Real-money funding remains disabled.
 - **Verified:** The authenticated wallet/workspace is loaded behind a lightweight bootstrap, and
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the

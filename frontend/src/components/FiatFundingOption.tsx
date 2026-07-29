@@ -36,6 +36,8 @@ export function FiatFundingOption({
   const { fund } = useFiatOnramp();
   const [status, setStatus] = useState<FundingCheckoutOutcome | null>(null);
   const [isOpening, setIsOpening] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState<string | null>(null);
   const fundingPlan = createFundingPlan(depositAsset?.id, {
     onrampEnabled: FIAT_ONRAMP_READINESS.enabled,
     environment: FIAT_ONRAMP_READINESS.environment,
@@ -61,6 +63,17 @@ export function FiatFundingOption({
   }
 
   const isSandbox = FIAT_ONRAMP_CONFIG.environment === "sandbox";
+  const checkoutLocked = status?.retryAllowed === false;
+  const checkoutLabel =
+    status?.state === "confirmed"
+      ? "Checkout complete"
+      : status?.state === "submitted" && status.providerStatus !== "opening"
+        ? "Purchase submitted"
+        : isOpening
+          ? "Opening checkout..."
+          : isSandbox
+            ? "Preview sandbox checkout"
+            : "Continue to card or bank";
 
   return (
     <div className="fiat-funding-option enabled">
@@ -75,14 +88,16 @@ export function FiatFundingOption({
       <button
         className="btn btn-secondary"
         type="button"
-        disabled={isOpening}
+        disabled={isOpening || checkoutLocked}
         onClick={async () => {
           setIsOpening(true);
+          setRefreshError(null);
           setStatus({
             state: "submitted",
             providerStatus: "opening",
             severity: "info",
             shouldRefreshBalance: false,
+            retryAllowed: false,
             message: "Opening secure checkout...",
           });
           try {
@@ -118,11 +133,7 @@ export function FiatFundingOption({
           }
         }}
       >
-        {isOpening
-          ? "Opening checkout..."
-          : isSandbox
-            ? "Preview sandbox checkout"
-            : "Continue to card or bank"}
+        {checkoutLabel}
       </button>
       <small>
         {isSandbox
@@ -139,6 +150,33 @@ export function FiatFundingOption({
           role={status.severity === "error" ? "alert" : "status"}
         >
           {status.message}
+        </p>
+      )}
+      {status && !status.retryAllowed && onComplete && (
+        <button
+          className="btn btn-secondary"
+          type="button"
+          disabled={isRefreshing}
+          onClick={async () => {
+            setIsRefreshing(true);
+            setRefreshError(null);
+            try {
+              await onComplete();
+            } catch {
+              setRefreshError(
+                "The wallet balance could not be refreshed. Check your connection and try the refresh again; do not start another purchase yet.",
+              );
+            } finally {
+              setIsRefreshing(false);
+            }
+          }}
+        >
+          {isRefreshing ? "Refreshing wallet..." : "Refresh wallet balance"}
+        </button>
+      )}
+      {refreshError && (
+        <p className="tx-error" role="alert">
+          {refreshError}
         </p>
       )}
     </div>

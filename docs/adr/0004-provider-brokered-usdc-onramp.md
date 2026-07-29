@@ -41,6 +41,10 @@ It would also incorrectly imply that a DEX is needed to enter or exit Aave.
    onramp-enabled flag.
 7. Keep Base Sepolia funding on free test tokens. A sandbox checkout previews provider UX but
    cannot fund a testnet agreement.
+8. Treat submitted, confirmed, or indeterminate checkout outcomes as non-retryable in the active
+   screen. Refresh the wallet balance without recording agreement funding; permit an immediate
+   new checkout only after an explicit provider cancellation or failure result. This reduces the
+   risk of a duplicate purchase while provider settlement is pending or uncertain.
 
 ## Why not choose a single onramp vendor now?
 

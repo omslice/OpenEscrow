@@ -125,6 +125,7 @@ export interface FundingCheckoutOutcome {
   providerStatus: string;
   severity: "info" | "error";
   shouldRefreshBalance: boolean;
+  retryAllowed: boolean;
   message: string;
 }
 

@@ -376,6 +376,7 @@ export function reconcileFundingCheckoutResult(
       providerStatus,
       severity: "info",
       shouldRefreshBalance: normalizedEnvironment === "production",
+      retryAllowed: false,
       message:
         normalizedEnvironment === "sandbox"
           ? "Sandbox checkout completed. No real funds moved; claim free test tokens below to fund this agreement."
@@ -389,6 +390,7 @@ export function reconcileFundingCheckoutResult(
       providerStatus,
       severity: "info",
       shouldRefreshBalance: false,
+      retryAllowed: false,
       message:
         normalizedEnvironment === "sandbox"
           ? "Sandbox checkout submitted. No real funds moved and this agreement is not funded."
@@ -402,6 +404,7 @@ export function reconcileFundingCheckoutResult(
       providerStatus,
       severity: "info",
       shouldRefreshBalance: false,
+      retryAllowed: true,
       message:
         "Checkout was closed before confirmation. No agreement funding was recorded.",
     });
@@ -413,6 +416,7 @@ export function reconcileFundingCheckoutResult(
       providerStatus,
       severity: "error",
       shouldRefreshBalance: false,
+      retryAllowed: true,
       message:
         "The provider did not confirm this checkout. No agreement funding was recorded; you can try again.",
     });
@@ -423,18 +427,20 @@ export function reconcileFundingCheckoutResult(
     providerStatus,
     severity: "error",
     shouldRefreshBalance: false,
+    retryAllowed: false,
     message:
-      "OpenEscrow could not verify the checkout result. No agreement funding was recorded; refresh your wallet before trying again.",
+      "OpenEscrow could not verify the checkout result. No agreement funding was recorded; check your provider activity and refresh your wallet before starting another purchase.",
   });
 }
 
 export function reconcileFundingCheckoutError() {
   return Object.freeze({
-    state: "failed",
-    providerStatus: "rejected",
+    state: "unknown",
+    providerStatus: "error",
     severity: "error",
     shouldRefreshBalance: false,
+    retryAllowed: false,
     message:
-      "Checkout closed or failed before confirmation. No agreement funding was recorded; you can try again.",
+      "Checkout did not return a verifiable result. No agreement funding was recorded; check your provider activity and refresh your wallet before starting another purchase.",
   });
 }

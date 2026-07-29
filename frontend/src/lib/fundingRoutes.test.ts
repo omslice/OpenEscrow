@@ -244,6 +244,7 @@ test("checkout reconciliation refreshes only after production confirmation", () 
   );
   assert.equal(productionConfirmed.state, "confirmed");
   assert.equal(productionConfirmed.shouldRefreshBalance, true);
+  assert.equal(productionConfirmed.retryAllowed, false);
 
   const productionSubmitted = reconcileFundingCheckoutResult(
     { status: "submitted" },
@@ -251,6 +252,7 @@ test("checkout reconciliation refreshes only after production confirmation", () 
   );
   assert.equal(productionSubmitted.state, "submitted");
   assert.equal(productionSubmitted.shouldRefreshBalance, false);
+  assert.equal(productionSubmitted.retryAllowed, false);
   assert.match(productionSubmitted.message, /will not treat.*funded/i);
 
   const sandboxConfirmed = reconcileFundingCheckoutResult(
@@ -269,19 +271,24 @@ test("checkout reconciliation fails closed for cancellation, failure, and unknow
   assert.equal(cancelled.state, "cancelled");
   assert.equal(cancelled.severity, "info");
   assert.equal(cancelled.shouldRefreshBalance, false);
+  assert.equal(cancelled.retryAllowed, true);
 
   for (const status of ["failed", "rejected", "unexpected"]) {
     const outcome = reconcileFundingCheckoutResult({ status }, "production");
     assert.equal(outcome.severity, "error");
     assert.equal(outcome.shouldRefreshBalance, false);
+    assert.equal(outcome.retryAllowed, status !== "unexpected");
     assert.match(outcome.message, /No agreement funding was recorded/i);
   }
 
   const malformed = reconcileFundingCheckoutResult(null, "production");
   assert.equal(malformed.state, "unknown");
   assert.equal(malformed.shouldRefreshBalance, false);
+  assert.equal(malformed.retryAllowed, false);
 
   const rejected = reconcileFundingCheckoutError();
-  assert.equal(rejected.state, "failed");
+  assert.equal(rejected.state, "unknown");
   assert.equal(rejected.shouldRefreshBalance, false);
+  assert.equal(rejected.retryAllowed, false);
+  assert.match(rejected.message, /check your provider activity/i);
 });
