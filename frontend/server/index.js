@@ -2065,6 +2065,39 @@ async function recordArchivePreference(request, env) {
   return json({ proposalId, role, archived: body.archived, archivedAt });
 }
 
+async function revokeAccountSessions(request, env) {
+  let identity;
+  try {
+    identity = await verifyPrivyIdentity(request, env);
+  } catch (error) {
+    return json(
+      {
+        error:
+          error instanceof Error ? error.message : "The signed-in account could not be verified.",
+      },
+      401,
+    );
+  }
+
+  const existing = await env.DB
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM negotiation_account_access
+       WHERE user_id = ?`,
+    )
+    .bind(identity.userId)
+    .first();
+  await env.DB
+    .prepare("DELETE FROM negotiation_account_access WHERE user_id = ?")
+    .bind(identity.userId)
+    .run();
+
+  return json({
+    revoked: true,
+    revokedSessions: Number(existing?.count || 0),
+  });
+}
+
 async function rowFor(db, id) {
   return db
     .prepare("SELECT * FROM agreement_negotiations WHERE id = ?")
@@ -6664,6 +6697,17 @@ const worker = {
       }
       await initialize(env.DB);
       return recordArchivePreference(request, env);
+    }
+    if (
+      url.pathname === "/api/profile/account-sessions/revoke" &&
+      request.method === "POST"
+    ) {
+      if (!env.DB) return json({ error: "Account session storage is not available." }, 503);
+      if (!sameOriginPost(request)) {
+        return json({ error: "Cross-origin writes are not allowed." }, 403);
+      }
+      await initialize(env.DB);
+      return revokeAccountSessions(request, env);
     }
     if (url.pathname === "/api/notifications/claim" && request.method === "POST") {
       if (!sameOriginPost(request)) return json({ error: "Cross-origin writes are not allowed." }, 403);

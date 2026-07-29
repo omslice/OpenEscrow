@@ -239,7 +239,7 @@ restrictive content-security headers. Static app responses also receive no-refer
 headers.
 
 Automated coverage at this addendum is 173 passing Solidity tests across 15 suites, including the
-three 32,768-call stateful invariants and 512-run fuzz cases, plus 38 passing hosted workflow tests.
+three 32,768-call stateful invariants and 512-run fuzz cases, plus 69 passing hosted workflow tests.
 The workflow suite contains a complete two-tenant/optional-arbiter negotiation, funding, claim,
 response, dispute, ruling, refund, and withdrawal scenario.
 
@@ -248,15 +248,16 @@ response, dispute, ruling, refund, and withdrawal scenario.
 - Receipt verification depends on a Base Sepolia RPC endpoint. A temporary provider outage can
   delay saving the readable receipt record, although it does not alter the completed onchain
   transaction and the UI retains a retry path.
-- Invitation URLs are bearer credentials. A landlord can now reset any tenant link without
-  changing approved terms; the reset invalidates the prior direct link and every active
-  account-discovery session scoped to that tenant, while the invited email can authenticate and
-  discover a fresh session. Landlord/arbiter link rotation and a complete support recovery flow
-  still need product design. Account-discovery sessions expire after 24 hours and are capped at
-  the five newest sessions per user, role, and tenant context when a tenant identity context is
-  present, while landlord sessions remain capped per agreement and role. Normal tabs and devices
-  keep working without letting repeated refreshes accumulate long-lived bearer tokens. Invitations
-  must not be forwarded or logged.
+- Invitation URLs are bearer credentials. A landlord can reset a tenant or optional-arbiter link
+  without changing approved terms; the reset invalidates the prior direct link and the affected
+  account-discovery sessions, while the matching verified email can discover a fresh session.
+  A verified user can also revoke all of their own derived record sessions without changing other
+  participants or invitation links. A complete support recovery flow still needs product design.
+  Account-discovery sessions expire after 24 hours and are capped at the five newest sessions per
+  user, role, and tenant context when a tenant identity context is present, while landlord sessions
+  remain capped per agreement and role. Normal tabs and devices keep working without letting
+  repeated refreshes accumulate long-lived bearer tokens. Invitations must not be forwarded or
+  logged.
 - The server record cannot prove that the human-readable note or uploaded document accurately
   describes the onchain action. Its hash and transaction receipt prove integrity and occurrence,
   not truth.

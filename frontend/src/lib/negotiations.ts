@@ -186,6 +186,7 @@ export interface NegotiationAccess {
   role: NegotiationRole;
   token: string;
   archived?: boolean;
+  source?: "account" | "invite";
 }
 
 export interface CreatedNegotiation {
@@ -315,6 +316,38 @@ export function listNegotiationAccesses(role?: NegotiationRole): NegotiationAcce
   return accesses;
 }
 
+export function clearAccountNegotiationAccesses() {
+  try {
+    const references = readAccessIndex();
+    for (const reference of references) {
+      const key = accessKey(reference.proposalId, reference.role);
+      for (const storage of [window.sessionStorage, window.localStorage]) {
+        const raw = storage.getItem(key);
+        if (!raw) continue;
+        try {
+          const access = JSON.parse(raw) as NegotiationAccess;
+          if (access.source === "account") storage.removeItem(key);
+        } catch {
+          // Leave malformed entries for the ordinary access reader to ignore.
+        }
+      }
+    }
+    const remaining = references.filter((reference) =>
+      [window.sessionStorage, window.localStorage].some((storage) =>
+        storage.getItem(accessKey(reference.proposalId, reference.role)),
+      ),
+    );
+    window.localStorage.setItem(ACCESS_INDEX, JSON.stringify(remaining));
+
+    const latestLandlord = readLatestLandlordAccess();
+    if (latestLandlord?.source === "account") {
+      window.localStorage.removeItem(LATEST_LANDLORD_ACCESS);
+    }
+  } catch {
+    // Server-side revocation remains effective if browser storage is unavailable.
+  }
+}
+
 export function readLatestLandlordAccess(): NegotiationAccess | null {
   try {
     const raw = window.localStorage.getItem(LATEST_LANDLORD_ACCESS);
@@ -391,7 +424,7 @@ export function captureNegotiationAccessFromUrl(): NegotiationAccess | null {
     return null;
   }
 
-  const access: NegotiationAccess = { proposalId, token, role };
+  const access: NegotiationAccess = { proposalId, token, role, source: "invite" };
   storeNegotiationAccess(access, true);
   url.searchParams.delete("token");
   url.searchParams.delete("access");
@@ -547,8 +580,22 @@ export async function discoverNegotiationsForAccount(
       body: JSON.stringify({ role }),
     },
   );
-  result.accesses.forEach((access) => storeNegotiationAccess(access, true));
-  return result.accesses;
+  const accesses = result.accesses.map((access) => ({
+    ...access,
+    source: "account" as const,
+  }));
+  accesses.forEach((access) => storeNegotiationAccess(access, true));
+  return accesses;
+}
+
+export function revokeAccountSessions(identityToken: string) {
+  return request<{
+    revoked: true;
+    revokedSessions: number;
+  }>("/api/profile/account-sessions/revoke", {
+    method: "POST",
+    headers: { "privy-id-token": identityToken },
+  });
 }
 
 export function updateRecordArchivePreference(

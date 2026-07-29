@@ -2520,6 +2520,180 @@ test("pilot rehearsal: verified arbiter discovery is isolated and survives link 
   }
 });
 
+test("pilot rehearsal: a verified account can contain its record sessions without affecting other parties", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+
+  const appId = "test-privy-session-containment-app";
+  const kid = "test-session-containment-key";
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  const landlordIdentityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "landlord@example.com",
+    { sub: "did:privy:containment-landlord" },
+  );
+  const tenantIdentityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "tenant@example.com",
+    { sub: "did:privy:containment-tenant" },
+  );
+  const unrelatedIdentityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "unrelated@example.com",
+    { sub: "did:privy:containment-unrelated" },
+  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    assert.equal(
+      String(input),
+      `https://auth.privy.io/api/v1/apps/${appId}/jwks.json`,
+    );
+    return Response.json({ keys: [{ ...publicJwk, kid, alg: "ES256", use: "sig" }] });
+  };
+
+  const discover = (identityToken, role) =>
+    worker.fetch(
+      new Request("https://openescrow.example/api/negotiations/discover", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "privy-id-token": identityToken,
+        },
+        body: JSON.stringify({ role }),
+      }),
+      { DB: db, PRIVY_APP_ID: appId },
+    );
+  const revoke = (identityToken, origin) =>
+    worker.fetch(
+      new Request(
+        "https://openescrow.example/api/profile/account-sessions/revoke",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": identityToken,
+            ...(origin ? { origin } : {}),
+          },
+        },
+      ),
+      { DB: db, PRIVY_APP_ID: appId },
+    );
+
+  try {
+    const firstLandlordDiscovery = await jsonResponse(
+      await discover(landlordIdentityToken, "landlord"),
+    );
+    const secondLandlordDiscovery = await jsonResponse(
+      await discover(landlordIdentityToken, "landlord"),
+    );
+    const tenantDiscovery = await jsonResponse(
+      await discover(tenantIdentityToken, "tenant"),
+    );
+    assert.equal(firstLandlordDiscovery.accesses.length, 1);
+    assert.equal(secondLandlordDiscovery.accesses.length, 1);
+    assert.equal(tenantDiscovery.accesses.length, 1);
+
+    const crossOrigin = await revoke(
+      landlordIdentityToken,
+      "https://attacker.example",
+    );
+    assert.equal(crossOrigin.status, 403);
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM negotiation_account_access WHERE user_id = ?",
+        )
+        .get("did:privy:containment-landlord").count,
+      2,
+    );
+
+    const unrelated = await jsonResponse(
+      await revoke(unrelatedIdentityToken),
+    );
+    assert.equal(unrelated.revokedSessions, 0);
+    const landlordStillAuthorized = await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${firstLandlordDiscovery.accesses[0].token}`,
+      ),
+      { DB: db },
+    );
+    assert.equal(landlordStillAuthorized.status, 200);
+
+    const contained = await jsonResponse(
+      await revoke(landlordIdentityToken),
+    );
+    assert.equal(contained.revoked, true);
+    assert.equal(contained.revokedSessions, 2);
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM negotiation_account_access WHERE user_id = ?",
+        )
+        .get("did:privy:containment-landlord").count,
+      0,
+    );
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM negotiation_account_access WHERE user_id = ?",
+        )
+        .get("did:privy:containment-tenant").count,
+      1,
+    );
+
+    for (const priorSession of [
+      firstLandlordDiscovery.accesses[0].token,
+      secondLandlordDiscovery.accesses[0].token,
+    ]) {
+      const ended = await worker.fetch(
+        request(`/api/negotiations/${created.record.id}?token=${priorSession}`),
+        { DB: db },
+      );
+      assert.equal(ended.status, 403);
+    }
+    const tenantUnaffected = await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${tenantDiscovery.accesses[0].token}`,
+      ),
+      { DB: db },
+    );
+    assert.equal(tenantUnaffected.status, 200);
+    const landlordInvitationUnaffected = await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${created.access.landlord}`,
+      ),
+      { DB: db },
+    );
+    assert.equal(landlordInvitationUnaffected.status, 200);
+
+    const rediscovered = await jsonResponse(
+      await discover(landlordIdentityToken, "landlord"),
+    );
+    assert.equal(rediscovered.accesses.length, 1);
+    const recovered = await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${rediscovered.accesses[0].token}`,
+      ),
+      { DB: db },
+    );
+    assert.equal(recovered.status, 200);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("signed-in discovery rejects expired, wrong-audience, and forged identity tokens", async () => {
   const db = new TestD1();
   const created = await create(db);

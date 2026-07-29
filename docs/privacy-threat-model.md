@@ -36,6 +36,7 @@ completeness, legality, or authorship of the underlying content.
 | --- | --- | --- |
 | Forged, expired, or wrong-application identity token | ES256 signature, issuer, audience, expiry, subject, and linked-email verification | Server tests reject each token without creating an account session |
 | Cross-account proposal or archive access | Server-side email/role matching and account-scoped archive rows | Separate landlord/tenant discovery and archive-isolation rehearsal |
+| Lost or untrusted signed-in browser | Verified-user session revocation deletes only that user's derived record sessions; the client clears account-derived browser access and signs out | Containment rehearsal checks every prior user session fails while other parties and invitation links remain authorized |
 | Stolen tenant invitation after reset | Random token rotation, old-link invalidation, and tenant-context session invalidation | Reset test checks the old link and active account session fail |
 | Unauthorized evidence download | Agreement-token authorization before R2/IPFS access | Invalid and unrelated-agreement tokens receive an access error |
 | Spoofed upload type | File-signature inspection for PDF/JPEG/PNG/WebP | MIME-spoof test rejects before storage |
@@ -60,6 +61,8 @@ Implemented:
   by default.
 - A verified landlord, tenant, or appointed-arbiter email can discover only its matching role and
   agreement through a capped, expiring account session.
+- A verified account can revoke all of its derived OpenEscrow record sessions without changing
+  agreements, archive preferences, other participants' sessions, or bearer invitation links.
 - Evidence key rotation can retain historical decryption keys by non-secret key ID.
 
 Not implemented and therefore pilot-limiting:
@@ -100,10 +103,10 @@ retention and key-destruction consequences are explicitly approved.
 
 ## Incident exercises still required
 
-Credential-free tests cover invalid identity tokens, cross-account access, invitation reset,
-corrupted ciphertext, wrong/retired keys, altered hashes, duplicate actions, spoofed receipts,
-R2 upload/download outages, notification-provider recovery, and RPC fallback. A supervised pilot
-must still additionally exercise:
+Credential-free tests cover invalid identity tokens, cross-account access, participant-scoped
+session containment, invitation reset, corrupted ciphertext, wrong/retired keys, altered hashes,
+duplicate actions, spoofed receipts, R2 upload/download outages, notification-provider recovery,
+and RPC fallback. A supervised pilot must still additionally exercise:
 
 - lost invitation and lost verified-email escalation without sharing secrets;
 - evidence-key backup restoration in a separate operator environment;

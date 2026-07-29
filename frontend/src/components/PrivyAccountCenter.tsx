@@ -9,8 +9,10 @@ import { useSetActiveWallet } from "@privy-io/wagmi";
 import { useAccount } from "wagmi";
 import { shortAddr } from "../lib/format";
 import {
+  clearAccountNegotiationAccesses,
   loadNotificationPreferences,
   loadServiceReadiness,
+  revokeAccountSessions,
   saveNotificationPreferences,
   sendNotificationTest,
   type NotificationPreferences,
@@ -46,6 +48,9 @@ export function PrivyAccountCenter({
   const [preferenceStatus, setPreferenceStatus] = useState<string | null>(null);
   const [serviceReadiness, setServiceReadiness] = useState<ServiceReadiness | null>(null);
   const [isTestingEmail, setIsTestingEmail] = useState(false);
+  const [isEndingSessions, setIsEndingSessions] = useState(false);
+  const [securityStatus, setSecurityStatus] = useState<string | null>(null);
+  const [securityError, setSecurityError] = useState(false);
   const preferenceWrite = useRef(0);
   const isRefreshingReadinessRef = useRef(false);
   const [walletSetup, setWalletSetup] = useState<"idle" | "creating" | "slow" | "error">("idle");
@@ -194,6 +199,40 @@ export function PrivyAccountCenter({
           ? error.message
           : "Preferences are saved locally but could not be synced.",
       );
+    }
+  }
+
+  async function endOpenEscrowSessions() {
+    if (!identityToken || isEndingSessions) return;
+    if (
+      !window.confirm(
+        "End every OpenEscrow record session issued to this verified account and sign out on this device? Invitation links and wallet-provider sessions are separate and will not be revoked.",
+      )
+    ) {
+      return;
+    }
+
+    setIsEndingSessions(true);
+    setSecurityError(false);
+    setSecurityStatus("Ending OpenEscrow record sessions...");
+    try {
+      const result = await revokeAccountSessions(identityToken);
+      clearAccountNegotiationAccesses();
+      setSecurityStatus(
+        result.revokedSessions
+          ? `${result.revokedSessions} OpenEscrow record session(s) ended. Signing out...`
+          : "No active OpenEscrow record sessions were found. Signing out...",
+      );
+      await logout();
+      window.location.reload();
+    } catch (error) {
+      setSecurityError(true);
+      setSecurityStatus(
+        error instanceof Error
+          ? error.message
+          : "OpenEscrow record sessions could not be ended.",
+      );
+      setIsEndingSessions(false);
     }
   }
 
@@ -463,6 +502,39 @@ export function PrivyAccountCenter({
                 {preferenceStatus}
               </p>
             )}
+          </section>
+
+          <section
+            className="settings-group account-security-settings"
+            aria-labelledby="account-security-title"
+          >
+            <div>
+              <h3 id="account-security-title">Account security</h3>
+              <p>
+                If a device or browser profile is no longer trusted, end every expiring OpenEscrow
+                record session issued to this verified account. Agreements, archive preferences,
+                invitation links, and wallet-provider sessions are not changed.
+              </p>
+              {securityStatus && (
+                <p
+                  className={securityError ? "tx-error" : "field-help"}
+                  role="status"
+                  aria-live="polite"
+                >
+                  {securityStatus}
+                </p>
+              )}
+            </div>
+            <div className="settings-actions">
+              <button
+                className="btn btn-ghost small"
+                type="button"
+                disabled={!identityToken || isEndingSessions}
+                onClick={() => void endOpenEscrowSessions()}
+              >
+                {isEndingSessions ? "Ending sessions..." : "End record sessions & sign out"}
+              </button>
+            </div>
           </section>
 
         </div>

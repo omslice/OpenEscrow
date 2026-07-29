@@ -7,11 +7,12 @@ production readiness, or authorization to hold real rental deposits.
 
 - **Verified:** A locally packaged Sites candidate includes the latest pilot rehearsal, security,
   accessibility, compliance-regression, funding-failure, and hidden-tab performance work.
-- **Verified:** Ten credential-free rehearsals pass: five lifecycle scenarios covering
+- **Verified:** Eleven credential-free rehearsals pass: five lifecycle scenarios covering
   archive/restore, record proof, disputed claim, accepted claim, and no-claim refund, plus three
   private-evidence and notification outage/recovery scenarios, one arbiter-link/session reset,
-  and one verified-arbiter identity recovery and isolation scenario.
-- **Verified:** The full repository release check passes with 68 server tests, 38 client-logic
+  one verified-arbiter identity recovery/isolation scenario, and one verified-account session
+  containment scenario.
+- **Verified:** The full repository release check passes with 69 server tests, 39 client-logic
   tests, lint, and the production build. The browser accessibility smoke check also passes.
 - **Verified:** The authenticated wallet/workspace is loaded behind a lightweight bootstrap, and
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct

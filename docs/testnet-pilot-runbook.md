@@ -25,7 +25,9 @@ ephemeral signed test identities. It independently exercises:
 - a notification-provider outage followed by one idempotent recovery delivery; and
 - landlord-authorized arbiter link rotation with old-link and active-session invalidation; and
 - verified arbiter-email discovery, cross-account denial, archive isolation, and rediscovery
-  after link rotation.
+  after link rotation; and
+- verified-account record-session containment that leaves other parties and invitation links
+  unaffected, followed by clean signed-in rediscovery.
 
 The command writes a machine-readable summary and JUnit report under
 `frontend/.pilot-rehearsal/`. These ignored local artifacts contain no invitation tokens, private
@@ -58,6 +60,10 @@ Prepare four separate browser profiles and email accounts:
 
 Never share wallet private keys. Each person signs in through their own Google account and uses
 the embedded test wallet created for that identity.
+
+The account security control ends only expiring OpenEscrow record sessions issued through verified
+account discovery and then signs out the current device. It does not revoke invitation links or
+sessions held by Privy, a wallet provider, Google, or an email provider.
 
 ## Release smoke test
 

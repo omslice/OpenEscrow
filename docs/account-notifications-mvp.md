@@ -14,6 +14,9 @@ production identity, custody, privacy, or communications design.
 - A verified Google/email identity is displayed in the account panel.
 - Privy identity tokens are verified against the app's public JWKS before proposals are discovered
   by landlord, tenant, or arbiter email across browser sessions.
+- A verified user can end every derived OpenEscrow record session issued to that account and sign
+  out the current device without changing agreements, archive preferences, invitation links, or
+  another participant's access.
 - Agreement-activity and deadline-reminder preferences are collected per authenticated user.
 - Notification preferences and their consent timestamp are persisted against the verified Privy
   account, with device-local storage retained only as an offline fallback.

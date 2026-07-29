@@ -73,6 +73,16 @@ const expectedScenarios = [
       "archive isolation",
     ],
   },
+  {
+    id: "account-session-containment",
+    name: "pilot rehearsal: a verified account can contain its record sessions without affecting other parties",
+    covers: [
+      "session revocation",
+      "cross-account isolation",
+      "invitation continuity",
+      "verified rediscovery",
+    ],
+  },
 ];
 
 const testRun = spawnSync(

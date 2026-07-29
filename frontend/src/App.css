@@ -1228,6 +1228,16 @@
   font-size: 12px;
 }
 
+.account-security-settings {
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
+.account-security-settings .field-help,
+.account-security-settings .tx-error {
+  margin-top: 10px;
+}
+
 .notification-delivery-status {
   display: flex;
   align-items: center;

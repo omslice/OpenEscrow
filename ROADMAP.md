@@ -28,6 +28,7 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Private R2 evidence with file-signature validation and optional encryption/decentralized mode
 - [x] Landlord-controlled tenant invitation reset with old-link and active-session invalidation
 - [x] Short-lived, capped account-discovery sessions per user, role, and agreement
+- [x] Verified-user record-session containment with other-party and invitation-link isolation
 - [ ] Configure and test the hosted evidence master key, backup, versioned rotation, retention,
   and deletion (rotation/keyring support is implemented; hosted operations remain)
 - [ ] Design landlord/arbiter recovery and exercise privacy requests and incident response
@@ -81,6 +82,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Landlord-authorized optional-arbiter invitation rotation with old-link and account-session
   invalidation, verified-email rediscovery, and cross-account isolation, retained behind the
   disabled-by-default arbiter UI
+- [x] Self-service verified-account record-session revocation and local account-session cleanup
+  without changing agreements, other participants, invitation links, or wallet-provider sessions
 - [x] Internal keyboard/mobile accessibility smoke coverage plus workspace tab, address combobox,
   proposal focus-recovery, async announcement, reduced-motion, and mobile-overflow fixes
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a
