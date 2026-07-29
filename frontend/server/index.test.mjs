@@ -2146,7 +2146,7 @@ test("verified Privy accounts discover finalized landlord and tenant agreements"
   }
 });
 
-test("discovery and archive permissions are isolated by signed-in account", async () => {
+test("pilot rehearsal: archive and restore permissions are isolated by signed-in account", async () => {
   const db = new TestD1();
   const created = await create(db);
   const appId = "test-privy-separate-accounts-app";
@@ -2347,6 +2347,52 @@ test("discovery and archive permissions are isolated by signed-in account", asyn
         )
         .get("did:privy:separate-tenant", created.record.id, "tenant").count,
       1,
+    );
+
+    const landlordRestore = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/profile/record-archives", {
+          method: "PUT",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": landlordIdentityToken,
+          },
+          body: JSON.stringify({
+            proposalId: created.record.id,
+            role: "landlord",
+            archived: false,
+          }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(landlordRestore.archived, false);
+
+    const tenantRestore = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/profile/record-archives", {
+          method: "PUT",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": tenantIdentityToken,
+          },
+          body: JSON.stringify({
+            proposalId: created.record.id,
+            role: "tenant",
+            archived: false,
+          }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(tenantRestore.archived, false);
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM account_record_archives WHERE negotiation_id = ?",
+        )
+        .get(created.record.id).count,
+      0,
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -4497,7 +4543,7 @@ test("each invited tenant can record a claim decision and notify the landlord", 
   }
 });
 
-test("documented claim, tenant decision, and email attempts are included in the record", async () => {
+test("pilot rehearsal: record export and proof include claim, decision, and receipts", async () => {
   const db = new TestD1();
   const created = await create(db);
   await finalizeWithoutArbiter(db, created);
@@ -4828,7 +4874,7 @@ test("documented claim, tenant decision, and email attempts are included in the 
   }
 });
 
-test("a two-tenant agreement completes the negotiated funding, dispute, ruling, and withdrawal lifecycle once", async () => {
+test("pilot rehearsal: a disputed claim completes funding, ruling, and withdrawals once", async () => {
   const db = new TestD1();
   const created = await jsonResponse(
     await worker.fetch(
@@ -5061,7 +5107,110 @@ test("a two-tenant agreement completes the negotiated funding, dispute, ruling, 
   assert.match(reportHtml, /withdrew 310 shares/);
 });
 
-test("deadline refunds require the correct state and cannot be recorded twice", async () => {
+test("pilot rehearsal: an accepted claim resolves allocations, withdrawals, and record export", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "operations_reserve_paid",
+      transactionHash: transactionHash(21),
+    }),
+  );
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "agreement_funded",
+      transactionHash: transactionHash(22),
+    }),
+  );
+  await submitStandardClaim(db, created, {
+    amount: "300",
+    transactionByte: "e",
+  });
+
+  const accepted = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "claim_response",
+      decision: "approve",
+      acceptedAmount: "300",
+      note: "",
+      transactionHash: transactionHash(23),
+    }),
+  );
+  assert.equal(accepted.events.at(-1).action, "claim_response_submitted");
+  assert.equal(accepted.events.at(-1).metadata.decision, "approve");
+
+  await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "withdrawal_completed",
+      amount: "300",
+      transactionHash: transactionHash(24),
+    }),
+  );
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "withdrawal_completed",
+      amount: "900",
+      transactionHash: transactionHash(25),
+    }),
+  );
+  const duplicateWithdrawal = await act(
+    db,
+    created.record.id,
+    created.access.tenant,
+    {
+      type: "withdrawal_completed",
+      amount: "1",
+      transactionHash: transactionHash(26),
+    },
+  );
+  assert.equal(duplicateWithdrawal.status, 409);
+
+  const report = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}/report?token=${created.access.tenant}&download=1`,
+    ),
+    { DB: db },
+  );
+  assert.equal(report.status, 200);
+  assert.match(
+    report.headers.get("content-disposition"),
+    /attachment; filename="openescrow-.*-complete-record\.html"/,
+  );
+  const reportHtml = await report.text();
+  assert.match(reportHtml, /approved the deduction in full/);
+  assert.match(reportHtml, /Landlord withdrew 300 shares/);
+  assert.match(reportHtml, /Terry Tenant withdrew 900 shares/);
+
+  const firstSnapshot = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}/snapshot?token=${created.access.tenant}`,
+      ),
+      { DB: db },
+    ),
+  );
+  const repeatedSnapshot = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}/snapshot?token=${created.access.tenant}`,
+      ),
+      { DB: db },
+    ),
+  );
+  assert.equal(firstSnapshot.algorithm, "SHA-256");
+  assert.equal(repeatedSnapshot.hash, firstSnapshot.hash);
+  assert.equal(repeatedSnapshot.canonical, firstSnapshot.canonical);
+  assert.equal(
+    firstSnapshot.snapshot.events.filter(
+      (event) => event.action === "withdrawal_completed",
+    ).length,
+    2,
+  );
+});
+
+test("pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-time", async () => {
   const db = new TestD1();
   const created = await create(db);
   await finalizeWithoutArbiter(db, created);

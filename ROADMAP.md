@@ -67,6 +67,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] High/critical production-dependency advisory gate with moderate-advisory reporting
 - [x] Fail-closed Sites project/binding, asset, eligibility, and fiat-production configuration checks
 - [x] Hosted readiness endpoint for email, scheduler, evidence, receipts, registry, address, and sources
+- [x] Credential-free pilot rehearsals for no-claim, accepted-claim, disputed-claim, withdrawals,
+  account archive/restore, and record-proof paths
 - [ ] Configure hosted email, Cron, encryption, registry, address, and compliance-source services
 - [ ] Run separate-account testnet pilot and accessibility/usability reviews
 - [ ] Commission independent contract/application security and privacy/threat-model reviews
