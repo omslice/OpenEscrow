@@ -654,47 +654,51 @@ async function deliverEmail(
   ];
   if (!provider || recipients.length === 0) return null;
 
-  if (provider === "resend") {
-    const sent = await fetch("https://api.resend.com/emails", {
+  try {
+    if (provider === "resend") {
+      const sent = await fetch("https://api.resend.com/emails", {
+        method: "POST",
+        headers: {
+          authorization: `Bearer ${env.RESEND_API_KEY}`,
+          "content-type": "application/json",
+          ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
+          "user-agent": "OpenEscrow/1.0",
+        },
+        body: JSON.stringify({
+          from: env.NOTIFICATION_FROM_EMAIL,
+          to: recipients,
+          subject,
+          text,
+        }),
+      });
+      const result = await sent.json().catch(() => ({}));
+      return sent.ok && result.id
+        ? { id: String(result.id), provider }
+        : null;
+    }
+
+    const sent = await fetch(env.EMAIL_WEBHOOK_URL, {
       method: "POST",
       headers: {
-        authorization: `Bearer ${env.RESEND_API_KEY}`,
         "content-type": "application/json",
-        ...(idempotencyKey ? { "idempotency-key": idempotencyKey } : {}),
-        "user-agent": "OpenEscrow/1.0",
+        ...(env.EMAIL_WEBHOOK_TOKEN
+          ? { authorization: `Bearer ${env.EMAIL_WEBHOOK_TOKEN}` }
+          : {}),
       },
       body: JSON.stringify({
         from: env.NOTIFICATION_FROM_EMAIL,
         to: recipients,
         subject,
         text,
+        idempotencyKey: idempotencyKey || null,
       }),
     });
     const result = await sent.json().catch(() => ({}));
-    return sent.ok && result.id
-      ? { id: String(result.id), provider }
-      : null;
+    const id = result.id || result.messageId || result.message_id;
+    return sent.ok && id ? { id: String(id), provider } : null;
+  } catch {
+    return null;
   }
-
-  const sent = await fetch(env.EMAIL_WEBHOOK_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(env.EMAIL_WEBHOOK_TOKEN
-        ? { authorization: `Bearer ${env.EMAIL_WEBHOOK_TOKEN}` }
-        : {}),
-    },
-    body: JSON.stringify({
-      from: env.NOTIFICATION_FROM_EMAIL,
-      to: recipients,
-      subject,
-      text,
-      idempotencyKey: idempotencyKey || null,
-    }),
-  });
-  const result = await sent.json().catch(() => ({}));
-  const id = result.id || result.messageId || result.message_id;
-  return sent.ok && id ? { id: String(id), provider } : null;
 }
 
 function cleanText(value, max = 500) {
@@ -5510,18 +5514,28 @@ async function uploadEvidence(request, env) {
 
   if (!storeOnIpfs && env.EVIDENCE) {
     const objectKey = `agreements/${proposalId}/${evidenceId}`;
-    await env.EVIDENCE.put(objectKey, storedBytes, {
-      httpMetadata: {
-        contentType: encryptionVersion ? "application/octet-stream" : contentType,
-      },
-      customMetadata: {
-        negotiationId: proposalId,
-        uploaderRole: role,
-        sha256,
-        encrypted: encryptionVersion ? "true" : "false",
-        ...(encryptionKeyId ? { encryptionKeyId } : {}),
-      },
-    });
+    try {
+      await env.EVIDENCE.put(objectKey, storedBytes, {
+        httpMetadata: {
+          contentType: encryptionVersion ? "application/octet-stream" : contentType,
+        },
+        customMetadata: {
+          negotiationId: proposalId,
+          uploaderRole: role,
+          sha256,
+          encrypted: encryptionVersion ? "true" : "false",
+          ...(encryptionKeyId ? { encryptionKeyId } : {}),
+        },
+      });
+    } catch {
+      return json(
+        {
+          error:
+            "Private evidence storage is temporarily unavailable. Try the upload again before submitting the claim.",
+        },
+        503,
+      );
+    }
     const uri = `openescrow://evidence/${evidenceId}`;
     const storageKind = encryptionVersion ? "encrypted-r2" : "private-r2";
     await env.DB.batch([
@@ -5695,21 +5709,36 @@ async function downloadEvidence(request, env, evidenceId) {
     if (!env.EVIDENCE) {
       return json({ error: "The private evidence bucket is unavailable." }, 503);
     }
-    const object = await env.EVIDENCE.get(metadata.object_key);
-    if (!object) return json({ error: "This private evidence file is unavailable." }, 404);
-    storedBytes = await object.arrayBuffer();
+    try {
+      const object = await env.EVIDENCE.get(metadata.object_key);
+      if (!object) return json({ error: "This private evidence file is unavailable." }, 404);
+      storedBytes = await object.arrayBuffer();
+    } catch {
+      return json(
+        {
+          error:
+            "The private evidence file is temporarily unavailable. Try again before repeating any agreement action.",
+        },
+        503,
+      );
+    }
   } else if (metadata.storage_kind === "encrypted-ipfs" && metadata.cid) {
     const gatewayBase =
       cleanText(env.IPFS_GATEWAY_URL, 500) ||
       "https://gateway.pinata.cloud/ipfs";
     const gatewayUrl = `${gatewayBase.replace(/\/+$/, "")}/${encodeURIComponent(metadata.cid)}`;
-    const response = await fetch(gatewayUrl, {
-      headers: { "user-agent": "OpenEscrow/1.0" },
-    });
-    if (!response.ok) {
+    let response;
+    try {
+      response = await fetch(gatewayUrl, {
+        headers: { "user-agent": "OpenEscrow/1.0" },
+      });
+      if (response.ok) storedBytes = await response.arrayBuffer();
+    } catch {
+      response = null;
+    }
+    if (!response?.ok || !storedBytes) {
       return json({ error: "The encrypted IPFS evidence file is unavailable." }, 502);
     }
-    storedBytes = await response.arrayBuffer();
   } else {
     return json({ error: "This evidence storage format is not supported." }, 404);
   }

@@ -9,7 +9,7 @@ production readiness, or authorization to hold real rental deposits.
   accessibility, compliance-regression, funding-failure, and hidden-tab performance work.
 - **Verified:** Five credential-free lifecycle rehearsals pass: archive/restore, record proof,
   disputed claim, accepted claim, and no-claim refund.
-- **Verified:** The full repository release check passes with 63 server tests, 38 client-logic
+- **Verified:** The full repository release check passes with 66 server tests, 38 client-logic
   tests, lint, and the production build. The browser accessibility smoke check also passes.
 - **Verified:** The authenticated wallet/workspace is loaded behind a lightweight bootstrap, and
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct
@@ -39,6 +39,9 @@ production readiness, or authorization to hold real rental deposits.
 - **Verified:** Failed app-bootstrap and deferred workspace loads now show a focused, actionable
   recovery panel instead of a blank page. An automated browser check intentionally fails both
   load paths and verifies that workspace navigation remains available after a section failure.
+- **Verified:** Private-evidence upload/download and notification-provider outages fail closed
+  with retry guidance. Failed attempts create no phantom evidence or sent-delivery events, and
+  automated recovery tests verify one successful retry remains idempotent.
 
 ## Material unknowns
 

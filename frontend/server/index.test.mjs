@@ -3158,6 +3158,99 @@ test("private evidence is stored in R2 and only an agreement party can retrieve 
   assert.equal(denied.status, 403);
 });
 
+test("an evidence upload outage is retryable and never creates a phantom record", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const evidenceFile = () =>
+    new File(
+      [new TextEncoder().encode("%PDF-1.7\nretryable evidence")],
+      "retryable.pdf",
+      { type: "application/pdf" },
+    );
+  const evidenceRequest = () => {
+    const form = new FormData();
+    form.set("proposalId", created.record.id);
+    form.set("token", created.access.landlord);
+    form.set("file", evidenceFile());
+    return new Request("https://openescrow.example/api/evidence", {
+      method: "POST",
+      body: form,
+    });
+  };
+
+  const unavailable = await worker.fetch(evidenceRequest(), {
+    DB: db,
+    EVIDENCE: {
+      async put() {
+        throw new Error("simulated private bucket outage");
+      },
+    },
+  });
+  assert.equal(unavailable.status, 503);
+  const unavailableBody = await unavailable.json();
+  assert.match(unavailableBody.error, /temporarily unavailable/);
+  assert.doesNotMatch(unavailableBody.error, /simulated|bucket outage/);
+
+  const evidenceCount = await db
+    .prepare("SELECT COUNT(*) AS count FROM evidence_files")
+    .first();
+  const eventCount = await db
+    .prepare("SELECT COUNT(*) AS count FROM negotiation_events WHERE action = 'evidence_uploaded'")
+    .first();
+  assert.equal(Number(evidenceCount.count), 0);
+  assert.equal(Number(eventCount.count), 0);
+
+  const recoveredEvidence = new TestR2();
+  const recovered = await jsonResponse(
+    await worker.fetch(evidenceRequest(), { DB: db, EVIDENCE: recoveredEvidence }),
+  );
+  assert.equal(recovered.storageKind, "private");
+  assert.equal(recoveredEvidence.objects.size, 1);
+});
+
+test("an evidence download outage fails closed without exposing storage details", async () => {
+  const db = new TestD1();
+  const evidence = new TestR2();
+  const created = await create(db);
+  const form = new FormData();
+  form.set("proposalId", created.record.id);
+  form.set("token", created.access.landlord);
+  form.set(
+    "file",
+    new File(
+      [new TextEncoder().encode("%PDF-1.7\ndownload outage evidence")],
+      "outage.pdf",
+      { type: "application/pdf" },
+    ),
+  );
+  const uploaded = await jsonResponse(
+    await worker.fetch(
+      new Request("https://openescrow.example/api/evidence", {
+        method: "POST",
+        body: form,
+      }),
+      { DB: db, EVIDENCE: evidence },
+    ),
+  );
+
+  const unavailable = await worker.fetch(
+    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    {
+      DB: db,
+      EVIDENCE: {
+        async get() {
+          throw new Error("simulated private bucket read outage");
+        },
+      },
+    },
+  );
+  assert.equal(unavailable.status, 503);
+  const unavailableBody = await unavailable.json();
+  assert.match(unavailableBody.error, /temporarily unavailable/);
+  assert.match(unavailableBody.error, /before repeating any agreement action/);
+  assert.doesNotMatch(unavailableBody.error, /simulated|bucket read outage/);
+});
+
 test("evidence upload rejects a spoofed content type before storage", async () => {
   const db = new TestD1();
   const evidence = new TestR2();
@@ -4789,6 +4882,84 @@ test("deduction claim email includes every tenant", async () => {
     );
     assert.equal(response.status, 200);
     assert.deepEqual(sentEmail.to, ["tenant@example.com", "casey@example.com"]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a notification provider outage is retryable without recording a phantom delivery", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const payload = {
+    proposalId: created.record.id,
+    token: created.access.landlord,
+    reviewUrl: `https://openescrow.example/?invite=tenant&proposal=${created.record.id}&token=${created.access.tenant}`,
+    agreementId: "42",
+    amount: "100",
+    items: [
+      {
+        category: "Damage beyond ordinary wear",
+        description: "Documented repair",
+        amount: "100",
+      },
+    ],
+    note: "",
+    evidenceUri: "openescrow://evidence/test",
+  };
+  const notificationEnv = {
+    DB: db,
+    RESEND_API_KEY: "test-resend-key",
+    NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+  };
+  const originalFetch = globalThis.fetch;
+  let deliveryAttempts = 0;
+  try {
+    globalThis.fetch = async () => {
+      deliveryAttempts += 1;
+      throw new Error("simulated provider outage");
+    };
+    const unavailable = await worker.fetch(
+      request("/api/notifications/claim", "POST", payload),
+      notificationEnv,
+    );
+    assert.equal(unavailable.status, 502);
+    const unavailableBody = await unavailable.json();
+    assert.match(unavailableBody.error, /could not send/);
+    assert.doesNotMatch(unavailableBody.error, /simulated|provider outage/);
+
+    const failedEventCount = await db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM negotiation_events WHERE action = 'claim_notification_sent'",
+      )
+      .first();
+    assert.equal(Number(failedEventCount.count), 0);
+
+    globalThis.fetch = async () => {
+      deliveryAttempts += 1;
+      return Response.json({ id: "recovered-claim-message" });
+    };
+    const recovered = await jsonResponse(
+      await worker.fetch(
+        request("/api/notifications/claim", "POST", payload),
+        notificationEnv,
+      ),
+    );
+    const duplicate = await jsonResponse(
+      await worker.fetch(
+        request("/api/notifications/claim", "POST", payload),
+        notificationEnv,
+      ),
+    );
+    assert.equal(recovered.duplicate, false);
+    assert.equal(duplicate.duplicate, true);
+    assert.equal(deliveryAttempts, 2);
+
+    const sentEventCount = await db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM negotiation_events WHERE action = 'claim_notification_sent'",
+      )
+      .first();
+    assert.equal(Number(sentEventCount.count), 1);
   } finally {
     globalThis.fetch = originalFetch;
   }

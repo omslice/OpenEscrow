@@ -43,6 +43,8 @@ completeness, legality, or authorship of the underlying content.
 | Altered ciphertext or wrong encryption key | AES-GCM authentication fails closed | Tamper regression returns an alteration error and no file |
 | Altered plaintext or metadata digest | SHA-256 verified after decryption | Digest-tamper regression fails closed |
 | Key rotation makes historical evidence unreadable | Versioned active key ID plus retained decryption keyring | Pre- and post-rotation files decrypt with their recorded key IDs |
+| Private evidence storage outage | R2 upload/download failures return privacy-safe retry guidance before metadata or success events are recorded | Upload outage leaves no phantom evidence row/event; retry succeeds; download outage fails closed |
+| Notification provider outage | Provider network failures return a retryable delivery error and do not record a sent event | Failed claim notice can be retried once and remains idempotent after recovery |
 | Misleading lifecycle record | Role/state guards, idempotency, and version-matched receipt verification | Credential-free lifecycle rehearsals and receipt-verification tests |
 | Sensitive email content | Notifications omit addresses, amounts, evidence, and notes | Notification-copy and idempotency tests |
 | Browser embedding or referral leakage | No-store, no-referrer, no-sniff, anti-framing, and report CSP headers | Evidence/report/static-response header tests |
@@ -94,9 +96,10 @@ retention and key-destruction consequences are explicitly approved.
 
 ## Incident exercises still required
 
-Credential-free tests should continue covering invalid identity tokens, cross-account access,
-invitation reset, corrupted ciphertext, wrong/retired keys, altered hashes, duplicate actions, and
-spoofed receipts. A supervised pilot must additionally exercise:
+Credential-free tests cover invalid identity tokens, cross-account access, invitation reset,
+corrupted ciphertext, wrong/retired keys, altered hashes, duplicate actions, spoofed receipts,
+R2 upload/download outages, notification-provider recovery, and RPC fallback. A supervised pilot
+must still additionally exercise:
 
 - lost invitation and lost verified-email escalation without sharing secrets;
 - evidence-key backup restoration in a separate operator environment;

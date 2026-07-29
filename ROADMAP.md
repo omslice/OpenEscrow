@@ -76,6 +76,8 @@ the repository; they are not claims of legal approval or production readiness.
   account archive/restore, and record-proof paths
 - [x] Auth/evidence threat model plus expired/forged identity, cross-account evidence, ciphertext,
   key-material, and digest-tamper regression coverage
+- [x] Fail-closed, retryable private-evidence and notification-provider outage handling without
+  phantom evidence or delivery events
 - [x] Internal keyboard/mobile accessibility smoke coverage plus workspace tab, address combobox,
   proposal focus-recovery, async announcement, reduced-motion, and mobile-overflow fixes
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a
