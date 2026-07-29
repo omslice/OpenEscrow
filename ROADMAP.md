@@ -41,6 +41,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Statewide profiles for all 50 states plus D.C.
 - [x] Versioned claim packets, source monitoring, freshness checks, and fail-closed release gates
 - [x] Deadline events that require party confirmation when based on off-chain facts
+- [x] Regression coverage for registry completeness, holiday-aware business days, conditional
+  deadline branches, and address-applied local-overlay source gates
 - [ ] Select initial cities/counties and implement approved local overlays
 - [ ] Complete official-source baselines and resolve every change/unreachable-source alert
 - [ ] Obtain qualified counsel review for each launched jurisdiction and tenancy segment

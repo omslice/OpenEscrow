@@ -25,6 +25,10 @@ import {
   DYNAMIC_COMPLIANCE_FACTS,
   STATIC_COMPLIANCE_FACT_KEYS,
 } from "../shared/us-compliance-facts.js";
+import {
+  FEDERAL_COMPLIANCE_OVERLAYS,
+  LOCAL_COMPLIANCE_OVERLAYS,
+} from "../shared/us-compliance-overlays.js";
 import { COMPLIANCE_SOURCE_REGISTRY } from "../shared/compliance-sources.js";
 
 const TEST_ADDRESS_ATTESTATION_SECRET =
@@ -368,6 +372,43 @@ test("the implemented registry covers every state and the District of Columbia",
   );
 });
 
+test("the compliance source registry maps every versioned profile and overlay source", () => {
+  assert.equal(
+    new Set(COMPLIANCE_SOURCE_REGISTRY.map((sourceItem) => sourceItem.key)).size,
+    COMPLIANCE_SOURCE_REGISTRY.length,
+  );
+  assert.ok(
+    COMPLIANCE_SOURCE_REGISTRY.every((sourceItem) =>
+      sourceItem.url.startsWith("https://"),
+    ),
+  );
+  for (const profile of US_JURISDICTION_PROFILES) {
+    const sourceItem = COMPLIANCE_SOURCE_REGISTRY.find(
+      (candidate) =>
+        candidate.key === `state:${profile.postalCode.toLowerCase()}`,
+    );
+    assert.ok(sourceItem, `Missing source registry entry for ${profile.code}.`);
+    assert.equal(sourceItem.jurisdiction, profile.code);
+    assert.equal(sourceItem.version, profile.version);
+    assert.equal(sourceItem.url, profile.statuteUrl);
+  }
+  for (const overlay of [
+    ...FEDERAL_COMPLIANCE_OVERLAYS,
+    ...LOCAL_COMPLIANCE_OVERLAYS,
+  ]) {
+    overlay.sources.forEach((source, index) => {
+      const sourceItem = COMPLIANCE_SOURCE_REGISTRY.find(
+        (candidate) =>
+          candidate.key === `overlay:${overlay.id}:${index + 1}`,
+      );
+      assert.ok(sourceItem, `Missing source registry entry for ${overlay.id}.`);
+      assert.equal(sourceItem.jurisdiction, overlay.id);
+      assert.equal(sourceItem.version, overlay.version);
+      assert.equal(sourceItem.url, source.url);
+    });
+  }
+});
+
 test("the compliance evaluator schedules all statewide profiles deterministically", () => {
   for (const profile of US_JURISDICTION_PROFILES) {
     const evaluated = evaluateCompliance(profile, {
@@ -452,6 +493,37 @@ test("the compliance evaluator schedules all statewide profiles deterministicall
     calculateDeadline("2027-01-08T12:00:00Z", 1, "business"),
     "2027-01-11T12:00:00.000Z",
   );
+  assert.equal(
+    calculateDeadline(
+      "2027-01-08T12:00:00Z",
+      1,
+      "business",
+      ["2027-01-11"],
+    ),
+    "2027-01-12T12:00:00.000Z",
+  );
+  const arizonaProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "AZ",
+  );
+  const arizonaAddress = {
+    provider: "photon-openstreetmap",
+    providerFeatureId: "R:arizona",
+    label: "1 Main Street, Phoenix, AZ 85001",
+    countryCode: "US",
+    stateCode: "AZ",
+    city: "Phoenix",
+    county: "Maricopa County",
+    postalCode: "85001",
+    latitude: 33.4484,
+    longitude: -112.074,
+  };
+  const arizona = evaluateCompliance(arizonaProfile, {
+    address: arizonaAddress,
+    events: { statutoryClockStartedAt: "2027-01-08T12:00:00Z" },
+    holidayDates: ["2027-01-11"],
+  });
+  assert.equal(arizona.deadlines[0].dayType, "business");
+  assert.equal(arizona.deadlines[0].dueAt, "2027-01-29T12:00:00.000Z");
   const profileAddress = (postalCode) => ({
     provider: "photon-openstreetmap",
     providerFeatureId: `R:${postalCode}:combined`,
@@ -1217,6 +1289,90 @@ test("monitored compliance sources fail closed for pending, changed, and stale p
   );
 });
 
+test("an address-applied local overlay requires its exact monitored source", async () => {
+  const db = new TestD1();
+  const illinoisProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "IL",
+  );
+  const unsignedAddress = {
+    ...unsignedNewYorkAddressResolution,
+    providerFeatureId: "W:chicago-source-gate",
+    label: "121 North LaSalle Street, Chicago, IL 60602",
+    stateCode: "IL",
+    city: "Chicago",
+    county: "Cook County",
+    postalCode: "60602",
+    latitude: 41.8838,
+    longitude: -87.6317,
+  };
+  const chicagoAddress = {
+    ...unsignedAddress,
+    attestation: await createAddressAttestation(
+      unsignedAddress,
+      TEST_ADDRESS_ATTESTATION_SECRET,
+    ),
+  };
+  const chicagoFacts = {
+    ...newYorkComplianceFacts,
+    housingProgram: "conventional",
+  };
+  const chicagoTerms = {
+    ...terms,
+    jurisdiction: illinoisProfile.code,
+    policyVersion: illinoisProfile.version,
+    propertyAddress: chicagoAddress.label,
+    addressResolution: chicagoAddress,
+    complianceFacts: chicagoFacts,
+    complianceSnapshot: buildComplianceSnapshot(
+      illinoisProfile,
+      chicagoAddress,
+      { facts: chicagoFacts },
+    ),
+    claimDays: illinoisProfile.defaultClaimDays,
+  };
+  await worker.fetch(request("/api/system/readiness"), { DB: db });
+  const sourceItems = await seedVerifiedComplianceSources(db, chicagoTerms);
+  const localSource = sourceItems.find(
+    (sourceItem) => sourceItem.jurisdiction === "local-il-chicago-rlto",
+  );
+  assert.ok(localSource);
+  await db
+    .prepare("DELETE FROM compliance_source_checks WHERE source_key = ?")
+    .bind(localSource.key)
+    .run();
+  const env = {
+    DB: db,
+    ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+    COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+  };
+  const proposalBody = {
+    landlordName: "Lena Landlord",
+    landlordEmail: "landlord@example.com",
+    tenantName: "Terry Tenant",
+    tenantEmail: "tenant@example.com",
+    arbiterName: "",
+    arbiterEmail: null,
+    terms: chicagoTerms,
+  };
+  const blocked = await worker.fetch(
+    request("/api/negotiations", "POST", proposalBody),
+    env,
+  );
+  assert.equal(blocked.status, 503);
+  assert.equal(
+    (await blocked.json()).sourceStatus.find(
+      (sourceItem) => sourceItem.key === localSource.key,
+    ).status,
+    "pending",
+  );
+  await seedVerifiedComplianceSources(db, chicagoTerms);
+  const created = await worker.fetch(
+    request("/api/negotiations", "POST", proposalBody),
+    env,
+  );
+  assert.equal(created.status, 201);
+});
+
 test("actual compliance events require confirmation by the other agreement side", async () => {
   const db = new TestD1();
   const created = await jsonResponse(
@@ -1543,6 +1699,46 @@ test("conditional state facts require confirmation by the other agreement side",
   assert.equal(
     confirmed.events.at(-1).metadata.factName,
     "landlordClaimsDeposit",
+  );
+  const lifecycleEvent = await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "propose_compliance_event",
+      eventName: "tenancyTerminatedAt",
+      occurredAt: new Date().toISOString(),
+    }),
+  );
+  const confirmedLifecycleEvent = await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "confirm_compliance_event",
+      proposalEventId: lifecycleEvent.events.at(-1).id,
+    }),
+  );
+  const confirmedFacts = Object.fromEntries(
+    confirmedLifecycleEvent.events
+      .filter((event) => event.action === "compliance_fact_confirmed")
+      .map((event) => [event.metadata.factName, event.metadata.value]),
+  );
+  const confirmedEvents = Object.fromEntries(
+    confirmedLifecycleEvent.events
+      .filter((event) => event.action === "compliance_event_confirmed")
+      .map((event) => [event.metadata.eventName, event.metadata.occurredAt]),
+  );
+  const evaluated = evaluateComplianceSnapshot(
+    created.record.terms.complianceSnapshot,
+    {
+      facts: confirmedFacts,
+      events: confirmedEvents,
+    },
+  );
+  assert.equal(
+    evaluated.deadlines.find((deadline) => deadline.id === "claim-notice")
+      .status,
+    "scheduled",
+  );
+  assert.equal(
+    evaluated.deadlines.find((deadline) => deadline.id === "no-claim-return")
+      .applicability,
+    "not-applicable",
   );
 });
 
