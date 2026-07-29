@@ -1,0 +1,134 @@
+import { spawnSync } from "node:child_process";
+import {
+  mkdirSync,
+  writeFileSync,
+} from "node:fs";
+import {
+  basename,
+  dirname,
+  join,
+  resolve,
+} from "node:path";
+import { fileURLToPath } from "node:url";
+
+const scriptDirectory = dirname(fileURLToPath(import.meta.url));
+const frontendDirectory = resolve(scriptDirectory, "..");
+
+function escapeRegularExpression(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+export function runServerRehearsal({
+  artifactDirectoryName,
+  artifactPrefix,
+  schema,
+  consoleLabel,
+  expectedScenarios,
+  testNamePattern,
+  safetyBoundary,
+}) {
+  const artifactDirectory = join(frontendDirectory, artifactDirectoryName);
+  const generatedAt = new Date().toISOString();
+  const artifactSuffix = generatedAt.replaceAll(":", "-").replaceAll(".", "-");
+  const selectedPattern =
+    testNamePattern ||
+    `^(?:${expectedScenarios
+      .map((scenario) => escapeRegularExpression(scenario.name))
+      .join("|")})$`;
+
+  const testRun = spawnSync(
+    process.execPath,
+    [
+      "--test",
+      `--test-name-pattern=${selectedPattern}`,
+      "--test-reporter=junit",
+      "server/index.test.mjs",
+    ],
+    {
+      cwd: frontendDirectory,
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        NODE_NO_WARNINGS: "1",
+      },
+    },
+  );
+  const gitRevision = spawnSync("git", ["rev-parse", "HEAD"], {
+    cwd: frontendDirectory,
+    encoding: "utf8",
+  });
+  const sourceCommit =
+    gitRevision.status === 0 ? gitRevision.stdout.trim() || null : null;
+
+  const junit = testRun.stdout || "";
+  const runnerError = testRun.error?.message || testRun.stderr?.trim() || null;
+  const testcasePattern =
+    /<testcase\b[^>]*\bname="([^"]+)"[^>]*(?:\/>|>([\s\S]*?)<\/testcase>)/g;
+  const observedTests = new Map();
+  for (const match of junit.matchAll(testcasePattern)) {
+    observedTests.set(match[1], {
+      failed: /<(?:failure|error)\b/.test(match[2] || ""),
+    });
+  }
+
+  const scenarios = expectedScenarios.map((scenario) => {
+    const observed = observedTests.get(scenario.name);
+    return {
+      ...scenario,
+      status: !observed ? "missing" : observed.failed ? "failed" : "passed",
+    };
+  });
+  const passed =
+    testRun.status === 0 &&
+    scenarios.every((scenario) => scenario.status === "passed");
+
+  mkdirSync(artifactDirectory, { recursive: true });
+  const junitPath = join(
+    artifactDirectory,
+    `${artifactPrefix}-${artifactSuffix}.xml`,
+  );
+  const summaryPath = join(
+    artifactDirectory,
+    `${artifactPrefix}-${artifactSuffix}.json`,
+  );
+  const latestSummaryPath = join(artifactDirectory, "latest.json");
+  writeFileSync(junitPath, junit, "utf8");
+
+  const summary = {
+    schema,
+    generatedAt,
+    status: passed ? "passed" : "failed",
+    executionMode: "local-credential-free",
+    sourceCommit,
+    nodeVersion: process.version,
+    testTarget: "server/index.test.mjs",
+    safetyBoundary,
+    tests: {
+      expected: expectedScenarios.length,
+      passed: scenarios.filter((scenario) => scenario.status === "passed").length,
+      failed: scenarios.filter((scenario) => scenario.status === "failed").length,
+      missing: scenarios.filter((scenario) => scenario.status === "missing").length,
+    },
+    scenarios,
+    junitArtifact: basename(junitPath),
+    runnerError,
+  };
+  const serializedSummary = `${JSON.stringify(summary, null, 2)}\n`;
+  writeFileSync(summaryPath, serializedSummary, "utf8");
+  writeFileSync(latestSummaryPath, serializedSummary, "utf8");
+
+  console.log(
+    `${passed ? "PASS" : "FAIL"}: ${summary.tests.passed}/${summary.tests.expected} credential-free ${consoleLabel} scenarios passed.`,
+  );
+  for (const scenario of scenarios) {
+    console.log(`- ${scenario.status.toUpperCase()}: ${scenario.id}`);
+  }
+  console.log(`Evidence: ${summaryPath}`);
+
+  if (!passed) {
+    if (runnerError) console.error(runnerError);
+    process.exitCode = 1;
+  }
+
+  return summary;
+}

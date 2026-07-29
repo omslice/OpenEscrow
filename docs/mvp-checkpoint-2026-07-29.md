@@ -12,6 +12,9 @@ production readiness, or authorization to hold real rental deposits.
   private-evidence and notification outage/recovery scenarios, one arbiter-link/session reset,
   one verified-arbiter identity recovery/isolation scenario, and one verified-account session
   containment scenario, plus one role-isolated account data-inventory scenario.
+- **Verified:** A separate 10-scenario incident-response rehearsal passes for identity forgery,
+  cross-account isolation, account-session containment, privacy inventory, evidence tamper and
+  outages, notification recovery, receipt spoofing, and RPC fallback.
 - **Verified:** The full repository release check passes with 70 server tests, 39 client-logic
   tests, lint, and the production build. The browser accessibility smoke check also passes.
 - **Verified:** The authenticated wallet/workspace is loaded behind a lightweight bootstrap, and
@@ -31,7 +34,7 @@ production readiness, or authorization to hold real rental deposits.
   evidence encryption, version-matched activity registry, address attestation, official-source
   baseline, and source-monitor freshness.
 - **Planned:** Run the separate-account landlord/tenant pilot plus moderated accessibility and
-  usability sessions.
+  usability sessions, then conduct the owner-led incident/privacy drill.
 - **Planned:** Enable an eligible Privy provider sandbox only for sandbox evaluation; production
   fiat, mainnet contracts, FRNT, and USDY remain disabled.
 - **Planned:** Complete external legal, smart-contract, application-security, privacy, provider,

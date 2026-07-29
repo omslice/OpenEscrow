@@ -32,7 +32,9 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Privacy-safe verified-account data inventory with role isolation and no access secrets
 - [ ] Configure and test the hosted evidence master key, backup, versioned rotation, retention,
   and deletion (rotation/keyring support is implemented; hosted operations remain)
-- [ ] Design landlord/arbiter recovery and exercise privacy requests and incident response
+- [x] Design credential-free landlord/arbiter recovery, session containment, privacy inventory,
+  and incident-response exercises with exact-source evidence
+- [ ] Complete supervised recovery, privacy-request, evidence-key-restoration, and incident drills
 
 ## 3. Validated-address nationwide compliance
 
@@ -85,6 +87,7 @@ the repository; they are not claims of legal approval or production readiness.
   disabled-by-default arbiter UI
 - [x] Self-service verified-account record-session revocation and local account-session cleanup
   without changing agreements, other participants, invitation links, or wallet-provider sessions
+- [x] Exact-source credential-free incident rehearsal plus testnet containment/privacy runbook
 - [x] Internal keyboard/mobile accessibility smoke coverage plus workspace tab, address combobox,
   proposal focus-recovery, async announcement, reduced-motion, and mobile-overflow fixes
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a

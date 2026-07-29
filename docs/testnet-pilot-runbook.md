@@ -34,6 +34,16 @@ The command writes a machine-readable summary and JUnit report under
 `frontend/.pilot-rehearsal/`. These ignored local artifacts contain no invitation tokens, private
 keys, evidence keys, or real transaction hashes.
 
+Run the separate incident-control rehearsal as well:
+
+```powershell
+npm.cmd run incident:rehearse
+```
+
+It writes exact-source JSON and JUnit evidence under `frontend/.incident-rehearsal/`. Follow
+[`testnet-incident-response-runbook.md`](./testnet-incident-response-runbook.md) for the separate
+owner-led containment, privacy-intake, stop-condition, and resumption drill.
+
 Before a hosted pilot, also run the credential-free keyboard and mobile smoke check:
 
 ```powershell

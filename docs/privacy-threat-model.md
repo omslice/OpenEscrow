@@ -108,11 +108,13 @@ retention and key-destruction consequences are explicitly approved.
 
 ## Incident exercises still required
 
-Credential-free tests cover invalid identity tokens, cross-account access, participant-scoped
-session containment, privacy-inventory isolation, invitation reset, corrupted ciphertext,
-wrong/retired keys, altered hashes, duplicate actions, spoofed receipts, R2 upload/download
-outages, notification-provider recovery, and RPC fallback. A supervised pilot must still
-additionally exercise:
+The exact-source credential-free incident rehearsal packages ten controls covering invalid
+identity tokens, cross-account access, participant-scoped session containment,
+privacy-inventory isolation, corrupted ciphertext/key/digest data, R2 upload/download outages,
+notification-provider recovery, spoofed receipts, and RPC fallback. It produces local JSON and
+JUnit evidence without touching hosted systems.
+
+A supervised pilot must still additionally exercise:
 
 - lost invitation and lost verified-email escalation without sharing secrets;
 - evidence-key backup restoration in a separate operator environment;
@@ -123,3 +125,7 @@ additionally exercise:
 
 Any cross-account disclosure, plaintext evidence publication, unrecoverable key loss, accepted
 spoofed receipt, or unauthorized withdrawal is an immediate stop condition.
+
+The operational sequence, containment limits, privacy-request drill, incident-log template, and
+resumption criteria are in
+[`testnet-incident-response-runbook.md`](./testnet-incident-response-runbook.md).

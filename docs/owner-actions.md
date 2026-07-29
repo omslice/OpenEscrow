@@ -49,6 +49,10 @@ provider or hosting control that owns the secret.
 - [ ] **Run the separate-account operator test.** Use invented identities,
   separate landlord and tenant Google accounts, and worthless Base Sepolia
   tokens; follow [`testnet-pilot-runbook.md`](./testnet-pilot-runbook.md).
+- [ ] **Lead the supervised incident-response and privacy-request drill.** Assign an incident
+  lead and recorder, use only synthetic testnet data, and follow
+  [`testnet-incident-response-runbook.md`](./testnet-incident-response-runbook.md). Record the
+  stop/resume decision and unresolved policy questions without putting secrets in the log.
 
 ## Needed before fiat sandbox evaluation
 

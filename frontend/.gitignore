@@ -13,6 +13,7 @@ dist-ssr
 *.local
 .screenshots
 .pilot-rehearsal
+.incident-rehearsal
 
 # Editor directories and files
 .vscode/*
