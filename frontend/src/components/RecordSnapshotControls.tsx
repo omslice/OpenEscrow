@@ -8,6 +8,11 @@ import {
 } from "../contracts/config";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import {
+  clearRecoveryValue,
+  readRecoveryTransaction,
+  writeRecoveryValue,
+} from "../lib/browserRecovery";
+import {
   loadNegotiationSnapshot,
   negotiationReportDownloadUrl,
   negotiationAction,
@@ -44,20 +49,17 @@ function useAnchorRecovery(
       setPendingTransaction(null);
       return;
     }
-    const stored = window.localStorage.getItem(storageKey);
-    setPendingTransaction(
-      stored && /^0x[a-fA-F0-9]{64}$/.test(stored) ? (stored as `0x${string}`) : null,
-    );
+    setPendingTransaction(readRecoveryTransaction(storageKey));
   }, [storageKey]);
 
   function remember(transactionHash: `0x${string}`) {
     setPendingTransaction(transactionHash);
-    if (storageKey) window.localStorage.setItem(storageKey, transactionHash);
+    if (storageKey) writeRecoveryValue(storageKey, transactionHash);
   }
 
   function clear() {
     setPendingTransaction(null);
-    if (storageKey) window.localStorage.removeItem(storageKey);
+    if (storageKey) clearRecoveryValue(storageKey);
   }
 
   return { pendingTransaction, remember, clear };
@@ -111,7 +113,7 @@ function StandardAnchorAction({
             Retry saving the transaction receipt
           </button>
         )}
-        {error && <p className="tx-error">{error}</p>}
+        {error && <p className="tx-error" role="alert">{error}</p>}
       </>
     );
   }
@@ -143,7 +145,7 @@ function StandardAnchorAction({
           Retry saving the transaction receipt
         </button>
       )}
-      {error && <p className="tx-error">{error}</p>}
+      {error && <p className="tx-error" role="alert">{error}</p>}
     </>
   );
 }
@@ -199,7 +201,7 @@ function SponsoredAnchorAction({
             Retry saving the transaction receipt
           </button>
         )}
-        {error && <p className="tx-error">{error}</p>}
+        {error && <p className="tx-error" role="alert">{error}</p>}
       </>
     );
   }
@@ -254,7 +256,7 @@ function SponsoredAnchorAction({
           Retry saving the transaction receipt
         </button>
       )}
-      {error && <p className="tx-error">{error}</p>}
+      {error && <p className="tx-error" role="alert">{error}</p>}
     </>
   );
 }

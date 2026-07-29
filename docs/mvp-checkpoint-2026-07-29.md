@@ -16,7 +16,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key rotation, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 73 server tests, 39 client-logic
+- **Verified:** The full repository release check passes with 73 server tests, 42 client-logic
   tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
   build. Accessibility is now part of the required `npm run check` path rather than a separate,
   potentially stale result.
@@ -28,6 +28,10 @@ production readiness, or authorization to hold real rental deposits.
   submitted, confirmed, or indeterminate results. The user can refresh the destination wallet
   balance without recording agreement funding; only explicit cancellation or failure permits an
   immediate retry. Real-money funding remains disabled.
+- **Verified:** Successful finalization, funding, reserve, record-anchor, and privacy-safe activity
+  transactions no longer depend on writable browser storage to save their D1 receipt. Blocked
+  storage degrades to an in-memory retry instead of interrupting the completed action; malformed
+  persisted hashes and JSON are discarded before use.
 - **Verified:** The authenticated wallet/workspace is loaded behind a lightweight bootstrap, and
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the

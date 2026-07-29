@@ -38,6 +38,12 @@ import {
   type USJurisdictionProfile,
 } from "../lib/jurisdictions";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
+import {
+  clearRecoveryValue,
+  isTransactionHash,
+  readRecoveryJson,
+  writeRecoveryJson,
+} from "../lib/browserRecovery";
 import { preferredScrollBehavior } from "../lib/accessibility";
 import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
 import { useTrackedAgreements } from "../lib/useTrackedAgreements";
@@ -414,7 +420,7 @@ function AgreementForm({
         setDraft(updated);
         setPendingFinalization(null);
         if (pendingFinalizationKey) {
-          window.localStorage.removeItem(pendingFinalizationKey);
+          clearRecoveryValue(pendingFinalizationKey);
         }
       } catch (cause) {
         setFinalizationRecordError(
@@ -429,22 +435,25 @@ function AgreementForm({
 
   useEffect(() => {
     if (!landlordAccess || !pendingFinalizationKey) return;
-    try {
-      const stored = JSON.parse(window.localStorage.getItem(pendingFinalizationKey) || "null");
-      if (
-        stored &&
-        typeof stored.agreementId === "string" &&
-        /^0x[a-fA-F0-9]{64}$/.test(stored.transactionHash || "")
-      ) {
-        const pending = {
-          agreementId: stored.agreementId,
-          transactionHash: stored.transactionHash as `0x${string}`,
-        };
-        setPendingFinalization(pending);
-        void saveFinalizationRecord(pending.agreementId, pending.transactionHash);
-      }
-    } catch {
-      window.localStorage.removeItem(pendingFinalizationKey);
+    const stored = readRecoveryJson(
+      pendingFinalizationKey,
+      (
+        value,
+      ): value is {
+        agreementId: string;
+        transactionHash: `0x${string}`;
+      } => {
+        if (!value || typeof value !== "object") return false;
+        const candidate = value as Record<string, unknown>;
+        return (
+          typeof candidate.agreementId === "string" &&
+          isTransactionHash(candidate.transactionHash)
+        );
+      },
+    );
+    if (stored) {
+      setPendingFinalization(stored);
+      void saveFinalizationRecord(stored.agreementId, stored.transactionHash);
     }
   }, [landlordAccess, pendingFinalizationKey, saveFinalizationRecord]);
 
@@ -536,7 +545,7 @@ function AgreementForm({
             };
             setPendingFinalization(pending);
             if (pendingFinalizationKey) {
-              window.localStorage.setItem(pendingFinalizationKey, JSON.stringify(pending));
+              writeRecoveryJson(pendingFinalizationKey, pending);
             }
             void saveFinalizationRecord(pending.agreementId, pending.transactionHash);
           }
@@ -3042,7 +3051,7 @@ function AgreementForm({
       {error && <p className="tx-error">{error.message.split("\n")[0]}</p>}
       {pendingFinalization && finalizationRecordError && (
         <div className="receipt-recovery">
-          <p className="tx-error">{finalizationRecordError}</p>
+          <p className="tx-error" role="alert">{finalizationRecordError}</p>
           <button
             className="btn btn-ghost small"
             type="button"

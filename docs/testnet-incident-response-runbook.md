@@ -95,6 +95,7 @@ still call a public contract directly, and confirmed public-chain records cannot
 | Evidence tamper or key mismatch | Stop evidence access, preserve ciphertext and metadata, verify the configured key ID/keyring, and restore only an approved backup | Guess a key, overwrite ciphertext, discard the recorded key ID, or remove old keys early |
 | Notification outage | Preserve the failed attempt and retry once after provider recovery; verify one sent event | Mark a notice sent manually or expose agreement details in fallback email |
 | RPC rate limit or uncertain transaction | Check the wallet and an independent Base Sepolia explorer/RPC before retrying; use the retained receipt-recovery control | Repeat a transaction while its status is unknown |
+| Browser storage blocked during receipt recovery | Keep the page open and use the in-memory retry; if the page was lost, recover the hash from the wallet or Base Sepolia explorer before saving the receipt | Repeat the onchain action merely because its local retry did not survive a refresh |
 | Receipt/contract mismatch | Stop the pilot and preserve the receipt, expected contract/version, and rejection result | Accept a hash because it exists onchain without event, chain, and contract matching |
 | Compliance source changed/stale/unreachable | Keep proposal finalization fail-closed and review the official source/version | Disable the source gate or invent a legal rule |
 

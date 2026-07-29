@@ -9,6 +9,12 @@ import {
 } from "../contracts/config";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import {
+  clearRecoveryValue,
+  isTransactionHash,
+  readRecoveryJson,
+  writeRecoveryJson,
+} from "../lib/browserRecovery";
+import {
   canonicalActivityEnvelope,
   createActivityEnvelopeV2,
   hashActivityEnvelope,
@@ -178,7 +184,7 @@ export function PrivateActivityPublisher({
     try {
       await negotiationAction(negotiationAccess, action);
       setPendingRecord(null);
-      if (pendingRecordKey) window.localStorage.removeItem(pendingRecordKey);
+      if (pendingRecordKey) clearRecoveryValue(pendingRecordKey);
     } catch (cause) {
       setRecordError(
         cause instanceof Error
@@ -190,19 +196,20 @@ export function PrivateActivityPublisher({
 
   useEffect(() => {
     if (!pendingRecordKey) return;
-    try {
-      const stored = JSON.parse(window.localStorage.getItem(pendingRecordKey) || "null");
-      if (
-        stored?.type === "activity_hash_published" &&
-        [1, 2, 3, 4].includes(Number(stored.activityType)) &&
-        /^0x[a-fA-F0-9]{64}$/.test(stored.contentHash || "") &&
-        /^0x[a-fA-F0-9]{64}$/.test(stored.transactionHash || "")
-      ) {
-        setPendingRecord(stored as ActivityReceiptAction);
-      }
-    } catch {
-      window.localStorage.removeItem(pendingRecordKey);
-    }
+    const stored = readRecoveryJson(
+      pendingRecordKey,
+      (value): value is ActivityReceiptAction => {
+        if (!value || typeof value !== "object") return false;
+        const candidate = value as Record<string, unknown>;
+        return (
+          candidate.type === "activity_hash_published" &&
+          [1, 2, 3, 4].includes(Number(candidate.activityType)) &&
+          isTransactionHash(candidate.contentHash) &&
+          isTransactionHash(candidate.transactionHash)
+        );
+      },
+    );
+    if (stored) setPendingRecord(stored);
   }, [pendingRecordKey]);
 
   function downloadProof() {
@@ -283,7 +290,7 @@ export function PrivateActivityPublisher({
               };
               setPendingRecord(action);
               if (pendingRecordKey) {
-                window.localStorage.setItem(pendingRecordKey, JSON.stringify(action));
+                writeRecoveryJson(pendingRecordKey, action);
               }
               void saveActivityRecord(action);
               onPublished();
@@ -313,7 +320,7 @@ export function PrivateActivityPublisher({
       )}
       {pendingRecord && (
         <div className="receipt-recovery">
-          {recordError && <p className="tx-error">{recordError}</p>}
+          {recordError && <p className="tx-error" role="alert">{recordError}</p>}
           <button
             className="btn btn-ghost small"
             type="button"
