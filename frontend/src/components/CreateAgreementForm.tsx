@@ -295,13 +295,21 @@ function AgreementForm({
   landlordName,
   landlordEmail,
   initialAccess,
+  focusOnMount,
 }: {
   landlordName: string;
   landlordEmail: string;
   initialAccess?: NegotiationAccess | null;
+  focusOnMount?: boolean;
 }) {
   const { address, isConnected } = useAccount();
   const { addId } = useTrackedAgreements();
+  const builderRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    if (!focusOnMount) return;
+    builderRef.current?.focus({ preventScroll: true });
+  }, [focusOnMount]);
 
   const [tenantName, setTenantName] = useState("");
   const [tenantEmail, setTenantEmail] = useState("");
@@ -1462,6 +1470,7 @@ function AgreementForm({
 
   return (
     <section
+      ref={builderRef}
       className="card proposal-builder"
       id="proposal-builder"
       tabIndex={-1}
@@ -3017,8 +3026,10 @@ function AgreementForm({
 
 function PrivyCreateAgreementForm({
   initialAccess,
+  focusOnMount,
 }: {
   initialAccess?: NegotiationAccess | null;
+  focusOnMount?: boolean;
 }) {
   const { user } = usePrivy();
   const landlordName = user?.google?.name ?? "";
@@ -3028,18 +3039,26 @@ function PrivyCreateAgreementForm({
       landlordName={landlordName}
       landlordEmail={landlordEmail}
       initialAccess={initialAccess}
+      focusOnMount={focusOnMount}
     />
   );
 }
 
 export function CreateAgreementForm({
   initialAccess,
+  focusOnMount,
 }: {
   initialAccess?: NegotiationAccess | null;
+  focusOnMount?: boolean;
 }) {
   return ACCOUNT_AUTH_ENABLED ? (
-    <PrivyCreateAgreementForm initialAccess={initialAccess} />
+    <PrivyCreateAgreementForm initialAccess={initialAccess} focusOnMount={focusOnMount} />
   ) : (
-    <AgreementForm landlordName="" landlordEmail="" initialAccess={initialAccess} />
+    <AgreementForm
+      landlordName=""
+      landlordEmail=""
+      initialAccess={initialAccess}
+      focusOnMount={focusOnMount}
+    />
   );
 }

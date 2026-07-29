@@ -1,22 +1,22 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { useIdentityToken } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
 import { Layout, type AppNotification } from "./components/Layout";
-import { CreateAgreementForm } from "./components/CreateAgreementForm";
-import {
-  AgreementCard,
-  type AgreementFocusRequest,
-  type AgreementPanel,
+import type {
+  AgreementFocusRequest,
+  AgreementPanel,
 } from "./components/AgreementCard";
 import { useTrackedAgreements } from "./lib/useTrackedAgreements";
 import { useDiscoverAgreements } from "./lib/useDiscoverAgreements";
-import { TestFunds } from "./components/TestFunds";
 import { PublicIntro } from "./components/PublicIntro";
 import { AccountCenter } from "./components/AccountCenter";
-import { AgreementNegotiation } from "./components/AgreementNegotiation";
-import { AgreementOnchainActivity } from "./components/AgreementOnchainActivity";
-import { RecordSnapshotControls } from "./components/RecordSnapshotControls";
-import { TenantLandlordInvite } from "./components/TenantLandlordInvite";
 import { isJurisdictionCode, rememberJurisdiction } from "./lib/jurisdictions";
 import {
   roleLabel,
@@ -42,6 +42,42 @@ import { preferredScrollBehavior } from "./lib/accessibility";
 import { startVisibilityAwarePolling } from "./lib/visiblePolling";
 import "./App.css";
 
+const AgreementCard = lazy(() =>
+  import("./components/AgreementCard").then((module) => ({
+    default: module.AgreementCard,
+  })),
+);
+const AgreementNegotiation = lazy(() =>
+  import("./components/AgreementNegotiation").then((module) => ({
+    default: module.AgreementNegotiation,
+  })),
+);
+const AgreementOnchainActivity = lazy(() =>
+  import("./components/AgreementOnchainActivity").then((module) => ({
+    default: module.AgreementOnchainActivity,
+  })),
+);
+const CreateAgreementForm = lazy(() =>
+  import("./components/CreateAgreementForm").then((module) => ({
+    default: module.CreateAgreementForm,
+  })),
+);
+const RecordSnapshotControls = lazy(() =>
+  import("./components/RecordSnapshotControls").then((module) => ({
+    default: module.RecordSnapshotControls,
+  })),
+);
+const TenantLandlordInvite = lazy(() =>
+  import("./components/TenantLandlordInvite").then((module) => ({
+    default: module.TenantLandlordInvite,
+  })),
+);
+const TestFunds = lazy(() =>
+  import("./components/TestFunds").then((module) => ({
+    default: module.TestFunds,
+  })),
+);
+
 type WorkspaceTab = "overview" | "proposals" | "agreements" | "record";
 type SavedProposal = { access: NegotiationAccess; record: NegotiationRecord };
 const WORKSPACE_TABS: WorkspaceTab[] = [
@@ -57,6 +93,14 @@ function savedRecordKey(item: SavedProposal) {
 
 function onchainRecordKey(agreementId: bigint | string) {
   return `onchain:${agreementId.toString()}`;
+}
+
+function WorkspaceToolFallback({ label }: { label: string }) {
+  return (
+    <p className="field-help workspace-tool-loading" role="status">
+      {label}
+    </p>
+  );
 }
 
 function isRecordAction(action: string) {
@@ -879,34 +923,42 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             (item) => item.record.onchainAgreementId === id.toString(),
           );
           return (
-            <AgreementCard
+            <Suspense
               key={id.toString()}
-              id={id}
-              onRemove={() => removeId(id)}
-              onUnavailable={() => {
-                removeId(id);
-                setUnavailableAgreementIds((current) => {
-                  const key = id.toString();
-                  if (current.has(key)) return current;
-                  const next = new Set(current);
-                  next.add(key);
-                  return next;
-                });
-              }}
-              negotiationAccess={proposal?.access}
-              participantRecord={proposal?.record}
-              activePanel={agreementPanels[id.toString()]}
-              focusRequest={agreementFocusRequests[id.toString()]}
-              onPanelChange={(panel) =>
-                setAgreementPanels((current) => ({
-                  ...current,
-                  [id.toString()]: panel,
-                }))
-              }
-            />
+              fallback={<WorkspaceToolFallback label="Loading deposit details..." />}
+            >
+              <AgreementCard
+                id={id}
+                onRemove={() => removeId(id)}
+                onUnavailable={() => {
+                  removeId(id);
+                  setUnavailableAgreementIds((current) => {
+                    const key = id.toString();
+                    if (current.has(key)) return current;
+                    const next = new Set(current);
+                    next.add(key);
+                    return next;
+                  });
+                }}
+                negotiationAccess={proposal?.access}
+                participantRecord={proposal?.record}
+                activePanel={agreementPanels[id.toString()]}
+                focusRequest={agreementFocusRequests[id.toString()]}
+                onPanelChange={(panel) =>
+                  setAgreementPanels((current) => ({
+                    ...current,
+                    [id.toString()]: panel,
+                  }))
+                }
+              />
+            </Suspense>
           );
         })}
-        {workspaceRole === "tenant" && <TestFunds />}
+        {workspaceRole === "tenant" && (
+          <Suspense fallback={<WorkspaceToolFallback label="Loading test funding..." />}>
+            <TestFunds />
+          </Suspense>
+        )}
       </>
     );
   }
@@ -1036,10 +1088,12 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           )}
           {expanded && (
             <div className="record-workspace-body" id={contentId}>
-              <RecordSnapshotControls
-                access={item.access}
-                agreementId={agreementId ? BigInt(agreementId) : undefined}
-              />
+              <Suspense fallback={<WorkspaceToolFallback label="Loading record tools..." />}>
+                <RecordSnapshotControls
+                  access={item.access}
+                  agreementId={agreementId ? BigInt(agreementId) : undefined}
+                />
+              </Suspense>
               <details className="technical-details agreement-activity">
                 <summary>View timestamped activity ({item.record.events.length})</summary>
                 <ol className="activity-timeline">
@@ -1100,7 +1154,11 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           </header>
           {expanded && (
             <div className="record-workspace-body" id={contentId}>
-              <AgreementOnchainActivity agreementId={id} isParty={false} />
+              <Suspense
+                fallback={<WorkspaceToolFallback label="Loading onchain record..." />}
+              >
+                <AgreementOnchainActivity agreementId={id} isParty={false} />
+              </Suspense>
             </div>
           )}
         </article>
@@ -1322,7 +1380,11 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
         )}
         {workspaceRole === "tenant" && !inviteRole && (
           <div className="overview-invite-section">
-            <TenantLandlordInvite />
+            <Suspense
+              fallback={<WorkspaceToolFallback label="Loading invitation tools..." />}
+            >
+              <TenantLandlordInvite />
+            </Suspense>
           </div>
         )}
       </div>
@@ -1482,7 +1544,11 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
               <button className="btn btn-ghost review-back" onClick={closeProposalReview}>
                 Back to invitations and proposals
               </button>
-              <AgreementNegotiation access={proposalAccess} />
+              <Suspense
+                fallback={<WorkspaceToolFallback label="Loading proposal review..." />}
+              >
+                <AgreementNegotiation access={proposalAccess} />
+              </Suspense>
             </>
           ) : (
             <>
@@ -1599,10 +1665,15 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                           Close proposal editor
                         </button>
                       </div>
-                      <CreateAgreementForm
-                        key={activeLandlordAccess?.proposalId || "new-landlord-proposal"}
-                        initialAccess={activeLandlordAccess}
-                      />
+                      <Suspense
+                        fallback={<WorkspaceToolFallback label="Loading proposal editor..." />}
+                      >
+                        <CreateAgreementForm
+                          key={activeLandlordAccess?.proposalId || "new-landlord-proposal"}
+                          initialAccess={activeLandlordAccess}
+                          focusOnMount
+                        />
+                      </Suspense>
                     </>
                   )}
                 </section>

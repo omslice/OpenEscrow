@@ -31,11 +31,15 @@ const largestChunks = await Promise.all(
 );
 largestChunks.sort((left, right) => right.size - left.size);
 const largestChunk = largestChunks[0] || { name: "none", size: 0 };
+const appChunk =
+  largestChunks.find((chunk) => /^App-[^.]+\.js$/.test(chunk.name)) ||
+  { name: "none", size: 0 };
 
 const budgets = {
   initialBytes: 350 * 1_024,
   totalJsBytes: 6_500 * 1_024,
   largestChunkBytes: 750 * 1_024,
+  appChunkBytes: 250 * 1_024,
 };
 const failures = [];
 if (initialBytes > budgets.initialBytes) {
@@ -53,12 +57,18 @@ if (largestChunk.size > budgets.largestChunkBytes) {
     `largest chunk ${largestChunk.name} (${largestChunk.size} bytes) exceeds ${budgets.largestChunkBytes}`,
   );
 }
+if (appChunk.size > budgets.appChunkBytes) {
+  failures.push(
+    `workspace chunk ${appChunk.name} (${appChunk.size} bytes) exceeds ${budgets.appChunkBytes}`,
+  );
+}
 
 console.log(
   [
     `Bundle budget: ${initialAssetNames.length} initial JS file(s), ${initialBytes} bytes`,
     `${jsAssetNames.length} total JS file(s), ${totalJsBytes} bytes`,
     `largest ${largestChunk.name}, ${largestChunk.size} bytes`,
+    `workspace ${appChunk.name}, ${appChunk.size} bytes`,
   ].join("; "),
 );
 

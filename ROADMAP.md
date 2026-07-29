@@ -82,7 +82,7 @@ the repository; they are not claims of legal approval or production readiness.
   shared deadline clock
 - [x] Establish an initial browser performance budget and split the bootstrap from the
   authenticated wallet/workspace bundle
-- [ ] Split infrequently used proposal, deposit, and record tools into tab-level chunks
+- [x] Split infrequently used proposal, deposit, and record tools into tab-level chunks
 - [ ] Configure hosted email, Cron, encryption, registry, address, and compliance-source services
 - [ ] Run separate-account testnet pilot and accessibility/usability reviews
 - [ ] Commission independent contract/application security and privacy/threat-model reviews
