@@ -27,6 +27,11 @@ const expectedScenarios = [
     covers: ["ciphertext integrity", "key mismatch", "digest mismatch"],
   },
   {
+    id: "evidence-key-rotation",
+    name: "evidence key rotation preserves access through retained decryption keys",
+    covers: ["pre-rotation evidence", "retained keyring", "active key rotation"],
+  },
+  {
     id: "evidence-upload-outage",
     name: "pilot rehearsal: an evidence upload outage is retryable without a phantom record",
     covers: ["R2 outage", "no phantom evidence", "safe retry"],

@@ -108,11 +108,11 @@ retention and key-destruction consequences are explicitly approved.
 
 ## Incident exercises still required
 
-The exact-source credential-free incident rehearsal packages ten controls covering invalid
+The exact-source credential-free incident rehearsal packages eleven controls covering invalid
 identity tokens, cross-account access, participant-scoped session containment,
-privacy-inventory isolation, corrupted ciphertext/key/digest data, R2 upload/download outages,
-notification-provider recovery, spoofed receipts, and RPC fallback. It produces local JSON and
-JUnit evidence without touching hosted systems.
+privacy-inventory isolation, corrupted ciphertext/key/digest data, retained-key rotation,
+R2 upload/download outages, notification-provider recovery, spoofed receipts, and RPC fallback.
+It produces local JSON and JUnit evidence without touching hosted systems.
 
 A supervised pilot must still additionally exercise:
 

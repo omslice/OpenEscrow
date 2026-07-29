@@ -12,9 +12,9 @@ production readiness, or authorization to hold real rental deposits.
   private-evidence and notification outage/recovery scenarios, one arbiter-link/session reset,
   one verified-arbiter identity recovery/isolation scenario, and one verified-account session
   containment scenario, plus one role-isolated account data-inventory scenario.
-- **Verified:** A separate 10-scenario incident-response rehearsal passes for identity forgery,
-  cross-account isolation, account-session containment, privacy inventory, evidence tamper and
-  outages, notification recovery, receipt spoofing, and RPC fallback.
+- **Verified:** A separate 11-scenario incident-response rehearsal passes for identity forgery,
+  cross-account isolation, account-session containment, privacy inventory, evidence tamper,
+  retained-key rotation, outages, notification recovery, receipt spoofing, and RPC fallback.
 - **Verified:** The full repository release check passes with 70 server tests, 39 client-logic
   tests, lint, and the production build. The browser accessibility smoke check also passes.
 - **Verified:** The authenticated wallet/workspace is loaded behind a lightweight bootstrap, and
