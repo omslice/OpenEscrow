@@ -10,6 +10,7 @@ import { useAccount } from "wagmi";
 import { shortAddr } from "../lib/format";
 import {
   clearAccountNegotiationAccesses,
+  loadAccountDataInventory,
   loadNotificationPreferences,
   loadServiceReadiness,
   revokeAccountSessions,
@@ -51,6 +52,7 @@ export function PrivyAccountCenter({
   const [isEndingSessions, setIsEndingSessions] = useState(false);
   const [securityStatus, setSecurityStatus] = useState<string | null>(null);
   const [securityError, setSecurityError] = useState(false);
+  const [isDownloadingInventory, setIsDownloadingInventory] = useState(false);
   const preferenceWrite = useRef(0);
   const isRefreshingReadinessRef = useRef(false);
   const [walletSetup, setWalletSetup] = useState<"idle" | "creating" | "slow" | "error">("idle");
@@ -233,6 +235,39 @@ export function PrivyAccountCenter({
           : "OpenEscrow record sessions could not be ended.",
       );
       setIsEndingSessions(false);
+    }
+  }
+
+  async function downloadAccountDataInventory() {
+    if (!identityToken || isDownloadingInventory) return;
+    setIsDownloadingInventory(true);
+    setSecurityError(false);
+    setSecurityStatus("Preparing your account data inventory...");
+    try {
+      const inventory = await loadAccountDataInventory(identityToken);
+      const blob = new Blob([`${JSON.stringify(inventory, null, 2)}\n`], {
+        type: "application/json",
+      });
+      const objectUrl = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = objectUrl;
+      link.download = `openescrow-account-data-inventory-${inventory.generatedAt.slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      setSecurityStatus(
+        `Downloaded an inventory of ${inventory.records.length} account record reference(s). Complete shared records remain available in the Record tab.`,
+      );
+    } catch (error) {
+      setSecurityError(true);
+      setSecurityStatus(
+        error instanceof Error
+          ? error.message
+          : "Your account data inventory could not be prepared.",
+      );
+    } finally {
+      setIsDownloadingInventory(false);
     }
   }
 
@@ -515,6 +550,11 @@ export function PrivyAccountCenter({
                 record session issued to this verified account. Agreements, archive preferences,
                 invitation links, and wallet-provider sessions are not changed.
               </p>
+              <p>
+                You can also download a privacy-safe inventory of record references and account
+                settings. It excludes evidence, addresses, other participants' details, and all
+                access tokens; use the Record tab for each complete shared record.
+              </p>
               {securityStatus && (
                 <p
                   className={securityError ? "tx-error" : "field-help"}
@@ -529,7 +569,15 @@ export function PrivyAccountCenter({
               <button
                 className="btn btn-ghost small"
                 type="button"
-                disabled={!identityToken || isEndingSessions}
+                disabled={!identityToken || isDownloadingInventory || isEndingSessions}
+                onClick={() => void downloadAccountDataInventory()}
+              >
+                {isDownloadingInventory ? "Preparing inventory..." : "Download data inventory"}
+              </button>
+              <button
+                className="btn btn-ghost small"
+                type="button"
+                disabled={!identityToken || isEndingSessions || isDownloadingInventory}
                 onClick={() => void endOpenEscrowSessions()}
               >
                 {isEndingSessions ? "Ending sessions..." : "End record sessions & sign out"}

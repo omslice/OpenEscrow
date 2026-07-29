@@ -2694,6 +2694,183 @@ test("pilot rehearsal: a verified account can contain its record sessions withou
   }
 });
 
+test("pilot rehearsal: account data inventory is role-isolated and contains no access secrets", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+
+  const appId = "test-privy-data-inventory-app";
+  const kid = "test-data-inventory-key";
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  const landlordIdentityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "landlord@example.com",
+    { sub: "did:privy:inventory-landlord" },
+  );
+  const tenantIdentityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "tenant@example.com",
+    { sub: "did:privy:inventory-tenant" },
+  );
+  const unrelatedIdentityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "unrelated@example.com",
+    { sub: "did:privy:inventory-unrelated" },
+  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    assert.equal(
+      String(input),
+      `https://auth.privy.io/api/v1/apps/${appId}/jwks.json`,
+    );
+    return Response.json({ keys: [{ ...publicJwk, kid, alg: "ES256", use: "sig" }] });
+  };
+
+  const discover = (identityToken, role) =>
+    worker.fetch(
+      new Request("https://openescrow.example/api/negotiations/discover", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "privy-id-token": identityToken,
+        },
+        body: JSON.stringify({ role }),
+      }),
+      { DB: db, PRIVY_APP_ID: appId },
+    );
+  const inventory = (identityToken, headers = {}) =>
+    worker.fetch(
+      new Request("https://openescrow.example/api/profile/data-inventory", {
+        headers: {
+          "privy-id-token": identityToken,
+          ...headers,
+        },
+      }),
+      { DB: db, PRIVY_APP_ID: appId },
+    );
+
+  try {
+    await jsonResponse(await discover(landlordIdentityToken, "landlord"));
+    await jsonResponse(await discover(tenantIdentityToken, "tenant"));
+    await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/profile/record-archives", {
+          method: "PUT",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": landlordIdentityToken,
+          },
+          body: JSON.stringify({
+            proposalId: created.record.id,
+            role: "landlord",
+            archived: true,
+          }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    await jsonResponse(
+      await worker.fetch(
+        new Request(
+          "https://openescrow.example/api/profile/notification-preferences",
+          {
+            method: "PUT",
+            headers: {
+              "content-type": "application/json",
+              "privy-id-token": landlordIdentityToken,
+            },
+            body: JSON.stringify({
+              agreementActivity: true,
+              deadlineReminders: false,
+            }),
+          },
+        ),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+
+    const landlordInventory = await jsonResponse(
+      await inventory(landlordIdentityToken),
+    );
+    assert.equal(landlordInventory.schema, "openescrow.account-data-inventory.v1");
+    assert.equal(landlordInventory.records.length, 1);
+    assert.deepEqual(
+      {
+        proposalId: landlordInventory.records[0].proposalId,
+        role: landlordInventory.records[0].role,
+        status: landlordInventory.records[0].status,
+        archived: landlordInventory.records[0].archived,
+      },
+      {
+        proposalId: created.record.id,
+        role: "landlord",
+        status: "finalized",
+        archived: true,
+      },
+    );
+    assert.equal(landlordInventory.accountSettings.activeRecordSessions, 1);
+    assert.equal(landlordInventory.accountSettings.archivedRecordPreferences, 1);
+    assert.equal(
+      landlordInventory.accountSettings.notificationPreferences.agreementActivity,
+      true,
+    );
+    assert.deepEqual(landlordInventory.boundaries, {
+      includesPrivateEvidence: false,
+      includesInvitationOrSessionTokens: false,
+      includesOtherParticipantDetails: false,
+      deletesOrChangesData: false,
+      publicBlockchainRecordsCanBeErased: false,
+    });
+    const serialized = JSON.stringify(landlordInventory);
+    assert.doesNotMatch(serialized, /tenant@example\.com/);
+    assert.doesNotMatch(serialized, /123 Main/);
+    assert.doesNotMatch(serialized, new RegExp(created.access.landlord));
+    assert.doesNotMatch(serialized, new RegExp(created.access.tenant));
+
+    const tenantInventory = await jsonResponse(
+      await inventory(tenantIdentityToken),
+    );
+    assert.equal(tenantInventory.records.length, 1);
+    assert.equal(tenantInventory.records[0].role, "tenant");
+    assert.equal(tenantInventory.records[0].archived, false);
+    assert.equal(
+      tenantInventory.accountSettings.notificationPreferences,
+      null,
+    );
+
+    const unrelatedInventory = await jsonResponse(
+      await inventory(unrelatedIdentityToken),
+    );
+    assert.equal(unrelatedInventory.records.length, 0);
+    assert.equal(unrelatedInventory.accountSettings.activeRecordSessions, 0);
+
+    const crossOrigin = await inventory(landlordIdentityToken, {
+      origin: "https://attacker.example",
+      "sec-fetch-site": "cross-site",
+    });
+    assert.equal(crossOrigin.status, 403);
+    assert.equal(
+      db.database
+        .prepare("SELECT COUNT(*) AS count FROM negotiation_account_access")
+        .get().count,
+      2,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("signed-in discovery rejects expired, wrong-audience, and forged identity tokens", async () => {
   const db = new TestD1();
   const created = await create(db);

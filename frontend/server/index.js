@@ -2098,6 +2098,107 @@ async function revokeAccountSessions(request, env) {
   });
 }
 
+async function accountDataInventory(request, env) {
+  let identity;
+  try {
+    identity = await verifyPrivyIdentity(request, env);
+  } catch (error) {
+    return json(
+      {
+        error:
+          error instanceof Error ? error.message : "The signed-in account could not be verified.",
+      },
+      401,
+    );
+  }
+
+  const placeholders = identity.emails.map(() => "?").join(", ");
+  const recordResult = await env.DB
+    .prepare(
+      `SELECT id, status, updated_at, role
+       FROM (
+         SELECT id, status, updated_at, 'landlord' AS role
+         FROM agreement_negotiations
+         WHERE lower(landlord_email) IN (${placeholders})
+         UNION
+         SELECT id, status, updated_at, 'arbiter' AS role
+         FROM agreement_negotiations
+         WHERE lower(arbiter_email) IN (${placeholders})
+         UNION
+         SELECT negotiation.id, negotiation.status, negotiation.updated_at, 'tenant' AS role
+         FROM agreement_negotiations AS negotiation
+         JOIN negotiation_tenants AS tenant ON tenant.negotiation_id = negotiation.id
+         WHERE lower(tenant.email) IN (${placeholders})
+       )
+       ORDER BY updated_at DESC, id, role`,
+    )
+    .bind(...identity.emails, ...identity.emails, ...identity.emails)
+    .all();
+  const archiveResult = await env.DB
+    .prepare(
+      `SELECT negotiation_id, role
+       FROM account_record_archives
+       WHERE user_id = ?`,
+    )
+    .bind(identity.userId)
+    .all();
+  const archivedRecords = new Set(
+    (archiveResult.results || []).map(
+      (archive) => `${archive.negotiation_id}:${archive.role}`,
+    ),
+  );
+  const preferences = await env.DB
+    .prepare(
+      `SELECT agreement_activity, deadline_reminders, consented_at, updated_at
+       FROM notification_preferences
+       WHERE user_id = ?`,
+    )
+    .bind(identity.userId)
+    .first();
+  const sessionCount = await env.DB
+    .prepare(
+      `SELECT COUNT(*) AS count
+       FROM negotiation_account_access
+       WHERE user_id = ? AND expires_at > ?`,
+    )
+    .bind(identity.userId, new Date().toISOString())
+    .first();
+
+  return json({
+    schema: "openescrow.account-data-inventory.v1",
+    generatedAt: new Date().toISOString(),
+    scope:
+      "Verified-account metadata only. Use each agreement's Record tab to export its complete shared record.",
+    verifiedEmailCount: identity.emails.length,
+    records: (recordResult.results || []).map((row) => ({
+      proposalId: row.id,
+      role: row.role,
+      status: row.status,
+      updatedAt: row.updated_at,
+      archived: archivedRecords.has(`${row.id}:${row.role}`),
+    })),
+    accountSettings: {
+      activeRecordSessions: Number(sessionCount?.count || 0),
+      archivedRecordPreferences: archivedRecords.size,
+      notificationPreferences: preferences
+        ? {
+            agreementActivity: preferences.agreement_activity === 1,
+            deadlineReminders: preferences.deadline_reminders === 1,
+            consentedAt: preferences.consented_at || null,
+            updatedAt: preferences.updated_at,
+          }
+        : null,
+    },
+    boundaries: {
+      includesPrivateEvidence: false,
+      includesInvitationOrSessionTokens: false,
+      includesOtherParticipantDetails: false,
+      deletesOrChangesData: false,
+      publicBlockchainRecordsCanBeErased: false,
+    },
+  });
+}
+
 async function rowFor(db, id) {
   return db
     .prepare("SELECT * FROM agreement_negotiations WHERE id = ?")
@@ -6708,6 +6809,17 @@ const worker = {
       }
       await initialize(env.DB);
       return revokeAccountSessions(request, env);
+    }
+    if (
+      url.pathname === "/api/profile/data-inventory" &&
+      request.method === "GET"
+    ) {
+      if (!env.DB) return json({ error: "Account data inventory is not available." }, 503);
+      if (!sameOriginGet(request)) {
+        return json({ error: "Cross-origin reads are not allowed." }, 403);
+      }
+      await initialize(env.DB);
+      return accountDataInventory(request, env);
     }
     if (url.pathname === "/api/notifications/claim" && request.method === "POST") {
       if (!sameOriginPost(request)) return json({ error: "Cross-origin writes are not allowed." }, 403);

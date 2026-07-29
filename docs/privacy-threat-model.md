@@ -37,6 +37,7 @@ completeness, legality, or authorship of the underlying content.
 | Forged, expired, or wrong-application identity token | ES256 signature, issuer, audience, expiry, subject, and linked-email verification | Server tests reject each token without creating an account session |
 | Cross-account proposal or archive access | Server-side email/role matching and account-scoped archive rows | Separate landlord/tenant discovery and archive-isolation rehearsal |
 | Lost or untrusted signed-in browser | Verified-user session revocation deletes only that user's derived record sessions; the client clears account-derived browser access and signs out | Containment rehearsal checks every prior user session fails while other parties and invitation links remain authorized |
+| Privacy inventory leaks shared or access data | Verified-email role lookup returns only proposal reference, role, status, archive/preference metadata, and aggregate session count; no report content or tokens | Inventory rehearsal checks role isolation, unrelated-account emptiness, cross-origin denial, and absence of addresses, other-party email, and bearer tokens |
 | Stolen tenant invitation after reset | Random token rotation, old-link invalidation, and tenant-context session invalidation | Reset test checks the old link and active account session fail |
 | Unauthorized evidence download | Agreement-token authorization before R2/IPFS access | Invalid and unrelated-agreement tokens receive an access error |
 | Spoofed upload type | File-signature inspection for PDF/JPEG/PNG/WebP | MIME-spoof test rejects before storage |
@@ -84,6 +85,10 @@ No automated privacy deletion endpoint is approved yet. Deleting R2 bytes while 
 or deleting D1 metadata while leaving R2/IPFS bytes, would create an incomplete and misleading
 record. Public blockchain events cannot be erased.
 
+A verified account can download a privacy-safe metadata inventory as an intake aid. It is not the
+complete shared record, a formal access-request response, a legal-hold decision, or a deletion
+workflow. Complete agreement exports remain separately authorized through each Record tab.
+
 Before implementation, the owner and counsel must decide:
 
 1. the controller/processor roles and a verified intake method;
@@ -104,9 +109,10 @@ retention and key-destruction consequences are explicitly approved.
 ## Incident exercises still required
 
 Credential-free tests cover invalid identity tokens, cross-account access, participant-scoped
-session containment, invitation reset, corrupted ciphertext, wrong/retired keys, altered hashes,
-duplicate actions, spoofed receipts, R2 upload/download outages, notification-provider recovery,
-and RPC fallback. A supervised pilot must still additionally exercise:
+session containment, privacy-inventory isolation, invitation reset, corrupted ciphertext,
+wrong/retired keys, altered hashes, duplicate actions, spoofed receipts, R2 upload/download
+outages, notification-provider recovery, and RPC fallback. A supervised pilot must still
+additionally exercise:
 
 - lost invitation and lost verified-email escalation without sharing secrets;
 - evidence-key backup restoration in a separate operator environment;

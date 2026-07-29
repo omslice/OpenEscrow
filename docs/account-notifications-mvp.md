@@ -17,6 +17,8 @@ production identity, custody, privacy, or communications design.
 - A verified user can end every derived OpenEscrow record session issued to that account and sign
   out the current device without changing agreements, archive preferences, invitation links, or
   another participant's access.
+- The account panel can download a role-isolated metadata inventory without agreement content,
+  other-party details, evidence, addresses, or bearer access secrets.
 - Agreement-activity and deadline-reminder preferences are collected per authenticated user.
 - Notification preferences and their consent timestamp are persisted against the verified Privy
   account, with device-local storage retained only as an offline fallback.

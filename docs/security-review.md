@@ -239,7 +239,7 @@ restrictive content-security headers. Static app responses also receive no-refer
 headers.
 
 Automated coverage at this addendum is 173 passing Solidity tests across 15 suites, including the
-three 32,768-call stateful invariants and 512-run fuzz cases, plus 69 passing hosted workflow tests.
+three 32,768-call stateful invariants and 512-run fuzz cases, plus 70 passing hosted workflow tests.
 The workflow suite contains a complete two-tenant/optional-arbiter negotiation, funding, claim,
 response, dispute, ruling, refund, and withdrawal scenario.
 

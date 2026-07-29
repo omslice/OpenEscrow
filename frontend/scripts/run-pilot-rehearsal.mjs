@@ -83,6 +83,16 @@ const expectedScenarios = [
       "verified rediscovery",
     ],
   },
+  {
+    id: "account-data-inventory",
+    name: "pilot rehearsal: account data inventory is role-isolated and contains no access secrets",
+    covers: [
+      "privacy inventory",
+      "role isolation",
+      "token exclusion",
+      "cross-origin denial",
+    ],
+  },
 ];
 
 const testRun = spawnSync(

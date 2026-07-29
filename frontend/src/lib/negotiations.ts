@@ -128,6 +128,32 @@ export interface ServiceReadiness {
   };
 }
 
+export interface AccountDataInventory {
+  schema: "openescrow.account-data-inventory.v1";
+  generatedAt: string;
+  scope: string;
+  verifiedEmailCount: number;
+  records: Array<{
+    proposalId: string;
+    role: NegotiationRole;
+    status: NegotiationStatus;
+    updatedAt: string;
+    archived: boolean;
+  }>;
+  accountSettings: {
+    activeRecordSessions: number;
+    archivedRecordPreferences: number;
+    notificationPreferences: NotificationPreferences | null;
+  };
+  boundaries: {
+    includesPrivateEvidence: false;
+    includesInvitationOrSessionTokens: false;
+    includesOtherParticipantDetails: false;
+    deletesOrChangesData: false;
+    publicBlockchainRecordsCanBeErased: false;
+  };
+}
+
 export interface AgreementSnapshot {
   algorithm: "SHA-256";
   hash: `0x${string}`;
@@ -594,6 +620,12 @@ export function revokeAccountSessions(identityToken: string) {
     revokedSessions: number;
   }>("/api/profile/account-sessions/revoke", {
     method: "POST",
+    headers: { "privy-id-token": identityToken },
+  });
+}
+
+export function loadAccountDataInventory(identityToken: string) {
+  return request<AccountDataInventory>("/api/profile/data-inventory", {
     headers: { "privy-id-token": identityToken },
   });
 }

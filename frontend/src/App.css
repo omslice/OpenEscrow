@@ -1233,6 +1233,10 @@
   border-top: 1px solid var(--border);
 }
 
+.account-security-settings p + p {
+  margin-top: 8px;
+}
+
 .account-security-settings .field-help,
 .account-security-settings .tx-error {
   margin-top: 10px;

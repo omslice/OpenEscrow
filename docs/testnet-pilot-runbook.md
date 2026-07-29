@@ -27,7 +27,8 @@ ephemeral signed test identities. It independently exercises:
 - verified arbiter-email discovery, cross-account denial, archive isolation, and rediscovery
   after link rotation; and
 - verified-account record-session containment that leaves other parties and invitation links
-  unaffected, followed by clean signed-in rediscovery.
+  unaffected, followed by clean signed-in rediscovery; and
+- a role-isolated account data inventory that excludes access secrets and other-party details.
 
 The command writes a machine-readable summary and JUnit report under
 `frontend/.pilot-rehearsal/`. These ignored local artifacts contain no invitation tokens, private
@@ -64,6 +65,11 @@ the embedded test wallet created for that identity.
 The account security control ends only expiring OpenEscrow record sessions issued through verified
 account discovery and then signs out the current device. It does not revoke invitation links or
 sessions held by Privy, a wallet provider, Google, or an email provider.
+
+The account data inventory is a privacy-safe metadata manifest, not a complete access-request
+export and not a deletion request. It lists the verified account's proposal references, roles,
+statuses, archive preferences, notification settings, and active-session count. Complete shared
+agreement records remain in the Record tab.
 
 ## Release smoke test
 
