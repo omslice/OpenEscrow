@@ -58,7 +58,8 @@ Implemented:
 - Landlord-authorized optional-arbiter rotation invalidates the prior arbiter link and every
   active arbiter account session without changing approved terms. The arbiter UI remains disabled
   by default.
-- A verified landlord or tenant email can discover a capped, expiring account session.
+- A verified landlord, tenant, or appointed-arbiter email can discover only its matching role and
+  agreement through a capped, expiring account session.
 - Evidence key rotation can retain historical decryption keys by non-secret key ID.
 
 Not implemented and therefore pilot-limiting:

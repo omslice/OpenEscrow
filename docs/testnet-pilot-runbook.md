@@ -23,7 +23,9 @@ ephemeral signed test identities. It independently exercises:
 - the complete report, canonical JSON snapshot, snapshot hash, and recorded receipt trail;
 - private-evidence upload and download outages that fail closed without phantom records; and
 - a notification-provider outage followed by one idempotent recovery delivery; and
-- landlord-authorized arbiter link rotation with old-link and active-session invalidation.
+- landlord-authorized arbiter link rotation with old-link and active-session invalidation; and
+- verified arbiter-email discovery, cross-account denial, archive isolation, and rediscovery
+  after link rotation.
 
 The command writes a machine-readable summary and JUnit report under
 `frontend/.pilot-rehearsal/`. These ignored local artifacts contain no invitation tokens, private

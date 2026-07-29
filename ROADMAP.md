@@ -79,7 +79,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Fail-closed, retryable private-evidence and notification-provider outage handling without
   phantom evidence or delivery events
 - [x] Landlord-authorized optional-arbiter invitation rotation with old-link and account-session
-  invalidation, retained behind the disabled-by-default arbiter UI
+  invalidation, verified-email rediscovery, and cross-account isolation, retained behind the
+  disabled-by-default arbiter UI
 - [x] Internal keyboard/mobile accessibility smoke coverage plus workspace tab, address combobox,
   proposal focus-recovery, async announcement, reduced-motion, and mobile-overflow fixes
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a

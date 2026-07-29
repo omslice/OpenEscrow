@@ -2343,6 +2343,183 @@ test("verified Privy accounts discover finalized landlord and tenant agreements"
   }
 });
 
+test("pilot rehearsal: verified arbiter discovery is isolated and survives link rotation", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
+        tenantEmail: "tenant@example.com",
+        arbiterName: "Avery Arbiter",
+        arbiterEmail: "arbiter@example.com",
+        terms,
+      }),
+      { DB: db },
+    ),
+  );
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+  await jsonResponse(
+    await act(db, created.record.id, created.access.arbiter, {
+      type: "approve",
+      wallet: "0x2222222222222222222222222222222222222222",
+    }),
+  );
+  await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "finalize",
+      agreementId: "27",
+      transactionHash: transactionHash(27),
+    }),
+  );
+
+  const appId = "test-privy-arbiter-app";
+  const kid = "test-arbiter-key";
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  const arbiterIdentityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "arbiter@example.com",
+    { sub: "did:privy:verified-arbiter" },
+  );
+  const unrelatedIdentityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "unrelated@example.com",
+    { sub: "did:privy:unrelated-arbiter" },
+  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    assert.equal(
+      String(input),
+      `https://auth.privy.io/api/v1/apps/${appId}/jwks.json`,
+    );
+    return Response.json({ keys: [{ ...publicJwk, kid, alg: "ES256", use: "sig" }] });
+  };
+
+  const discover = (identityToken, role = "arbiter") =>
+    worker.fetch(
+      new Request("https://openescrow.example/api/negotiations/discover", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "privy-id-token": identityToken,
+        },
+        body: JSON.stringify({ role }),
+      }),
+      { DB: db, PRIVY_APP_ID: appId },
+    );
+  const setArchive = (identityToken, archived) =>
+    worker.fetch(
+      new Request("https://openescrow.example/api/profile/record-archives", {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          "privy-id-token": identityToken,
+        },
+        body: JSON.stringify({
+          proposalId: created.record.id,
+          role: "arbiter",
+          archived,
+        }),
+      }),
+      { DB: db, PRIVY_APP_ID: appId },
+    );
+
+  try {
+    const arbiterDiscovery = await jsonResponse(
+      await discover(arbiterIdentityToken),
+    );
+    assert.equal(arbiterDiscovery.accesses.length, 1);
+    assert.equal(arbiterDiscovery.accesses[0].proposalId, created.record.id);
+    assert.equal(arbiterDiscovery.accesses[0].role, "arbiter");
+    assert.equal(arbiterDiscovery.accesses[0].archived, false);
+
+    const arbiterRecord = await jsonResponse(
+      await worker.fetch(
+        request(
+          `/api/negotiations/${created.record.id}?token=${arbiterDiscovery.accesses[0].token}`,
+        ),
+        { DB: db },
+      ),
+    );
+    assert.equal(arbiterRecord.status, "finalized");
+    assert.equal(arbiterRecord.arbiterEmail, "arbiter@example.com");
+
+    const unrelatedDiscovery = await jsonResponse(
+      await discover(unrelatedIdentityToken),
+    );
+    assert.equal(unrelatedDiscovery.accesses.length, 0);
+    const unrelatedAsLandlord = await jsonResponse(
+      await discover(unrelatedIdentityToken, "landlord"),
+    );
+    assert.equal(unrelatedAsLandlord.accesses.length, 0);
+
+    const unrelatedArchive = await setArchive(unrelatedIdentityToken, true);
+    assert.equal(unrelatedArchive.status, 403);
+    const archived = await jsonResponse(
+      await setArchive(arbiterIdentityToken, true),
+    );
+    assert.equal(archived.archived, true);
+    const archivedDiscovery = await jsonResponse(
+      await discover(arbiterIdentityToken),
+    );
+    assert.equal(archivedDiscovery.accesses[0].archived, true);
+
+    await jsonResponse(
+      await worker.fetch(
+        request(`/api/negotiations/${created.record.id}/arbiter`, "POST", {
+          token: created.access.landlord,
+        }),
+        { DB: db },
+      ),
+    );
+    for (const priorSession of [
+      arbiterDiscovery.accesses[0].token,
+      archivedDiscovery.accesses[0].token,
+    ]) {
+      const invalidated = await worker.fetch(
+        request(`/api/negotiations/${created.record.id}?token=${priorSession}`),
+        { DB: db },
+      );
+      assert.equal(invalidated.status, 403);
+    }
+
+    const rediscovered = await jsonResponse(
+      await discover(arbiterIdentityToken),
+    );
+    assert.equal(rediscovered.accesses.length, 1);
+    assert.equal(rediscovered.accesses[0].archived, true);
+    const recovered = await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${rediscovered.accesses[0].token}`,
+      ),
+      { DB: db },
+    );
+    assert.equal(recovered.status, 200);
+
+    const restored = await jsonResponse(
+      await setArchive(arbiterIdentityToken, false),
+    );
+    assert.equal(restored.archived, false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("signed-in discovery rejects expired, wrong-audience, and forged identity tokens", async () => {
   const db = new TestD1();
   const created = await create(db);

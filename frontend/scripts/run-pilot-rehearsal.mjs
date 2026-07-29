@@ -63,6 +63,16 @@ const expectedScenarios = [
     name: "pilot rehearsal: the landlord can reset an arbiter link and invalidate prior sessions",
     covers: ["arbiter recovery", "link rotation", "session invalidation", "role authorization"],
   },
+  {
+    id: "arbiter-account-recovery",
+    name: "pilot rehearsal: verified arbiter discovery is isolated and survives link rotation",
+    covers: [
+      "verified identity",
+      "arbiter recovery",
+      "cross-account isolation",
+      "archive isolation",
+    ],
+  },
 ];
 
 const testRun = spawnSync(
