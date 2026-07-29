@@ -667,13 +667,14 @@ function base64UrlJson(value) {
 }
 
 async function identityTokenFor(privateKey, appId, kid, email, options = {}) {
+  const now = Math.floor(Date.now() / 1000);
   const encodedHeader = base64UrlJson({ alg: "ES256", typ: "JWT", kid });
   const encodedPayload = base64UrlJson({
     sub: options.sub || "did:privy:test-landlord",
-    iss: "privy.io",
-    aud: appId,
-    iat: Math.floor(Date.now() / 1000),
-    exp: Math.floor(Date.now() / 1000) + 3600,
+    iss: options.iss || "privy.io",
+    aud: options.aud || appId,
+    iat: options.iat ?? now,
+    exp: options.exp ?? now + 3600,
     linked_accounts: JSON.stringify([{ type: "google_oauth", email }]),
   });
   const signature = await crypto.subtle.sign(
@@ -2146,6 +2147,83 @@ test("verified Privy accounts discover finalized landlord and tenant agreements"
   }
 });
 
+test("signed-in discovery rejects expired, wrong-audience, and forged identity tokens", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const appId = "test-privy-rejection-app";
+  const kid = "test-rejection-key";
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const attackerKeyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  const now = Math.floor(Date.now() / 1000);
+  const invalidTokens = [
+    await identityTokenFor(
+      keyPair.privateKey,
+      appId,
+      kid,
+      "landlord@example.com",
+      { exp: now - 1 },
+    ),
+    await identityTokenFor(
+      keyPair.privateKey,
+      appId,
+      kid,
+      "landlord@example.com",
+      { aud: "another-privy-app" },
+    ),
+    await identityTokenFor(
+      attackerKeyPair.privateKey,
+      appId,
+      kid,
+      "landlord@example.com",
+    ),
+  ];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    assert.equal(
+      String(input),
+      `https://auth.privy.io/api/v1/apps/${appId}/jwks.json`,
+    );
+    return Response.json({ keys: [{ ...publicJwk, kid, alg: "ES256", use: "sig" }] });
+  };
+
+  try {
+    for (const identityToken of invalidTokens) {
+      const response = await worker.fetch(
+        new Request("https://openescrow.example/api/negotiations/discover", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": identityToken,
+          },
+          body: JSON.stringify({ role: "landlord" }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      );
+      assert.equal(response.status, 401);
+      assert.match((await response.json()).error, /could not be verified/);
+    }
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM negotiation_account_access WHERE negotiation_id = ?",
+        )
+        .get(created.record.id).count,
+      0,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("pilot rehearsal: archive and restore permissions are isolated by signed-in account", async () => {
   const db = new TestD1();
   const created = await create(db);
@@ -2814,6 +2892,7 @@ test("private evidence is stored in R2 and only an agreement party can retrieve 
   const db = new TestD1();
   const evidence = new TestR2();
   const created = await create(db);
+  const unrelated = await create(db);
   const form = new FormData();
   form.set("proposalId", created.record.id);
   form.set("token", created.access.landlord);
@@ -2847,6 +2926,29 @@ test("private evidence is stored in R2 and only an agreement party can retrieve 
   assert.equal(authorized.headers.get("referrer-policy"), "no-referrer");
   assert.equal(authorized.headers.get("x-content-type-options"), "nosniff");
   assert.equal(authorized.headers.get("x-frame-options"), "DENY");
+
+  const tenantAuthorized = await worker.fetch(
+    new Request(
+      `https://openescrow.example${uploaded.gatewayUrl.replace(
+        encodeURIComponent(created.access.landlord),
+        encodeURIComponent(created.access.tenant),
+      )}`,
+    ),
+    { DB: db, EVIDENCE: evidence },
+  );
+  assert.equal(tenantAuthorized.status, 200);
+  assert.equal(await tenantAuthorized.text(), "%PDF-1.7\ntest invoice");
+
+  const unrelatedParty = await worker.fetch(
+    new Request(
+      `https://openescrow.example${uploaded.gatewayUrl.replace(
+        encodeURIComponent(created.access.landlord),
+        encodeURIComponent(unrelated.access.landlord),
+      )}`,
+    ),
+    { DB: db, EVIDENCE: evidence },
+  );
+  assert.equal(unrelatedParty.status, 403);
 
   const denied = await worker.fetch(
     new Request(
@@ -2927,6 +3029,74 @@ test("configured evidence encryption stores only ciphertext and decrypts for an 
   assert.equal(authorized.status, 200);
   assert.equal(await authorized.text(), "%PDF-1.7\nprivate encrypted invoice");
   assert.equal(authorized.headers.get("x-openescrow-storage"), "encrypted-r2");
+});
+
+test("encrypted evidence fails closed when ciphertext, key material, or digest metadata is altered", async () => {
+  const db = new TestD1();
+  const evidence = new TestR2();
+  const created = await create(db);
+  const encryptionKey = Buffer.alloc(32, 31).toString("base64");
+  const encryptionEnvironment = {
+    DB: db,
+    EVIDENCE: evidence,
+    EVIDENCE_ENCRYPTION_KEY: encryptionKey,
+    EVIDENCE_ENCRYPTION_KEY_ID: "tamper-test",
+  };
+  const form = new FormData();
+  form.set("proposalId", created.record.id);
+  form.set("token", created.access.landlord);
+  form.set(
+    "file",
+    new File(["%PDF-1.7\nintegrity protected evidence"], "integrity.pdf", {
+      type: "application/pdf",
+    }),
+  );
+  const uploaded = await jsonResponse(
+    await worker.fetch(
+      new Request("https://openescrow.example/api/evidence", {
+        method: "POST",
+        body: form,
+      }),
+      encryptionEnvironment,
+    ),
+  );
+  const storedMetadata = await db
+    .prepare("SELECT object_key, sha256 FROM evidence_files WHERE id = ?")
+    .bind(uploaded.cid)
+    .first();
+  const storedObject = evidence.objects.get(storedMetadata.object_key);
+  const originalCiphertext = new Uint8Array(storedObject.bytes);
+
+  storedObject.bytes[0] ^= 0xff;
+  const alteredCiphertext = await worker.fetch(
+    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    encryptionEnvironment,
+  );
+  assert.equal(alteredCiphertext.status, 422);
+  assert.match((await alteredCiphertext.json()).error, /decrypted or was altered/);
+  storedObject.bytes = originalCiphertext;
+
+  const wrongKey = await worker.fetch(
+    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    {
+      ...encryptionEnvironment,
+      EVIDENCE_ENCRYPTION_KEY: Buffer.alloc(32, 32).toString("base64"),
+    },
+  );
+  assert.equal(wrongKey.status, 422);
+  assert.match((await wrongKey.json()).error, /decrypted or was altered/);
+
+  await db
+    .prepare("UPDATE evidence_files SET sha256 = ? WHERE id = ?")
+    .bind(`0x${"0".repeat(64)}`, uploaded.cid)
+    .run();
+  const alteredDigest = await worker.fetch(
+    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    encryptionEnvironment,
+  );
+  assert.equal(alteredDigest.status, 422);
+  assert.match((await alteredDigest.json()).error, /failed its integrity check/);
+  assert.notEqual(storedMetadata.sha256, `0x${"0".repeat(64)}`);
 });
 
 test("evidence key rotation preserves access through retained decryption keys", async () => {

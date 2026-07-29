@@ -69,6 +69,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Hosted readiness endpoint for email, scheduler, evidence, receipts, registry, address, and sources
 - [x] Credential-free pilot rehearsals for no-claim, accepted-claim, disputed-claim, withdrawals,
   account archive/restore, and record-proof paths
+- [x] Auth/evidence threat model plus expired/forged identity, cross-account evidence, ciphertext,
+  key-material, and digest-tamper regression coverage
 - [ ] Configure hosted email, Cron, encryption, registry, address, and compliance-source services
 - [ ] Run separate-account testnet pilot and accessibility/usability reviews
 - [ ] Commission independent contract/application security and privacy/threat-model reviews

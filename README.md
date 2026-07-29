@@ -49,6 +49,8 @@ The current source includes:
 - [`docs/mvp-spec.md`](docs/mvp-spec.md) — normative MVP behavior
 - [`docs/open-questions.md`](docs/open-questions.md) — legal and product questions blocking real-money use
 - [`docs/security-review.md`](docs/security-review.md) — internal review record and limitations
+- [`docs/privacy-threat-model.md`](docs/privacy-threat-model.md) — hosted data flows, authorization,
+  evidence protection, recovery boundaries, and the privacy-deletion design gate
 - [`docs/usability-test-plan.md`](docs/usability-test-plan.md) — moderated research script and success gate
 - [`docs/pilot-readiness-brief.md`](docs/pilot-readiness-brief.md) — legal, partner, privacy, and audit handoff
 - [`docs/pilot-services-setup.md`](docs/pilot-services-setup.md) — email, fiat sandbox, and encrypted evidence setup
