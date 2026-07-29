@@ -88,6 +88,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Self-service verified-account record-session revocation and local account-session cleanup
   without changing agreements, other participants, invitation links, or wallet-provider sessions
 - [x] Exact-source credential-free incident rehearsal plus testnet containment/privacy runbook
+- [x] Push the validated exact source and save a newer undeployed Sites candidate without
+  changing production or hosted D1/R2 data
 - [x] Internal keyboard/mobile accessibility smoke coverage plus workspace tab, address combobox,
   proposal focus-recovery, async announcement, reduced-motion, and mobile-overflow fixes
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a

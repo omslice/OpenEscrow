@@ -21,15 +21,13 @@ production readiness, or authorization to hold real rental deposits.
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the
   production build; the authenticated workspace then loads asynchronously.
-- **Verified:** The public Sites project remains active and public on saved version 56. No newer
-  version was saved or deployed during this checkpoint.
-- **Blocked on owner action:** Sites did not return a source-repository credential, so the exact
-  candidate commit cannot be pushed to the Sites source branch or saved as a new version yet.
+- **Verified:** The exact validated candidate source was pushed to the existing Sites source
+  branch and saved as a newer undeployed version. Production remains on saved version 56.
 
 ## Remaining
 
-- **Planned:** Reauthorize the Sites source repository, push the exact candidate commit, rebuild
-  its archive from that commit, and save an undeployed Sites version for review.
+- **Planned:** Review the newest saved candidate and explicitly approve a production deployment
+  when the testnet release envelope is acceptable.
 - **Planned:** Configure and validate the seven hosted pilot gates: email delivery, scheduler,
   evidence encryption, version-matched activity registry, address attestation, official-source
   baseline, and source-monitor freshness.

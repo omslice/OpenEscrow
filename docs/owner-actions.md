@@ -11,11 +11,9 @@ provider or hosting control that owns the secret.
 
 ## Actionable now
 
-- [ ] **Reauthorize the existing Sites project source repository.** The public site remains on
-  saved version 56 while the validated candidate is on the GitHub branch
-  `codex/account-wallet-onboarding`. The Sites source credential is currently unavailable, so
-  Codex cannot push the exact candidate source and save a new undeployed version. Reauthorize the
-  project connection in the Sites/Codex UI; never paste the short-lived token into chat.
+- [ ] **Review and explicitly approve the newest saved Sites candidate before deployment.** The
+  public site remains on production version 56. The validated branch has been pushed and saved as
+  a newer undeployed version; deployment remains a separate production action.
 - [ ] **Broadcast the version-matched Base Sepolia activity registry.**
   From a private local PowerShell terminal, run
   `.\scripts\Broadcast-AgreementActivityRegistryBaseSepolia.ps1` and enter the
@@ -90,3 +88,6 @@ provider or hosting control that owns the secret.
 
 Move an item here with its completion date and public verification reference.
 Never record a secret value.
+
+- [x] **Sites source connection refreshed and exact candidate saved undeployed — 2026-07-29.**
+  The source credential was used ephemerally and was not persisted. Production was not changed.
