@@ -12,6 +12,16 @@ const expectedScenarios = [
     covers: ["role isolation", "archive isolation", "cross-account denial"],
   },
   {
+    id: "cross-site-read-isolation",
+    name: "sensitive authorized reads reject cross-site browser requests without an Origin header",
+    covers: [
+      "Fetch Metadata",
+      "record and report isolation",
+      "private evidence isolation",
+      "public endpoint continuity",
+    ],
+  },
+  {
     id: "session-containment",
     name: "pilot rehearsal: a verified account can contain its record sessions without affecting other parties",
     covers: [

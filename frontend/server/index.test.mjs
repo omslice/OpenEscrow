@@ -3689,6 +3689,81 @@ test("private evidence is stored in R2 and only an agreement party can retrieve 
   assert.equal(denied.status, 403);
 });
 
+test("sensitive authorized reads reject cross-site browser requests without an Origin header", async () => {
+  const db = new TestD1();
+  const evidence = new TestR2();
+  const created = await create(db);
+  const form = new FormData();
+  form.set("proposalId", created.record.id);
+  form.set("token", created.access.landlord);
+  form.set(
+    "file",
+    new File([new TextEncoder().encode("%PDF-1.7\ncross-site guard")], "guard.pdf", {
+      type: "application/pdf",
+    }),
+  );
+  const uploaded = await jsonResponse(
+    await worker.fetch(
+      new Request("https://openescrow.example/api/evidence", {
+        method: "POST",
+        body: form,
+      }),
+      { DB: db, EVIDENCE: evidence },
+    ),
+  );
+  const sensitivePaths = [
+    "/api/profile/notification-preferences",
+    `/api/negotiations/${created.record.id}?token=${created.access.landlord}`,
+    `/api/negotiations/${created.record.id}/report?token=${created.access.landlord}`,
+    `/api/negotiations/${created.record.id}/snapshot?token=${created.access.landlord}`,
+    uploaded.gatewayUrl,
+  ];
+  for (const path of sensitivePaths) {
+    const response = await worker.fetch(
+      new Request(`https://openescrow.example${path}`, {
+        headers: { "sec-fetch-site": "cross-site" },
+      }),
+      { DB: db, EVIDENCE: evidence },
+    );
+    assert.equal(response.status, 403, path);
+    assert.deepEqual(await response.json(), {
+      error: "Cross-origin reads are not allowed.",
+    });
+  }
+
+  const sameOriginRecord = await worker.fetch(
+    new Request(
+      `https://openescrow.example/api/negotiations/${created.record.id}?token=${created.access.landlord}`,
+      { headers: { "sec-fetch-site": "same-origin" } },
+    ),
+    { DB: db },
+  );
+  assert.equal(sameOriginRecord.status, 200);
+  const sameOriginEvidence = await worker.fetch(
+    new Request(`https://openescrow.example${uploaded.gatewayUrl}`, {
+      headers: { "sec-fetch-site": "same-origin" },
+    }),
+    { DB: db, EVIDENCE: evidence },
+  );
+  assert.equal(sameOriginEvidence.status, 200);
+
+  const publicReadiness = await worker.fetch(
+    new Request("https://openescrow.example/api/system/readiness", {
+      headers: { "sec-fetch-site": "cross-site" },
+    }),
+    { DB: db },
+  );
+  assert.equal(publicReadiness.status, 200);
+  const signedLinkEntryPoint = await worker.fetch(
+    new Request(
+      "https://openescrow.example/api/notifications/unsubscribe?token=invalid",
+      { headers: { "sec-fetch-site": "cross-site" } },
+    ),
+    { DB: db },
+  );
+  assert.equal(signedLinkEntryPoint.status, 404);
+});
+
 test("pilot rehearsal: an evidence upload outage is retryable without a phantom record", async () => {
   const db = new TestD1();
   const created = await create(db);

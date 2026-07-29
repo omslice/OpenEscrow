@@ -12,10 +12,11 @@ production readiness, or authorization to hold real rental deposits.
   private-evidence and notification outage/recovery scenarios, one arbiter-link/session reset,
   one verified-arbiter identity recovery/isolation scenario, and one verified-account session
   containment scenario, plus one role-isolated account data-inventory scenario.
-- **Verified:** A separate 11-scenario incident-response rehearsal passes for identity forgery,
-  cross-account isolation, account-session containment, privacy inventory, evidence tamper,
-  retained-key rotation, outages, notification recovery, receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 70 server tests, 39 client-logic
+- **Verified:** A separate 12-scenario incident-response rehearsal passes for identity forgery,
+  cross-account isolation, cross-site read isolation, account-session containment, privacy
+  inventory, evidence tamper, retained-key rotation, outages, notification recovery, receipt
+  spoofing, and RPC fallback.
+- **Verified:** The full repository release check passes with 71 server tests, 39 client-logic
   tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
   build. Accessibility is now part of the required `npm run check` path rather than a separate,
   potentially stale result.
@@ -51,6 +52,9 @@ production readiness, or authorization to hold real rental deposits.
 - **Verified:** Browser mutation routes reject requests marked cross-site by Fetch Metadata even
   when an `Origin` header is absent; the session-containment rehearsal proves the rejected request
   cannot revoke stored account sessions.
+- **Verified:** Role-authorized agreement, report, snapshot, private-evidence, and notification
+  preference reads reject cross-site browser requests even when `Origin` is absent. Public
+  readiness and signed email-unsubscribe entry points remain available by design.
 - **Verified:** Closing the optional-yield dialog returns keyboard focus to the visible
   **Earn yield?** control instead of its hidden tooltip link. The deterministic browser check
   guards this focus return along with workspace tabs, proposal focus recovery, keyboard address

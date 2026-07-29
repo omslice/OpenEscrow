@@ -16,19 +16,20 @@ From `frontend`, run:
 npm run incident:rehearse
 ```
 
-The command exercises eleven credential-free controls in memory:
+The command exercises twelve credential-free controls in memory:
 
 1. forged, expired, and wrong-application identity rejection;
 2. cross-account record and archive isolation;
-3. verified-account session containment;
-4. role-isolated, token-free privacy inventory;
-5. ciphertext, key-material, and digest tamper rejection;
-6. pre-rotation evidence recovery through a retained decryption keyring;
-7. evidence-upload outage and safe retry;
-8. evidence-download outage and privacy-safe failure;
-9. notification-provider outage and idempotent recovery;
-10. Base Sepolia receipt/event spoof rejection; and
-11. bounded receipt verification during public-RPC rate limiting.
+3. cross-site agreement, report, snapshot, private-evidence, and preference read rejection;
+4. verified-account session containment;
+5. role-isolated, token-free privacy inventory;
+6. ciphertext, key-material, and digest tamper rejection;
+7. pre-rotation evidence recovery through a retained decryption keyring;
+8. evidence-upload outage and safe retry;
+9. evidence-download outage and privacy-safe failure;
+10. notification-provider outage and idempotent recovery;
+11. Base Sepolia receipt/event spoof rejection; and
+12. bounded receipt verification during public-RPC rate limiting.
 
 Machine-readable JSON and JUnit evidence is written under
 `frontend/.incident-rehearsal/`. The artifact records the exact Git commit. It touches no hosted

@@ -36,6 +36,7 @@ completeness, legality, or authorship of the underlying content.
 | --- | --- | --- |
 | Forged, expired, or wrong-application identity token | ES256 signature, issuer, audience, expiry, subject, and linked-email verification | Server tests reject each token without creating an account session |
 | Cross-site browser mutation | Mutating API routes require a matching `Origin` when present and reject Fetch Metadata requests marked `Sec-Fetch-Site: cross-site`, including requests with no `Origin` header | Session-containment rehearsal proves a cross-site request cannot revoke sessions or alter stored account access |
+| Cross-site authenticated read | Agreement records, reports, snapshots, private evidence, and account preferences reject Fetch Metadata requests marked `Sec-Fetch-Site: cross-site`, including requests with no `Origin` header; public readiness and signed unsubscribe links are explicit exceptions | Incident rehearsal rejects each sensitive route, preserves same-origin record/evidence reads, and confirms both public exceptions remain reachable |
 | Cross-account proposal or archive access | Server-side email/role matching and account-scoped archive rows | Separate landlord/tenant discovery and archive-isolation rehearsal |
 | Lost or untrusted signed-in browser | Verified-user session revocation deletes only that user's derived record sessions; the client clears account-derived browser access and signs out | Containment rehearsal checks every prior user session fails while other parties and invitation links remain authorized |
 | Privacy inventory leaks shared or access data | Verified-email role lookup returns only proposal reference, role, status, archive/preference metadata, and aggregate session count; no report content or tokens | Inventory rehearsal checks role isolation, unrelated-account emptiness, cross-origin denial, and absence of addresses, other-party email, and bearer tokens |
@@ -109,11 +110,11 @@ retention and key-destruction consequences are explicitly approved.
 
 ## Incident exercises still required
 
-The exact-source credential-free incident rehearsal packages eleven controls covering invalid
-identity tokens, cross-account access, participant-scoped session containment,
-privacy-inventory isolation, corrupted ciphertext/key/digest data, retained-key rotation,
-R2 upload/download outages, notification-provider recovery, spoofed receipts, and RPC fallback.
-It produces local JSON and JUnit evidence without touching hosted systems.
+The exact-source credential-free incident rehearsal packages twelve controls covering invalid
+identity tokens, cross-account access, cross-site read isolation, participant-scoped session
+containment, privacy-inventory isolation, corrupted ciphertext/key/digest data, retained-key
+rotation, R2 upload/download outages, notification-provider recovery, spoofed receipts, and RPC
+fallback. It produces local JSON and JUnit evidence without touching hosted systems.
 
 A supervised pilot must still additionally exercise:
 

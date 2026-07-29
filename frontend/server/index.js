@@ -6786,6 +6786,9 @@ const worker = {
       (request.method === "GET" || request.method === "PUT")
     ) {
       if (!env.DB) return json({ error: "Account preference storage is not available." }, 503);
+      if (request.method === "GET" && !sameOriginGet(request)) {
+        return json({ error: "Cross-origin reads are not allowed." }, 403);
+      }
       if (request.method === "PUT" && !sameOriginPost(request)) {
         return json({ error: "Cross-origin writes are not allowed." }, 403);
       }
@@ -6845,11 +6848,17 @@ const worker = {
     }
     const evidenceMatch = url.pathname.match(/^\/api\/evidence\/([a-fA-F0-9-]+)$/);
     if (evidenceMatch && request.method === "GET") {
+      if (!sameOriginGet(request)) {
+        return json({ error: "Cross-origin reads are not allowed." }, 403);
+      }
       if (env.DB) await initialize(env.DB);
       return downloadEvidence(request, env, evidenceMatch[1]);
     }
     if (url.pathname.startsWith("/api/negotiations")) {
       if (!env.DB) return json({ error: "Agreement record storage is not available." }, 503);
+      if (request.method === "GET" && !sameOriginGet(request)) {
+        return json({ error: "Cross-origin reads are not allowed." }, 403);
+      }
       if (request.method !== "GET" && !sameOriginPost(request)) {
         return json({ error: "Cross-origin writes are not allowed." }, 403);
       }
