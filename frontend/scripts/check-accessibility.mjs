@@ -29,6 +29,7 @@ const server = spawn(
   [viteEntrypoint, "--host", host, "--port", String(port), "--strictPort"],
   {
     cwd: new URL("..", import.meta.url),
+    env: { ...process.env, VITE_PRIVY_APP_ID: "" },
     stdio: ["ignore", "pipe", "pipe"],
   },
 );
@@ -96,6 +97,16 @@ try {
   );
   await page.keyboard.press("Escape");
   await yieldDialog.waitFor({ state: "hidden" });
+  await page.waitForFunction(
+    () => document.activeElement?.matches(".yield-option"),
+    undefined,
+    { timeout: 1_000 },
+  );
+  assert.equal(
+    await yieldSummary.evaluate((element) => element === document.activeElement),
+    true,
+    "Closing the yield dialog should restore focus to the visible tooltip control.",
+  );
 
   await page.getByRole("button", { name: /I am a landlord/ }).click();
   const workspaceTablist = page.getByRole("tablist", {

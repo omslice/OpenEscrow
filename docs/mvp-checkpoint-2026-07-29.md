@@ -16,7 +16,9 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, account-session containment, privacy inventory, evidence tamper,
   retained-key rotation, outages, notification recovery, receipt spoofing, and RPC fallback.
 - **Verified:** The full repository release check passes with 70 server tests, 39 client-logic
-  tests, lint, and the production build. The browser accessibility smoke check also passes.
+  tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
+  build. Accessibility is now part of the required `npm run check` path rather than a separate,
+  potentially stale result.
 - **Verified:** The authenticated wallet/workspace is loaded behind a lightweight bootstrap, and
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the
@@ -49,6 +51,10 @@ production readiness, or authorization to hold real rental deposits.
 - **Verified:** Browser mutation routes reject requests marked cross-site by Fetch Metadata even
   when an `Origin` header is absent; the session-containment rehearsal proves the rejected request
   cannot revoke stored account sessions.
+- **Verified:** Closing the optional-yield dialog returns keyboard focus to the visible
+  **Earn yield?** control instead of its hidden tooltip link. The deterministic browser check
+  guards this focus return along with workspace tabs, proposal focus recovery, keyboard address
+  selection, and mobile-width overflow.
 
 ## Material unknowns
 

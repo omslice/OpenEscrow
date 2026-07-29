@@ -44,14 +44,15 @@ It writes exact-source JSON and JUnit evidence under `frontend/.incident-rehears
 [`testnet-incident-response-runbook.md`](./testnet-incident-response-runbook.md) for the separate
 owner-led containment, privacy-intake, stop-condition, and resumption drill.
 
-Before a hosted pilot, also run the credential-free keyboard and mobile smoke check:
+The standard repository check now includes the credential-free keyboard and mobile smoke check:
 
 ```powershell
-npm.cmd run test:accessibility
+npm.cmd run check
 ```
 
-It covers the public yield dialog, workspace tab keyboard behavior, proposal editor focus
-recovery, keyboard address selection, and mobile-width overflow.
+For focused troubleshooting, run `npm.cmd run test:accessibility`. It covers the public yield
+dialog and focus return, workspace tab keyboard behavior, proposal editor focus recovery,
+keyboard address selection, and mobile-width overflow.
 
 A passing local rehearsal proves that the hosted workflow state machine still behaves consistently.
 It does not prove Google/Privy login, live wallet signing, Base Sepolia contracts, hosted D1/R2,

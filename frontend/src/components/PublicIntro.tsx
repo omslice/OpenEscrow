@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 
 export function PublicIntro({ onStart }: { onStart: () => void }) {
   const yieldDialogRef = useRef<HTMLDialogElement>(null);
+  const yieldSummaryRef = useRef<HTMLElement>(null);
+  const shouldRestoreYieldFocusRef = useRef(false);
   const yieldHash = "yield-stablecoins";
 
   function ensureYieldHashOpened(shouldOpen: boolean) {
@@ -24,11 +26,21 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
   }
 
   function openYieldExplainer() {
+    shouldRestoreYieldFocusRef.current = true;
     ensureYieldHashOpened(true);
   }
 
   function closeYieldExplainer() {
     ensureYieldHashOpened(false);
+  }
+
+  function handleYieldExplainerClosed() {
+    ensureYieldHashOpened(false);
+    if (!shouldRestoreYieldFocusRef.current) return;
+    shouldRestoreYieldFocusRef.current = false;
+    window.requestAnimationFrame(() => {
+      yieldSummaryRef.current?.focus({ preventScroll: true });
+    });
   }
 
   useEffect(() => {
@@ -69,7 +81,9 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
             <div className="how-it-works-heading">
               <strong>Agree &amp; fund</strong>
               <details className="yield-tooltip">
-                <summary className="yield-option">Earn yield?</summary>
+                <summary className="yield-option" ref={yieldSummaryRef}>
+                  Earn yield?
+                </summary>
                 <div className="yield-tooltip-panel">
                   <strong>Optional, with everyone&apos;s approval</strong>
                   <p>
@@ -115,7 +129,7 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
         className="yield-dialog"
         ref={yieldDialogRef}
         aria-labelledby="yield-explainer-title"
-        onClose={closeYieldExplainer}
+        onClose={handleYieldExplainerClosed}
         onClick={(event) => {
           if (event.target === event.currentTarget) {
             closeYieldExplainer();
