@@ -508,7 +508,9 @@ export function ClaimSection({
   const showNotice = agreement.phase === Phase.ClaimOpen || claimRecorded;
   const recordRecovery = pendingRecord && recordError && (
     <div className="receipt-recovery">
-      <p className="tx-error">{recordError}</p>
+      <p className="tx-error" role="alert">
+        {recordError}
+      </p>
       <button
         className="btn btn-ghost small"
         type="button"
@@ -615,7 +617,14 @@ export function ClaimSection({
                 {noticeCopied ? "Claim notice copied" : "Copy claim notice"}
               </button>
             </div>
-            {noticeStatus && <p className={noticeStatus.includes("sent") ? "tx-success" : "tx-error"}>{noticeStatus}</p>}
+            {noticeStatus && (
+              <p
+                className={noticeStatus.includes("sent") ? "tx-success" : "tx-error"}
+                role={noticeStatus.includes("sent") ? "status" : "alert"}
+              >
+                {noticeStatus}
+              </p>
+            )}
           </div>
         )}
       </div>
@@ -713,7 +722,14 @@ export function ClaimSection({
                 {noticeCopied ? "Claim notice copied" : "Copy claim notice"}
               </button>
             </div>
-            {noticeStatus && <p className={noticeStatus.includes("sent") ? "tx-success" : "tx-error"}>{noticeStatus}</p>}
+            {noticeStatus && (
+              <p
+                className={noticeStatus.includes("sent") ? "tx-success" : "tx-error"}
+                role={noticeStatus.includes("sent") ? "status" : "alert"}
+              >
+                {noticeStatus}
+              </p>
+            )}
           </div>
         )}
       </div>

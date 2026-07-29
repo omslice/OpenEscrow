@@ -73,8 +73,16 @@ export function useEvidenceInputs(access?: NegotiationAccess | null) {
           stores it automatically; no document link or technical reference is required.
         </p>
         {isUploading && <p className="hint">Storing supporting file…</p>}
-        {uploadMessage && <p className="tx-success">{uploadMessage}</p>}
-        {uploadError && <p className="tx-error">{uploadError}</p>}
+        {uploadMessage && (
+          <p className="tx-success" role="status">
+            {uploadMessage}
+          </p>
+        )}
+        {uploadError && (
+          <p className="tx-error" role="alert">
+            {uploadError}
+          </p>
+        )}
       </div>
       <p className="warning">
         Supporting files are available only to agreement parties through OpenEscrow. This

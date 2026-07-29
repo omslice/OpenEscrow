@@ -9,6 +9,7 @@
     "build:sites": "npm run build && node prepare-sites.mjs",
     "lint": "oxlint",
     "test:client-logic": "node --test --experimental-strip-types src/lib/*.test.ts",
+    "test:accessibility": "node scripts/check-accessibility.mjs",
     "check": "npm run lint && npm run test:server && npm run test:client-logic && npm run build",
     "release:check": "npm run check && npm audit --omit=dev --audit-level=high && node scripts/check-release-config.mjs",
     "pilot:check": "node scripts/check-pilot-readiness.mjs",

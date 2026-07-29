@@ -26,6 +26,15 @@ The command writes a machine-readable summary and JUnit report under
 `frontend/.pilot-rehearsal/`. These ignored local artifacts contain no invitation tokens, private
 keys, evidence keys, or real transaction hashes.
 
+Before a hosted pilot, also run the credential-free keyboard and mobile smoke check:
+
+```powershell
+npm.cmd run test:accessibility
+```
+
+It covers the public yield dialog, workspace tab keyboard behavior, proposal editor focus
+recovery, keyboard address selection, and mobile-width overflow.
+
 A passing local rehearsal proves that the hosted workflow state machine still behaves consistently.
 It does not prove Google/Privy login, live wallet signing, Base Sepolia contracts, hosted D1/R2,
 email delivery, Cron, or provider dashboards. Complete the separate-account steps below before any

@@ -368,7 +368,9 @@ export function ResponseSection({
               }}
             />
             {!validExplanation && (
-              <p className="tx-error">Add a short explanation before submitting a dispute.</p>
+              <p className="tx-error" role="alert">
+                Add a short explanation before submitting a dispute.
+              </p>
             )}
           </div>
         </>
@@ -399,7 +401,11 @@ export function ResponseSection({
           Retry saving response receipt
         </button>
       )}
-      {recordError && <p className="tx-error">{recordError}</p>}
+      {recordError && (
+        <p className="tx-error" role="alert">
+          {recordError}
+        </p>
+      )}
 
       {email && (
         <div className="claim-response-step">

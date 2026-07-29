@@ -97,7 +97,11 @@ function useTenantReceiptRecovery(
 
   const recovery = pendingTransaction && (
     <div className="receipt-recovery">
-      {recordError && <p className="tx-error">{recordError}</p>}
+      {recordError && (
+        <p className="tx-error" role="alert">
+          {recordError}
+        </p>
+      )}
       <button
         className="btn btn-ghost small"
         type="button"
@@ -656,7 +660,11 @@ function SponsoredTenantFundAction({
       )}
       {reserveRecord.recovery}
       {fundingRecord.recovery}
-      {transactionError && <p className="tx-error">{transactionError}</p>}
+      {transactionError && (
+        <p className="tx-error" role="alert">
+          {transactionError}
+        </p>
+      )}
     </div>
   );
 }

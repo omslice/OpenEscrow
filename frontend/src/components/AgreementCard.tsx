@@ -6,6 +6,7 @@ import {
   phaseLabel,
 } from "../contracts/config";
 import { agreementReference } from "../lib/displayIds";
+import { preferredScrollBehavior } from "../lib/accessibility";
 import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
 import { AgreementDashboard } from "./AgreementDashboard";
 import { ArbiterActions } from "./ArbiterActions";
@@ -92,7 +93,10 @@ export function AgreementCard({
       document.getElementById(`agreement-${id.toString()}`);
     if (!target) return;
     handledFocusNonce.current = focusRequest.nonce;
-    target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    target?.scrollIntoView({
+      behavior: preferredScrollBehavior(),
+      block: "start",
+    });
     target?.focus({ preventScroll: true });
   }, [
     agreement,

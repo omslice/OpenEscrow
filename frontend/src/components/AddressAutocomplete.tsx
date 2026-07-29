@@ -1,4 +1,4 @@
-import { useEffect, useId, useState } from "react";
+import { useEffect, useId, useState, type KeyboardEvent } from "react";
 import "./AddressAutocomplete.css";
 
 export type AddressSuggestion = {
@@ -121,12 +121,14 @@ export function AddressAutocomplete({
   const [isLoading, setIsLoading] = useState(false);
   const [lookupUnavailable, setLookupUnavailable] = useState(false);
   const [isOpen, setIsOpen] = useState(false);
+  const [activeIndex, setActiveIndex] = useState(-1);
 
   useEffect(() => {
     const query = value.trim();
     if (disabled || selectedAddress?.label === value || query.length < 4) {
       setSuggestions([]);
       setIsOpen(false);
+      setActiveIndex(-1);
       setIsLoading(false);
       return;
     }
@@ -147,11 +149,13 @@ export function AddressAutocomplete({
         const next = normalizeSuggestions(await response.json());
         setSuggestions(next);
         setIsOpen(next.length > 0);
+        setActiveIndex(-1);
         setLookupUnavailable(false);
       } catch (error) {
         if (error instanceof DOMException && error.name === "AbortError") return;
         setSuggestions([]);
         setIsOpen(false);
+        setActiveIndex(-1);
         setLookupUnavailable(true);
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
@@ -179,7 +183,48 @@ export function AddressAutocomplete({
     });
     setSuggestions([]);
     setIsOpen(false);
+    setActiveIndex(-1);
     setLookupUnavailable(false);
+  }
+
+  function handleInputKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Escape") {
+      if (isOpen) {
+        event.preventDefault();
+        setIsOpen(false);
+        setActiveIndex(-1);
+      }
+      return;
+    }
+    if (!suggestions.length) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setIsOpen(true);
+      setActiveIndex((current) => (current + 1) % suggestions.length);
+      return;
+    }
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setIsOpen(true);
+      setActiveIndex((current) =>
+        current <= 0 ? suggestions.length - 1 : current - 1,
+      );
+      return;
+    }
+    if (event.key === "Home" && isOpen) {
+      event.preventDefault();
+      setActiveIndex(0);
+      return;
+    }
+    if (event.key === "End" && isOpen) {
+      event.preventDefault();
+      setActiveIndex(suggestions.length - 1);
+      return;
+    }
+    if (event.key === "Enter" && isOpen && activeIndex >= 0) {
+      event.preventDefault();
+      selectSuggestion(suggestions[activeIndex]);
+    }
   }
 
   return (
@@ -191,6 +236,11 @@ export function AddressAutocomplete({
           value={value}
           onChange={(event) => updateValue(event.target.value)}
           onFocus={() => suggestions.length > 0 && setIsOpen(true)}
+          onBlur={() => {
+            setIsOpen(false);
+            setActiveIndex(-1);
+          }}
+          onKeyDown={handleInputKeyDown}
           placeholder="123 Main Street, City, State 00000"
           autoComplete="off"
           disabled={disabled}
@@ -199,6 +249,12 @@ export function AddressAutocomplete({
           aria-autocomplete="list"
           aria-controls={listId}
           aria-expanded={isOpen}
+          aria-activedescendant={
+            isOpen && activeIndex >= 0
+              ? `${listId}-option-${activeIndex}`
+              : undefined
+          }
+          aria-busy={isLoading}
           role="combobox"
         />
         {isLoading && <span className="address-lookup-state">Searching…</span>}
@@ -217,10 +273,17 @@ export function AddressAutocomplete({
       </div>
       {isOpen && (
         <ul id={listId} className="address-suggestions" role="listbox">
-          {suggestions.map((suggestion) => (
-            <li key={suggestion.id} role="option" aria-selected={false}>
+          {suggestions.map((suggestion, index) => (
+            <li key={suggestion.id} role="none">
               <button
+                id={`${listId}-option-${index}`}
                 type="button"
+                role="option"
+                tabIndex={-1}
+                aria-selected={activeIndex === index}
+                className={activeIndex === index ? "active" : undefined}
+                onMouseDown={(event) => event.preventDefault()}
+                onMouseEnter={() => setActiveIndex(index)}
                 onClick={() => selectSuggestion(suggestion)}
               >
                 {suggestion.label}
@@ -229,6 +292,13 @@ export function AddressAutocomplete({
           ))}
         </ul>
       )}
+      <span className="address-sr-status" role="status" aria-live="polite">
+        {isLoading
+          ? "Searching for addresses."
+          : isOpen
+            ? `${suggestions.length} address suggestion${suggestions.length === 1 ? "" : "s"} available. Use the up and down arrow keys to review them.`
+            : ""}
+      </span>
       {lookupUnavailable && (
         <small className="address-lookup-note">
           Suggestions are temporarily unavailable. You can still enter the

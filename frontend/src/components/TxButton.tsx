@@ -54,8 +54,16 @@ export function TxButton({
       >
         {isPending ? "Confirm in wallet..." : isMining ? "Mining..." : label}
       </button>
-      {error && <p className="tx-error">{error.message.split("\n")[0]}</p>}
-      {isSuccess && <p className="tx-success">Confirmed.</p>}
+      {error && (
+        <p className="tx-error" role="alert">
+          {error.message.split("\n")[0]}
+        </p>
+      )}
+      {isSuccess && (
+        <p className="tx-success" role="status">
+          Confirmed.
+        </p>
+      )}
     </div>
   );
 }

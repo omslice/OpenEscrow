@@ -38,6 +38,7 @@ import {
   type USJurisdictionProfile,
 } from "../lib/jurisdictions";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
+import { preferredScrollBehavior } from "../lib/accessibility";
 import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
 import { useTrackedAgreements } from "../lib/useTrackedAgreements";
 import type { InviteRole } from "../lib/inviteContext";
@@ -729,7 +730,10 @@ function AgreementForm({
           ? document.querySelector<HTMLElement>(`[data-proposal-field="${issue.field}"]`)
           : document.getElementById("proposal-form-feedback");
         target?.focus({ preventScroll: true });
-        target?.scrollIntoView({ behavior: "smooth", block: "center" });
+        target?.scrollIntoView({
+          behavior: preferredScrollBehavior(),
+          block: "center",
+        });
       });
     });
   }
@@ -1457,11 +1461,18 @@ function AgreementForm({
   }
 
   return (
-    <section className="card proposal-builder" id="proposal-builder">
+    <section
+      className="card proposal-builder"
+      id="proposal-builder"
+      tabIndex={-1}
+      aria-labelledby="proposal-builder-title"
+    >
       <div className="proposal-builder-heading">
         <div>
           <span className="eyebrow">Landlord-initiated workflow</span>
-          <h2>{draft ? `Agreement proposal ${draft.id}` : "Set up a new agreement proposal"}</h2>
+          <h2 id="proposal-builder-title">
+            {draft ? `Agreement proposal ${draft.id}` : "Set up a new agreement proposal"}
+          </h2>
         </div>
         {draft && <span className={`negotiation-status status-${draft.status}`}>Revision {draft.revision}</span>}
       </div>

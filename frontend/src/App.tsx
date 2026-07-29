@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useIdentityToken } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
 import { Layout, type AppNotification } from "./components/Layout";
@@ -38,10 +38,17 @@ import { agreementReference, proposalReference } from "./lib/displayIds";
 import { ARBITER_UI_ENABLED } from "./lib/featureFlags";
 import { ACCOUNT_AUTH_ENABLED } from "./lib/accountConfig";
 import { useOnchainActivityNotifications } from "./lib/useOnchainActivityNotifications";
+import { preferredScrollBehavior } from "./lib/accessibility";
 import "./App.css";
 
 type WorkspaceTab = "overview" | "proposals" | "agreements" | "record";
 type SavedProposal = { access: NegotiationAccess; record: NegotiationRecord };
+const WORKSPACE_TABS: WorkspaceTab[] = [
+  "overview",
+  "proposals",
+  "agreements",
+  "record",
+];
 
 function savedRecordKey(item: SavedProposal) {
   return `proposal:${item.access.proposalId}:${item.access.role}`;
@@ -128,6 +135,10 @@ function mergeAgreementIds(primary: bigint[], secondary: bigint[]) {
 function AppView({ identityToken = null }: { identityToken?: string | null }) {
   const [initialCapturedAccess] = useState(() => captureNegotiationAccessFromUrl());
   const [tab, setTab] = useState<WorkspaceTab>("overview");
+  const workspaceTabRefs = useRef<Partial<Record<WorkspaceTab, HTMLButtonElement | null>>>(
+    {},
+  );
+  const proposalOpenerRef = useRef<HTMLElement | null>(null);
   const { ids, addId, removeId } = useTrackedAgreements();
   const { address } = useAccount();
   const { discover, isScanning, scanError } = useDiscoverAgreements();
@@ -149,6 +160,9 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     key: string;
     message: string;
   } | null>(null);
+  const [recordArchiveAnnouncement, setRecordArchiveAnnouncement] = useState<
+    string | null
+  >(null);
   const [agreementPanels, setAgreementPanels] = useState<
     Record<string, AgreementPanel>
   >({});
@@ -207,9 +221,35 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     setTab("overview");
     window.requestAnimationFrame(() => {
       const targetId = workspaceRole ? "demo-workspace" : "role-workspace";
-      document.getElementById(targetId)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      document.getElementById(targetId)?.scrollIntoView({
+        behavior: preferredScrollBehavior(),
+        block: "start",
+      });
     });
   };
+
+  function handleWorkspaceTabKeyDown(
+    event: KeyboardEvent<HTMLButtonElement>,
+    currentTab: WorkspaceTab,
+  ) {
+    const currentIndex = WORKSPACE_TABS.indexOf(currentTab);
+    let nextIndex = currentIndex;
+    if (event.key === "ArrowRight") {
+      nextIndex = (currentIndex + 1) % WORKSPACE_TABS.length;
+    } else if (event.key === "ArrowLeft") {
+      nextIndex = (currentIndex - 1 + WORKSPACE_TABS.length) % WORKSPACE_TABS.length;
+    } else if (event.key === "Home") {
+      nextIndex = 0;
+    } else if (event.key === "End") {
+      nextIndex = WORKSPACE_TABS.length - 1;
+    } else {
+      return;
+    }
+    event.preventDefault();
+    const nextTab = WORKSPACE_TABS[nextIndex];
+    setTab(nextTab);
+    window.requestAnimationFrame(() => workspaceTabRefs.current[nextTab]?.focus());
+  }
 
   // A landlord's shared link (?id=X) should land directly on that agreement.
   useEffect(() => {
@@ -402,11 +442,16 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
       return;
     }
     if (item.access.role === "landlord") {
+      if (document.activeElement instanceof HTMLElement) {
+        proposalOpenerRef.current = document.activeElement;
+      }
       setActiveLandlordAccess(item.access);
       setIsProposalComposerOpen(true);
       setTab("proposals");
       window.requestAnimationFrame(() => {
-        document.getElementById("proposal-builder")?.scrollIntoView({ behavior: "smooth" });
+        const builder = document.getElementById("proposal-builder");
+        builder?.scrollIntoView({ behavior: preferredScrollBehavior() });
+        builder?.focus({ preventScroll: true });
       });
       return;
     }
@@ -418,7 +463,10 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     window.setTimeout(() => {
       const target =
         document.getElementById(targetId) || document.getElementById(fallbackId);
-      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+      target?.scrollIntoView({
+        behavior: preferredScrollBehavior(),
+        block: "start",
+      });
       target?.focus({ preventScroll: true });
     }, 80);
   }
@@ -514,6 +562,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     const key = savedRecordKey(item);
     setRecordArchivePendingKey(key);
     setRecordArchiveError(null);
+    setRecordArchiveAnnouncement(null);
     try {
       const result = await updateRecordArchivePreference(
         identityToken,
@@ -542,7 +591,31 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
       );
       if (archived) {
         setExpandedRecordKeys((current) => ({ ...current, [key]: false }));
+        if (tab === "record") {
+          setIsRecordArchiveOpen(true);
+        } else if (tab === "proposals") {
+          setIsProposalArchiveOpen(true);
+        }
       }
+      setRecordArchiveAnnouncement(
+        `${proposalReference(item.record.id)} ${archived ? "archived" : "restored"}.`,
+      );
+      window.requestAnimationFrame(() => {
+        const activePanel = document.getElementById(`workspace-panel-${tab}`);
+        const restoredCard = Array.from(
+          activePanel?.querySelectorAll<HTMLElement>("[data-record-key]") || [],
+        ).find((element) => element.dataset.recordKey === key);
+        const archiveSummary =
+          tab === "record"
+            ? document.getElementById("record-archive-summary")
+            : document.getElementById("proposal-archive-summary");
+        const focusTarget = archived ? archiveSummary : restoredCard;
+        focusTarget?.focus({ preventScroll: true });
+        focusTarget?.scrollIntoView({
+          behavior: preferredScrollBehavior(),
+          block: "nearest",
+        });
+      });
     } catch (error) {
       setRecordArchiveError({
         key,
@@ -660,9 +733,21 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             Connect your wallet to scan for finalized onchain agreements.
           </p>
         )}
-        {scanMessage && <p className="tx-success">{scanMessage}</p>}
-        {findError && <p className="tx-error">{findError}</p>}
-        {scanError && <p className="tx-error">{scanError}</p>}
+        {scanMessage && (
+          <p className="tx-success" role="status">
+            {scanMessage}
+          </p>
+        )}
+        {findError && (
+          <p className="tx-error" role="alert">
+            {findError}
+          </p>
+        )}
+        {scanError && (
+          <p className="tx-error" role="alert">
+            {scanError}
+          </p>
+        )}
       </section>
     );
   }
@@ -707,6 +792,8 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             archived ? " is-archived" : ""
           }`}
           key={`${item.access.proposalId}-${item.access.role}`}
+          data-record-key={savedRecordKey(item)}
+          tabIndex={-1}
         >
           <div className="proposal-builder-heading">
             <div>
@@ -761,7 +848,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             )}
           </div>
           {recordArchiveError?.key === savedRecordKey(item) && (
-            <p className="tx-error record-archive-error">
+            <p className="tx-error record-archive-error" role="alert">
               {recordArchiveError.message}
             </p>
           )}
@@ -879,6 +966,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           }
           key={`${item.access.proposalId}-${item.access.role}`}
           role="listitem"
+          data-record-key={key}
           tabIndex={-1}
         >
           <header className="record-workspace-header record-list-row">
@@ -937,7 +1025,9 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             </div>
           </header>
           {recordArchiveError?.key === key && (
-            <p className="tx-error record-archive-error">{recordArchiveError.message}</p>
+            <p className="tx-error record-archive-error" role="alert">
+              {recordArchiveError.message}
+            </p>
           )}
           {expanded && (
             <div className="record-workspace-body" id={contentId}>
@@ -1075,7 +1165,9 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             open={isRecordArchiveOpen}
             onToggle={(event) => setIsRecordArchiveOpen(event.currentTarget.open)}
           >
-            <summary>Archived records ({archivedRecords.length})</summary>
+            <summary id="record-archive-summary">
+              Archived records ({archivedRecords.length})
+            </summary>
             <p>
               Archiving only removes a record from your current list. It does not delete
               the agreement, its audit trail, or another participant’s access.
@@ -1235,6 +1327,9 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   return (
     <Layout notifications={notifications}>
       <PublicIntro onStart={startDemo} />
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {recordArchiveAnnouncement}
+      </p>
       {!inviteRole && workspaceRole && !isChangingRole && (
         <AccountCenter
           workspaceRole={roleLabel[workspaceRole]}
@@ -1312,16 +1407,27 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
         <nav
           className="tabs workspace-tabs"
           id="demo-workspace"
+          role="tablist"
           aria-label={`${roleLabel[workspaceRole]} workspace`}
         >
-          {(["overview", "proposals", "agreements", "record"] as WorkspaceTab[]).map(
-            (workspaceTab) => (
+          {WORKSPACE_TABS.map((workspaceTab) => (
               <button
                 key={workspaceTab}
+                ref={(element) => {
+                  workspaceTabRefs.current[workspaceTab] = element;
+                }}
+                type="button"
+                role="tab"
+                id={`workspace-tab-${workspaceTab}`}
                 className={tab === workspaceTab ? "tab active" : "tab"}
-                aria-current={tab === workspaceTab ? "page" : undefined}
+                aria-selected={tab === workspaceTab}
+                aria-controls={`workspace-panel-${workspaceTab}`}
+                tabIndex={tab === workspaceTab ? 0 : -1}
                 title={`${workspaceTabLabels[workspaceTab]} tab`}
                 onClick={() => setTab(workspaceTab)}
+                onKeyDown={(event) =>
+                  handleWorkspaceTabKeyDown(event, workspaceTab)
+                }
               >
                 <span className="tab-icon" aria-hidden="true">
                   {workspaceTabIcons[workspaceTab]}
@@ -1336,8 +1442,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                   </span>
                 )}
               </button>
-            ),
-          )}
+            ))}
           {inviteRole && (
             <span className="invitation-tab-note">
               {roleLabel[inviteRole]} invitation · role locked
@@ -1347,13 +1452,24 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
       )}
 
       {workspaceRole && (
-        <div hidden={tab !== "overview"}>{renderOverview()}</div>
+        <div
+          id="workspace-panel-overview"
+          role="tabpanel"
+          aria-labelledby="workspace-tab-overview"
+          tabIndex={0}
+          hidden={tab !== "overview"}
+        >
+          {renderOverview()}
+        </div>
       )}
 
       {workspaceRole && (
         <div
+          id="workspace-panel-proposals"
           className="workspace-panel"
-          aria-label={workspaceTabLabels.proposals}
+          role="tabpanel"
+          aria-labelledby="workspace-tab-proposals"
+          tabIndex={0}
           hidden={tab !== "proposals"}
         >
           {proposalAccess ? (
@@ -1400,7 +1516,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                       setIsProposalArchiveOpen(event.currentTarget.open)
                     }
                   >
-                    <summary>
+                    <summary id="proposal-archive-summary">
                       Archived proposals ({archivedAccountProposals.length})
                     </summary>
                     <p>
@@ -1412,23 +1528,40 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                     </div>
                   </details>
                 )}
-                {scanMessage && <p className="tx-success">{scanMessage}</p>}
-                {findError && <p className="tx-error">{findError}</p>}
-                {scanError && <p className="tx-error">{scanError}</p>}
+                {scanMessage && (
+                  <p className="tx-success" role="status">
+                    {scanMessage}
+                  </p>
+                )}
+                {findError && (
+                  <p className="tx-error" role="alert">
+                    {findError}
+                  </p>
+                )}
+                {scanError && (
+                  <p className="tx-error" role="alert">
+                    {scanError}
+                  </p>
+                )}
               </section>
               {workspaceRole === "landlord" && !inviteRole && (
                 <section className="proposal-composer-launcher">
                   {!isProposalComposerOpen ? (
                     <button
+                      id="start-proposal-button"
                       className="btn btn-primary"
                       type="button"
-                      onClick={() => {
+                      onClick={(event) => {
+                        proposalOpenerRef.current = event.currentTarget;
                         setActiveLandlordAccess(null);
                         setIsProposalComposerOpen(true);
                         window.requestAnimationFrame(() => {
-                          document
-                            .getElementById("proposal-builder")
-                            ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                          const builder = document.getElementById("proposal-builder");
+                          builder?.scrollIntoView({
+                            behavior: preferredScrollBehavior(),
+                            block: "start",
+                          });
+                          builder?.focus({ preventScroll: true });
                         });
                       }}
                     >
@@ -1446,8 +1579,16 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
                           className="btn btn-ghost small"
                           type="button"
                           onClick={() => {
+                            const opener = proposalOpenerRef.current;
                             setActiveLandlordAccess(null);
                             setIsProposalComposerOpen(false);
+                            window.requestAnimationFrame(() => {
+                              if (opener?.isConnected) {
+                                opener.focus();
+                              } else {
+                                document.getElementById("start-proposal-button")?.focus();
+                              }
+                            });
                           }}
                         >
                           Close proposal editor
@@ -1466,15 +1607,29 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
         </div>
       )}
 
-      {workspaceRole && tab === "agreements" && (
-        <div className="workspace-panel" aria-label={workspaceTabLabels.agreements}>
-          {renderAgreementWorkspace()}
+      {workspaceRole && (
+        <div
+          id="workspace-panel-agreements"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="workspace-tab-agreements"
+          tabIndex={0}
+          hidden={tab !== "agreements"}
+        >
+          {tab === "agreements" && renderAgreementWorkspace()}
         </div>
       )}
 
-      {workspaceRole && tab === "record" && (
-        <div className="workspace-panel" aria-label={workspaceTabLabels.record}>
-          {renderRecordWorkspace()}
+      {workspaceRole && (
+        <div
+          id="workspace-panel-record"
+          className="workspace-panel"
+          role="tabpanel"
+          aria-labelledby="workspace-tab-record"
+          tabIndex={0}
+          hidden={tab !== "record"}
+        >
+          {tab === "record" && renderRecordWorkspace()}
         </div>
       )}
 

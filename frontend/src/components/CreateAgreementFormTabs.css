@@ -82,8 +82,10 @@
   display: none !important;
 }
 
-.proposal-builder .proposal-step-panel:focus {
-  outline: none;
+.proposal-builder .proposal-step-panel:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
 }
 
 .proposal-step-heading {
