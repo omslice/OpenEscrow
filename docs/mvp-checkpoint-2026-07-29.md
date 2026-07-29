@@ -46,6 +46,9 @@ production readiness, or authorization to hold real rental deposits.
 - **Verified:** Private-evidence upload/download and notification-provider outages fail closed
   with retry guidance. Failed attempts create no phantom evidence or sent-delivery events, and
   automated recovery tests verify one successful retry remains idempotent.
+- **Verified:** Browser mutation routes reject requests marked cross-site by Fetch Metadata even
+  when an `Origin` header is absent; the session-containment rehearsal proves the rejected request
+  cannot revoke stored account sessions.
 
 ## Material unknowns
 

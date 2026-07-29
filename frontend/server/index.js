@@ -6552,7 +6552,11 @@ ${onchainEvidence ? `<h2>Onchain evidence receipts</h2><table><thead><tr><th>Tim
 
 function sameOriginPost(request) {
   const origin = request.headers.get("origin");
-  return !origin || origin === new URL(request.url).origin;
+  const fetchSite = request.headers.get("sec-fetch-site");
+  return (
+    (!origin || origin === new URL(request.url).origin) &&
+    fetchSite !== "cross-site"
+  );
 }
 
 function sameOriginGet(request) {

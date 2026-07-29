@@ -2575,7 +2575,7 @@ test("pilot rehearsal: a verified account can contain its record sessions withou
       }),
       { DB: db, PRIVY_APP_ID: appId },
     );
-  const revoke = (identityToken, origin) =>
+  const revoke = (identityToken, headers = {}) =>
     worker.fetch(
       new Request(
         "https://openescrow.example/api/profile/account-sessions/revoke",
@@ -2584,7 +2584,7 @@ test("pilot rehearsal: a verified account can contain its record sessions withou
           headers: {
             "content-type": "application/json",
             "privy-id-token": identityToken,
-            ...(origin ? { origin } : {}),
+            ...headers,
           },
         },
       ),
@@ -2605,11 +2605,14 @@ test("pilot rehearsal: a verified account can contain its record sessions withou
     assert.equal(secondLandlordDiscovery.accesses.length, 1);
     assert.equal(tenantDiscovery.accesses.length, 1);
 
-    const crossOrigin = await revoke(
-      landlordIdentityToken,
-      "https://attacker.example",
-    );
+    const crossOrigin = await revoke(landlordIdentityToken, {
+      origin: "https://attacker.example",
+    });
     assert.equal(crossOrigin.status, 403);
+    const crossSiteWithoutOrigin = await revoke(landlordIdentityToken, {
+      "sec-fetch-site": "cross-site",
+    });
+    assert.equal(crossSiteWithoutOrigin.status, 403);
     assert.equal(
       db.database
         .prepare(

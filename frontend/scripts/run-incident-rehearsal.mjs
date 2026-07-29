@@ -14,7 +14,12 @@ const expectedScenarios = [
   {
     id: "session-containment",
     name: "pilot rehearsal: a verified account can contain its record sessions without affecting other parties",
-    covers: ["session revocation", "other-party continuity", "invitation continuity"],
+    covers: [
+      "session revocation",
+      "cross-site write denial",
+      "other-party continuity",
+      "invitation continuity",
+    ],
   },
   {
     id: "privacy-inventory",
