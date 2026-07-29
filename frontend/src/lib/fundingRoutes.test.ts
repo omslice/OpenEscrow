@@ -4,6 +4,8 @@ import {
   createFundingIntent,
   createFundingPlan,
   getFundingRouteServices,
+  reconcileFundingCheckoutError,
+  reconcileFundingCheckoutResult,
   validateFiatOnrampConfig,
   listFundingProviders,
 } from "../../shared/funding-routes.js";
@@ -39,6 +41,36 @@ test("fiat config accepts only Base USDC and separately gates production", () =>
     }).reason || "",
     /production-approval/i,
   );
+});
+
+test("fiat config fails closed when disabled, misrouted, or given an unknown environment", () => {
+  assert.equal(
+    validateFiatOnrampConfig({
+      enabled: false,
+      environment: "production",
+      productionApproved: true,
+      asset: "usdc",
+      chain: "eip155:8453",
+    }).enabled,
+    false,
+  );
+  assert.match(
+    validateFiatOnrampConfig({
+      enabled: true,
+      environment: "sandbox",
+      asset: "usdc",
+      chain: "eip155:84532",
+    }).reason || "",
+    /Base mainnet/i,
+  );
+  const unknownEnvironment = validateFiatOnrampConfig({
+    enabled: true,
+    environment: "anything-else",
+    asset: "usdc",
+    chain: "eip155:8453",
+  });
+  assert.equal(unknownEnvironment.enabled, true);
+  assert.equal(unknownEnvironment.environment, "sandbox");
 });
 
 test("provider and conversion aliases resolve through the catalog", () => {
@@ -188,4 +220,68 @@ test("funding intents reject invalid wallets and non-positive amounts", () => {
       }),
     /greater than zero/i,
   );
+});
+
+test("funding intents cannot bypass the production approval gate", () => {
+  assert.throws(
+    () =>
+      createFundingIntent({
+        assetId: "usdc",
+        walletAddress: wallet,
+        amountMicros: 1_000_000n,
+        environment: "production",
+        onrampEnabled: true,
+        productionApproved: false,
+      }),
+    /production.*release gate/i,
+  );
+});
+
+test("checkout reconciliation refreshes only after production confirmation", () => {
+  const productionConfirmed = reconcileFundingCheckoutResult(
+    { status: "confirmed" },
+    "production",
+  );
+  assert.equal(productionConfirmed.state, "confirmed");
+  assert.equal(productionConfirmed.shouldRefreshBalance, true);
+
+  const productionSubmitted = reconcileFundingCheckoutResult(
+    { status: "submitted" },
+    "production",
+  );
+  assert.equal(productionSubmitted.state, "submitted");
+  assert.equal(productionSubmitted.shouldRefreshBalance, false);
+  assert.match(productionSubmitted.message, /will not treat.*funded/i);
+
+  const sandboxConfirmed = reconcileFundingCheckoutResult(
+    { status: "confirmed" },
+    "sandbox",
+  );
+  assert.equal(sandboxConfirmed.shouldRefreshBalance, false);
+  assert.match(sandboxConfirmed.message, /No real funds moved/i);
+});
+
+test("checkout reconciliation fails closed for cancellation, failure, and unknown results", () => {
+  const cancelled = reconcileFundingCheckoutResult(
+    { status: "cancelled" },
+    "production",
+  );
+  assert.equal(cancelled.state, "cancelled");
+  assert.equal(cancelled.severity, "info");
+  assert.equal(cancelled.shouldRefreshBalance, false);
+
+  for (const status of ["failed", "rejected", "unexpected"]) {
+    const outcome = reconcileFundingCheckoutResult({ status }, "production");
+    assert.equal(outcome.severity, "error");
+    assert.equal(outcome.shouldRefreshBalance, false);
+    assert.match(outcome.message, /No agreement funding was recorded/i);
+  }
+
+  const malformed = reconcileFundingCheckoutResult(null, "production");
+  assert.equal(malformed.state, "unknown");
+  assert.equal(malformed.shouldRefreshBalance, false);
+
+  const rejected = reconcileFundingCheckoutError();
+  assert.equal(rejected.state, "failed");
+  assert.equal(rejected.shouldRefreshBalance, false);
 });

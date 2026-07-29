@@ -8,7 +8,10 @@ import type { DepositAssetConfig } from "../../shared/deposit-assets.js";
 import {
   createFundingIntent,
   createFundingPlan,
+  reconcileFundingCheckoutError,
+  reconcileFundingCheckoutResult,
 } from "../../shared/funding-routes.js";
+import type { FundingCheckoutOutcome } from "../../shared/funding-routes.js";
 
 function microsToDecimal(value: bigint) {
   const whole = value / 1_000_000n;
@@ -31,7 +34,7 @@ export function FiatFundingOption({
   onComplete?: () => void | Promise<void>;
 }) {
   const { fund } = useFiatOnramp();
-  const [status, setStatus] = useState<string | null>(null);
+  const [status, setStatus] = useState<FundingCheckoutOutcome | null>(null);
   const [isOpening, setIsOpening] = useState(false);
   const fundingPlan = createFundingPlan(depositAsset?.id, {
     onrampEnabled: FIAT_ONRAMP_READINESS.enabled,
@@ -75,7 +78,13 @@ export function FiatFundingOption({
         disabled={isOpening}
         onClick={async () => {
           setIsOpening(true);
-          setStatus("Opening secure checkout...");
+          setStatus({
+            state: "submitted",
+            providerStatus: "opening",
+            severity: "info",
+            shouldRefreshBalance: false,
+            message: "Opening secure checkout...",
+          });
           try {
             const intent = createFundingIntent({
               assetId: depositAsset?.id || "usdc",
@@ -94,22 +103,16 @@ export function FiatFundingOption({
               environment: intent.environment,
               defaultAmount: microsToDecimal(amount),
             });
-            setStatus(
-              isSandbox
-                ? result.status === "confirmed"
-                  ? "Sandbox checkout completed. No real funds moved; claim free test tokens below to fund this agreement."
-                  : "Sandbox checkout submitted. No real funds will move."
-                : result.status === "confirmed"
-                  ? "Funds received. Refreshing your available balance..."
-                  : "Payment submitted. Your balance will update after provider confirmation.",
+            const outcome = reconcileFundingCheckoutResult(
+              result,
+              FIAT_ONRAMP_CONFIG.environment,
             );
-            await onComplete?.();
-          } catch (error) {
-            setStatus(
-              error instanceof Error
-                ? error.message.split("\n")[0]
-                : "The payment checkout did not complete.",
-            );
+            setStatus(outcome);
+            if (outcome.shouldRefreshBalance) {
+              await onComplete?.();
+            }
+          } catch {
+            setStatus(reconcileFundingCheckoutError());
           } finally {
             setIsOpening(false);
           }
@@ -130,7 +133,14 @@ export function FiatFundingOption({
         depositAsset={depositAsset}
         fundingPlan={fundingPlan}
       />
-      {status && <p className={/did not|error/i.test(status) ? "tx-error" : "field-help"}>{status}</p>}
+      {status && (
+        <p
+          className={status.severity === "error" ? "tx-error" : "field-help"}
+          role={status.severity === "error" ? "alert" : "status"}
+        >
+          {status.message}
+        </p>
+      )}
     </div>
   );
 }

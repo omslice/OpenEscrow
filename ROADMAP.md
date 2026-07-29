@@ -54,6 +54,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] USDC remains the default principal and settlement asset
 - [x] Privy-brokered Base USDC onramp intent with provider-managed regional selection
 - [x] Exact wallet, asset, chain, amount, sandbox, and production release gates
+- [x] Fail-closed checkout result handling for submitted, confirmed, cancelled, failed, and
+  malformed provider outcomes
 - [x] Direct Aave supply/withdrawal route modeled without a DEX swap
 - [x] FRNT and USDY routes fail closed pending official availability and eligibility
 - [x] Enable and validate provider sandbox checkout in the Privy dashboard

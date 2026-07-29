@@ -2,6 +2,12 @@ import type { DepositAssetId } from "./deposit-assets.js";
 
 export type FundingEnvironment = "sandbox" | "production";
 export type FundingCheckoutMode = "sandbox_preview" | "production";
+export type FundingCheckoutState =
+  | "submitted"
+  | "confirmed"
+  | "cancelled"
+  | "failed"
+  | "unknown";
 
 export interface FundingProviderCatalogEntry {
   id: string;
@@ -113,3 +119,20 @@ export function createFundingIntent(input: {
   amountMicros: bigint;
   checkoutMode: FundingCheckoutMode;
 }>;
+
+export interface FundingCheckoutOutcome {
+  state: FundingCheckoutState;
+  providerStatus: string;
+  severity: "info" | "error";
+  shouldRefreshBalance: boolean;
+  message: string;
+}
+
+export function reconcileFundingCheckoutResult(
+  result: unknown,
+  environment?: unknown,
+): Readonly<FundingCheckoutOutcome>;
+
+export function reconcileFundingCheckoutError(
+  error?: unknown,
+): Readonly<FundingCheckoutOutcome>;

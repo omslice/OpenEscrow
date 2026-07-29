@@ -359,3 +359,82 @@ export function createFundingIntent({
     conversionKind: services.conversion.id,
   });
 }
+
+export function reconcileFundingCheckoutResult(
+  result,
+  environment = "sandbox",
+) {
+  const normalizedEnvironment = normalizeEnvironment(environment);
+  const providerStatus =
+    result && typeof result === "object" && typeof result.status === "string"
+      ? result.status.trim().toLowerCase()
+      : "unknown";
+
+  if (providerStatus === "confirmed") {
+    return Object.freeze({
+      state: "confirmed",
+      providerStatus,
+      severity: "info",
+      shouldRefreshBalance: normalizedEnvironment === "production",
+      message:
+        normalizedEnvironment === "sandbox"
+          ? "Sandbox checkout completed. No real funds moved; claim free test tokens below to fund this agreement."
+          : "Provider confirmation received. Refreshing your available balance...",
+    });
+  }
+
+  if (providerStatus === "submitted") {
+    return Object.freeze({
+      state: "submitted",
+      providerStatus,
+      severity: "info",
+      shouldRefreshBalance: false,
+      message:
+        normalizedEnvironment === "sandbox"
+          ? "Sandbox checkout submitted. No real funds moved and this agreement is not funded."
+          : "Payment submitted to the provider. OpenEscrow will not treat the agreement as funded until the wallet balance is confirmed.",
+    });
+  }
+
+  if (providerStatus === "cancelled" || providerStatus === "canceled") {
+    return Object.freeze({
+      state: "cancelled",
+      providerStatus,
+      severity: "info",
+      shouldRefreshBalance: false,
+      message:
+        "Checkout was closed before confirmation. No agreement funding was recorded.",
+    });
+  }
+
+  if (providerStatus === "failed" || providerStatus === "rejected") {
+    return Object.freeze({
+      state: "failed",
+      providerStatus,
+      severity: "error",
+      shouldRefreshBalance: false,
+      message:
+        "The provider did not confirm this checkout. No agreement funding was recorded; you can try again.",
+    });
+  }
+
+  return Object.freeze({
+    state: "unknown",
+    providerStatus,
+    severity: "error",
+    shouldRefreshBalance: false,
+    message:
+      "OpenEscrow could not verify the checkout result. No agreement funding was recorded; refresh your wallet before trying again.",
+  });
+}
+
+export function reconcileFundingCheckoutError() {
+  return Object.freeze({
+    state: "failed",
+    providerStatus: "rejected",
+    severity: "error",
+    shouldRefreshBalance: false,
+    message:
+      "Checkout closed or failed before confirmation. No agreement funding was recorded; you can try again.",
+  });
+}
