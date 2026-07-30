@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  closeModalDialog,
   copyTextToClipboard,
   downloadTextFile,
+  openExternalWindow,
+  showModalDialog,
   type BrowserDownloadAnchor,
   type BrowserDownloadEnvironment,
 } from "./browserActions.ts";
@@ -119,4 +122,106 @@ test("blocked clipboard action returns consistent retry guidance", async () => {
     }),
     /could not copy the text/,
   );
+});
+
+test("external window opens only when the browser returns a real popup", () => {
+  const opened: string[] = [];
+  const popup = {
+    opener: {},
+    location: {
+      replace(url: string) {
+        opened.push(`replace:${url}`);
+      },
+    },
+  };
+  openExternalWindow("https://mail.example/compose", {
+    open(url, target, features) {
+      opened.push(url, target, features);
+      return popup;
+    },
+  });
+
+  assert.deepEqual(opened, [
+    "",
+    "_blank",
+    "",
+    "replace:https://mail.example/compose",
+  ]);
+  assert.equal(popup.opener, null);
+});
+
+test("blocked external window returns a copy-option fallback", () => {
+  assert.throws(
+    () =>
+      openExternalWindow("https://mail.example/compose", {
+        open() {
+          return null;
+        },
+      }),
+    /could not open the new window.*copy option/,
+  );
+});
+
+test("failed external navigation closes its temporary popup", () => {
+  let closed = false;
+  assert.throws(
+    () =>
+      openExternalWindow("https://mail.example/compose", {
+        open() {
+          return {
+            opener: {},
+            location: {
+              replace() {
+                throw new Error("navigation blocked");
+              },
+            },
+            close() {
+              closed = true;
+            },
+          };
+        },
+      }),
+    /could not open the new window/,
+  );
+  assert.equal(closed, true);
+});
+
+test("modal helpers tolerate missing and rejected browser dialog capabilities", () => {
+  assert.equal(showModalDialog(null), false);
+  assert.equal(
+    showModalDialog({
+      open: false,
+      showModal() {
+        throw new Error("dialog blocked");
+      },
+    }),
+    false,
+  );
+  assert.equal(
+    closeModalDialog({
+      open: true,
+      close() {
+        throw new Error("dialog blocked");
+      },
+    }),
+    false,
+  );
+});
+
+test("modal helpers report successful browser-managed open and close states", () => {
+  const state = { open: false };
+  const dialog = {
+    get open() {
+      return state.open;
+    },
+    showModal() {
+      state.open = true;
+    },
+    close() {
+      state.open = false;
+    },
+  };
+
+  assert.equal(showModalDialog(dialog), true);
+  assert.equal(closeModalDialog(dialog), true);
 });

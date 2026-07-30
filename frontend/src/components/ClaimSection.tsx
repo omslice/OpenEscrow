@@ -4,7 +4,10 @@ import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
 import { agreementReference } from "../lib/displayIds";
 import { formatUSDC, parseUSDC } from "../lib/format";
 import { CALIFORNIA_POLICY } from "../lib/jurisdictions";
-import { copyTextToClipboard } from "../lib/browserActions";
+import {
+  copyTextToClipboard,
+  openExternalWindow,
+} from "../lib/browserActions";
 import {
   buildNegotiationInviteUrl,
   loadNegotiation,
@@ -520,6 +523,18 @@ export function ClaimSection({
       );
     }
   }
+  function openClaimNotice() {
+    if (!notice) return;
+    setNoticeStatus(null);
+    try {
+      openExternalWindow(notice.gmailUrl);
+      recordNotice("gmail");
+    } catch (error) {
+      setNoticeStatus(
+        error instanceof Error ? error.message : "The claim notice could not be opened.",
+      );
+    }
+  }
   const showNotice = agreement.phase === Phase.ClaimOpen || claimRecorded;
   const recordRecovery = pendingRecord && recordError && (
     <div className="receipt-recovery">
@@ -613,10 +628,7 @@ export function ClaimSection({
               <button
                 className="btn btn-secondary"
                 type="button"
-                onClick={() => {
-                  window.open(notice.gmailUrl, "_blank", "noopener,noreferrer");
-                  recordNotice("gmail");
-                }}
+                onClick={openClaimNotice}
               >
                 Email tenant(s)
               </button>
@@ -714,10 +726,7 @@ export function ClaimSection({
               <button
                 className="btn btn-secondary"
                 type="button"
-                onClick={() => {
-                  window.open(notice.gmailUrl, "_blank", "noopener,noreferrer");
-                  recordNotice("gmail");
-                }}
+                onClick={openClaimNotice}
               >
                 Email tenant(s)
               </button>

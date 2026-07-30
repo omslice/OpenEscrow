@@ -1,34 +1,55 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import {
+  closeModalDialog,
+  showModalDialog,
+} from "../lib/browserActions";
 import { replaceRecoveryUrl } from "../lib/browserRecovery";
 
 export function PublicIntro({ onStart }: { onStart: () => void }) {
   const yieldDialogRef = useRef<HTMLDialogElement>(null);
   const yieldSummaryRef = useRef<HTMLElement>(null);
   const shouldRestoreYieldFocusRef = useRef(false);
+  const [yieldDialogError, setYieldDialogError] = useState<string | null>(null);
   const yieldHash = "yield-stablecoins";
 
   function ensureYieldHashOpened(shouldOpen: boolean) {
     const baseHref = `${window.location.pathname}${window.location.search}`;
     if (shouldOpen) {
+      if (!showModalDialog(yieldDialogRef.current)) {
+        if (window.location.hash === `#${yieldHash}`) {
+          replaceRecoveryUrl(baseHref, {});
+        }
+        return false;
+      }
       if (window.location.hash !== `#${yieldHash}`) {
         replaceRecoveryUrl(`${baseHref}#${yieldHash}`, {});
       }
-      if (!yieldDialogRef.current?.open) {
-        yieldDialogRef.current?.showModal();
-      }
-      return;
+      setYieldDialogError(null);
+      return true;
     }
     if (window.location.hash === `#${yieldHash}`) {
       replaceRecoveryUrl(baseHref, {});
     }
-    if (yieldDialogRef.current?.open) {
-      yieldDialogRef.current.close();
+    if (!closeModalDialog(yieldDialogRef.current)) {
+      setYieldDialogError(
+        "This browser could not close the explanation. Press Escape or reload the page.",
+      );
+      return false;
     }
+    setYieldDialogError(null);
+    return true;
   }
 
   function openYieldExplainer() {
     shouldRestoreYieldFocusRef.current = true;
-    ensureYieldHashOpened(true);
+    const opened = ensureYieldHashOpened(true);
+    if (!opened) {
+      shouldRestoreYieldFocusRef.current = false;
+      setYieldDialogError(
+        "This browser could not open the explanation. Update the browser and try again.",
+      );
+    }
+    return opened;
   }
 
   function closeYieldExplainer() {
@@ -46,7 +67,12 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
 
   useEffect(() => {
     const applyHashState = () => {
-      ensureYieldHashOpened(window.location.hash === `#${yieldHash}`);
+      const shouldOpen = window.location.hash === `#${yieldHash}`;
+      if (!ensureYieldHashOpened(shouldOpen) && shouldOpen) {
+        setYieldDialogError(
+          "This browser could not open the explanation. Update the browser and try again.",
+        );
+      }
     };
     applyHashState();
     window.addEventListener("hashchange", applyHashState);
@@ -96,8 +122,9 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
                     className="yield-tooltip-link"
                     onClick={(event) => {
                       event.preventDefault();
-                      event.currentTarget.closest("details")?.removeAttribute("open");
-                      openYieldExplainer();
+                      if (openYieldExplainer()) {
+                        event.currentTarget.closest("details")?.removeAttribute("open");
+                      }
                     }}
                   >
                     Learn more
@@ -124,6 +151,11 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
             </p>
           </li>
         </ol>
+        {yieldDialogError && (
+          <p className="tx-error" role="alert" aria-live="assertive">
+            {yieldDialogError}
+          </p>
+        )}
       </div>
 
       <dialog

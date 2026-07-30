@@ -3,7 +3,10 @@ import { useAccount, useReadContract } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
 import { agreementReference } from "../lib/displayIds";
 import { formatUSDC, parseUSDC } from "../lib/format";
-import { copyTextToClipboard } from "../lib/browserActions";
+import {
+  copyTextToClipboard,
+  openExternalWindow,
+} from "../lib/browserActions";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
 import {
@@ -252,6 +255,18 @@ export function ResponseSection({
     }
   }
 
+  function openLandlordEmail(url: string) {
+    setNoticeStatus(null);
+    try {
+      openExternalWindow(url);
+      recordNotice("gmail");
+    } catch (error) {
+      setNoticeStatus(
+        error instanceof Error ? error.message : "The landlord email could not be opened.",
+      );
+    }
+  }
+
   if (
     !isTenant ||
     (agreement.phase !== Phase.ClaimOpen && !tenantResponded && !responseForNotice)
@@ -432,10 +447,7 @@ export function ResponseSection({
             <button
               className="btn btn-secondary"
               type="button"
-              onClick={() => {
-                window.open(email.gmailUrl, "_blank", "noopener,noreferrer");
-                recordNotice("gmail");
-              }}
+              onClick={() => openLandlordEmail(email.gmailUrl)}
             >
               Email decision to landlord
             </button>

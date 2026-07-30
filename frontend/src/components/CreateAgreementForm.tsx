@@ -44,7 +44,10 @@ import {
   readRecoveryJson,
   writeRecoveryJson,
 } from "../lib/browserRecovery";
-import { copyTextToClipboard } from "../lib/browserActions";
+import {
+  copyTextToClipboard,
+  openExternalWindow,
+} from "../lib/browserActions";
 import { preferredScrollBehavior } from "../lib/accessibility";
 import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
 import { useTrackedAgreements } from "../lib/useTrackedAgreements";
@@ -1364,8 +1367,15 @@ function AgreementForm({
   function openTenantInvite(tenantId: string) {
     const invitation = tenantInvite(tenantId);
     if (!invitation) return;
-    window.open(invitation.gmailUrl, "_blank", "noopener,noreferrer");
-    recordInvitation("tenant", "gmail", tenantId);
+    setFormError(null);
+    try {
+      openExternalWindow(invitation.gmailUrl);
+      recordInvitation("tenant", "gmail", tenantId);
+    } catch (cause) {
+      setFormError(
+        cause instanceof Error ? cause.message : "The tenant invitation could not be opened.",
+      );
+    }
   }
 
   async function copyArbiterInvite() {
@@ -1386,8 +1396,15 @@ function AgreementForm({
   function openArbiterInvite() {
     const invitation = arbiterInvite();
     if (!invitation) return;
-    window.open(invitation.gmailUrl, "_blank", "noopener,noreferrer");
-    recordInvitation("arbiter", "gmail");
+    setFormError(null);
+    try {
+      openExternalWindow(invitation.gmailUrl);
+      recordInvitation("arbiter", "gmail");
+    } catch (cause) {
+      setFormError(
+        cause instanceof Error ? cause.message : "The arbiter invitation could not be opened.",
+      );
+    }
   }
 
   async function finalizeOnchain() {

@@ -20,6 +20,24 @@ export interface BrowserClipboardEnvironment {
   legacyCopy?: (text: string) => boolean;
 }
 
+export interface BrowserPopupTarget {
+  opener: unknown;
+  location: {
+    replace(url: string): void;
+  };
+  close?: () => void;
+}
+
+export interface BrowserPopupEnvironment {
+  open(url: string, target: string, features: string): BrowserPopupTarget | null;
+}
+
+export interface BrowserModalDialog {
+  readonly open: boolean;
+  showModal?: () => void;
+  close?: () => void;
+}
+
 function defaultDownloadEnvironment(): BrowserDownloadEnvironment | null {
   if (
     typeof document === "undefined" ||
@@ -160,4 +178,51 @@ export async function copyTextToClipboard(
   throw new Error(
     "This browser could not copy the text. Check its clipboard permission and try again.",
   );
+}
+
+export function openExternalWindow(
+  url: string,
+  environment: BrowserPopupEnvironment | null =
+    typeof window === "undefined" ? null : window,
+) {
+  let opened: BrowserPopupTarget | null = null;
+  try {
+    opened = environment?.open("", "_blank", "") ?? null;
+    if (!opened) throw new Error("popup blocked");
+    opened.opener = null;
+    opened.location.replace(url);
+    return;
+  } catch {
+    try {
+      opened?.close?.();
+    } catch {
+      // A browser-owned popup that cannot be closed is still treated as failed.
+    }
+  }
+  throw new Error(
+    "This browser could not open the new window. Allow popups and try again, or use the copy option.",
+  );
+}
+
+export function showModalDialog(dialog: BrowserModalDialog | null) {
+  if (!dialog) return false;
+  if (dialog.open) return true;
+  if (typeof dialog.showModal !== "function") return false;
+  try {
+    dialog.showModal();
+    return dialog.open;
+  } catch {
+    return false;
+  }
+}
+
+export function closeModalDialog(dialog: BrowserModalDialog | null) {
+  if (!dialog || !dialog.open) return true;
+  if (typeof dialog.close !== "function") return false;
+  try {
+    dialog.close();
+    return !dialog.open;
+  } catch {
+    return false;
+  }
 }
