@@ -51,7 +51,6 @@ import {
 } from "../lib/browserActions";
 import { preferredScrollBehavior } from "../lib/accessibility";
 import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
-import { useTrackedAgreements } from "../lib/useTrackedAgreements";
 import type { InviteRole } from "../lib/inviteContext";
 import {
   buildNegotiationInviteUrl,
@@ -308,14 +307,15 @@ function AgreementForm({
   landlordEmail,
   initialAccess,
   focusOnMount,
+  onTrackAgreement,
 }: {
   landlordName: string;
   landlordEmail: string;
   initialAccess?: NegotiationAccess | null;
   focusOnMount?: boolean;
+  onTrackAgreement: (id: bigint) => void;
 }) {
   const { address, isConnected } = useAccount();
-  const { addId } = useTrackedAgreements();
   const builderRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -557,7 +557,7 @@ function AgreementForm({
           const id = (decoded.args as unknown as { id: bigint }).id;
           setCreatedId(id);
           rememberJurisdiction(id, submittedJurisdiction.current);
-          addId(id);
+          onTrackAgreement(id);
           if (landlordAccess) {
             const pending = {
               agreementId: id.toString(),
@@ -577,7 +577,7 @@ function AgreementForm({
     }
   }, [
     receipt,
-    addId,
+    onTrackAgreement,
     landlordAccess,
     pendingFinalizationKey,
     saveFinalizationRecord,
@@ -3136,9 +3136,11 @@ function AgreementForm({
 function PrivyCreateAgreementForm({
   initialAccess,
   focusOnMount,
+  onTrackAgreement,
 }: {
   initialAccess?: NegotiationAccess | null;
   focusOnMount?: boolean;
+  onTrackAgreement: (id: bigint) => void;
 }) {
   const { user } = usePrivy();
   const landlordName = user?.google?.name ?? "";
@@ -3149,6 +3151,7 @@ function PrivyCreateAgreementForm({
       landlordEmail={landlordEmail}
       initialAccess={initialAccess}
       focusOnMount={focusOnMount}
+      onTrackAgreement={onTrackAgreement}
     />
   );
 }
@@ -3156,18 +3159,25 @@ function PrivyCreateAgreementForm({
 export function CreateAgreementForm({
   initialAccess,
   focusOnMount,
+  onTrackAgreement,
 }: {
   initialAccess?: NegotiationAccess | null;
   focusOnMount?: boolean;
+  onTrackAgreement: (id: bigint) => void;
 }) {
   return ACCOUNT_AUTH_ENABLED ? (
-    <PrivyCreateAgreementForm initialAccess={initialAccess} focusOnMount={focusOnMount} />
+    <PrivyCreateAgreementForm
+      initialAccess={initialAccess}
+      focusOnMount={focusOnMount}
+      onTrackAgreement={onTrackAgreement}
+    />
   ) : (
     <AgreementForm
       landlordName=""
       landlordEmail=""
       initialAccess={initialAccess}
       focusOnMount={focusOnMount}
+      onTrackAgreement={onTrackAgreement}
     />
   );
 }

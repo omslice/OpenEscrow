@@ -1754,6 +1754,7 @@ function AppView({
                           key={activeLandlordAccess?.proposalId || "new-landlord-proposal"}
                           initialAccess={activeLandlordAccess}
                           focusOnMount
+                          onTrackAgreement={addId}
                         />
                       </DeferredLoadBoundary>
                     </>

@@ -10,6 +10,10 @@ const trackedAgreementsSource = readFileSync(
   new URL("./useTrackedAgreements.ts", import.meta.url),
   "utf8",
 );
+const createAgreementFormSource = readFileSync(
+  new URL("../components/CreateAgreementForm.tsx", import.meta.url),
+  "utf8",
+);
 
 test("authenticated workspace state is remounted and scoped by stable account identity", () => {
   assert.match(appSource, /const accountIdentity = user\?\.id \?\? null;/);
@@ -64,5 +68,21 @@ test("tracked agreement ids never render from a previous account scope", () => {
   assert.match(
     trackedAgreementsSource,
     /const prev = current\.storageKey === storageKey \? current\.ids : \[\];/,
+  );
+});
+
+test("newly finalized agreement ids are persisted by the account-scoped workspace owner", () => {
+  assert.doesNotMatch(createAgreementFormSource, /useTrackedAgreements/);
+  assert.match(
+    createAgreementFormSource,
+    /onTrackAgreement: \(id: bigint\) => void;/,
+  );
+  assert.match(
+    createAgreementFormSource,
+    /rememberJurisdiction\(id, submittedJurisdiction\.current\);\s*onTrackAgreement\(id\);/,
+  );
+  assert.match(
+    appSource,
+    /<CreateAgreementForm[\s\S]*?onTrackAgreement=\{addId\}[\s\S]*?\/>/,
   );
 });
