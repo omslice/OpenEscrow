@@ -622,6 +622,7 @@ function SponsoredTenantFundAction({
             walletAddress={address}
             amount={tokenBalanceNeeded}
             depositAsset={depositAsset}
+            negotiationAccess={negotiationAccess}
             onComplete={() => void refetchBalance()}
           />
           <div className="testnet-funding-fallback">

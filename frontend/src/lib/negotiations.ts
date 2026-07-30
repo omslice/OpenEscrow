@@ -13,6 +13,10 @@ import type {
   DepositAssetId,
   DepositAssetSnapshot,
 } from "../../shared/deposit-assets.js";
+import type {
+  FundingCheckoutLifecycle,
+  FundingIntent,
+} from "../../shared/funding-routes.js";
 
 export type NegotiationRole = "landlord" | InviteRole;
 export type NegotiationStatus =
@@ -241,6 +245,30 @@ export interface CreatedNegotiation {
   };
 }
 
+type SerializableFundingIntent = Omit<FundingIntent, "amountMicros"> & {
+  amountMicros: string;
+};
+
+export interface DurableFundingCheckoutResult {
+  checkout: FundingCheckoutLifecycle;
+  created: boolean;
+  durable: true;
+  sandboxOnly: true;
+}
+
+export interface DurableFundingCheckoutRecovery {
+  checkout: FundingCheckoutLifecycle | null;
+  durable: true;
+  sandboxOnly: true;
+}
+
+export interface DurableFundingCheckoutEventResult {
+  checkout: FundingCheckoutLifecycle;
+  duplicate: boolean;
+  durable: true;
+  sandboxOnly: true;
+}
+
 const LATEST_LANDLORD_ACCESS = "openescrow.latestLandlordProposal";
 const LATEST_LANDLORD_BUNDLE = "openescrow.latestLandlordProposalBundle";
 const ACCESS_INDEX = "openescrow.negotiationAccessIndex";
@@ -256,6 +284,13 @@ interface NegotiationAccessReference {
 
 function accessKey(proposalId: string, role: NegotiationRole) {
   return `openescrow.negotiationAccess.${proposalId}.${role}`;
+}
+
+function serializeFundingIntent(intent: FundingIntent): SerializableFundingIntent {
+  return {
+    ...intent,
+    amountMicros: intent.amountMicros.toString(),
+  };
 }
 
 function legacyAccessKey(proposalId: string) {
@@ -877,6 +912,61 @@ export function sendNotificationTest(identityToken: string) {
     method: "POST",
     headers: { "privy-id-token": identityToken },
   });
+}
+
+export function createDurableFundingCheckout(
+  access: NegotiationAccess,
+  intent: FundingIntent,
+  attemptId: string,
+) {
+  return request<DurableFundingCheckoutResult>(
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}/funding-checkouts`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        token: access.token,
+        attemptId,
+        intent: serializeFundingIntent(intent),
+      }),
+    },
+  );
+}
+
+export function recoverDurableFundingCheckout(
+  access: NegotiationAccess,
+  intent: FundingIntent,
+) {
+  return request<DurableFundingCheckoutRecovery>(
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}/funding-checkouts/recover`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        token: access.token,
+        intent: serializeFundingIntent(intent),
+      }),
+    },
+  );
+}
+
+export function appendDurableFundingCheckoutEvent(
+  access: NegotiationAccess,
+  attemptId: string,
+  event: {
+    eventId: string;
+    status: unknown;
+    providerStatus?: unknown;
+  },
+) {
+  return request<DurableFundingCheckoutEventResult>(
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}/funding-checkouts/${encodeURIComponent(attemptId)}/events`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        token: access.token,
+        ...event,
+      }),
+    },
+  );
 }
 
 export type NegotiationAction =

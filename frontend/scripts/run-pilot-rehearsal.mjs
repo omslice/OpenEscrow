@@ -76,6 +76,17 @@ const expectedScenarios = [
       "cross-origin denial",
     ],
   },
+  {
+    id: "sandbox-funding-recovery",
+    name: "pilot rehearsal: sandbox checkout recovery is durable and separate from agreement funding",
+    covers: [
+      "sandbox-only funding",
+      "durable recovery",
+      "idempotent provider events",
+      "refund retry",
+      "agreement-funding separation",
+    ],
+  },
 ];
 
 runServerRehearsal({

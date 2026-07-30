@@ -97,14 +97,7 @@ export function createFundingPlan(
   },
 ): FundingPlan;
 
-export function createFundingIntent(input: {
-  assetId: DepositAssetId;
-  walletAddress: string;
-  amountMicros: bigint;
-  environment?: FundingEnvironment;
-  onrampEnabled?: boolean;
-  productionApproved?: boolean;
-}): Readonly<{
+export interface FundingIntent {
   schema: "openescrow.funding-intent.v1";
   routeCatalogVersion: string;
   assetId: string;
@@ -122,7 +115,16 @@ export function createFundingIntent(input: {
   }>;
   amountMicros: bigint;
   checkoutMode: FundingCheckoutMode;
-}>;
+}
+
+export function createFundingIntent(input: {
+  assetId: DepositAssetId;
+  walletAddress: string;
+  amountMicros: bigint;
+  environment?: FundingEnvironment;
+  onrampEnabled?: boolean;
+  productionApproved?: boolean;
+}): Readonly<FundingIntent>;
 
 export interface FundingCheckoutOutcome {
   state: FundingCheckoutState;

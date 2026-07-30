@@ -1,4 +1,4 @@
-# Testnet MVP checkpoint — 2026-07-29
+# Testnet MVP checkpoint — updated 2026-07-30
 
 This checkpoint records repository and delivery evidence without claiming legal approval,
 production readiness, or authorization to hold real rental deposits.
@@ -7,16 +7,17 @@ production readiness, or authorization to hold real rental deposits.
 
 - **Verified:** A locally packaged Sites candidate includes the latest pilot rehearsal, security,
   accessibility, compliance-regression, funding-failure, and hidden-tab performance work.
-- **Verified:** Twelve credential-free rehearsals pass: five lifecycle scenarios covering
+- **Verified:** Thirteen credential-free rehearsals pass: five lifecycle scenarios covering
   archive/restore, record proof, disputed claim, accepted claim, and no-claim refund, plus three
   private-evidence and notification outage/recovery scenarios, one arbiter-link/session reset,
   one verified-arbiter identity recovery/isolation scenario, and one verified-account session
-  containment scenario, plus one role-isolated account data-inventory scenario.
+  containment scenario, one role-isolated account data-inventory scenario, and one durable
+  sandbox-funding recovery/refund scenario.
 - **Verified:** A separate 12-scenario incident-response rehearsal passes for identity forgery,
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key rotation, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 74 server tests, 72 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 73 client-logic
   tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
   build. Accessibility is now part of the required `npm run check` path rather than a separate,
   potentially stale result.
@@ -38,6 +39,12 @@ production readiness, or authorization to hold real rental deposits.
   immediate retry. A provider-neutral lifecycle now survives page refresh, rejects internally
   inconsistent state and conflicting duplicate events, and models delayed confirmation,
   cancellation, failure, and refunds. Real-money funding remains disabled.
+- **Verified:** Tenant-authorized sandbox attempts are now saved in D1 before checkout opens and
+  recover across sessions/devices without depending on browser storage. Server validation pins
+  the finalized agreement, tenant, approved wallet, selected asset, Base USDC destination, and a
+  bounded amount; production intents, cross-account access, cross-site writes, conflicting
+  duplicate events, and parallel active attempts fail closed. Sandbox outcomes never create an
+  agreement-funding event.
 - **Verified:** Successful finalization, funding, reserve, record-anchor, and privacy-safe activity
   transactions no longer depend on writable browser storage to save their D1 receipt. Blocked
   storage degrades to an in-memory retry instead of interrupting the completed action; malformed
@@ -77,9 +84,9 @@ production readiness, or authorization to hold real rental deposits.
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the
   production build; the authenticated workspace then loads asynchronously.
-- **Verified:** The exact validated candidate source was pushed to the existing Sites source
-  branch and saved as undeployed version 73 at commit
-  `9fac196f02e3eb4e2c766a0cb36107e07bb53c90`. Production remains on saved version 56.
+- **Verified:** The exact validated candidate source is pushed to the existing Sites source
+  branch and saved as a newer undeployed Sites version after each coherent slice. The public
+  production deployment remains unchanged.
 
 ## Remaining
 

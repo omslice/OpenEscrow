@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useFiatOnramp } from "@privy-io/react-auth";
 import {
   FIAT_ONRAMP_CONFIG,
@@ -23,6 +23,12 @@ import {
   readRecoveryJson,
   writeRecoveryJson,
 } from "../lib/browserRecovery";
+import {
+  appendDurableFundingCheckoutEvent,
+  createDurableFundingCheckout,
+  recoverDurableFundingCheckout,
+} from "../lib/negotiations";
+import type { NegotiationAccess } from "../lib/negotiations";
 
 function microsToDecimal(value: bigint) {
   const whole = value / 1_000_000n;
@@ -33,19 +39,34 @@ function microsToDecimal(value: bigint) {
   return fraction ? `${whole}.${fraction}` : whole.toString();
 }
 
+function durableRecoveryUnavailable(): FundingCheckoutOutcome {
+  return {
+    state: "unknown",
+    providerStatus: "durable_recovery_unavailable",
+    severity: "error",
+    shouldRefreshBalance: false,
+    retryAllowed: false,
+    message:
+      "Secure sandbox checkout recovery is temporarily unavailable. No new checkout was opened. Reconnect this agreement record before trying again.",
+  };
+}
+
 export function FiatFundingOption({
   walletAddress,
   amount,
   depositAsset,
+  negotiationAccess,
   onComplete,
 }: {
   walletAddress: string;
   amount: bigint;
   depositAsset?: DepositAssetConfig | null;
+  negotiationAccess?: NegotiationAccess | null;
   onComplete?: () => void | Promise<void>;
 }) {
   const { fund } = useFiatOnramp();
   const [status, setStatus] = useState<FundingCheckoutOutcome | null>(null);
+  const [isRecovering, setIsRecovering] = useState(true);
   const [isOpening, setIsOpening] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
@@ -63,49 +84,157 @@ export function FiatFundingOption({
         amount.toString(),
       ].join(":")
     : null;
+  const durableAccess = useMemo(
+    () =>
+      FIAT_ONRAMP_CONFIG?.environment === "sandbox" &&
+      negotiationAccess?.role === "tenant"
+        ? negotiationAccess
+        : null,
+    [negotiationAccess],
+  );
 
   useEffect(() => {
+    let cancelled = false;
     setStatus(null);
     setRefreshError(null);
-    if (!checkoutStorageKey || !FIAT_ONRAMP_CONFIG) return;
+    setIsRecovering(true);
+    if (!checkoutStorageKey || !FIAT_ONRAMP_CONFIG) {
+      setIsRecovering(false);
+      return;
+    }
     const saved = readRecoveryJson(
       checkoutStorageKey,
       isFundingCheckoutLifecycle,
     );
-    if (!saved) return;
     if (
-      saved.environment !== FIAT_ONRAMP_CONFIG.environment ||
-      saved.assetId !== (depositAsset?.id || "usdc") ||
-      saved.walletAddress !== walletAddress.toLowerCase() ||
-      saved.amountMicros !== amount.toString()
+      saved &&
+      (saved.environment !== FIAT_ONRAMP_CONFIG.environment ||
+        saved.assetId !== (depositAsset?.id || "usdc") ||
+        saved.walletAddress !== walletAddress.toLowerCase() ||
+        saved.amountMicros !== amount.toString())
     ) {
       clearRecoveryValue(checkoutStorageKey);
+      setIsRecovering(false);
       return;
     }
-    let recovered = saved;
-    if (saved.status === "opening") {
-      try {
-        recovered = applyFundingCheckoutEvent(saved, {
-          eventId: `recovery:${saved.attemptId}`,
-          status: "unknown",
-          providerStatus: "interrupted",
-        });
-        writeRecoveryJson(checkoutStorageKey, recovered);
-      } catch {
-        setStatus(reconcileFundingCheckoutError());
+
+    const recover = async () => {
+      if (durableAccess) {
+        try {
+          const intent = createFundingIntent({
+            assetId: depositAsset?.id || "usdc",
+            walletAddress,
+            amountMicros: amount,
+            environment: "sandbox",
+            onrampEnabled: true,
+            productionApproved: false,
+          });
+          let recovered = (
+            await recoverDurableFundingCheckout(durableAccess, intent)
+          ).checkout;
+          if (!recovered && saved) {
+            recovered = (
+              await createDurableFundingCheckout(
+                durableAccess,
+                intent,
+                saved.attemptId,
+              )
+            ).checkout;
+          }
+          if (recovered && saved?.attemptId === recovered.attemptId) {
+            const recoveredEvents = new Map(
+              recovered.events.map((event) => [event.id, event]),
+            );
+            for (const localEvent of saved.events) {
+              const durableEvent = recoveredEvents.get(localEvent.id);
+              if (
+                durableEvent &&
+                (durableEvent.status !== localEvent.status ||
+                  durableEvent.providerStatus !== localEvent.providerStatus)
+              ) {
+                throw new Error("The saved checkout histories conflict.");
+              }
+              if (!durableEvent) {
+                recovered = (
+                  await appendDurableFundingCheckoutEvent(
+                    durableAccess,
+                    recovered.attemptId,
+                    {
+                      eventId: localEvent.id,
+                      status: localEvent.status,
+                      providerStatus: localEvent.providerStatus,
+                    },
+                  )
+                ).checkout;
+              }
+            }
+          }
+          if (recovered?.status === "opening") {
+            recovered = (
+              await appendDurableFundingCheckoutEvent(
+                durableAccess,
+                recovered.attemptId,
+                {
+                  eventId: `recovery:${recovered.attemptId}`,
+                  status: "unknown",
+                  providerStatus: "interrupted",
+                },
+              )
+            ).checkout;
+          }
+          if (cancelled) return;
+          if (!recovered) {
+            setStatus(null);
+            return;
+          }
+          writeRecoveryJson(checkoutStorageKey, recovered);
+          setStatus(
+            reconcileFundingCheckoutResult(
+              { status: recovered.providerStatus },
+              FIAT_ONRAMP_CONFIG.environment,
+            ),
+          );
+        } catch {
+          if (!cancelled) setStatus(durableRecoveryUnavailable());
+        }
         return;
       }
-    }
-    setStatus(
-      reconcileFundingCheckoutResult(
-        { status: recovered.providerStatus },
-        FIAT_ONRAMP_CONFIG.environment,
-      ),
-    );
+
+      if (!saved) return;
+      let recovered = saved;
+      if (saved.status === "opening") {
+        try {
+          recovered = applyFundingCheckoutEvent(saved, {
+            eventId: `recovery:${saved.attemptId}`,
+            status: "unknown",
+            providerStatus: "interrupted",
+          });
+          writeRecoveryJson(checkoutStorageKey, recovered);
+        } catch {
+          if (!cancelled) setStatus(reconcileFundingCheckoutError());
+          return;
+        }
+      }
+      if (!cancelled) {
+        setStatus(
+          reconcileFundingCheckoutResult(
+            { status: recovered.providerStatus },
+            FIAT_ONRAMP_CONFIG.environment,
+          ),
+        );
+      }
+    };
+    void recover().finally(() => {
+      if (!cancelled) setIsRecovering(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [
     amount,
     checkoutStorageKey,
     depositAsset?.id,
+    durableAccess,
     walletAddress,
   ]);
 
@@ -140,11 +269,13 @@ export function FiatFundingOption({
             ? "Start a new checkout"
             : status?.state === "submitted" && status.providerStatus !== "opening"
               ? "Purchase submitted"
-              : isOpening
-                ? "Opening checkout..."
-                : isSandbox
-                  ? "Preview sandbox checkout"
-                  : "Continue to card or bank";
+              : isRecovering
+                ? "Checking prior checkout..."
+                : isOpening
+                  ? "Opening checkout..."
+                  : isSandbox
+                    ? "Preview sandbox checkout"
+                    : "Continue to card or bank";
 
   return (
     <div className="fiat-funding-option enabled">
@@ -159,11 +290,12 @@ export function FiatFundingOption({
       <button
         className="btn btn-secondary"
         type="button"
-        disabled={isOpening || checkoutLocked}
+        disabled={isRecovering || isOpening || checkoutLocked}
         onClick={async () => {
           setIsOpening(true);
           setRefreshError(null);
           let attempt: FundingCheckoutLifecycle | null = null;
+          let providerOpened = false;
           try {
             const intent = createFundingIntent({
               assetId: depositAsset?.id || "usdc",
@@ -173,23 +305,41 @@ export function FiatFundingOption({
               onrampEnabled: true,
               productionApproved: FIAT_ONRAMP_CONFIG.environment === "production",
             });
-            attempt = createFundingCheckoutAttempt(intent, {
-              attemptId: globalThis.crypto.randomUUID(),
-            });
-            if (
-              !checkoutStorageKey ||
-              !writeRecoveryJson(checkoutStorageKey, attempt)
-            ) {
-              setStatus({
-                state: "failed",
-                providerStatus: "recovery_unavailable",
-                severity: "error",
-                shouldRefreshBalance: false,
-                retryAllowed: true,
-                message:
-                  "Secure checkout recovery is unavailable in this browser. No checkout was opened. Restore browser storage access before trying again.",
-              });
-              return;
+            const attemptId = globalThis.crypto.randomUUID();
+            if (durableAccess) {
+              const durableAttempt = await createDurableFundingCheckout(
+                durableAccess,
+                intent,
+                attemptId,
+              );
+              attempt = durableAttempt.checkout;
+              if (checkoutStorageKey) {
+                writeRecoveryJson(checkoutStorageKey, attempt);
+              }
+              setStatus(
+                reconcileFundingCheckoutResult(
+                  { status: attempt.providerStatus },
+                  FIAT_ONRAMP_CONFIG.environment,
+                ),
+              );
+              if (!durableAttempt.created) return;
+            } else {
+              attempt = createFundingCheckoutAttempt(intent, { attemptId });
+              if (
+                !checkoutStorageKey ||
+                !writeRecoveryJson(checkoutStorageKey, attempt)
+              ) {
+                setStatus({
+                  state: "failed",
+                  providerStatus: "recovery_unavailable",
+                  severity: "error",
+                  shouldRefreshBalance: false,
+                  retryAllowed: true,
+                  message:
+                    "Secure checkout recovery is unavailable in this browser. No checkout was opened. Restore browser storage access before trying again.",
+                });
+                return;
+              }
             }
             setStatus(
               reconcileFundingCheckoutResult(
@@ -197,6 +347,7 @@ export function FiatFundingOption({
                 FIAT_ONRAMP_CONFIG.environment,
               ),
             );
+            providerOpened = true;
             const result = await fund({
               source: {
                 assets: [...intent.source.assets],
@@ -213,16 +364,46 @@ export function FiatFundingOption({
               typeof result.status === "string"
                 ? result.status
                 : "unknown";
+            const eventId = `provider-result:${attempt.attemptId}`;
             attempt = applyFundingCheckoutEvent(attempt, {
-              eventId: `provider-result:${attempt.attemptId}`,
+              eventId,
               status: resultStatus,
               providerStatus: resultStatus,
             });
             if (checkoutStorageKey) {
               writeRecoveryJson(checkoutStorageKey, attempt);
             }
+            if (durableAccess) {
+              try {
+                attempt = (
+                  await appendDurableFundingCheckoutEvent(
+                    durableAccess,
+                    attempt.attemptId,
+                    {
+                      eventId,
+                      status: resultStatus,
+                      providerStatus: resultStatus,
+                    },
+                  )
+                ).checkout;
+                if (checkoutStorageKey) {
+                  writeRecoveryJson(checkoutStorageKey, attempt);
+                }
+              } catch {
+                setStatus({
+                  state: "unknown",
+                  providerStatus: "durable_result_save_failed",
+                  severity: "error",
+                  shouldRefreshBalance: false,
+                  retryAllowed: false,
+                  message:
+                    "The provider returned a result, but OpenEscrow could not durably save it. No agreement funding was recorded. Reconnect and refresh this page before any retry.",
+                });
+                return;
+              }
+            }
             const outcome = reconcileFundingCheckoutResult(
-              result,
+              { status: attempt.providerStatus },
               FIAT_ONRAMP_CONFIG.environment,
             );
             setStatus(outcome);
@@ -238,21 +419,62 @@ export function FiatFundingOption({
           } catch {
             if (
               attempt &&
-              checkoutStorageKey &&
               ["opening", "submitted", "unknown"].includes(attempt.status)
             ) {
+              const eventId = `client-error:${attempt.attemptId}`;
               try {
-                const uncertainAttempt = applyFundingCheckoutEvent(attempt, {
-                  eventId: `client-error:${attempt.attemptId}`,
-                  status: "unknown",
-                  providerStatus: "error",
-                });
-                writeRecoveryJson(checkoutStorageKey, uncertainAttempt);
+                if (durableAccess) {
+                  attempt = (
+                    await appendDurableFundingCheckoutEvent(
+                      durableAccess,
+                      attempt.attemptId,
+                      {
+                        eventId,
+                        status: "unknown",
+                        providerStatus: "error",
+                      },
+                    )
+                  ).checkout;
+                } else {
+                  attempt = applyFundingCheckoutEvent(attempt, {
+                    eventId,
+                    status: "unknown",
+                    providerStatus: "error",
+                  });
+                }
+                if (checkoutStorageKey) {
+                  writeRecoveryJson(checkoutStorageKey, attempt);
+                }
               } catch {
-                // Keep the existing locked attempt if recovery state cannot advance safely.
+                try {
+                  attempt = applyFundingCheckoutEvent(attempt, {
+                    eventId,
+                    status: "unknown",
+                    providerStatus: "error",
+                  });
+                  if (checkoutStorageKey) {
+                    writeRecoveryJson(checkoutStorageKey, attempt);
+                  }
+                } catch {
+                  // Keep the existing locked attempt if recovery state cannot advance safely.
+                }
               }
             }
-            setStatus(reconcileFundingCheckoutError());
+            setStatus(
+              providerOpened
+                ? reconcileFundingCheckoutError()
+                : durableAccess
+                  ? durableRecoveryUnavailable()
+                  : {
+                      state: "failed",
+                      providerStatus: "recovery_unavailable",
+                      severity: "error",
+                      shouldRefreshBalance: false,
+                      retryAllowed: true,
+                      message:
+                        "Secure checkout recovery could not be prepared. No checkout was opened. Try again after reconnecting this page.",
+                    },
+            );
           } finally {
             setIsOpening(false);
           }

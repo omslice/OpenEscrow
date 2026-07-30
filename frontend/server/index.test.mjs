@@ -30,6 +30,7 @@ import {
   LOCAL_COMPLIANCE_OVERLAYS,
 } from "../shared/us-compliance-overlays.js";
 import { COMPLIANCE_SOURCE_REGISTRY } from "../shared/compliance-sources.js";
+import { createFundingIntent } from "../shared/funding-routes.js";
 
 const TEST_ADDRESS_ATTESTATION_SECRET =
   "openescrow-test-address-attestation-secret-2026";
@@ -56,6 +57,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0007_account_record_archives.sql",
     "0008_compliance_source_release_gate.sql",
     "0009_evidence_key_rotation.sql",
+    "0010_sandbox_funding_checkouts.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -74,6 +76,8 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.ok(tables.includes("scheduled_job_runs"));
   assert.ok(tables.includes("compliance_source_checks"));
   assert.ok(tables.includes("account_record_archives"));
+  assert.ok(tables.includes("funding_checkout_attempts"));
+  assert.ok(tables.includes("funding_checkout_events"));
 });
 
 class Statement {
@@ -1027,6 +1031,461 @@ async function finalizeWithoutArbiter(db, created) {
     }),
   );
 }
+
+function serializeFundingIntent(intent) {
+  return {
+    ...intent,
+    amountMicros: intent.amountMicros.toString(),
+  };
+}
+
+function sandboxFundingIntent({
+  walletAddress = "0x1111111111111111111111111111111111111111",
+  amountMicros = 1_205_000_000n,
+  assetId = "usdc",
+} = {}) {
+  return serializeFundingIntent(
+    createFundingIntent({
+      assetId,
+      walletAddress,
+      amountMicros,
+      environment: "sandbox",
+      onrampEnabled: true,
+      productionApproved: false,
+    }),
+  );
+}
+
+function fundingCheckoutRequest(
+  db,
+  proposalId,
+  path,
+  body,
+) {
+  return worker.fetch(
+    request(
+      `/api/negotiations/${proposalId}/funding-checkouts${path}`,
+      "POST",
+      body,
+    ),
+    { DB: db },
+  );
+}
+
+test("pilot rehearsal: sandbox checkout recovery is durable and separate from agreement funding", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const intent = sandboxFundingIntent();
+  const attemptId = "sandbox-attempt-primary";
+
+  const openedResponse = await fundingCheckoutRequest(
+    db,
+    created.record.id,
+    "",
+    {
+      token: created.access.tenant,
+      attemptId,
+      intent,
+    },
+  );
+  assert.equal(openedResponse.status, 201);
+  const opened = await jsonResponse(openedResponse);
+  assert.equal(opened.created, true);
+  assert.equal(opened.durable, true);
+  assert.equal(opened.sandboxOnly, true);
+  assert.equal(opened.checkout.status, "opening");
+  assert.equal(opened.checkout.environment, "sandbox");
+  assert.equal(opened.checkout.amountMicros, "1205000000");
+
+  const repeated = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "", {
+      token: created.access.tenant,
+      attemptId,
+      intent,
+    }),
+  );
+  assert.equal(repeated.created, false);
+  assert.equal(repeated.checkout.attemptId, attemptId);
+
+  const duplicateIntent = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "", {
+      token: created.access.tenant,
+      attemptId: "sandbox-attempt-duplicate-intent",
+      intent,
+    }),
+  );
+  assert.equal(duplicateIntent.created, false);
+  assert.equal(duplicateIntent.checkout.attemptId, attemptId);
+
+  const differentAmountIntent = sandboxFundingIntent({ amountMicros: 100_000_000n });
+  const duplicateDifferentAmount = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "", {
+      token: created.access.tenant,
+      attemptId: "sandbox-attempt-different-amount",
+      intent: differentAmountIntent,
+    }),
+  );
+  assert.equal(duplicateDifferentAmount.created, false);
+  assert.equal(duplicateDifferentAmount.checkout.attemptId, attemptId);
+  assert.equal(duplicateDifferentAmount.checkout.amountMicros, "1205000000");
+
+  const recovered = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "/recover", {
+      token: created.access.tenant,
+      intent: differentAmountIntent,
+    }),
+  );
+  assert.equal(recovered.checkout.attemptId, attemptId);
+  assert.equal(recovered.checkout.status, "opening");
+
+  const submitted = await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "provider:submitted-1",
+        status: "submitted",
+        providerStatus: "processing",
+      },
+    ),
+  );
+  assert.equal(submitted.duplicate, false);
+  assert.equal(submitted.checkout.status, "submitted");
+
+  const duplicateEvent = await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "provider:submitted-1",
+        status: "submitted",
+        providerStatus: "processing",
+      },
+    ),
+  );
+  assert.equal(duplicateEvent.duplicate, true);
+  assert.equal(duplicateEvent.checkout.events.length, 1);
+
+  const conflictingDuplicate = await fundingCheckoutRequest(
+    db,
+    created.record.id,
+    `/${attemptId}/events`,
+    {
+      token: created.access.tenant,
+      eventId: "provider:submitted-1",
+      status: "failed",
+      providerStatus: "declined",
+    },
+  );
+  assert.equal(conflictingDuplicate.status, 409);
+  assert.match((await conflictingDuplicate.json()).error, /conflicts/);
+
+  const confirmed = await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "provider:confirmed-1",
+        status: "confirmed",
+        providerStatus: "completed",
+      },
+    ),
+  );
+  assert.equal(confirmed.checkout.status, "confirmed");
+
+  const refundPending = await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "provider:refund-pending-1",
+        status: "refund_pending",
+        providerStatus: "refunding",
+      },
+    ),
+  );
+  assert.equal(refundPending.checkout.status, "refund_pending");
+
+  const refunded = await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "provider:refunded-1",
+        status: "refunded",
+        providerStatus: "refunded",
+      },
+    ),
+  );
+  assert.equal(refunded.checkout.status, "refunded");
+
+  const reopened = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "", {
+      token: created.access.tenant,
+      attemptId: "sandbox-attempt-after-refund",
+      intent,
+    }),
+  );
+  assert.equal(reopened.created, true);
+  assert.equal(reopened.checkout.attemptId, "sandbox-attempt-after-refund");
+
+  const agreementRecord = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${created.access.tenant}`,
+      ),
+      { DB: db },
+    ),
+  );
+  assert.equal(
+    agreementRecord.events.some((event) =>
+      ["tenant_share_funded", "agreement_funded"].includes(event.action),
+    ),
+    false,
+  );
+  assert.equal(
+    db.database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM funding_checkout_attempts WHERE negotiation_id = ?",
+      )
+      .get(created.record.id).count,
+    2,
+  );
+});
+
+test("sandbox funding checkout endpoints enforce tenant, amount, origin, and retry boundaries", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const otherAgreement = await create(db);
+  await finalizeWithoutArbiter(db, otherAgreement);
+  const intent = sandboxFundingIntent();
+
+  const landlordAttempt = await fundingCheckoutRequest(
+    db,
+    created.record.id,
+    "",
+    {
+      token: created.access.landlord,
+      attemptId: "sandbox-landlord-attempt",
+      intent,
+    },
+  );
+  assert.equal(landlordAttempt.status, 403);
+
+  const otherTenantAttempt = await fundingCheckoutRequest(
+    db,
+    created.record.id,
+    "",
+    {
+      token: otherAgreement.access.tenant,
+      attemptId: "sandbox-other-tenant-attempt",
+      intent,
+    },
+  );
+  assert.equal(otherTenantAttempt.status, 403);
+
+  const productionAttempt = await fundingCheckoutRequest(
+    db,
+    created.record.id,
+    "",
+    {
+      token: created.access.tenant,
+      attemptId: "sandbox-production-attempt",
+      intent: { ...intent, environment: "production" },
+    },
+  );
+  assert.equal(productionAttempt.status, 403);
+
+  const wrongWalletAttempt = await fundingCheckoutRequest(
+    db,
+    created.record.id,
+    "",
+    {
+      token: created.access.tenant,
+      attemptId: "sandbox-wrong-wallet-attempt",
+      intent: sandboxFundingIntent({
+        walletAddress: "0x2222222222222222222222222222222222222222",
+      }),
+    },
+  );
+  assert.equal(wrongWalletAttempt.status, 400);
+
+  const excessiveAttempt = await fundingCheckoutRequest(
+    db,
+    created.record.id,
+    "",
+    {
+      token: created.access.tenant,
+      attemptId: "sandbox-excessive-attempt",
+      intent: sandboxFundingIntent({ amountMicros: 1_205_000_001n }),
+    },
+  );
+  assert.equal(excessiveAttempt.status, 400);
+
+  const crossSiteRequest = new Request(
+    `https://openescrow.example/api/negotiations/${created.record.id}/funding-checkouts`,
+    {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "sec-fetch-site": "cross-site",
+      },
+      body: JSON.stringify({
+        token: created.access.tenant,
+        attemptId: "sandbox-cross-site-attempt",
+        intent,
+      }),
+    },
+  );
+  const crossSiteAttempt = await worker.fetch(crossSiteRequest, { DB: db });
+  assert.equal(crossSiteAttempt.status, 403);
+
+  const first = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "", {
+      token: created.access.tenant,
+      attemptId: "sandbox-cancelled-attempt",
+      intent,
+    }),
+  );
+  const crossAccountEvent = await fundingCheckoutRequest(
+    db,
+    created.record.id,
+    `/${first.checkout.attemptId}/events`,
+    {
+      token: otherAgreement.access.tenant,
+      eventId: "provider:cross-account",
+      status: "cancelled",
+      providerStatus: "cancelled",
+    },
+  );
+  assert.equal(crossAccountEvent.status, 403);
+
+  await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${first.checkout.attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "provider:cancelled-1",
+        status: "cancelled",
+        providerStatus: "cancelled",
+      },
+    ),
+  );
+  const afterCancellation = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "", {
+      token: created.access.tenant,
+      attemptId: "sandbox-failed-attempt",
+      intent,
+    }),
+  );
+  assert.equal(afterCancellation.created, true);
+
+  await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${afterCancellation.checkout.attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "provider:failed-1",
+        status: "failed",
+        providerStatus: "declined",
+      },
+    ),
+  );
+  const afterFailure = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "", {
+      token: created.access.tenant,
+      attemptId: "sandbox-after-failure-attempt",
+      intent,
+    }),
+  );
+  assert.equal(afterFailure.created, true);
+
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "agreement_funded",
+      transactionHash: transactionHash(901),
+    }),
+  );
+  const afterFunding = await fundingCheckoutRequest(
+    db,
+    created.record.id,
+    "",
+    {
+      token: created.access.tenant,
+      attemptId: "sandbox-after-agreement-funded",
+      intent,
+    },
+  );
+  assert.equal(afterFunding.status, 409);
+  assert.match((await afterFunding.json()).error, /already recorded as funded/);
+});
+
+test("simultaneous sandbox provider results cannot fork a checkout lifecycle", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const attempt = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "", {
+      token: created.access.tenant,
+      attemptId: "sandbox-concurrent-result-attempt",
+      intent: sandboxFundingIntent(),
+    }),
+  );
+
+  const responses = await Promise.all([
+    fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${attempt.checkout.attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "provider:concurrent-cancelled",
+        status: "cancelled",
+        providerStatus: "cancelled",
+      },
+    ),
+    fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${attempt.checkout.attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "provider:concurrent-failed",
+        status: "failed",
+        providerStatus: "declined",
+      },
+    ),
+  ]);
+  assert.deepEqual(
+    responses.map((response) => response.status).sort(),
+    [200, 409],
+  );
+
+  const recovered = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "/recover", {
+      token: created.access.tenant,
+      intent: sandboxFundingIntent(),
+    }),
+  );
+  assert.equal(["cancelled", "failed"].includes(recovered.checkout.status), true);
+  assert.equal(recovered.checkout.events.length, 1);
+});
 
 async function submitStandardClaim(
   db,

@@ -1,18 +1,25 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  appendDurableFundingCheckoutEvent,
   captureNegotiationAccessFromUrl,
   clearAccountNegotiationAccesses,
   clearLandlordBundle,
+  createDurableFundingCheckout,
   listNegotiationAccesses,
   readLandlordBundle,
   readLatestLandlordAccess,
   readNegotiationAccess,
+  recoverDurableFundingCheckout,
   rememberLandlordBundle,
   storeNegotiationAccess,
   type CreatedNegotiation,
   type NegotiationAccess,
 } from "./negotiations.ts";
+import {
+  createFundingCheckoutAttempt,
+  createFundingIntent,
+} from "../../shared/funding-routes.js";
 
 class MemoryStorage implements Storage {
   readonly values = new Map<string, string>();
@@ -181,4 +188,84 @@ test("blocked storage cannot blank an invitation or leave its bearer token in th
       value: originalWindow,
     });
   }
+});
+
+test("durable sandbox checkout requests keep bearer access and bigint amounts out of URLs", async () => {
+  const originalFetch = globalThis.fetch;
+  const captured: Array<{ url: string; body: Record<string, unknown> }> = [];
+  const access: NegotiationAccess = {
+    proposalId: "proposal-funding",
+    role: "tenant",
+    token: "tenant-secret",
+  };
+  const intent = createFundingIntent({
+    assetId: "usdc",
+    walletAddress: "0x1111111111111111111111111111111111111111",
+    amountMicros: 1_205_000_000n,
+    environment: "sandbox",
+    onrampEnabled: true,
+    productionApproved: false,
+  });
+  const checkout = createFundingCheckoutAttempt(intent, {
+    attemptId: "sandbox-api-test-attempt",
+  });
+
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    captured.push({
+      url: String(input),
+      body: JSON.parse(String(init?.body || "{}")) as Record<string, unknown>,
+    });
+    const url = String(input);
+    if (url.endsWith("/recover")) {
+      return Response.json({ checkout, durable: true, sandboxOnly: true });
+    }
+    if (url.endsWith("/events")) {
+      return Response.json({
+        checkout,
+        duplicate: false,
+        durable: true,
+        sandboxOnly: true,
+      });
+    }
+    return Response.json({
+      checkout,
+      created: true,
+      durable: true,
+      sandboxOnly: true,
+    });
+  }) as typeof fetch;
+
+  try {
+    await createDurableFundingCheckout(access, intent, checkout.attemptId);
+    await recoverDurableFundingCheckout(access, intent);
+    await appendDurableFundingCheckoutEvent(access, checkout.attemptId, {
+      eventId: "provider:test-event",
+      status: "submitted",
+      providerStatus: "processing",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(
+    captured.map(({ url }) => url),
+    [
+      "/api/negotiations/proposal-funding/funding-checkouts",
+      "/api/negotiations/proposal-funding/funding-checkouts/recover",
+      "/api/negotiations/proposal-funding/funding-checkouts/sandbox-api-test-attempt/events",
+    ],
+  );
+  for (const requestRecord of captured) {
+    assert.equal(requestRecord.url.includes("tenant-secret"), false);
+    assert.equal(requestRecord.body.token, "tenant-secret");
+  }
+  assert.equal(
+    (
+      captured[0].body.intent as {
+        amountMicros: string;
+      }
+    ).amountMicros,
+    "1205000000",
+  );
+  assert.equal(captured[2].body.eventId, "provider:test-event");
 });

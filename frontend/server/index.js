@@ -19,6 +19,14 @@ import {
   validateDepositAssetTerms,
 } from "../shared/deposit-assets.js";
 import {
+  FUNDING_CHECKOUT_SCHEMA,
+  applyFundingCheckoutEvent,
+  createFundingCheckoutAttempt,
+  createFundingIntent,
+  fundingIntentKey,
+  isFundingCheckoutLifecycle,
+} from "../shared/funding-routes.js";
+import {
   addressAttestationConfigured,
   createAddressAttestation,
   verifyAddressAttestation,
@@ -179,6 +187,50 @@ CREATE TABLE IF NOT EXISTS negotiation_account_access_context (
   FOREIGN KEY (token_hash) REFERENCES negotiation_account_access(token_hash) ON DELETE CASCADE,
   FOREIGN KEY (tenant_id) REFERENCES negotiation_tenants(id) ON DELETE CASCADE
 )`;
+
+const FUNDING_CHECKOUT_ATTEMPTS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS funding_checkout_attempts (
+  attempt_id TEXT PRIMARY KEY,
+  negotiation_id TEXT NOT NULL,
+  tenant_id TEXT NOT NULL,
+  intent_key TEXT NOT NULL,
+  environment TEXT NOT NULL CHECK (environment = 'sandbox'),
+  asset_id TEXT NOT NULL,
+  provider_strategy TEXT NOT NULL,
+  wallet_address TEXT NOT NULL,
+  amount_micros TEXT NOT NULL,
+  status TEXT NOT NULL,
+  provider_status TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (negotiation_id) REFERENCES agreement_negotiations(id) ON DELETE CASCADE,
+  FOREIGN KEY (tenant_id) REFERENCES negotiation_tenants(id) ON DELETE CASCADE
+)`;
+
+const FUNDING_CHECKOUT_ATTEMPTS_HISTORY_INDEX = `
+CREATE INDEX IF NOT EXISTS funding_checkout_attempts_history_idx
+ON funding_checkout_attempts (negotiation_id, tenant_id, created_at DESC)`;
+
+const FUNDING_CHECKOUT_ATTEMPTS_ACTIVE_INDEX = `
+CREATE UNIQUE INDEX IF NOT EXISTS funding_checkout_attempts_active_tenant_idx
+ON funding_checkout_attempts (negotiation_id, tenant_id)
+WHERE status IN ('opening', 'submitted', 'unknown', 'confirmed', 'refund_pending')`;
+
+const FUNDING_CHECKOUT_EVENTS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS funding_checkout_events (
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+  attempt_id TEXT NOT NULL,
+  event_id TEXT NOT NULL,
+  status TEXT NOT NULL,
+  provider_status TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  UNIQUE (attempt_id, event_id),
+  FOREIGN KEY (attempt_id) REFERENCES funding_checkout_attempts(attempt_id) ON DELETE CASCADE
+)`;
+
+const FUNDING_CHECKOUT_EVENTS_INDEX = `
+CREATE INDEX IF NOT EXISTS funding_checkout_events_attempt_idx
+ON funding_checkout_events (attempt_id, sequence)`;
 
 const BACKFILL_PRIMARY_TENANTS = `
 INSERT OR IGNORE INTO negotiation_tenants
@@ -1456,6 +1508,11 @@ async function initialize(db) {
     db.prepare(NEGOTIATION_TENANTS_SCHEMA),
     db.prepare(NEGOTIATION_TENANTS_INDEX),
     db.prepare(ACCOUNT_ACCESS_CONTEXT_SCHEMA),
+    db.prepare(FUNDING_CHECKOUT_ATTEMPTS_SCHEMA),
+    db.prepare(FUNDING_CHECKOUT_ATTEMPTS_HISTORY_INDEX),
+    db.prepare(FUNDING_CHECKOUT_ATTEMPTS_ACTIVE_INDEX),
+    db.prepare(FUNDING_CHECKOUT_EVENTS_SCHEMA),
+    db.prepare(FUNDING_CHECKOUT_EVENTS_INDEX),
     db.prepare(BACKFILL_PRIMARY_TENANTS),
     db.prepare(SCHEDULED_JOB_RUNS_SCHEMA),
     db.prepare(COMPLIANCE_SOURCE_CHECKS_SCHEMA),
@@ -2267,6 +2324,523 @@ async function tenantsFor(db, negotiationId) {
     .bind(negotiationId)
     .all();
   return result.results || [];
+}
+
+async function fundingCheckoutForAttempt(db, attemptId) {
+  const attempt = await db
+    .prepare(
+      `SELECT attempt_id, negotiation_id, tenant_id, intent_key, environment,
+              asset_id, provider_strategy, wallet_address, amount_micros,
+              status, provider_status, created_at, updated_at
+       FROM funding_checkout_attempts
+       WHERE attempt_id = ?`,
+    )
+    .bind(attemptId)
+    .first();
+  if (!attempt) return null;
+  const eventResult = await db
+    .prepare(
+      `SELECT event_id, status, provider_status, occurred_at
+       FROM funding_checkout_events
+       WHERE attempt_id = ?
+       ORDER BY sequence ASC`,
+    )
+    .bind(attemptId)
+    .all();
+  const checkout = {
+    schema: FUNDING_CHECKOUT_SCHEMA,
+    intentKey: attempt.intent_key,
+    attemptId: attempt.attempt_id,
+    environment: attempt.environment,
+    assetId: attempt.asset_id,
+    providerStrategy: attempt.provider_strategy,
+    walletAddress: attempt.wallet_address,
+    amountMicros: attempt.amount_micros,
+    status: attempt.status,
+    providerStatus: attempt.provider_status,
+    createdAt: attempt.created_at,
+    updatedAt: attempt.updated_at,
+    events: (eventResult.results || []).map((event) => ({
+      id: event.event_id,
+      status: event.status,
+      providerStatus: event.provider_status,
+      occurredAt: event.occurred_at,
+    })),
+  };
+  if (!isFundingCheckoutLifecycle(checkout)) {
+    throw new Error("The saved sandbox checkout lifecycle is internally inconsistent.");
+  }
+  return {
+    checkout,
+    negotiationId: attempt.negotiation_id,
+    tenantId: attempt.tenant_id,
+  };
+}
+
+function tenantContributionMicros(terms, tenantRows, tenant) {
+  const depositMicros = tokenMicros(terms?.deposit);
+  const tenantIndex = tenantRows.findIndex((candidate) => candidate.id === tenant.id);
+  if (depositMicros === null || tenantIndex < 0) return null;
+  let allocatedMicros = 0n;
+  for (let index = 0; index < tenantRows.length - 1; index += 1) {
+    allocatedMicros +=
+      (depositMicros * BigInt(tenantRows[index].deposit_share_bps)) / 10_000n;
+  }
+  return tenantIndex === tenantRows.length - 1
+    ? depositMicros - allocatedMicros
+    : (depositMicros * BigInt(tenant.deposit_share_bps)) / 10_000n;
+}
+
+function tenantReserveMicros(terms, tenantRows, tenant) {
+  const reserveMicros = tokenMicros(terms?.operationsReserve);
+  const tenantIndex = tenantRows.findIndex((candidate) => candidate.id === tenant.id);
+  if (reserveMicros === null || tenantIndex < 0 || tenantRows.length < 1) return null;
+  const baseReserveMicros = reserveMicros / BigInt(tenantRows.length);
+  return tenantIndex === tenantRows.length - 1
+    ? reserveMicros - baseReserveMicros * BigInt(tenantRows.length - 1)
+    : baseReserveMicros;
+}
+
+async function sandboxFundingContext(db, id, token, intentInput) {
+  const row = await rowFor(db, id);
+  if (!row) {
+    return { error: "This agreement record was not found.", status: 404 };
+  }
+  const role = await authorize(db, row, token);
+  if (role !== "tenant") {
+    return {
+      error: "Only an invited tenant may manage this sandbox checkout.",
+      status: 403,
+    };
+  }
+  const tenant = await tenantForToken(db, id, token);
+  if (!tenant) {
+    return {
+      error: "This tenant session is no longer associated with the agreement.",
+      status: 403,
+    };
+  }
+  if (row.status !== "finalized" || !row.onchain_agreement_id) {
+    return {
+      error: "The agreement must be finalized before previewing a funding checkout.",
+      status: 409,
+    };
+  }
+  if (!tenant.wallet || !/^0x[a-fA-F0-9]{40}$/.test(tenant.wallet)) {
+    return {
+      error: "Approve the agreement with a valid destination wallet before previewing checkout.",
+      status: 409,
+    };
+  }
+  if (intentInput?.environment !== "sandbox") {
+    return {
+      error: "Only the no-money provider sandbox is available for this testnet agreement.",
+      status: 403,
+    };
+  }
+
+  let approvedTerms;
+  try {
+    approvedTerms = JSON.parse(row.terms_json);
+  } catch {
+    approvedTerms = null;
+  }
+  const depositAsset = getDepositAssetForTerms(approvedTerms);
+  const amountText = cleanText(intentInput?.amountMicros, 80);
+  if (!depositAsset || !/^[1-9][0-9]*$/.test(amountText)) {
+    return { error: "The sandbox funding intent is invalid.", status: 400 };
+  }
+
+  const tenantRows = await tenantsFor(db, id);
+  const recordedEvents = await eventsFor(db, id);
+  const contributionMicros = tenantContributionMicros(approvedTerms, tenantRows, tenant);
+  const reserveMicros = tenantReserveMicros(approvedTerms, tenantRows, tenant);
+  if (contributionMicros === null || reserveMicros === null) {
+    return {
+      error: "The tenant's approved funding allocation is invalid.",
+      status: 409,
+    };
+  }
+  const reservePaid = tenantHasEvent(
+    recordedEvents,
+    ["operations_reserve_paid"],
+    tenant,
+    tenantRows,
+  );
+  const maxPurchaseMicros = contributionMicros + (reservePaid ? 0n : reserveMicros);
+  let amountMicros;
+  try {
+    amountMicros = BigInt(amountText);
+  } catch {
+    amountMicros = 0n;
+  }
+  if (amountMicros <= 0n || amountMicros > maxPurchaseMicros) {
+    return {
+      error: "The sandbox purchase amount exceeds this tenant's remaining approved total.",
+      status: 400,
+    };
+  }
+
+  let requestedIntentKey;
+  let intent;
+  try {
+    requestedIntentKey = fundingIntentKey(intentInput);
+    intent = createFundingIntent({
+      assetId: depositAsset.id,
+      walletAddress: tenant.wallet,
+      amountMicros,
+      environment: "sandbox",
+      onrampEnabled: true,
+      productionApproved: false,
+    });
+  } catch {
+    return { error: "The sandbox funding intent is invalid.", status: 400 };
+  }
+  if (requestedIntentKey !== fundingIntentKey(intent)) {
+    return {
+      error:
+        "The sandbox funding intent does not match the approved asset, wallet, chain, or amount.",
+      status: 400,
+    };
+  }
+  return {
+    row,
+    tenant,
+    tenantRows,
+    recordedEvents,
+    intent,
+    intentKey: requestedIntentKey,
+  };
+}
+
+async function createSandboxFundingCheckout(request, env, id) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Enter a valid sandbox checkout request." }, 400);
+  }
+  const context = await sandboxFundingContext(env.DB, id, body.token, body.intent);
+  if (context.error) return json({ error: context.error }, context.status);
+  if (
+    tenantHasEvent(
+      context.recordedEvents,
+      ["tenant_share_funded", "agreement_funded"],
+      context.tenant,
+      context.tenantRows,
+    )
+  ) {
+    return json(
+      { error: "This tenant's approved deposit share is already recorded as funded." },
+      409,
+    );
+  }
+
+  let newCheckout;
+  try {
+    newCheckout = createFundingCheckoutAttempt(context.intent, {
+      attemptId: body.attemptId,
+    });
+  } catch {
+    return json({ error: "A valid unique sandbox checkout attempt is required." }, 400);
+  }
+
+  const existingAttempt = await fundingCheckoutForAttempt(env.DB, newCheckout.attemptId);
+  if (existingAttempt) {
+    if (
+      existingAttempt.negotiationId !== id ||
+      existingAttempt.tenantId !== context.tenant.id ||
+      existingAttempt.checkout.intentKey !== context.intentKey
+    ) {
+      return json({ error: "That checkout attempt ID is already in use." }, 409);
+    }
+    return json({
+      checkout: existingAttempt.checkout,
+      created: false,
+      durable: true,
+      sandboxOnly: true,
+    });
+  }
+
+  const activeAttempt = await env.DB
+    .prepare(
+      `SELECT attempt_id
+       FROM funding_checkout_attempts
+       WHERE negotiation_id = ? AND tenant_id = ?
+         AND status IN ('opening', 'submitted', 'unknown', 'confirmed', 'refund_pending')
+       ORDER BY created_at DESC
+       LIMIT 1`,
+    )
+    .bind(id, context.tenant.id)
+    .first();
+  if (activeAttempt?.attempt_id) {
+    const saved = await fundingCheckoutForAttempt(env.DB, activeAttempt.attempt_id);
+    return json({
+      checkout: saved.checkout,
+      created: false,
+      durable: true,
+      sandboxOnly: true,
+    });
+  }
+
+  try {
+    await env.DB
+      .prepare(
+        `INSERT INTO funding_checkout_attempts
+         (attempt_id, negotiation_id, tenant_id, intent_key, environment,
+          asset_id, provider_strategy, wallet_address, amount_micros, status,
+          provider_status, created_at, updated_at)
+         VALUES (?, ?, ?, ?, 'sandbox', ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        newCheckout.attemptId,
+        id,
+        context.tenant.id,
+        newCheckout.intentKey,
+        newCheckout.assetId,
+        newCheckout.providerStrategy,
+        newCheckout.walletAddress,
+        newCheckout.amountMicros,
+        newCheckout.status,
+        newCheckout.providerStatus,
+        newCheckout.createdAt,
+        newCheckout.updatedAt,
+      )
+      .run();
+  } catch {
+    const racedAttempt = await env.DB
+      .prepare(
+        `SELECT attempt_id
+         FROM funding_checkout_attempts
+         WHERE negotiation_id = ? AND tenant_id = ?
+           AND status IN ('opening', 'submitted', 'unknown', 'confirmed', 'refund_pending')
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      )
+      .bind(id, context.tenant.id)
+      .first();
+    if (racedAttempt?.attempt_id) {
+      const saved = await fundingCheckoutForAttempt(env.DB, racedAttempt.attempt_id);
+      return json({
+        checkout: saved.checkout,
+        created: false,
+        durable: true,
+        sandboxOnly: true,
+      });
+    }
+    return json({ error: "The sandbox checkout attempt could not be saved." }, 503);
+  }
+
+  return json(
+    {
+      checkout: newCheckout,
+      created: true,
+      durable: true,
+      sandboxOnly: true,
+    },
+    201,
+  );
+}
+
+async function recoverSandboxFundingCheckout(request, env, id) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Enter a valid sandbox checkout recovery request." }, 400);
+  }
+  const context = await sandboxFundingContext(env.DB, id, body.token, body.intent);
+  if (context.error) return json({ error: context.error }, context.status);
+  const activeAttempt = await env.DB
+    .prepare(
+      `SELECT attempt_id
+       FROM funding_checkout_attempts
+       WHERE negotiation_id = ? AND tenant_id = ?
+         AND status IN ('opening', 'submitted', 'unknown', 'confirmed', 'refund_pending')
+       ORDER BY created_at DESC
+       LIMIT 1`,
+    )
+    .bind(id, context.tenant.id)
+    .first();
+  const attempt =
+    activeAttempt ||
+    (await env.DB
+      .prepare(
+        `SELECT attempt_id
+         FROM funding_checkout_attempts
+         WHERE negotiation_id = ? AND tenant_id = ? AND intent_key = ?
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      )
+      .bind(id, context.tenant.id, context.intentKey)
+      .first());
+  const saved = attempt?.attempt_id
+    ? await fundingCheckoutForAttempt(env.DB, attempt.attempt_id)
+    : null;
+  return json({
+    checkout: saved?.checkout || null,
+    durable: true,
+    sandboxOnly: true,
+  });
+}
+
+async function appendSandboxFundingCheckoutEvent(request, env, id, attemptId) {
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Enter a valid sandbox checkout event." }, 400);
+  }
+  const row = await rowFor(env.DB, id);
+  const role = await authorize(env.DB, row, body.token);
+  const tenant = role === "tenant" ? await tenantForToken(env.DB, id, body.token) : null;
+  if (!row || role !== "tenant" || !tenant) {
+    return json(
+      { error: "Only the tenant who opened this sandbox checkout may update it." },
+      403,
+    );
+  }
+  const saved = await fundingCheckoutForAttempt(env.DB, attemptId);
+  if (
+    !saved ||
+    saved.negotiationId !== id ||
+    saved.tenantId !== tenant.id ||
+    saved.checkout.environment !== "sandbox"
+  ) {
+    return json({ error: "This sandbox checkout attempt was not found." }, 404);
+  }
+
+  let updatedCheckout;
+  try {
+    updatedCheckout = applyFundingCheckoutEvent(saved.checkout, {
+      eventId: body.eventId,
+      status: body.status,
+      providerStatus: body.providerStatus,
+      occurredAt: new Date().toISOString(),
+    });
+  } catch (error) {
+    return json(
+      {
+        error:
+          error instanceof Error
+            ? error.message
+            : "The sandbox checkout event is invalid.",
+      },
+      409,
+    );
+  }
+  if (updatedCheckout === saved.checkout) {
+    return json({
+      checkout: saved.checkout,
+      duplicate: true,
+      durable: true,
+      sandboxOnly: true,
+    });
+  }
+
+  const event = updatedCheckout.events.at(-1);
+  try {
+    await env.DB.batch([
+      env.DB
+        .prepare(
+          `INSERT INTO funding_checkout_events
+           (attempt_id, event_id, status, provider_status, occurred_at)
+           SELECT ?, ?, ?, ?, ?
+           WHERE EXISTS (
+             SELECT 1
+             FROM funding_checkout_attempts
+             WHERE attempt_id = ?
+               AND status = ?
+               AND provider_status = ?
+               AND updated_at = ?
+           )`,
+        )
+        .bind(
+          updatedCheckout.attemptId,
+          event.id,
+          event.status,
+          event.providerStatus,
+          event.occurredAt,
+          saved.checkout.attemptId,
+          saved.checkout.status,
+          saved.checkout.providerStatus,
+          saved.checkout.updatedAt,
+        ),
+      env.DB
+        .prepare(
+          `UPDATE funding_checkout_attempts
+           SET status = ?, provider_status = ?, updated_at = ?
+           WHERE attempt_id = ?
+             AND status = ?
+             AND provider_status = ?
+             AND updated_at = ?
+             AND EXISTS (
+               SELECT 1
+               FROM funding_checkout_events
+               WHERE attempt_id = ?
+                 AND event_id = ?
+                 AND status = ?
+                 AND provider_status = ?
+                 AND occurred_at = ?
+             )`,
+        )
+        .bind(
+          updatedCheckout.status,
+          updatedCheckout.providerStatus,
+          updatedCheckout.updatedAt,
+          updatedCheckout.attemptId,
+          saved.checkout.status,
+          saved.checkout.providerStatus,
+          saved.checkout.updatedAt,
+          updatedCheckout.attemptId,
+          event.id,
+          event.status,
+          event.providerStatus,
+          event.occurredAt,
+        ),
+    ]);
+  } catch {
+    const current = await fundingCheckoutForAttempt(env.DB, attemptId);
+    if (
+      current?.checkout.events.some(
+        (candidate) =>
+          candidate.id === event.id &&
+          candidate.status === event.status &&
+          candidate.providerStatus === event.providerStatus,
+      )
+    ) {
+      return json({
+        checkout: current.checkout,
+        duplicate: true,
+        durable: true,
+        sandboxOnly: true,
+      });
+    }
+    return json({ error: "The sandbox checkout event could not be saved." }, 503);
+  }
+  const current = await fundingCheckoutForAttempt(env.DB, attemptId);
+  if (
+    !current?.checkout.events.some(
+      (candidate) =>
+        candidate.id === event.id &&
+        candidate.status === event.status &&
+        candidate.providerStatus === event.providerStatus,
+    )
+  ) {
+    return json(
+      {
+        error:
+          "The sandbox checkout changed while this provider result was being saved. Refresh its status before retrying.",
+      },
+      409,
+    );
+  }
+  return json({
+    checkout: current.checkout,
+    duplicate: false,
+    durable: true,
+    sandboxOnly: true,
+  });
 }
 
 async function eventsFor(db, id) {
@@ -6869,6 +7443,26 @@ const worker = {
       }
       if (url.pathname === "/api/negotiations/discover" && request.method === "POST") {
         return discoverNegotiations(request, env);
+      }
+
+      const fundingCheckoutEventMatch = url.pathname.match(
+        /^\/api\/negotiations\/([a-zA-Z0-9-]+)\/funding-checkouts\/([a-zA-Z0-9._:-]+)\/events$/,
+      );
+      if (fundingCheckoutEventMatch && request.method === "POST") {
+        return appendSandboxFundingCheckoutEvent(
+          request,
+          env,
+          fundingCheckoutEventMatch[1],
+          fundingCheckoutEventMatch[2],
+        );
+      }
+      const fundingCheckoutMatch = url.pathname.match(
+        /^\/api\/negotiations\/([a-zA-Z0-9-]+)\/funding-checkouts(?:\/(recover))?$/,
+      );
+      if (fundingCheckoutMatch && request.method === "POST") {
+        return fundingCheckoutMatch[2] === "recover"
+          ? recoverSandboxFundingCheckout(request, env, fundingCheckoutMatch[1])
+          : createSandboxFundingCheckout(request, env, fundingCheckoutMatch[1]);
       }
 
       const match = url.pathname.match(

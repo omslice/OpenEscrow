@@ -60,6 +60,9 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Exact wallet, asset, chain, amount, sandbox, and production release gates
 - [x] Fail-closed checkout result handling for submitted, confirmed, cancelled, failed, and
   malformed provider outcomes
+- [x] Tenant-authorized D1 sandbox checkout recovery across sessions/devices, with idempotent
+  events, duplicate-purchase locking, refund/cancellation retry gates, and no agreement-funding
+  side effect
 - [x] Direct Aave supply/withdrawal route modeled without a DEX swap
 - [x] FRNT and USDY routes fail closed pending official availability and eligibility
 - [x] Validate the provider-neutral sandbox intent, UI states, and failure handling locally

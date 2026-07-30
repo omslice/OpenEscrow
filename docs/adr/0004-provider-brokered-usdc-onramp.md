@@ -45,13 +45,19 @@ It would also incorrectly imply that a DEX is needed to enter or exit Aave.
    screen. Refresh the wallet balance without recording agreement funding; permit an immediate
    new checkout only after an explicit provider cancellation or failure result. This reduces the
    risk of a duplicate purchase while provider settlement is pending or uncertain.
-9. Persist a provider-neutral checkout lifecycle on the current device before opening the
-   provider. The ledger binds the route, environment, asset, wallet, and amount; accepts only
-   monotonic opening, submission, confirmation, cancellation, failure, and refund transitions;
-   and rejects conflicting duplicate events or internally inconsistent saved history. An
-   interrupted checkout remains
-   locked until its provider status is checked. This device-local recovery is a sandbox safeguard,
-   not a substitute for signed provider webhooks and a durable server-side production ledger.
+9. Persist a provider-neutral checkout lifecycle in D1 before opening the provider sandbox. The
+   tenant-authorized ledger binds the agreement, tenant, route, environment, asset, wallet, and
+   amount; accepts only monotonic opening, submission, confirmation, cancellation, failure, and
+   refund transitions; and rejects conflicting duplicate events or internally inconsistent
+   history. A partial unique index prevents a second active checkout for the same tenant and
+   agreement, even if a later browser request supplies a different amount. Optimistic transition
+   guards prevent simultaneous provider results from forking the saved lifecycle.
+10. Use browser storage only as a best-effort recovery cache. On a later page load or device, the
+    authenticated tenant recovers the D1 lifecycle and may reconcile a locally retained provider
+    result. An interrupted opening remains locked until its status is resolved.
+11. Keep this ledger explicitly sandbox-only. Client-reported sandbox events never create an
+    agreement-funding event and are not evidence that assets reached the wallet or escrow. This is
+    not a substitute for signed provider webhooks and a production reconciliation ledger.
 
 ## Why not choose a single onramp vendor now?
 
