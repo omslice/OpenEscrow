@@ -1,9 +1,14 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  applyFundingCheckoutEvent,
+  createFundingCheckoutAttempt,
   createFundingIntent,
   createFundingPlan,
+  fundingIntentKey,
   getFundingRouteServices,
+  isFundingCheckoutLifecycle,
+  normalizeFundingCheckoutState,
   reconcileFundingCheckoutError,
   reconcileFundingCheckoutResult,
   validateFiatOnrampConfig,
@@ -75,7 +80,7 @@ test("fiat config fails closed when disabled, misrouted, or given an unknown env
 
 test("provider and conversion aliases resolve through the catalog", () => {
   const directory = listFundingProviders();
-  assert.equal(directory.version, "2026-07-26.1");
+  assert.equal(directory.version, "2026-07-30.1");
   assert.equal(directory.onramp["privy-brokered-fiat"]?.enabled, true);
   assert.equal(directory.onramp["kraken-swap-external"]?.enabled, false);
   assert.equal(directory.aliases["privy-usdc-base"], "privy-brokered-fiat");
@@ -291,4 +296,221 @@ test("checkout reconciliation fails closed for cancellation, failure, and unknow
   assert.equal(rejected.shouldRefreshBalance, false);
   assert.equal(rejected.retryAllowed, false);
   assert.match(rejected.message, /check your provider activity/i);
+});
+
+test("provider status aliases normalize without weakening retry gates", () => {
+  assert.equal(normalizeFundingCheckoutState("processing"), "submitted");
+  assert.equal(normalizeFundingCheckoutState("succeeded"), "confirmed");
+  assert.equal(normalizeFundingCheckoutState("expired"), "failed");
+  assert.equal(normalizeFundingCheckoutState("refunding"), "refund_pending");
+  assert.equal(normalizeFundingCheckoutState("reversed"), "refunded");
+  assert.equal(normalizeFundingCheckoutState("unrecognized"), "unknown");
+
+  const pending = reconcileFundingCheckoutResult(
+    { status: "processing" },
+    "production",
+  );
+  assert.equal(pending.state, "submitted");
+  assert.equal(pending.retryAllowed, false);
+
+  const expired = reconcileFundingCheckoutResult(
+    { status: "expired" },
+    "production",
+  );
+  assert.equal(expired.state, "failed");
+  assert.equal(expired.retryAllowed, true);
+});
+
+test("checkout lifecycle reconciles delayed confirmation idempotently", () => {
+  const intent = createFundingIntent({
+    assetId: "usdc",
+    walletAddress: wallet,
+    amountMicros: 1_250_000n,
+    environment: "sandbox",
+    onrampEnabled: true,
+  });
+  const opened = createFundingCheckoutAttempt(intent, {
+    attemptId: "attempt-0001",
+    createdAt: "2026-07-30T00:00:00.000Z",
+  });
+  assert.equal(opened.intentKey, fundingIntentKey(intent));
+  assert.equal(opened.status, "opening");
+  assert.equal(isFundingCheckoutLifecycle(opened), true);
+
+  const submitted = applyFundingCheckoutEvent(opened, {
+    eventId: "provider-event-001",
+    status: "processing",
+    providerStatus: "processing",
+    occurredAt: "2026-07-30T00:01:00.000Z",
+  });
+  assert.equal(submitted.status, "submitted");
+  assert.equal(submitted.events.length, 1);
+
+  const duplicate = applyFundingCheckoutEvent(submitted, {
+    eventId: "provider-event-001",
+    status: "processing",
+    providerStatus: "processing",
+    occurredAt: "2026-07-30T00:01:00.000Z",
+  });
+  assert.equal(duplicate, submitted);
+
+  assert.throws(
+    () =>
+      applyFundingCheckoutEvent(submitted, {
+        eventId: "provider-event-001",
+        status: "confirmed",
+        occurredAt: "2026-07-30T00:02:00.000Z",
+      }),
+    /conflicts with the saved checkout state/i,
+  );
+
+  const confirmed = applyFundingCheckoutEvent(submitted, {
+    eventId: "provider-event-002",
+    status: "completed",
+    providerStatus: "completed",
+    occurredAt: "2026-07-30T00:03:00.000Z",
+  });
+  assert.equal(confirmed.status, "confirmed");
+  assert.equal(isFundingCheckoutLifecycle(confirmed), true);
+  assert.throws(
+    () =>
+      applyFundingCheckoutEvent(confirmed, {
+        eventId: "provider-event-003",
+        status: "confirmed",
+        occurredAt: "2026-07-30T00:02:00.000Z",
+      }),
+    /cannot predate/i,
+  );
+});
+
+test("checkout lifecycle models cancellation, uncertainty recovery, and refunds", () => {
+  const intent = createFundingIntent({
+    assetId: "usdc",
+    walletAddress: wallet,
+    amountMicros: 2_000_000n,
+    environment: "production",
+    onrampEnabled: true,
+    productionApproved: true,
+  });
+  const opened = createFundingCheckoutAttempt(intent, {
+    attemptId: "attempt-0002",
+    createdAt: "2026-07-30T01:00:00.000Z",
+  });
+  const uncertain = applyFundingCheckoutEvent(opened, {
+    eventId: "provider-event-101",
+    status: "unexpected",
+    occurredAt: "2026-07-30T01:01:00.000Z",
+  });
+  assert.equal(uncertain.status, "unknown");
+  assert.equal(
+    reconcileFundingCheckoutResult(
+      { status: uncertain.providerStatus },
+      "production",
+    ).retryAllowed,
+    false,
+  );
+
+  const confirmed = applyFundingCheckoutEvent(uncertain, {
+    eventId: "provider-event-102",
+    status: "success",
+    occurredAt: "2026-07-30T01:02:00.000Z",
+  });
+  const refundPending = applyFundingCheckoutEvent(confirmed, {
+    eventId: "provider-event-103",
+    status: "refunding",
+    occurredAt: "2026-07-30T01:03:00.000Z",
+  });
+  assert.equal(refundPending.status, "refund_pending");
+  assert.equal(
+    reconcileFundingCheckoutResult(
+      { status: refundPending.providerStatus },
+      "production",
+    ).retryAllowed,
+    false,
+  );
+
+  const refunded = applyFundingCheckoutEvent(refundPending, {
+    eventId: "provider-event-104",
+    status: "refunded",
+    occurredAt: "2026-07-30T01:04:00.000Z",
+  });
+  const refundOutcome = reconcileFundingCheckoutResult(
+    { status: refunded.providerStatus },
+    "production",
+  );
+  assert.equal(refundOutcome.state, "refunded");
+  assert.equal(refundOutcome.retryAllowed, true);
+  assert.equal(refundOutcome.shouldRefreshBalance, true);
+  assert.throws(
+    () =>
+      applyFundingCheckoutEvent(refunded, {
+        eventId: "provider-event-105",
+        status: "submitted",
+        occurredAt: "2026-07-30T01:05:00.000Z",
+      }),
+    /cannot move from refunded to submitted/i,
+  );
+
+  const cancelled = applyFundingCheckoutEvent(opened, {
+    eventId: "provider-event-106",
+    status: "cancelled",
+    occurredAt: "2026-07-30T01:01:00.000Z",
+  });
+  assert.equal(cancelled.status, "cancelled");
+  assert.equal(
+    reconcileFundingCheckoutResult(
+      { status: cancelled.providerStatus },
+      "production",
+    ).retryAllowed,
+    true,
+  );
+});
+
+test("persisted checkout lifecycle rejects tampering and impossible history", () => {
+  const intent = createFundingIntent({
+    assetId: "usdc",
+    walletAddress: wallet,
+    amountMicros: 3_000_000n,
+    environment: "sandbox",
+    onrampEnabled: true,
+  });
+  const opened = createFundingCheckoutAttempt(intent, {
+    attemptId: "attempt-0003",
+    createdAt: "2026-07-30T02:00:00.000Z",
+  });
+  const tampered = {
+    ...opened,
+    walletAddress: "0x2222222222222222222222222222222222222222",
+  };
+  assert.equal(isFundingCheckoutLifecycle(tampered), false);
+  assert.equal(
+    isFundingCheckoutLifecycle({
+      ...opened,
+      assetId: "invented-asset",
+      intentKey: opened.intentKey.replace("|usdc|", "|invented-asset|"),
+    }),
+    false,
+  );
+  assert.equal(
+    isFundingCheckoutLifecycle({
+      ...opened,
+      intentKey: opened.intentKey.replace("eip155:8453", "eip155:1"),
+    }),
+    false,
+  );
+  assert.throws(
+    () =>
+      fundingIntentKey({
+        ...intent,
+        amountMicros: 0n,
+      }),
+    /valid funding intent/i,
+  );
+
+  const impossible = {
+    ...opened,
+    status: "refunded",
+    providerStatus: "refunded",
+  };
+  assert.equal(isFundingCheckoutLifecycle(impossible), false);
 });

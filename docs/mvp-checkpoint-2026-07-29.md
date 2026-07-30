@@ -16,7 +16,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key rotation, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 73 server tests, 42 client-logic
+- **Verified:** The full repository release check passes with 73 server tests, 46 client-logic
   tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
   build. Accessibility is now part of the required `npm run check` path rather than a separate,
   potentially stale result.
@@ -27,7 +27,9 @@ production readiness, or authorization to hold real rental deposits.
 - **Verified:** Provider checkout reconciliation now prevents an immediate second purchase after
   submitted, confirmed, or indeterminate results. The user can refresh the destination wallet
   balance without recording agreement funding; only explicit cancellation or failure permits an
-  immediate retry. Real-money funding remains disabled.
+  immediate retry. A provider-neutral lifecycle now survives page refresh, rejects internally
+  inconsistent state and conflicting duplicate events, and models delayed confirmation,
+  cancellation, failure, and refunds. Real-money funding remains disabled.
 - **Verified:** Successful finalization, funding, reserve, record-anchor, and privacy-safe activity
   transactions no longer depend on writable browser storage to save their D1 receipt. Blocked
   storage degrades to an in-memory retry instead of interrupting the completed action; malformed

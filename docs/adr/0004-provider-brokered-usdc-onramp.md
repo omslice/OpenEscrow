@@ -45,6 +45,13 @@ It would also incorrectly imply that a DEX is needed to enter or exit Aave.
    screen. Refresh the wallet balance without recording agreement funding; permit an immediate
    new checkout only after an explicit provider cancellation or failure result. This reduces the
    risk of a duplicate purchase while provider settlement is pending or uncertain.
+9. Persist a provider-neutral checkout lifecycle on the current device before opening the
+   provider. The ledger binds the route, environment, asset, wallet, and amount; accepts only
+   monotonic opening, submission, confirmation, cancellation, failure, and refund transitions;
+   and rejects conflicting duplicate events or internally inconsistent saved history. An
+   interrupted checkout remains
+   locked until its provider status is checked. This device-local recovery is a sandbox safeguard,
+   not a substitute for signed provider webhooks and a durable server-side production ledger.
 
 ## Why not choose a single onramp vendor now?
 
@@ -74,6 +81,7 @@ Production remains blocked until all of the following are true:
 
 - audited Base mainnet escrow contracts use supported real USDC;
 - provider application approval and KYC/AML/support flows are complete;
+- signed provider webhooks feed an idempotent server-side checkout ledger;
 - legal review approves the exact funding and optional-yield flow;
 - quote, funding, failure, refund, and reconciliation monitoring is operational;
 - the production build has both onramp and production-approval flags enabled; and

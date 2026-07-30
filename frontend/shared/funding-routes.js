@@ -3,9 +3,10 @@ import {
   getDepositAsset,
 } from "./deposit-assets.js";
 
-export const FUNDING_ROUTE_CATALOG_VERSION = "2026-07-26.1";
+export const FUNDING_ROUTE_CATALOG_VERSION = "2026-07-30.1";
 export const ONRAMP_PROVIDER_CATALOG_VERSION = FUNDING_ROUTE_CATALOG_VERSION;
 export const CONVERSION_ADAPTER_CATALOG_VERSION = FUNDING_ROUTE_CATALOG_VERSION;
+export const FUNDING_CHECKOUT_SCHEMA = "openescrow.funding-checkout.v1";
 
 const ONRAMP_PROVIDERS = Object.freeze({
   "privy-brokered-fiat": Object.freeze({
@@ -360,19 +361,322 @@ export function createFundingIntent({
   });
 }
 
+function rawFundingProviderStatus(result) {
+  return result && typeof result === "object" && typeof result.status === "string"
+    ? result.status.trim().toLowerCase()
+    : "unknown";
+}
+
+export function normalizeFundingCheckoutState(status) {
+  switch (String(status || "").trim().toLowerCase()) {
+    case "created":
+    case "opened":
+    case "opening":
+      return "opening";
+    case "pending":
+    case "processing":
+    case "requires_action":
+    case "submitted":
+      return "submitted";
+    case "complete":
+    case "completed":
+    case "confirmed":
+    case "succeeded":
+    case "success":
+      return "confirmed";
+    case "canceled":
+    case "cancelled":
+      return "cancelled";
+    case "declined":
+    case "expired":
+    case "failed":
+    case "rejected":
+      return "failed";
+    case "refund_pending":
+    case "refunding":
+      return "refund_pending";
+    case "refunded":
+    case "reversed":
+      return "refunded";
+    default:
+      return "unknown";
+  }
+}
+
+export function fundingIntentKey(intent) {
+  const validAmount =
+    typeof intent?.amountMicros === "bigint"
+      ? intent.amountMicros > 0n
+      : /^[1-9][0-9]*$/.test(String(intent?.amountMicros || ""));
+  if (
+    !intent ||
+    intent.schema !== "openescrow.funding-intent.v1" ||
+    intent.routeCatalogVersion !== FUNDING_ROUTE_CATALOG_VERSION ||
+    !["sandbox", "production"].includes(intent.environment) ||
+    !Object.values(DEPOSIT_ASSET_IDS).includes(intent.assetId) ||
+    intent.providerStrategy !== ONRAMP_STRATEGY.id ||
+    intent.destination?.chain !== ONRAMP_STRATEGY.destinationChain ||
+    intent.destination?.asset !== ONRAMP_STRATEGY.destinationAsset ||
+    !/^0x[a-fA-F0-9]{40}$/.test(String(intent.destination?.address || "")) ||
+    !validAmount
+  ) {
+    throw new Error("A valid funding intent is required.");
+  }
+  return [
+    intent.schema,
+    intent.routeCatalogVersion,
+    intent.environment,
+    intent.assetId,
+    intent.providerStrategy,
+    intent.destination.chain,
+    intent.destination.asset,
+    intent.destination.address.toLowerCase(),
+    intent.amountMicros.toString(),
+  ].join("|");
+}
+
+function validAttemptId(value) {
+  return (
+    typeof value === "string" &&
+    value.length >= 8 &&
+    value.length <= 160 &&
+    /^[a-zA-Z0-9._:-]+$/.test(value)
+  );
+}
+
+function validTimestamp(value) {
+  if (typeof value !== "string") return false;
+  try {
+    return new Date(value).toISOString() === value;
+  } catch {
+    return false;
+  }
+}
+
+function validProviderStatus(value) {
+  return (
+    typeof value === "string" &&
+    value.length >= 1 &&
+    value.length <= 160 &&
+    value.trim() === value
+  );
+}
+
+function freezeFundingCheckout(checkout) {
+  return Object.freeze({
+    ...checkout,
+    events: Object.freeze(
+      checkout.events.map((event) => Object.freeze({ ...event })),
+    ),
+  });
+}
+
+export function createFundingCheckoutAttempt(
+  intent,
+  { attemptId, createdAt = new Date().toISOString() } = {},
+) {
+  if (!validAttemptId(attemptId)) {
+    throw new Error("A unique checkout attempt ID is required.");
+  }
+  if (!validTimestamp(createdAt)) {
+    throw new Error("A valid checkout creation timestamp is required.");
+  }
+  const intentKey = fundingIntentKey(intent);
+  return freezeFundingCheckout({
+    schema: FUNDING_CHECKOUT_SCHEMA,
+    intentKey,
+    attemptId,
+    environment: intent.environment,
+    assetId: intent.assetId,
+    providerStrategy: intent.providerStrategy,
+    walletAddress: intent.destination.address.toLowerCase(),
+    amountMicros: intent.amountMicros.toString(),
+    status: "opening",
+    providerStatus: "opening",
+    createdAt,
+    updatedAt: createdAt,
+    events: [],
+  });
+}
+
+const CHECKOUT_TRANSITIONS = Object.freeze({
+  opening: Object.freeze([
+    "opening",
+    "submitted",
+    "confirmed",
+    "cancelled",
+    "failed",
+    "unknown",
+  ]),
+  submitted: Object.freeze([
+    "submitted",
+    "confirmed",
+    "cancelled",
+    "failed",
+    "unknown",
+  ]),
+  confirmed: Object.freeze(["confirmed", "refund_pending", "refunded"]),
+  cancelled: Object.freeze(["cancelled"]),
+  failed: Object.freeze(["failed"]),
+  unknown: Object.freeze([
+    "unknown",
+    "submitted",
+    "confirmed",
+    "cancelled",
+    "failed",
+    "refund_pending",
+    "refunded",
+  ]),
+  refund_pending: Object.freeze(["refund_pending", "refunded"]),
+  refunded: Object.freeze(["refunded"]),
+});
+
+export function isFundingCheckoutLifecycle(value) {
+  if (!value || typeof value !== "object") return false;
+  const intentParts =
+    typeof value.intentKey === "string" ? value.intentKey.split("|") : [];
+  if (
+    value.schema !== FUNDING_CHECKOUT_SCHEMA ||
+    intentParts.length !== 9 ||
+    intentParts[0] !== "openescrow.funding-intent.v1" ||
+    intentParts[1] !== FUNDING_ROUTE_CATALOG_VERSION ||
+    intentParts[2] !== value.environment ||
+    intentParts[3] !== value.assetId ||
+    intentParts[4] !== value.providerStrategy ||
+    intentParts[5] !== ONRAMP_STRATEGY.destinationChain ||
+    intentParts[6] !== ONRAMP_STRATEGY.destinationAsset ||
+    intentParts[7] !== value.walletAddress ||
+    intentParts[8] !== value.amountMicros ||
+    !validAttemptId(value.attemptId) ||
+    !["sandbox", "production"].includes(value.environment) ||
+    !Object.values(DEPOSIT_ASSET_IDS).includes(value.assetId) ||
+    value.providerStrategy !== ONRAMP_STRATEGY.id ||
+    !/^0x[a-fA-F0-9]{40}$/.test(String(value.walletAddress || "")) ||
+    !/^[1-9][0-9]*$/.test(String(value.amountMicros || "")) ||
+    !Object.hasOwn(CHECKOUT_TRANSITIONS, value.status) ||
+    !validProviderStatus(value.providerStatus) ||
+    !validTimestamp(value.createdAt) ||
+    !validTimestamp(value.updatedAt) ||
+    !Array.isArray(value.events) ||
+    value.events.length > 64
+  ) {
+    return false;
+  }
+  let status = "opening";
+  let providerStatus = "opening";
+  let updatedAt = value.createdAt;
+  let previousTime = Date.parse(value.createdAt);
+  const eventIds = new Set();
+  for (const event of value.events) {
+    if (
+      !event ||
+      typeof event !== "object" ||
+      !validAttemptId(event.id) ||
+      eventIds.has(event.id) ||
+      !Object.hasOwn(CHECKOUT_TRANSITIONS, event.status) ||
+      !validProviderStatus(event.providerStatus) ||
+      !validTimestamp(event.occurredAt) ||
+      Date.parse(event.occurredAt) < previousTime ||
+      !CHECKOUT_TRANSITIONS[status].includes(event.status)
+    ) {
+      return false;
+    }
+    eventIds.add(event.id);
+    status = event.status;
+    providerStatus = event.providerStatus;
+    updatedAt = event.occurredAt;
+    previousTime = Date.parse(event.occurredAt);
+  }
+  return (
+    value.status === status &&
+    value.providerStatus === providerStatus &&
+    value.updatedAt === updatedAt
+  );
+}
+
+export function applyFundingCheckoutEvent(
+  checkout,
+  {
+    eventId,
+    status,
+    providerStatus = status,
+    occurredAt = new Date().toISOString(),
+  } = {},
+) {
+  if (!isFundingCheckoutLifecycle(checkout)) {
+    throw new Error("A valid funding checkout lifecycle is required.");
+  }
+  if (!validAttemptId(eventId)) {
+    throw new Error("A unique provider event ID is required.");
+  }
+  if (!validTimestamp(occurredAt)) {
+    throw new Error("A valid provider event timestamp is required.");
+  }
+  const normalizedProviderStatus = String(providerStatus || "unknown")
+    .trim()
+    .toLowerCase();
+  const nextStatus = normalizeFundingCheckoutState(status);
+  if (!validProviderStatus(normalizedProviderStatus)) {
+    throw new Error("A valid provider status is required.");
+  }
+  const duplicate = checkout.events.find((event) => event.id === eventId);
+  if (duplicate) {
+    if (
+      duplicate.status !== nextStatus ||
+      duplicate.providerStatus !== normalizedProviderStatus
+    ) {
+      throw new Error("A duplicate provider event conflicts with the saved checkout state.");
+    }
+    return checkout;
+  }
+  if (Date.parse(occurredAt) < Date.parse(checkout.updatedAt)) {
+    throw new Error("A provider event cannot predate the saved checkout state.");
+  }
+  if (checkout.events.length >= 64) {
+    throw new Error("The funding checkout event history limit was reached.");
+  }
+  if (!CHECKOUT_TRANSITIONS[checkout.status].includes(nextStatus)) {
+    throw new Error(
+      `Funding checkout cannot move from ${checkout.status} to ${nextStatus}.`,
+    );
+  }
+  const event = {
+    id: eventId,
+    status: nextStatus,
+    providerStatus: normalizedProviderStatus,
+    occurredAt,
+  };
+  return freezeFundingCheckout({
+    ...checkout,
+    status: nextStatus,
+    providerStatus: normalizedProviderStatus,
+    updatedAt: occurredAt,
+    events: [...checkout.events, event],
+  });
+}
+
 export function reconcileFundingCheckoutResult(
   result,
   environment = "sandbox",
 ) {
   const normalizedEnvironment = normalizeEnvironment(environment);
-  const providerStatus =
-    result && typeof result === "object" && typeof result.status === "string"
-      ? result.status.trim().toLowerCase()
-      : "unknown";
+  const providerStatus = rawFundingProviderStatus(result);
+  const state = normalizeFundingCheckoutState(providerStatus);
 
-  if (providerStatus === "confirmed") {
+  if (state === "opening") {
     return Object.freeze({
-      state: "confirmed",
+      state,
+      providerStatus,
+      severity: "info",
+      shouldRefreshBalance: false,
+      retryAllowed: false,
+      message: "Opening secure checkout...",
+    });
+  }
+
+  if (state === "confirmed") {
+    return Object.freeze({
+      state,
       providerStatus,
       severity: "info",
       shouldRefreshBalance: normalizedEnvironment === "production",
@@ -384,9 +688,9 @@ export function reconcileFundingCheckoutResult(
     });
   }
 
-  if (providerStatus === "submitted") {
+  if (state === "submitted") {
     return Object.freeze({
-      state: "submitted",
+      state,
       providerStatus,
       severity: "info",
       shouldRefreshBalance: false,
@@ -398,9 +702,9 @@ export function reconcileFundingCheckoutResult(
     });
   }
 
-  if (providerStatus === "cancelled" || providerStatus === "canceled") {
+  if (state === "cancelled") {
     return Object.freeze({
-      state: "cancelled",
+      state,
       providerStatus,
       severity: "info",
       shouldRefreshBalance: false,
@@ -410,15 +714,43 @@ export function reconcileFundingCheckoutResult(
     });
   }
 
-  if (providerStatus === "failed" || providerStatus === "rejected") {
+  if (state === "failed") {
     return Object.freeze({
-      state: "failed",
+      state,
       providerStatus,
       severity: "error",
       shouldRefreshBalance: false,
       retryAllowed: true,
       message:
         "The provider did not confirm this checkout. No agreement funding was recorded; you can try again.",
+    });
+  }
+
+  if (state === "refund_pending") {
+    return Object.freeze({
+      state,
+      providerStatus,
+      severity: "info",
+      shouldRefreshBalance: normalizedEnvironment === "production",
+      retryAllowed: false,
+      message:
+        normalizedEnvironment === "sandbox"
+          ? "The sandbox reports a refund in progress. No real funds moved and no agreement funding was recorded."
+          : "The provider reports a refund in progress. Refresh the wallet balance and do not start another purchase yet.",
+    });
+  }
+
+  if (state === "refunded") {
+    return Object.freeze({
+      state,
+      providerStatus,
+      severity: "info",
+      shouldRefreshBalance: normalizedEnvironment === "production",
+      retryAllowed: true,
+      message:
+        normalizedEnvironment === "sandbox"
+          ? "The sandbox refund completed. No real funds moved and no agreement funding was recorded."
+          : "The provider reports that the purchase was refunded. Refresh the wallet balance before starting another checkout.",
     });
   }
 

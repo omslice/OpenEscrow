@@ -194,6 +194,10 @@ test tokens. Keep the current faucet for the public demo. Only activate real fia
 - Exact prefilled amount including the tenant's deposit and operations-reserve share
 - Sandbox versus production configuration
 - Automatic balance refresh after the provider flow
+- Device-local recovery for interrupted checkout attempts, with duplicate-event and invalid
+  lifecycle rejection
+- Safe handling for delayed confirmation, cancellation, failure, refund-pending, and refunded
+  provider states without recording agreement funding
 - Existing gas-sponsored approval and agreement funding after funds arrive
 - Free test-token fallback on Base Sepolia
 
@@ -226,6 +230,10 @@ Production is deliberately double-gated: both `VITE_FIAT_ONRAMP_ENABLED=true` an
 `VITE_FIAT_ONRAMP_PRODUCTION_APPROVED=true` are required, with environment set to `production`.
 Do not set the production-approval flag until the mainnet escrow, legal/provider approvals, and
 independent security review are complete.
+
+The current recovery ledger is deliberately provider-neutral and stored only on the active
+device. Production also requires verified provider webhook signatures, durable server-side
+idempotency, cross-device reconciliation, and provider-specific cancellation/refund semantics.
 
 ### Production design
 

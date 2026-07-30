@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useFiatOnramp } from "@privy-io/react-auth";
 import {
   FIAT_ONRAMP_CONFIG,
@@ -6,12 +6,23 @@ import {
 } from "../lib/accountConfig";
 import type { DepositAssetConfig } from "../../shared/deposit-assets.js";
 import {
+  applyFundingCheckoutEvent,
+  createFundingCheckoutAttempt,
   createFundingIntent,
   createFundingPlan,
+  isFundingCheckoutLifecycle,
   reconcileFundingCheckoutError,
   reconcileFundingCheckoutResult,
 } from "../../shared/funding-routes.js";
-import type { FundingCheckoutOutcome } from "../../shared/funding-routes.js";
+import type {
+  FundingCheckoutLifecycle,
+  FundingCheckoutOutcome,
+} from "../../shared/funding-routes.js";
+import {
+  clearRecoveryValue,
+  readRecoveryJson,
+  writeRecoveryJson,
+} from "../lib/browserRecovery";
 
 function microsToDecimal(value: bigint) {
   const whole = value / 1_000_000n;
@@ -43,6 +54,60 @@ export function FiatFundingOption({
     environment: FIAT_ONRAMP_READINESS.environment,
     productionApproved: FIAT_ONRAMP_CONFIG?.environment === "production",
   });
+  const checkoutStorageKey = FIAT_ONRAMP_CONFIG
+    ? [
+        "openescrow:funding-checkout",
+        FIAT_ONRAMP_CONFIG.environment,
+        depositAsset?.id || "usdc",
+        walletAddress.toLowerCase(),
+        amount.toString(),
+      ].join(":")
+    : null;
+
+  useEffect(() => {
+    setStatus(null);
+    setRefreshError(null);
+    if (!checkoutStorageKey || !FIAT_ONRAMP_CONFIG) return;
+    const saved = readRecoveryJson(
+      checkoutStorageKey,
+      isFundingCheckoutLifecycle,
+    );
+    if (!saved) return;
+    if (
+      saved.environment !== FIAT_ONRAMP_CONFIG.environment ||
+      saved.assetId !== (depositAsset?.id || "usdc") ||
+      saved.walletAddress !== walletAddress.toLowerCase() ||
+      saved.amountMicros !== amount.toString()
+    ) {
+      clearRecoveryValue(checkoutStorageKey);
+      return;
+    }
+    let recovered = saved;
+    if (saved.status === "opening") {
+      try {
+        recovered = applyFundingCheckoutEvent(saved, {
+          eventId: `recovery:${saved.attemptId}`,
+          status: "unknown",
+          providerStatus: "interrupted",
+        });
+        writeRecoveryJson(checkoutStorageKey, recovered);
+      } catch {
+        setStatus(reconcileFundingCheckoutError());
+        return;
+      }
+    }
+    setStatus(
+      reconcileFundingCheckoutResult(
+        { status: recovered.providerStatus },
+        FIAT_ONRAMP_CONFIG.environment,
+      ),
+    );
+  }, [
+    amount,
+    checkoutStorageKey,
+    depositAsset?.id,
+    walletAddress,
+  ]);
 
   if (!FIAT_ONRAMP_CONFIG || !fundingPlan.checkoutAvailable) {
     return (
@@ -67,13 +132,19 @@ export function FiatFundingOption({
   const checkoutLabel =
     status?.state === "confirmed"
       ? "Checkout complete"
-      : status?.state === "submitted" && status.providerStatus !== "opening"
-        ? "Purchase submitted"
-        : isOpening
-          ? "Opening checkout..."
-          : isSandbox
-            ? "Preview sandbox checkout"
-            : "Continue to card or bank";
+      : status?.state === "refund_pending"
+        ? "Refund pending"
+        : status?.state === "unknown" && status.retryAllowed === false
+          ? "Check provider before retrying"
+          : status?.retryAllowed === true
+            ? "Start a new checkout"
+            : status?.state === "submitted" && status.providerStatus !== "opening"
+              ? "Purchase submitted"
+              : isOpening
+                ? "Opening checkout..."
+                : isSandbox
+                  ? "Preview sandbox checkout"
+                  : "Continue to card or bank";
 
   return (
     <div className="fiat-funding-option enabled">
@@ -92,14 +163,7 @@ export function FiatFundingOption({
         onClick={async () => {
           setIsOpening(true);
           setRefreshError(null);
-          setStatus({
-            state: "submitted",
-            providerStatus: "opening",
-            severity: "info",
-            shouldRefreshBalance: false,
-            retryAllowed: false,
-            message: "Opening secure checkout...",
-          });
+          let attempt: FundingCheckoutLifecycle | null = null;
           try {
             const intent = createFundingIntent({
               assetId: depositAsset?.id || "usdc",
@@ -109,6 +173,30 @@ export function FiatFundingOption({
               onrampEnabled: true,
               productionApproved: FIAT_ONRAMP_CONFIG.environment === "production",
             });
+            attempt = createFundingCheckoutAttempt(intent, {
+              attemptId: globalThis.crypto.randomUUID(),
+            });
+            if (
+              !checkoutStorageKey ||
+              !writeRecoveryJson(checkoutStorageKey, attempt)
+            ) {
+              setStatus({
+                state: "failed",
+                providerStatus: "recovery_unavailable",
+                severity: "error",
+                shouldRefreshBalance: false,
+                retryAllowed: true,
+                message:
+                  "Secure checkout recovery is unavailable in this browser. No checkout was opened. Restore browser storage access before trying again.",
+              });
+              return;
+            }
+            setStatus(
+              reconcileFundingCheckoutResult(
+                { status: "opening" },
+                FIAT_ONRAMP_CONFIG.environment,
+              ),
+            );
             const result = await fund({
               source: {
                 assets: [...intent.source.assets],
@@ -118,15 +206,52 @@ export function FiatFundingOption({
               environment: intent.environment,
               defaultAmount: microsToDecimal(amount),
             });
+            const resultStatus =
+              result &&
+              typeof result === "object" &&
+              "status" in result &&
+              typeof result.status === "string"
+                ? result.status
+                : "unknown";
+            attempt = applyFundingCheckoutEvent(attempt, {
+              eventId: `provider-result:${attempt.attemptId}`,
+              status: resultStatus,
+              providerStatus: resultStatus,
+            });
+            if (checkoutStorageKey) {
+              writeRecoveryJson(checkoutStorageKey, attempt);
+            }
             const outcome = reconcileFundingCheckoutResult(
               result,
               FIAT_ONRAMP_CONFIG.environment,
             );
             setStatus(outcome);
             if (outcome.shouldRefreshBalance) {
-              await onComplete?.();
+              try {
+                await onComplete?.();
+              } catch {
+                setRefreshError(
+                  "The provider result was saved, but the wallet balance could not be refreshed. Check your connection and try the refresh again.",
+                );
+              }
             }
           } catch {
+            if (
+              attempt &&
+              checkoutStorageKey &&
+              ["opening", "submitted", "unknown"].includes(attempt.status)
+            ) {
+              try {
+                const uncertainAttempt = applyFundingCheckoutEvent(attempt, {
+                  eventId: `client-error:${attempt.attemptId}`,
+                  status: "unknown",
+                  providerStatus: "error",
+                });
+                writeRecoveryJson(checkoutStorageKey, uncertainAttempt);
+              } catch {
+                // Keep the existing locked attempt if recovery state cannot advance safely.
+              }
+            }
             setStatus(reconcileFundingCheckoutError());
           } finally {
             setIsOpening(false);
@@ -152,7 +277,10 @@ export function FiatFundingOption({
           {status.message}
         </p>
       )}
-      {status && !status.retryAllowed && onComplete && (
+      {status &&
+        (status.shouldRefreshBalance || !status.retryAllowed) &&
+        !isOpening &&
+        onComplete && (
         <button
           className="btn btn-secondary"
           type="button"
