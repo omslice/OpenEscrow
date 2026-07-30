@@ -373,6 +373,14 @@ test("the implemented registry covers every state and the District of Columbia",
 });
 
 test("the compliance source registry maps every versioned profile and overlay source", () => {
+  assert.equal(Object.isFrozen(COMPLIANCE_SOURCE_REGISTRY), true);
+  assert.ok(
+    COMPLIANCE_SOURCE_REGISTRY.every(
+      (sourceItem) =>
+        Object.isFrozen(sourceItem) &&
+        sourceItem.citation.trim().length > 0,
+    ),
+  );
   assert.equal(
     new Set(COMPLIANCE_SOURCE_REGISTRY.map((sourceItem) => sourceItem.key)).size,
     COMPLIANCE_SOURCE_REGISTRY.length,
@@ -748,6 +756,114 @@ test("versioned business-day deadlines fail closed on unsupported rule metadata"
       "unsupported-day-type",
     ),
     null,
+  );
+});
+
+test("Florida conditional deadline stages remain fact-gated and event-gated", () => {
+  const floridaProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "FL",
+  );
+  const floridaAddress = {
+    provider: "photon-openstreetmap",
+    providerFeatureId: "R:florida:conditional-deadlines",
+    label: "1 Ocean Drive, Miami Beach, FL 33139",
+    countryCode: "US",
+    stateCode: "FL",
+    city: "Miami Beach",
+    county: "Miami-Dade County",
+    postalCode: "33139",
+    latitude: 25.7907,
+    longitude: -80.13,
+  };
+  const snapshot = buildComplianceSnapshot(
+    floridaProfile,
+    floridaAddress,
+    {
+      facts: {
+        ...newYorkComplianceFacts,
+        housingProgram: "conventional",
+      },
+    },
+  );
+  assert.ok(snapshot.missingFacts.includes("landlordClaimsDeposit"));
+
+  const unresolved = evaluateComplianceSnapshot(snapshot, {
+    events: { tenancyTerminatedAt: "2027-01-01T12:00:00Z" },
+  });
+  assert.ok(
+    unresolved.deadlines.every(
+      (deadlineRule) => deadlineRule.status === "needs-fact",
+    ),
+  );
+
+  const noClaim = evaluateComplianceSnapshot(snapshot, {
+    facts: { landlordClaimsDeposit: false },
+    events: { tenancyTerminatedAt: "2027-01-01T12:00:00Z" },
+  });
+  assert.equal(
+    noClaim.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "no-claim-return",
+    ).dueAt,
+    "2027-01-16T12:00:00.000Z",
+  );
+  assert.ok(
+    noClaim.deadlines
+      .filter((deadlineRule) => deadlineRule.id !== "no-claim-return")
+      .every(
+        (deadlineRule) =>
+          deadlineRule.applicability === "not-applicable" &&
+          deadlineRule.dueAt === null,
+      ),
+  );
+
+  const claimStarted = evaluateComplianceSnapshot(snapshot, {
+    facts: { landlordClaimsDeposit: true },
+    events: { tenancyTerminatedAt: "2027-01-01T12:00:00Z" },
+  });
+  assert.equal(
+    claimStarted.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "claim-notice",
+    ).dueAt,
+    "2027-01-31T12:00:00.000Z",
+  );
+  assert.equal(
+    claimStarted.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "tenant-objection",
+    ).status,
+    "waiting-for-event",
+  );
+  assert.equal(
+    claimStarted.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "claim-balance",
+    ).status,
+    "waiting-for-event",
+  );
+  assert.equal(
+    claimStarted.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "no-claim-return",
+    ).applicability,
+    "not-applicable",
+  );
+
+  const claimCompleted = evaluateComplianceSnapshot(snapshot, {
+    facts: { landlordClaimsDeposit: true },
+    events: {
+      tenancyTerminatedAt: "2027-01-01T12:00:00Z",
+      claimNoticeReceivedAt: "2027-02-01T12:00:00Z",
+      deductionNoticeSentAt: "2027-02-01T12:00:00Z",
+    },
+  });
+  assert.equal(
+    claimCompleted.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "tenant-objection",
+    ).dueAt,
+    "2027-02-16T12:00:00.000Z",
+  );
+  assert.equal(
+    claimCompleted.deadlines.find(
+      (deadlineRule) => deadlineRule.id === "claim-balance",
+    ).dueAt,
+    "2027-03-03T12:00:00.000Z",
   );
 });
 
@@ -1412,88 +1528,137 @@ test("monitored compliance sources fail closed for pending, changed, and stale p
   );
 });
 
-test("an address-applied local overlay requires its exact monitored source", async () => {
+test("every reviewed local overlay requires its exact monitored source", async () => {
   const db = new TestD1();
-  const illinoisProfile = US_JURISDICTION_PROFILES.find(
-    (profile) => profile.postalCode === "IL",
-  );
-  const unsignedAddress = {
-    ...unsignedNewYorkAddressResolution,
-    providerFeatureId: "W:chicago-source-gate",
-    label: "121 North LaSalle Street, Chicago, IL 60602",
-    stateCode: "IL",
-    city: "Chicago",
-    county: "Cook County",
-    postalCode: "60602",
-    latitude: 41.8838,
-    longitude: -87.6317,
-  };
-  const chicagoAddress = {
-    ...unsignedAddress,
-    attestation: await createAddressAttestation(
-      unsignedAddress,
-      TEST_ADDRESS_ATTESTATION_SECRET,
-    ),
-  };
-  const chicagoFacts = {
-    ...newYorkComplianceFacts,
-    housingProgram: "conventional",
-  };
-  const chicagoTerms = {
-    ...terms,
-    jurisdiction: illinoisProfile.code,
-    policyVersion: illinoisProfile.version,
-    propertyAddress: chicagoAddress.label,
-    addressResolution: chicagoAddress,
-    complianceFacts: chicagoFacts,
-    complianceSnapshot: buildComplianceSnapshot(
-      illinoisProfile,
-      chicagoAddress,
-      { facts: chicagoFacts },
-    ),
-    claimDays: illinoisProfile.defaultClaimDays,
-  };
   await worker.fetch(request("/api/system/readiness"), { DB: db });
-  const sourceItems = await seedVerifiedComplianceSources(db, chicagoTerms);
-  const localSource = sourceItems.find(
-    (sourceItem) => sourceItem.jurisdiction === "local-il-chicago-rlto",
-  );
-  assert.ok(localSource);
-  await db
-    .prepare("DELETE FROM compliance_source_checks WHERE source_key = ?")
-    .bind(localSource.key)
-    .run();
   const env = {
     DB: db,
     ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
     COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
   };
-  const proposalBody = {
-    landlordName: "Lena Landlord",
-    landlordEmail: "landlord@example.com",
-    tenantName: "Terry Tenant",
-    tenantEmail: "tenant@example.com",
-    arbiterName: "",
-    arbiterEmail: null,
-    terms: chicagoTerms,
-  };
-  const blocked = await worker.fetch(
-    request("/api/negotiations", "POST", proposalBody),
-    env,
-  );
-  assert.equal(blocked.status, 503);
-  assert.equal(
-    (await blocked.json()).sourceStatus.find(
-      (sourceItem) => sourceItem.key === localSource.key,
-    ).status,
-    "pending",
-  );
-  await seedVerifiedComplianceSources(db, chicagoTerms);
-  const created = await worker.fetch(
-    request("/api/negotiations", "POST", proposalBody),
-    env,
-  );
-  assert.equal(created.status, 201);
+  const localCases = [
+    {
+      overlayId: "local-il-chicago-rlto",
+      stateCode: "IL",
+      city: "Chicago",
+      county: "Cook County",
+      postalCode: "60602",
+      label: "121 North LaSalle Street, Chicago, IL 60602",
+      latitude: 41.8838,
+      longitude: -87.6317,
+    },
+    {
+      overlayId: "local-wa-seattle-move-in-charges",
+      stateCode: "WA",
+      city: "Seattle",
+      county: "King County",
+      postalCode: "98104",
+      label: "600 4th Avenue, Seattle, WA 98104",
+      latitude: 47.6038,
+      longitude: -122.3301,
+    },
+    {
+      overlayId: "local-or-portland-security-deposit",
+      stateCode: "OR",
+      city: "Portland",
+      county: "Multnomah County",
+      postalCode: "97204",
+      label: "1221 SW 4th Avenue, Portland, OR 97204",
+      latitude: 45.5152,
+      longitude: -122.6784,
+    },
+  ];
+
+  for (const localCase of localCases) {
+    const profile = US_JURISDICTION_PROFILES.find(
+      (candidate) => candidate.postalCode === localCase.stateCode,
+    );
+    const unsignedAddress = {
+      ...unsignedNewYorkAddressResolution,
+      providerFeatureId: `W:${localCase.overlayId}:source-gate`,
+      label: localCase.label,
+      stateCode: localCase.stateCode,
+      city: localCase.city,
+      county: localCase.county,
+      postalCode: localCase.postalCode,
+      latitude: localCase.latitude,
+      longitude: localCase.longitude,
+    };
+    const address = {
+      ...unsignedAddress,
+      attestation: await createAddressAttestation(
+        unsignedAddress,
+        TEST_ADDRESS_ATTESTATION_SECRET,
+      ),
+    };
+    const complianceFacts = {
+      ...newYorkComplianceFacts,
+      housingProgram: "conventional",
+    };
+    const localTerms = {
+      ...terms,
+      jurisdiction: profile.code,
+      policyVersion: profile.version,
+      propertyAddress: address.label,
+      addressResolution: address,
+      complianceFacts,
+      complianceSnapshot: buildComplianceSnapshot(profile, address, {
+        facts: complianceFacts,
+      }),
+      claimDays: profile.defaultClaimDays,
+    };
+    assert.equal(
+      localTerms.complianceSnapshot.localCoverage,
+      "reviewed-overlay-applied",
+    );
+    assert.ok(
+      localTerms.complianceSnapshot.overlays.some(
+        (overlay) => overlay.id === localCase.overlayId,
+      ),
+    );
+
+    const sourceItems = await seedVerifiedComplianceSources(db, localTerms);
+    const localSources = sourceItems.filter(
+      (sourceItem) => sourceItem.scope === "city",
+    );
+    assert.deepEqual(
+      localSources.map((sourceItem) => sourceItem.jurisdiction),
+      [localCase.overlayId],
+    );
+    const [localSource] = localSources;
+    await db
+      .prepare("DELETE FROM compliance_source_checks WHERE source_key = ?")
+      .bind(localSource.key)
+      .run();
+
+    const proposalBody = {
+      landlordName: "Lena Landlord",
+      landlordEmail: "landlord@example.com",
+      tenantName: "Terry Tenant",
+      tenantEmail: "tenant@example.com",
+      arbiterName: "",
+      arbiterEmail: null,
+      terms: localTerms,
+    };
+    const blocked = await worker.fetch(
+      request("/api/negotiations", "POST", proposalBody),
+      env,
+    );
+    assert.equal(blocked.status, 503);
+    assert.equal(
+      (await blocked.json()).sourceStatus.find(
+        (sourceItem) => sourceItem.key === localSource.key,
+      ).status,
+      "pending",
+    );
+
+    await seedVerifiedComplianceSources(db, localTerms);
+    const created = await worker.fetch(
+      request("/api/negotiations", "POST", proposalBody),
+      env,
+    );
+    assert.equal(created.status, 201);
+  }
 });
 
 test("actual compliance events require confirmation by the other agreement side", async () => {
