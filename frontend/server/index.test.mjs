@@ -5758,7 +5758,7 @@ test("every tenant reviewer must approve and adding a tenant resets the revision
   assert.match(await report.text(), /Tenant \(33\.3/);
 });
 
-test("the landlord can reset a tenant link without changing approved terms", async () => {
+test("pilot rehearsal: a landlord can replace one lost tenant link without disrupting a co-tenant", async () => {
   const db = new TestD1();
   const created = await jsonResponse(
     await worker.fetch(
@@ -5767,6 +5767,10 @@ test("the landlord can reset a tenant link without changing approved terms", asy
         landlordEmail: "landlord@example.com",
         tenantName: "Terry Tenant",
         tenantEmail: "tenant@example.com",
+        tenants: [
+          { name: "Terry Tenant", email: "tenant@example.com" },
+          { name: "Casey Co-tenant", email: "cotenant@example.com" },
+        ],
         arbiterName: "",
         arbiterEmail: null,
         terms,
@@ -5774,10 +5778,17 @@ test("the landlord can reset a tenant link without changing approved terms", asy
       { DB: db },
     ),
   );
-  const approved = await jsonResponse(
-    await act(db, created.record.id, created.access.tenant, {
+  const primaryApproved = await jsonResponse(
+    await act(db, created.record.id, created.access.tenants[0].token, {
       type: "approve",
       wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+  assert.equal(primaryApproved.status, "draft");
+  const approved = await jsonResponse(
+    await act(db, created.record.id, created.access.tenants[1].token, {
+      type: "approve",
+      wallet: "0x2222222222222222222222222222222222222222",
     }),
   );
   assert.equal(approved.status, "ready");
@@ -5815,7 +5826,7 @@ test("the landlord can reset a tenant link without changing approved terms", asy
     request(
       `/api/negotiations/${created.record.id}/tenants/${tenantId}`,
       "POST",
-      { token: created.access.tenant },
+      { token: created.access.tenants[0].token },
     ),
     { DB: db },
   );
@@ -5833,17 +5844,30 @@ test("the landlord can reset a tenant link without changing approved terms", asy
   );
   assert.equal(reset.record.revision, created.record.revision);
   assert.equal(reset.record.status, "ready");
-  assert.equal(reset.record.tenants[0].approved, true);
+  assert.equal(reset.record.tenants.every((tenant) => tenant.approved), true);
   assert.equal(reset.record.events.at(-1).action, "tenant_invite_reset");
-  assert.notEqual(reset.invite.token, created.access.tenant);
+  assert.notEqual(reset.invite.token, created.access.tenants[0].token);
+  assert.notEqual(reset.invite.token, created.access.tenants[1].token);
 
-  for (const oldToken of [created.access.tenant, sessionToken]) {
+  for (const oldToken of [created.access.tenants[0].token, sessionToken]) {
     const oldAccess = await worker.fetch(
       request(`/api/negotiations/${created.record.id}?token=${oldToken}`),
       { DB: db },
     );
     assert.equal(oldAccess.status, 403);
   }
+
+  const coTenantAccess = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${created.access.tenants[1].token}`,
+      ),
+      { DB: db },
+    ),
+  );
+  assert.equal(coTenantAccess.viewerTenantId, created.record.tenants[1].id);
+  assert.equal(coTenantAccess.viewerEmail, "cotenant@example.com");
+  assert.equal(coTenantAccess.status, "ready");
 
   const newAccess = await jsonResponse(
     await worker.fetch(

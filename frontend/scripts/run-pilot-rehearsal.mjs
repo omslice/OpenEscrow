@@ -47,6 +47,17 @@ const expectedScenarios = [
     covers: ["arbiter recovery", "link rotation", "session invalidation", "role authorization"],
   },
   {
+    id: "tenant-invite-recovery",
+    name: "pilot rehearsal: a landlord can replace one lost tenant link without disrupting a co-tenant",
+    covers: [
+      "tenant recovery",
+      "targeted link rotation",
+      "session invalidation",
+      "co-tenant continuity",
+      "approved-term continuity",
+    ],
+  },
+  {
     id: "arbiter-account-recovery",
     name: "pilot rehearsal: verified arbiter discovery is isolated and survives link rotation",
     covers: [

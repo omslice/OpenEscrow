@@ -32,6 +32,16 @@ const expectedScenarios = [
     ],
   },
   {
+    id: "lost-tenant-invitation",
+    name: "pilot rehearsal: a landlord can replace one lost tenant link without disrupting a co-tenant",
+    covers: [
+      "lost invitation",
+      "targeted link rotation",
+      "stale-session denial",
+      "co-tenant continuity",
+    ],
+  },
+  {
     id: "privacy-inventory",
     name: "pilot rehearsal: account data inventory is role-isolated and contains no access secrets",
     covers: [

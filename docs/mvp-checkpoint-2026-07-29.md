@@ -7,17 +7,17 @@ production readiness, or authorization to hold real rental deposits.
 
 - **Verified:** A locally packaged Sites candidate includes the latest pilot rehearsal, security,
   accessibility, compliance-regression, funding-failure, and hidden-tab performance work.
-- **Verified:** Thirteen credential-free rehearsals pass: five lifecycle scenarios covering
+- **Verified:** Fourteen credential-free rehearsals pass: five lifecycle scenarios covering
   archive/restore, record proof, disputed claim, accepted claim, and no-claim refund, plus three
   private-evidence and notification outage/recovery scenarios, one arbiter-link/session reset,
-  one verified-arbiter identity recovery/isolation scenario, and one verified-account session
-  containment scenario, one realistic multi-agreement account data-inventory scenario with
-  encrypted-evidence exclusion and clean post-containment rediscovery, and one durable sandbox
-  funding recovery/refund scenario.
-- **Verified:** A separate 12-scenario incident-response rehearsal passes for identity forgery,
-  cross-account isolation, cross-site read isolation, account-session containment, privacy
-  inventory, evidence tamper, retained-key loss/restoration, outages, notification recovery,
-  receipt spoofing, and RPC fallback.
+  one targeted lost-tenant-link recovery with co-tenant continuity, one verified-arbiter identity
+  recovery/isolation scenario, one verified-account session containment scenario, one realistic
+  multi-agreement account data-inventory scenario with encrypted-evidence exclusion and clean
+  post-containment rediscovery, and one durable sandbox funding recovery/refund scenario.
+- **Verified:** A separate 13-scenario incident-response rehearsal passes for identity forgery,
+  cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
+  invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
+  outages, notification recovery, receipt spoofing, and RPC fallback.
 - **Verified:** The full repository release check passes with 77 server tests, 103 client-logic
   tests, lint, browser account-switch, accessibility/mobile, and load-recovery smoke checks, and
   the production build. These rendered checks are part of the required `npm run check` path

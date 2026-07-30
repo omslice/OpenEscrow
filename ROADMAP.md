@@ -92,6 +92,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Landlord-authorized optional-arbiter invitation rotation with old-link and account-session
   invalidation, verified-email rediscovery, and cross-account isolation, retained behind the
   disabled-by-default arbiter UI
+- [x] Landlord-authorized lost-tenant invitation replacement with old-link/session invalidation,
+  approved-term continuity, and uninterrupted access for unaffected co-tenants
 - [x] Self-service verified-account record-session revocation and local account-session cleanup
   without changing agreements, other participants, invitation links, or wallet-provider sessions;
   an in-flight revocation cannot clear access for or sign out a newly selected account
