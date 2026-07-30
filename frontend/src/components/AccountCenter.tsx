@@ -1,5 +1,13 @@
-import { Component, lazy, Suspense, type ReactNode } from "react";
+import {
+  Component,
+  createRef,
+  lazy,
+  Suspense,
+  type ErrorInfo,
+  type ReactNode,
+} from "react";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
+import { reloadBrowserPage } from "../lib/browserActions";
 import type { ServiceReadiness } from "../lib/negotiations";
 
 const PrivyAccountCenter = lazy(() =>
@@ -8,12 +16,32 @@ const PrivyAccountCenter = lazy(() =>
 
 class AccountCenterErrorBoundary extends Component<
   { children: ReactNode },
-  { failed: boolean }
+  { failed: boolean; reloadError: string | null }
 > {
-  state = { failed: false };
+  state = { failed: false, reloadError: null };
+  private readonly reloadButtonRef = createRef<HTMLButtonElement>();
 
   static getDerivedStateFromError() {
-    return { failed: true };
+    return { failed: true, reloadError: null };
+  }
+
+  componentDidCatch(_error: unknown, _info: ErrorInfo) {
+    window.requestAnimationFrame(() => this.reloadButtonRef.current?.focus());
+  }
+
+  private reload = () => {
+    this.setState({ reloadError: null });
+    try {
+      reloadBrowserPage();
+    } catch (error) {
+      this.setState({
+        reloadError:
+          error instanceof Error
+            ? error.message
+            : "OpenEscrow could not reload. Use the browser refresh control and check transaction status before retrying.",
+      });
+      window.requestAnimationFrame(() => this.reloadButtonRef.current?.focus());
+    }
   }
 
   render() {
@@ -27,13 +55,21 @@ class AccountCenterErrorBoundary extends Component<
               The rest of OpenEscrow is still available. Refresh to reconnect the account panel.
             </p>
           </div>
-          <button
-            className="btn btn-secondary"
-            type="button"
-            onClick={() => window.location.reload()}
-          >
-            Refresh OpenEscrow
-          </button>
+          <div className="account-center-recovery-action">
+            <button
+              ref={this.reloadButtonRef}
+              className="btn btn-secondary"
+              type="button"
+              onClick={this.reload}
+            >
+              Refresh OpenEscrow
+            </button>
+            {this.state.reloadError && (
+              <p className="tx-error" aria-live="assertive">
+                {this.state.reloadError}
+              </p>
+            )}
+          </div>
         </section>
       );
     }

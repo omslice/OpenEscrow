@@ -1024,6 +1024,18 @@
   font-size: 13px;
 }
 
+.account-center-recovery-action {
+  display: grid;
+  flex: 0 1 420px;
+  gap: 8px;
+  justify-items: end;
+}
+
+.account-center-recovery-action .tx-error {
+  color: var(--error);
+  text-align: right;
+}
+
 .account-workspace-disclosure {
   padding: 0;
   overflow: hidden;
@@ -3734,6 +3746,15 @@ a.btn.disabled {
   .account-center-recovery {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .account-center-recovery-action {
+    flex-basis: auto;
+    justify-items: start;
+  }
+
+  .account-center-recovery-action .tx-error {
+    text-align: left;
   }
 
   .settings-actions {

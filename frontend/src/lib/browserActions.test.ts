@@ -6,6 +6,7 @@ import {
   copyTextToClipboard,
   downloadTextFile,
   openExternalWindow,
+  reloadBrowserPage,
   showModalDialog,
   type BrowserDownloadAnchor,
   type BrowserDownloadEnvironment,
@@ -214,6 +215,32 @@ test("blocked browser confirmation fails closed with retry guidance", () => {
         },
       }),
     /could not show the confirmation prompt.*try again/,
+  );
+});
+
+test("browser reload uses the supplied page environment", () => {
+  let reloaded = 0;
+  reloadBrowserPage({
+    reload() {
+      reloaded += 1;
+    },
+  });
+  assert.equal(reloaded, 1);
+});
+
+test("blocked browser reload returns manual recovery guidance", () => {
+  assert.throws(
+    () => reloadBrowserPage(null),
+    /could not reload OpenEscrow.*browser refresh control.*transaction status/,
+  );
+  assert.throws(
+    () =>
+      reloadBrowserPage({
+        reload() {
+          throw new Error("navigation blocked");
+        },
+      }),
+    /could not reload OpenEscrow.*browser refresh control.*transaction status/,
   );
 });
 

@@ -176,6 +176,19 @@ body {
   outline-offset: 3px;
 }
 
+.load-failure-recovery {
+  display: grid;
+  flex: 0 1 420px;
+  gap: 8px;
+  justify-items: end;
+}
+
+.load-failure-recovery .tx-error {
+  margin: 0;
+  color: var(--error);
+  text-align: right;
+}
+
 @media (max-width: 640px) {
   .load-failure {
     align-items: stretch;
@@ -185,6 +198,15 @@ body {
 
   .load-failure-action {
     width: 100%;
+  }
+
+  .load-failure-recovery {
+    flex-basis: auto;
+    justify-items: stretch;
+  }
+
+  .load-failure-recovery .tx-error {
+    text-align: left;
   }
 }
 

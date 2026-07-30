@@ -29,6 +29,7 @@ import {
   confirmBrowserAction,
   copyTextToClipboard,
   downloadTextFile,
+  reloadBrowserPage,
 } from "../lib/browserActions";
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
@@ -233,22 +234,44 @@ export function PrivyAccountCenter({
     setIsEndingSessions(true);
     setSecurityError(false);
     setSecurityStatus("Ending OpenEscrow record sessions...");
+    let revokedSessions = 0;
     try {
       const result = await revokeAccountSessions(identityToken);
+      revokedSessions = result.revokedSessions;
       clearAccountNegotiationAccesses();
       setSecurityStatus(
         result.revokedSessions
           ? `${result.revokedSessions} OpenEscrow record session(s) ended. Signing out...`
           : "No active OpenEscrow record sessions were found. Signing out...",
       );
-      await logout();
-      window.location.reload();
     } catch (error) {
       setSecurityError(true);
       setSecurityStatus(
         error instanceof Error
           ? error.message
           : "OpenEscrow record sessions could not be ended.",
+      );
+      setIsEndingSessions(false);
+      return;
+    }
+    try {
+      await logout();
+    } catch {
+      setSecurityError(true);
+      setSecurityStatus(
+        `${revokedSessions ? `${revokedSessions} OpenEscrow record session(s) ended` : "No active OpenEscrow record sessions were found"}, but wallet-provider sign-out did not finish. Use the separate Sign out control and then reload the page.`,
+      );
+      setIsEndingSessions(false);
+      return;
+    }
+    try {
+      reloadBrowserPage();
+    } catch (error) {
+      setSecurityError(true);
+      setSecurityStatus(
+        error instanceof Error
+          ? `OpenEscrow record sessions ended and this device signed out. ${error.message}`
+          : "OpenEscrow record sessions ended and this device signed out, but the page could not reload. Use the browser refresh control.",
       );
       setIsEndingSessions(false);
     }

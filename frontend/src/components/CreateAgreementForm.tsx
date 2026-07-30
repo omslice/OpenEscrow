@@ -387,6 +387,7 @@ function AgreementForm({
     try {
       return confirmBrowserAction(message);
     } catch (cause) {
+      setFormMessage(null);
       setFormError(
         cause instanceof Error
           ? cause.message

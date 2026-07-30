@@ -36,6 +36,10 @@ export interface BrowserConfirmationEnvironment {
   confirm(message: string): boolean;
 }
 
+export interface BrowserReloadEnvironment {
+  reload(): void;
+}
+
 export interface BrowserModalDialog {
   readonly open: boolean;
   showModal?: () => void;
@@ -223,6 +227,24 @@ export function confirmBrowserAction(
   } catch {
     throw new Error(
       "This browser could not show the confirmation prompt. Check its dialog permissions and try again.",
+    );
+  }
+}
+
+export function reloadBrowserPage(
+  environment: BrowserReloadEnvironment | null =
+    typeof window === "undefined" ? null : window.location,
+) {
+  if (!environment || typeof environment.reload !== "function") {
+    throw new Error(
+      "This browser could not reload OpenEscrow. Use the browser refresh control, then check the current transaction status before trying again.",
+    );
+  }
+  try {
+    environment.reload();
+  } catch {
+    throw new Error(
+      "This browser could not reload OpenEscrow. Use the browser refresh control, then check the current transaction status before trying again.",
     );
   }
 }
