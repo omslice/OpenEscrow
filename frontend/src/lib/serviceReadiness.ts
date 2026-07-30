@@ -40,6 +40,10 @@ function summarizeScheduleAndDeliveryIssues(readiness: ServiceReadiness): string
     blockers.push(
       "Set the evidence encryption key so stored deposit evidence is encrypted at rest.",
     );
+  } else if (readiness.evidence.keyringReady === false) {
+    blockers.push(
+      "Restore every retained evidence decryption key still referenced by stored evidence.",
+    );
   }
 
   if (!readiness.recordIntegrity.activityRegistry.ready) {
@@ -99,6 +103,11 @@ export function getServiceReadinessActions(
       detail:
         serviceReadiness.evidence.encryptionError ||
         "Set a base64-encoded 32-byte EVIDENCE_ENCRYPTION_KEY and a stable EVIDENCE_ENCRYPTION_KEY_ID. Retain prior keys in EVIDENCE_DECRYPTION_KEYS during rotation.",
+    });
+  } else if (serviceReadiness.evidence.keyringReady === false) {
+    actions.push({
+      label: "Restore evidence keyring",
+      detail: `Restore the approved backup for ${serviceReadiness.evidence.missingDecryptionKeyCount ?? "one or more"} retained evidence key(s) in EVIDENCE_DECRYPTION_KEYS. Do not replace or guess missing key material.`,
     });
   }
 

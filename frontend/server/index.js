@@ -1330,6 +1330,7 @@ function evidenceEncryptionReadiness(env) {
       configured: false,
       activeKeyId: null,
       retainedKeyCount: 0,
+      availableKeyIds: new Set(),
       error: env.EVIDENCE_DECRYPTION_KEYS
         ? "EVIDENCE_ENCRYPTION_KEY is required even when retired decryption keys are retained."
         : null,
@@ -1341,6 +1342,7 @@ function evidenceEncryptionReadiness(env) {
       configured: true,
       activeKeyId: active.keyId,
       retainedKeyCount: retained.size,
+      availableKeyIds: new Set([active.keyId, ...retained.keys()]),
       error: null,
     };
   } catch (error) {
@@ -1348,6 +1350,7 @@ function evidenceEncryptionReadiness(env) {
       configured: false,
       activeKeyId: null,
       retainedKeyCount: 0,
+      availableKeyIds: new Set(),
       error:
         error instanceof EvidenceKeyConfigurationError
           ? error.message
@@ -1652,6 +1655,7 @@ async function notificationPreferences(request, env) {
 async function serviceReadiness(env) {
   let schedulerLastRunAt = null;
   let complianceSourceLastRunAt = null;
+  let referencedEvidenceKeyIds = [];
   let complianceSourceStats = {
     tracked: 0,
     changed: 0,
@@ -1662,6 +1666,22 @@ async function serviceReadiness(env) {
   };
   if (env.DB) {
     await initialize(env.DB);
+    const evidenceKeyRows = await env.DB
+      .prepare(
+        `SELECT DISTINCT encryption_key_id
+         FROM evidence_files
+         WHERE encryption_version IS NOT NULL
+           AND encryption_key_id IS NOT NULL
+           AND encryption_key_id <> ''`,
+      )
+      .all();
+    referencedEvidenceKeyIds = [
+      ...new Set(
+        (evidenceKeyRows.results || []).map((row) =>
+          String(row.encryption_key_id),
+        ),
+      ),
+    ];
     const scheduledRun = await env.DB
       .prepare("SELECT last_started_at FROM scheduled_job_runs WHERE name = ?")
       .bind("notification-reminders")
@@ -1758,6 +1778,9 @@ async function serviceReadiness(env) {
     ? null
     : Math.max(0, Math.round((nowMs - complianceSourceLastRunMs) / (60 * 1000)));
   const evidenceEncryption = evidenceEncryptionReadiness(env);
+  const missingEvidenceKeyCount = referencedEvidenceKeyIds.filter(
+    (keyId) => !evidenceEncryption.availableKeyIds.has(keyId),
+  ).length;
   const decentralizedReady = Boolean(
     env.PINATA_JWT && evidenceEncryption.configured,
   );
@@ -1788,6 +1811,10 @@ async function serviceReadiness(env) {
       encryptedAtRest: evidenceEncryption.configured,
       activeEncryptionKeyId: evidenceEncryption.activeKeyId,
       retainedDecryptionKeyCount: evidenceEncryption.retainedKeyCount,
+      referencedEncryptionKeyCount: referencedEvidenceKeyIds.length,
+      missingDecryptionKeyCount: missingEvidenceKeyCount,
+      keyringReady:
+        evidenceEncryption.configured && missingEvidenceKeyCount === 0,
       encryptionError: evidenceEncryption.error,
       decentralizedReady,
       contentTypeValidation: true,

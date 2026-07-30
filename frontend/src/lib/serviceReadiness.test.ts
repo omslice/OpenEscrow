@@ -22,6 +22,9 @@ const baseReadiness = (): ServiceReadiness => ({
     configured: true,
     mode: "private-r2",
     encryptedAtRest: true,
+    referencedEncryptionKeyCount: 1,
+    missingDecryptionKeyCount: 0,
+    keyringReady: true,
     decentralizedReady: false,
   },
   recordIntegrity: {
@@ -137,6 +140,24 @@ test("getServiceReadinessActions returns remediation guidance", () => {
     actions.find((action) => action.label === "Configure mail delivery")?.detail ?? "",
     /RESEND_API_KEY|EMAIL_WEBHOOK/,
   );
+});
+
+test("readiness blocks an incomplete retained evidence keyring", () => {
+  const degraded = baseReadiness();
+  degraded.evidence.referencedEncryptionKeyCount = 2;
+  degraded.evidence.missingDecryptionKeyCount = 1;
+  degraded.evidence.keyringReady = false;
+
+  const summary = summarizeServiceReadiness(degraded);
+  assert.equal(summary.ready, false);
+  assert.equal(summary.issueCount, 1);
+  assert.match(summary.blockers[0], /Restore every retained evidence decryption key/);
+
+  const actions = getServiceReadinessActions(degraded);
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].label, "Restore evidence keyring");
+  assert.match(actions[0].detail, /1 retained evidence key/);
+  assert.match(actions[0].detail, /Do not replace or guess/);
 });
 
 test("getServiceReadinessActions returns no actions when readiness is null", () => {

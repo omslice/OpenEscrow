@@ -15,9 +15,9 @@ production readiness, or authorization to hold real rental deposits.
   sandbox-funding recovery/refund scenario.
 - **Verified:** A separate 12-scenario incident-response rehearsal passes for identity forgery,
   cross-account isolation, cross-site read isolation, account-session containment, privacy
-  inventory, evidence tamper, retained-key rotation, outages, notification recovery, receipt
-  spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 73 client-logic
+  inventory, evidence tamper, retained-key loss/restoration, outages, notification recovery,
+  receipt spoofing, and RPC fallback.
+- **Verified:** The full repository release check passes with 77 server tests, 74 client-logic
   tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
   build. Accessibility is now part of the required `npm run check` path rather than a separate,
   potentially stale result.

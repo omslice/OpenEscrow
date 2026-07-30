@@ -99,6 +99,9 @@ export interface ServiceReadiness {
     encryptedAtRest: boolean;
     activeEncryptionKeyId?: string | null;
     retainedDecryptionKeyCount?: number;
+    referencedEncryptionKeyCount?: number;
+    missingDecryptionKeyCount?: number;
+    keyringReady?: boolean;
     encryptionError?: string | null;
     decentralizedReady: boolean;
   };

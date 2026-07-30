@@ -24,7 +24,8 @@ The command exercises twelve credential-free controls in memory:
 4. verified-account session containment;
 5. role-isolated, token-free privacy inventory;
 6. ciphertext, key-material, and digest tamper rejection;
-7. pre-rotation evidence recovery through a retained decryption keyring;
+7. pre-rotation evidence failure on retained-key loss, readiness detection, and exact-byte
+   recovery after the approved keyring is restored;
 8. evidence-upload outage and safe retry;
 9. evidence-download outage and privacy-safe failure;
 10. notification-provider outage and idempotent recovery;

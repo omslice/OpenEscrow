@@ -43,8 +43,14 @@ const expectedScenarios = [
   },
   {
     id: "evidence-key-rotation",
-    name: "evidence key rotation preserves access through retained decryption keys",
-    covers: ["pre-rotation evidence", "retained keyring", "active key rotation"],
+    name: "evidence key rotation fails closed on key loss and recovers after restoration",
+    covers: [
+      "pre-rotation evidence",
+      "retained keyring",
+      "active key rotation",
+      "missing-key readiness",
+      "exact-byte restoration",
+    ],
   },
   {
     id: "evidence-upload-outage",

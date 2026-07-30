@@ -4741,7 +4741,7 @@ test("encrypted evidence fails closed when ciphertext, key material, or digest m
   assert.notEqual(storedMetadata.sha256, `0x${"0".repeat(64)}`);
 });
 
-test("evidence key rotation preserves access through retained decryption keys", async () => {
+test("evidence key rotation fails closed on key loss and recovers after restoration", async () => {
   const db = new TestD1();
   const evidence = new TestR2();
   const created = await create(db);
@@ -4836,6 +4836,25 @@ test("evidence key rotation preserves access through retained decryption keys", 
     /decryption key "primary" is not configured/,
   );
 
+  const missingKeyReadiness = await jsonResponse(
+    await worker.fetch(request("/api/system/readiness"), {
+      ...rotatedEnvironment,
+      EVIDENCE_DECRYPTION_KEYS: undefined,
+      VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+    }),
+  );
+  assert.equal(missingKeyReadiness.evidence.encryptedAtRest, true);
+  assert.equal(missingKeyReadiness.evidence.referencedEncryptionKeyCount, 2);
+  assert.equal(missingKeyReadiness.evidence.missingDecryptionKeyCount, 1);
+  assert.equal(missingKeyReadiness.evidence.keyringReady, false);
+
+  const restoredDownload = await worker.fetch(
+    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    rotatedEnvironment,
+  );
+  assert.equal(restoredDownload.status, 200);
+  assert.equal(await restoredDownload.text(), "%PDF-1.7\npre-rotation evidence");
+
   const readiness = await jsonResponse(
     await worker.fetch(request("/api/system/readiness"), {
       ...rotatedEnvironment,
@@ -4845,6 +4864,9 @@ test("evidence key rotation preserves access through retained decryption keys", 
   assert.equal(readiness.evidence.encryptedAtRest, true);
   assert.equal(readiness.evidence.activeEncryptionKeyId, "2026-q3");
   assert.equal(readiness.evidence.retainedDecryptionKeyCount, 1);
+  assert.equal(readiness.evidence.referencedEncryptionKeyCount, 2);
+  assert.equal(readiness.evidence.missingDecryptionKeyCount, 0);
+  assert.equal(readiness.evidence.keyringReady, true);
   assert.equal(readiness.evidence.encryptionError, null);
 
   const invalidReadiness = await jsonResponse(
