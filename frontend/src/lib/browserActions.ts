@@ -32,6 +32,10 @@ export interface BrowserPopupEnvironment {
   open(url: string, target: string, features: string): BrowserPopupTarget | null;
 }
 
+export interface BrowserConfirmationEnvironment {
+  confirm(message: string): boolean;
+}
+
 export interface BrowserModalDialog {
   readonly open: boolean;
   showModal?: () => void;
@@ -202,6 +206,25 @@ export function openExternalWindow(
   throw new Error(
     "This browser could not open the new window. Allow popups and try again, or use the copy option.",
   );
+}
+
+export function confirmBrowserAction(
+  message: string,
+  environment: BrowserConfirmationEnvironment | null =
+    typeof window === "undefined" ? null : window,
+) {
+  if (!environment || typeof environment.confirm !== "function") {
+    throw new Error(
+      "This browser could not show the confirmation prompt. Check its dialog permissions and try again.",
+    );
+  }
+  try {
+    return environment.confirm(message);
+  } catch {
+    throw new Error(
+      "This browser could not show the confirmation prompt. Check its dialog permissions and try again.",
+    );
+  }
 }
 
 export function showModalDialog(dialog: BrowserModalDialog | null) {

@@ -45,6 +45,7 @@ import {
   writeRecoveryJson,
 } from "../lib/browserRecovery";
 import {
+  confirmBrowserAction,
   copyTextToClipboard,
   openExternalWindow,
 } from "../lib/browserActions";
@@ -380,6 +381,20 @@ function AgreementForm({
   const [proposalStep, setProposalStep] = useState<ProposalStep>("participants");
   const submittedJurisdiction = useRef<JurisdictionCode>(GENERIC_TEST_POLICY.jurisdiction);
   const handledReceipt = useRef<`0x${string}` | null>(null);
+
+  function confirmProposalChange(message: string) {
+    setFormError(null);
+    try {
+      return confirmBrowserAction(message);
+    } catch (cause) {
+      setFormError(
+        cause instanceof Error
+          ? cause.message
+          : "This browser could not show the confirmation prompt. Try again.",
+      );
+      return false;
+    }
+  }
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
   const { data: receipt, isLoading: isMining } = useWaitForTransactionReceipt({ hash });
@@ -1045,7 +1060,7 @@ function AgreementForm({
     const tenant = draft.tenants.find((item) => item.id === tenantId);
     if (!tenant) return;
     if (
-      !window.confirm(
+      !confirmProposalChange(
         `Remove ${tenant.name || tenant.email} from this proposal? This invalidates their access and resets every current approval.`,
       )
     ) {
@@ -1195,7 +1210,7 @@ function AgreementForm({
   async function cancelProposal() {
     if (!landlordAccess || !draft || draft.status === "finalized") return;
     if (
-      !window.confirm(
+      !confirmProposalChange(
         "Cancel and remove this proposal from every party's active workspace? Its timestamped audit record will be preserved.",
       )
     ) {
@@ -1255,7 +1270,7 @@ function AgreementForm({
     const tenant = draft.tenants.find((item) => item.id === tenantId);
     if (!tenant) return;
     if (
-      !window.confirm(
+      !confirmProposalChange(
         `Reset the link for ${tenant.email}? The prior link and any current tenant record session will stop working. The invited email can still find this agreement after signing in.`,
       )
     ) {
@@ -1301,7 +1316,7 @@ function AgreementForm({
   async function resetArbiterInvite() {
     if (!landlordAccess || !draft || !accessBundle || !draft.arbiterEmail) return;
     if (
-      !window.confirm(
+      !confirmProposalChange(
         `Reset the link for ${draft.arbiterEmail}? The prior link and any current arbiter record session will stop working. The invited email can still find this agreement after signing in.`,
       )
     ) {

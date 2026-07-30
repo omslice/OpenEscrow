@@ -26,6 +26,7 @@ import {
 } from "../lib/inviteContext";
 import { writeRecoveryJson } from "../lib/browserRecovery";
 import {
+  confirmBrowserAction,
   copyTextToClipboard,
   downloadTextFile,
 } from "../lib/browserActions";
@@ -211,11 +212,21 @@ export function PrivyAccountCenter({
 
   async function endOpenEscrowSessions() {
     if (!identityToken || isEndingSessions) return;
-    if (
-      !window.confirm(
+    let confirmed = false;
+    try {
+      confirmed = confirmBrowserAction(
         "End every OpenEscrow record session issued to this verified account and sign out on this device? Invitation links and wallet-provider sessions are separate and will not be revoked.",
-      )
-    ) {
+      );
+    } catch (error) {
+      setSecurityError(true);
+      setSecurityStatus(
+        error instanceof Error
+          ? error.message
+          : "This browser could not show the confirmation prompt. Try again.",
+      );
+      return;
+    }
+    if (!confirmed) {
       return;
     }
 

@@ -16,7 +16,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key rotation, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 73 server tests, 64 client-logic
+- **Verified:** The full repository release check passes with 73 server tests, 66 client-logic
   tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
   build. Accessibility is now part of the required `npm run check` path rather than a separate,
   potentially stale result.
@@ -54,6 +54,10 @@ production readiness, or authorization to hold real rental deposits.
   Popup-blocked Gmail actions also point users to the copy fallback. Failed copies or popup opens
   do not create misleading invitation or notice-prepared activity, and unsupported dialog
   behavior leaves the optional-yield explanation link recoverable with an explicit error.
+- **Verified:** Tenant removal, proposal cancellation, invitation-link rotation, and account-wide
+  session revocation now share a fail-closed confirmation helper. If a browser refuses to show its
+  confirmation prompt, no destructive request is sent and the affected workspace shows explicit
+  retry guidance instead of silently ignoring the action.
 - **Verified:** Dynamic wallet setup, test-fund, negotiation, role-mismatch, onchain-activity,
   record-export, account-security, notification, and receipt-recovery outcomes expose explicit
   status or alert semantics. This improves screen-reader feedback without stealing keyboard focus;
@@ -63,7 +67,8 @@ production readiness, or authorization to hold real rental deposits.
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the
   production build; the authenticated workspace then loads asynchronously.
 - **Verified:** The exact validated candidate source was pushed to the existing Sites source
-  branch and saved as a newer undeployed version. Production remains on saved version 56.
+  branch and saved as undeployed version 71 at commit
+  `b9f9b37de96d40f51c999565123ab255ff13be39`. Production remains on saved version 56.
 
 ## Remaining
 

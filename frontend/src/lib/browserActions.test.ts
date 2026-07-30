@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   closeModalDialog,
+  confirmBrowserAction,
   copyTextToClipboard,
   downloadTextFile,
   openExternalWindow,
@@ -184,6 +185,36 @@ test("failed external navigation closes its temporary popup", () => {
     /could not open the new window/,
   );
   assert.equal(closed, true);
+});
+
+test("browser confirmation distinguishes approval from cancellation", () => {
+  const messages: string[] = [];
+  const environment = {
+    confirm(message: string) {
+      messages.push(message);
+      return messages.length === 1;
+    },
+  };
+
+  assert.equal(confirmBrowserAction("Reset this link?", environment), true);
+  assert.equal(confirmBrowserAction("Cancel this proposal?", environment), false);
+  assert.deepEqual(messages, ["Reset this link?", "Cancel this proposal?"]);
+});
+
+test("blocked browser confirmation fails closed with retry guidance", () => {
+  assert.throws(
+    () => confirmBrowserAction("Remove tenant?", null),
+    /could not show the confirmation prompt.*try again/,
+  );
+  assert.throws(
+    () =>
+      confirmBrowserAction("End sessions?", {
+        confirm() {
+          throw new Error("dialog blocked");
+        },
+      }),
+    /could not show the confirmation prompt.*try again/,
+  );
 });
 
 test("modal helpers tolerate missing and rejected browser dialog capabilities", () => {
