@@ -41,7 +41,7 @@ test("account security controls retain their accessible descriptions and atomic 
   );
   assert.match(
     accountCenterSource,
-    /activeAccountIdentity\.current === requestedAccountIdentity/,
+    /isCurrentIdentity: requestIsCurrent/,
   );
   assert.match(accountCenterSource, /result\.outcome === "identity_changed"/);
   assert.match(
@@ -77,7 +77,7 @@ test("notification outcomes use explicit accessible error state", () => {
   );
   assert.match(
     accountCenterSource,
-    /activeAccountIdentity\.current !== requestedAccountIdentity/,
+    /const requestIsCurrent = createAccountOperationGuard\(/,
   );
   assert.doesNotMatch(
     accountCenterSource,
@@ -87,9 +87,9 @@ test("notification outcomes use explicit accessible error state", () => {
 
 test("account-bound wallet and inventory callbacks reject stale identity completions", () => {
   const guardCreations = accountCenterSource.match(
-    /createAccountOperationGuard\(\s*\(\) => activeAccountIdentity\.current,\s*requestedAccountIdentity,\s*\)/g,
+    /createAccountOperationGuard\(\s*\(\) => activeAccountIdentity\.current,\s*requestedAccountIdentity,\s*\(\) => accountScopeActive\.current,\s*\)/g,
   );
-  assert.ok((guardCreations?.length ?? 0) >= 4);
+  assert.ok((guardCreations?.length ?? 0) >= 7);
   assert.match(
     accountCenterSource,
     /slowTimer = window\.setTimeout\(\(\) => \{\s*if \(requestIsCurrent\(\)\) setWalletSetup\("slow"\);/s,
@@ -109,6 +109,10 @@ test("account-bound wallet and inventory callbacks reject stale identity complet
   assert.match(
     accountCenterSource,
     /setWalletCopyStatus\(null\);[\s\S]*attemptedForUser\.current = null;[\s\S]*\}, \[accountIdentity\]\);/,
+  );
+  assert.match(
+    accountCenterSource,
+    /return \(\) => \{\s*accountScopeActive\.current = false;\s*\};/,
   );
 });
 

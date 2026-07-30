@@ -196,6 +196,7 @@ function AppView({
     ACCOUNT_AUTH_ENABLED ? accountIdentity : null,
   );
   const activeAccountIdentity = useRef(accountIdentity);
+  const accountScopeActive = useRef(true);
   activeAccountIdentity.current = accountIdentity;
   const { address } = useAccount();
   const { discover, isScanning, scanError } = useDiscoverAgreements();
@@ -330,6 +331,7 @@ function AppView({
   }, []);
 
   useEffect(() => {
+    accountScopeActive.current = true;
     setSavedProposals([]);
     setSavedRecords([]);
     setExpandedRecordKeys({});
@@ -369,6 +371,9 @@ function AppView({
     setActiveLandlordAccess(null);
     setIsProposalComposerOpen(false);
     proposalOpenerRef.current = null;
+    return () => {
+      accountScopeActive.current = false;
+    };
   }, [accountIdentity]);
 
   useEffect(() => {
@@ -442,6 +447,7 @@ function AppView({
     const requestIsCurrent = createAccountOperationGuard(
       () => activeAccountIdentity.current,
       requestedAccountIdentity,
+      () => accountScopeActive.current,
     );
     setScanMessage(null);
     setFindError(null);
@@ -666,6 +672,7 @@ function AppView({
     const requestIsCurrent = createAccountOperationGuard(
       () => activeAccountIdentity.current,
       requestedAccountIdentity,
+      () => accountScopeActive.current,
     );
     const key = savedRecordKey(item);
     setRecordArchivePendingKey(key);

@@ -3,10 +3,11 @@ export type AccountIdentity = string | null;
 export function createAccountOperationGuard(
   getCurrentIdentity: () => AccountIdentity,
   requestedIdentity: AccountIdentity,
+  isActive: () => boolean = () => true,
 ) {
   return () => {
     try {
-      return getCurrentIdentity() === requestedIdentity;
+      return isActive() && getCurrentIdentity() === requestedIdentity;
     } catch {
       return false;
     }

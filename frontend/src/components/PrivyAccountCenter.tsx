@@ -83,6 +83,7 @@ export function PrivyAccountCenter({
   activeIdentityToken.current = identityToken;
   const accountIdentity = user?.id ?? null;
   const activeAccountIdentity = useRef(accountIdentity);
+  const accountScopeActive = useRef(true);
   activeAccountIdentity.current = accountIdentity;
 
   const email = user?.google?.email ?? user?.email?.address;
@@ -101,12 +102,16 @@ export function PrivyAccountCenter({
   }, [identityToken]);
 
   useEffect(() => {
+    accountScopeActive.current = true;
     setIsEndingSessions(false);
     setIsTestingEmail(false);
     setWalletSetup("idle");
     setWalletError(null);
     setWalletCopyStatus(null);
     attemptedForUser.current = null;
+    return () => {
+      accountScopeActive.current = false;
+    };
   }, [accountIdentity]);
 
   useEffect(() => {
@@ -183,6 +188,7 @@ export function PrivyAccountCenter({
     const requestIsCurrent = createAccountOperationGuard(
       () => activeAccountIdentity.current,
       requestedAccountIdentity,
+      () => accountScopeActive.current,
     );
 
     setWalletSetup("creating");
@@ -235,6 +241,11 @@ export function PrivyAccountCenter({
     if (!preferenceKey) return;
     const requestedAccountIdentity = accountIdentity;
     const requestedIdentityToken = identityToken;
+    const requestIsCurrent = createAccountOperationGuard(
+      () => activeAccountIdentity.current,
+      requestedAccountIdentity,
+      () => accountScopeActive.current,
+    );
     const next = { ...preferences, [name]: checked };
     setPreferences(next);
     setPreferenceNotice({
@@ -248,7 +259,7 @@ export function PrivyAccountCenter({
       const saved = await saveNotificationPreferences(requestedIdentityToken, next);
       if (
         write !== preferenceWrite.current ||
-        activeAccountIdentity.current !== requestedAccountIdentity
+        !requestIsCurrent()
       ) {
         return;
       }
@@ -264,7 +275,7 @@ export function PrivyAccountCenter({
     } catch (error) {
       if (
         write !== preferenceWrite.current ||
-        activeAccountIdentity.current !== requestedAccountIdentity
+        !requestIsCurrent()
       ) {
         return;
       }
@@ -282,6 +293,11 @@ export function PrivyAccountCenter({
     if (!identityToken || !accountIdentity || isEndingSessions) return;
     const requestedIdentityToken = identityToken;
     const requestedAccountIdentity = accountIdentity;
+    const requestIsCurrent = createAccountOperationGuard(
+      () => activeAccountIdentity.current,
+      requestedAccountIdentity,
+      () => accountScopeActive.current,
+    );
     let confirmed = false;
     try {
       confirmed = confirmBrowserAction(
@@ -309,10 +325,9 @@ export function PrivyAccountCenter({
         clearLocalAccess: clearAccountNegotiationAccesses,
         logout,
         reload: reloadBrowserPage,
-        isCurrentIdentity: () =>
-          activeAccountIdentity.current === requestedAccountIdentity,
+        isCurrentIdentity: requestIsCurrent,
         onRevoked: (revokedSessions) => {
-          if (activeAccountIdentity.current !== requestedAccountIdentity) return;
+          if (!requestIsCurrent()) return;
           setSecurityStatus(
             revokedSessions
               ? `${revokedSessions} OpenEscrow record session(s) ended. Signing out...`
@@ -321,7 +336,7 @@ export function PrivyAccountCenter({
         },
       });
       if (result.outcome === "identity_changed") return;
-      if (activeAccountIdentity.current !== requestedAccountIdentity) return;
+      if (!requestIsCurrent()) return;
       if (result.outcome === "complete") return;
       setSecurityError(true);
       const revokedMessage = result.revokedSessions
@@ -344,7 +359,7 @@ export function PrivyAccountCenter({
         );
       }
     } catch (error) {
-      if (activeAccountIdentity.current !== requestedAccountIdentity) return;
+      if (!requestIsCurrent()) return;
       setSecurityError(true);
       setSecurityStatus(
         error instanceof Error
@@ -352,7 +367,7 @@ export function PrivyAccountCenter({
           : "OpenEscrow record sessions could not be ended.",
       );
     } finally {
-      if (activeAccountIdentity.current === requestedAccountIdentity) {
+      if (requestIsCurrent()) {
         setIsEndingSessions(false);
       }
     }
@@ -365,6 +380,7 @@ export function PrivyAccountCenter({
     const requestIsCurrent = createAccountOperationGuard(
       () => activeAccountIdentity.current,
       requestedAccountIdentity,
+      () => accountScopeActive.current,
     );
     setIsDownloadingInventory(true);
     setInventoryRecovery(null);
@@ -433,6 +449,7 @@ export function PrivyAccountCenter({
     const requestIsCurrent = createAccountOperationGuard(
       () => activeAccountIdentity.current,
       requestedAccountIdentity,
+      () => accountScopeActive.current,
     );
     setIsCopyingInventory(true);
     setSecurityError(false);
@@ -476,6 +493,7 @@ export function PrivyAccountCenter({
     const requestIsCurrent = createAccountOperationGuard(
       () => activeAccountIdentity.current,
       requestedAccountIdentity,
+      () => accountScopeActive.current,
     );
     setWalletCopyStatus(null);
     try {
@@ -739,6 +757,11 @@ export function PrivyAccountCenter({
                 if (!identityToken || !accountIdentity) return;
                 const requestedIdentityToken = identityToken;
                 const requestedAccountIdentity = accountIdentity;
+                const requestIsCurrent = createAccountOperationGuard(
+                  () => activeAccountIdentity.current,
+                  requestedAccountIdentity,
+                  () => accountScopeActive.current,
+                );
                 setIsTestingEmail(true);
                 setPreferenceNotice({
                   message: "Sending a private configuration test...",
@@ -746,7 +769,7 @@ export function PrivyAccountCenter({
                 });
                 try {
                   const result = await sendNotificationTest(requestedIdentityToken);
-                  if (activeAccountIdentity.current !== requestedAccountIdentity) return;
+                  if (!requestIsCurrent()) return;
                   setPreferenceNotice({
                     message: result.duplicate
                       ? "A test was already delivered recently. Check this account's inbox."
@@ -754,7 +777,7 @@ export function PrivyAccountCenter({
                     error: false,
                   });
                 } catch (error) {
-                  if (activeAccountIdentity.current !== requestedAccountIdentity) return;
+                  if (!requestIsCurrent()) return;
                   setPreferenceNotice({
                     message:
                       error instanceof Error
@@ -763,7 +786,7 @@ export function PrivyAccountCenter({
                     error: true,
                   });
                 } finally {
-                  if (activeAccountIdentity.current === requestedAccountIdentity) {
+                  if (requestIsCurrent()) {
                     setIsTestingEmail(false);
                   }
                 }

@@ -40,9 +40,13 @@ test("account changes clear discovered records and invalidate background polling
 
 test("manual discovery and archive completions check their requesting account", () => {
   const guardCreations = appSource.match(
-    /createAccountOperationGuard\(\s*\(\) => activeAccountIdentity\.current,\s*requestedAccountIdentity,\s*\)/g,
+    /createAccountOperationGuard\(\s*\(\) => activeAccountIdentity\.current,\s*requestedAccountIdentity,\s*\(\) => accountScopeActive\.current,\s*\)/g,
   );
   assert.equal(guardCreations?.length, 2);
+  assert.match(
+    appSource,
+    /return \(\) => \{\s*accountScopeActive\.current = false;\s*\};/,
+  );
   assert.ok(
     (appSource.match(/if \(!requestIsCurrent\(\)\) return;/g)?.length ?? 0) >= 6,
   );

@@ -44,15 +44,19 @@ It writes exact-source JSON and JUnit evidence under `frontend/.incident-rehears
 [`testnet-incident-response-runbook.md`](./testnet-incident-response-runbook.md) for the separate
 owner-led containment, privacy-intake, stop-condition, and resumption drill.
 
-The standard repository check now includes the credential-free keyboard and mobile smoke check:
+The standard repository check now includes credential-free rendered account-switch, keyboard,
+mobile, and load-recovery smoke checks:
 
 ```powershell
 npm.cmd run check
 ```
 
-For focused troubleshooting, run `npm.cmd run test:accessibility`. It covers the public yield
-dialog and focus return, workspace tab keyboard behavior, proposal editor focus recovery,
-keyboard address selection, and mobile-width overflow.
+For focused troubleshooting, run `npm.cmd run test:account-switch` or
+`npm.cmd run test:accessibility`. The account-switch check holds archive, inventory, wallet setup,
+and record-session revocation operations open across two deterministic identities and proves the
+old account cannot update, download into, or sign out the new account. The accessibility check
+covers the public yield dialog and focus return, workspace tab keyboard behavior, proposal editor
+focus recovery, keyboard address selection, and mobile-width overflow.
 
 Dynamic wallet setup, transaction, proposal, negotiation, account-security, notification,
 record-export, and receipt-recovery outcomes use status or alert live regions so they are announced

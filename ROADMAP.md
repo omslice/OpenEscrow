@@ -97,7 +97,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Stable-account workspace isolation: account changes remount and clear account-derived
   proposals, records, archives, panels, and discovery state; device-local tracked agreement ids
   are account-scoped, and stale discovery, archive, inventory, wallet-copy, or embedded-wallet
-  setup completions cannot update the new account
+  setup completions cannot update the new account; a deterministic rendered switch regression
+  also proves stale revocation cannot invoke provider logout for the newly selected identity
 - [x] Exact-source credential-free incident rehearsal plus testnet containment/privacy runbook
 - [x] Push the validated exact source and save a newer undeployed Sites candidate without
   changing production or hosted D1/R2 data

@@ -33,3 +33,16 @@ test("account operation guard fails closed when identity state is unavailable", 
 
   assert.equal(isCurrent(), false);
 });
+
+test("account operation guard rejects a matching identity after its UI scope ends", () => {
+  let active = true;
+  const isCurrent = createAccountOperationGuard(
+    () => "did:privy:account-a",
+    "did:privy:account-a",
+    () => active,
+  );
+
+  assert.equal(isCurrent(), true);
+  active = false;
+  assert.equal(isCurrent(), false);
+});

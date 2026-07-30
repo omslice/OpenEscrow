@@ -23,7 +23,10 @@ production identity, custody, privacy, or communications design.
   discovery state. Device-local tracked agreement ids use an account-scoped recovery key, and
   in-flight discovery, archive, account-inventory, wallet-copy, and embedded-wallet setup
   completions are ignored after an account change. A newly selected account receives a fresh
-  wallet-setup attempt instead of inheriting the prior account's pending state.
+  wallet-setup attempt instead of inheriting the prior account's pending state. A rendered
+  two-identity regression holds these operations and record-session revocation in flight and
+  verifies that stale work cannot download data into or invoke provider logout against the new
+  account.
 - The account panel can download a role-isolated metadata inventory without agreement content,
   other-party details, evidence, addresses, or bearer access secrets.
 - Notification preference saves and test-email results are account-bound, ignore stale responses

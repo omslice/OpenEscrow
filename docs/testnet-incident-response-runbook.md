@@ -39,6 +39,11 @@ identity, D1/R2 object, provider, contract, notification, secret, or real fund.
 Passing automation proves only those engineering controls. The owner-led drill below remains
 required before a supervised pilot.
 
+The standard `npm run check` also executes a rendered two-identity browser regression. It delays
+the affected account's server revocation, selects another account, then verifies the completed
+revocation makes no provider-logout call and leaves the new identity mounted. This is engineering
+evidence for the account-change boundary; it does not replace the owner-led containment drill.
+
 ## Roles for the owner-led drill
 
 Assign one person to each role before starting. One person may hold multiple roles in a small drill,

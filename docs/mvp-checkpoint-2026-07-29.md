@@ -18,10 +18,10 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key loss/restoration, outages, notification recovery,
   receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 94 client-logic
-  tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
-  build. Accessibility is now part of the required `npm run check` path rather than a separate,
-  potentially stale result.
+- **Verified:** The full repository release check passes with 77 server tests, 95 client-logic
+  tests, lint, browser account-switch, accessibility/mobile, and load-recovery smoke checks, and
+  the production build. These rendered checks are part of the required `npm run check` path
+  rather than separate, potentially stale results.
 - **Verified:** Address-routed compliance snapshots now recursively detach and freeze nested
   rules, sources, overlays, and claim checks. Snapshot-level regressions cover conditional Maine
   paths, every fact- and event-gated Florida deadline stage, Arizona business-day and holiday
@@ -104,6 +104,12 @@ production readiness, or authorization to hold real rental deposits.
   embedded-wallet setup now check the stable requesting account before publishing success, error,
   slow-state, or completion feedback. Account changes reset pending wallet setup so the newly
   selected account can make its own fresh attempt instead of inheriting a stale busy state.
+- **Verified:** A deterministic rendered browser regression switches between two signed-in
+  identities while archive, inventory, wallet-setup, and record-session revocation operations are
+  in flight. It proves old proposals and completion messages do not cross the account boundary,
+  stale inventory bytes are not downloaded, both accounts can finish independent wallet setup,
+  and an old account's completed server revocation makes zero provider-logout calls against the
+  newly selected identity.
 - **Verified:** Dynamic wallet setup, test-fund, negotiation, role-mismatch, onchain-activity,
   record-export, account-security, notification, and receipt-recovery outcomes expose explicit
   status or alert semantics. Notification failures now use an explicit error flag and assertive,
