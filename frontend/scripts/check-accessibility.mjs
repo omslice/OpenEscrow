@@ -254,7 +254,11 @@ try {
       throw new Error("Browser confirmation blocked");
     };
   });
-  await page.getByRole("button", { name: "Cancel and remove proposal" }).click();
+  const cancelProposal = page.getByRole("button", {
+    name: "Cancel and remove proposal",
+  });
+  await cancelProposal.focus();
+  await cancelProposal.press("Enter");
   const confirmationError = page.getByText(
     "This browser could not show the confirmation prompt. Check its dialog permissions and try again.",
   );
@@ -265,9 +269,26 @@ try {
     "A failed browser confirmation must not send a destructive proposal request.",
   );
   assert.equal(
-    await page.getByRole("button", { name: "Cancel and remove proposal" }).isVisible(),
+    await cancelProposal.isVisible(),
     true,
     "A proposal should remain available after its confirmation prompt fails.",
+  );
+  assert.equal(
+    await cancelProposal.evaluate((element) => element === document.activeElement),
+    true,
+    "Keyboard focus should stay on the retryable destructive action after confirmation fails.",
+  );
+  assert.equal(
+    await page.locator("#proposal-form-feedback").getAttribute("aria-live"),
+    "assertive",
+    "The blocked-confirmation guidance should be announced immediately.",
+  );
+  assert.equal(
+    await page.getByText(
+      "Proposal saved. Invitations are now unlocked for this exact revision.",
+    ).count(),
+    0,
+    "A stale success message should not remain beside a blocked-confirmation error.",
   );
 
   await page.getByRole("button", { name: "Close proposal editor" }).click();

@@ -8,6 +8,7 @@ import {
 import { useSetActiveWallet } from "@privy-io/wagmi";
 import { useAccount } from "wagmi";
 import { shortAddr } from "../lib/format";
+import { terminateAccountSessions } from "../lib/accountSessionTermination";
 import {
   clearAccountNegotiationAccesses,
   loadAccountDataInventory,
@@ -234,16 +235,41 @@ export function PrivyAccountCenter({
     setIsEndingSessions(true);
     setSecurityError(false);
     setSecurityStatus("Ending OpenEscrow record sessions...");
-    let revokedSessions = 0;
     try {
-      const result = await revokeAccountSessions(identityToken);
-      revokedSessions = result.revokedSessions;
-      clearAccountNegotiationAccesses();
-      setSecurityStatus(
-        result.revokedSessions
-          ? `${result.revokedSessions} OpenEscrow record session(s) ended. Signing out...`
-          : "No active OpenEscrow record sessions were found. Signing out...",
-      );
+      const result = await terminateAccountSessions({
+        revoke: () => revokeAccountSessions(identityToken),
+        clearLocalAccess: clearAccountNegotiationAccesses,
+        logout,
+        reload: reloadBrowserPage,
+        onRevoked: (revokedSessions) => {
+          setSecurityStatus(
+            revokedSessions
+              ? `${revokedSessions} OpenEscrow record session(s) ended. Signing out...`
+              : "No active OpenEscrow record sessions were found. Signing out...",
+          );
+        },
+      });
+      if (result.outcome === "complete") return;
+      setSecurityError(true);
+      const revokedMessage = result.revokedSessions
+        ? `${result.revokedSessions} OpenEscrow record session(s) ended`
+        : "No active OpenEscrow record sessions were found";
+      const cleanupMessage = result.localCleanupFailed
+        ? " This browser could not clear its cached account links, but the server sessions are invalid."
+        : "";
+      if (result.outcome === "logout_failed") {
+        setSecurityStatus(
+          `${revokedMessage}, but wallet-provider sign-out did not finish.${cleanupMessage} Use the separate Sign out control and then reload the page.`,
+        );
+      } else {
+        const reloadMessage =
+          result.error instanceof Error
+            ? result.error.message
+            : "Use the browser refresh control before continuing.";
+        setSecurityStatus(
+          `${revokedMessage}, and this device signed out.${cleanupMessage} ${reloadMessage}`,
+        );
+      }
     } catch (error) {
       setSecurityError(true);
       setSecurityStatus(
@@ -251,28 +277,7 @@ export function PrivyAccountCenter({
           ? error.message
           : "OpenEscrow record sessions could not be ended.",
       );
-      setIsEndingSessions(false);
-      return;
-    }
-    try {
-      await logout();
-    } catch {
-      setSecurityError(true);
-      setSecurityStatus(
-        `${revokedSessions ? `${revokedSessions} OpenEscrow record session(s) ended` : "No active OpenEscrow record sessions were found"}, but wallet-provider sign-out did not finish. Use the separate Sign out control and then reload the page.`,
-      );
-      setIsEndingSessions(false);
-      return;
-    }
-    try {
-      reloadBrowserPage();
-    } catch (error) {
-      setSecurityError(true);
-      setSecurityStatus(
-        error instanceof Error
-          ? `OpenEscrow record sessions ended and this device signed out. ${error.message}`
-          : "OpenEscrow record sessions ended and this device signed out, but the page could not reload. Use the browser refresh control.",
-      );
+    } finally {
       setIsEndingSessions(false);
     }
   }

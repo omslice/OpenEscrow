@@ -16,7 +16,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key rotation, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 73 server tests, 68 client-logic
+- **Verified:** The full repository release check passes with 73 server tests, 72 client-logic
   tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
   build. Accessibility is now part of the required `npm run check` path rather than a separate,
   potentially stale result.
@@ -74,8 +74,8 @@ production readiness, or authorization to hold real rental deposits.
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the
   production build; the authenticated workspace then loads asynchronously.
 - **Verified:** The exact validated candidate source was pushed to the existing Sites source
-  branch and saved as undeployed version 72 at commit
-  `547045c0183df0ae091e52e555b737c7962b4b37`. Production remains on saved version 56.
+  branch and saved as undeployed version 73 at commit
+  `9fac196f02e3eb4e2c766a0cb36107e07bb53c90`. Production remains on saved version 56.
 
 ## Remaining
 
