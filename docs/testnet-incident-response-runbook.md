@@ -106,7 +106,9 @@ The current product deliberately has no automated deletion endpoint.
 
 1. Sign in as the synthetic requesting account.
 2. Download the account data inventory. Confirm it contains only proposal references, roles,
-   statuses, archive preferences, notification settings, and active-session count.
+   statuses, archive preferences, notification settings, and active-session count. If the browser
+   blocks the download, use **Copy prepared inventory** and paste it into a private local file;
+   do not paste it into chat, email, or a shared document.
 3. Confirm the inventory contains no invitation/session token, private evidence, property address,
    or other participant's email.
 4. Open each authorized Record entry and download its complete shared report and encrypted

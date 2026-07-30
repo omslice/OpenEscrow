@@ -3763,6 +3763,11 @@ a.btn.disabled {
     flex-wrap: wrap;
   }
 
+  .account-security-settings .settings-actions .btn {
+    flex: 1 1 100%;
+    min-height: 44px;
+  }
+
   .account-entry,
   .account-summary {
     justify-content: flex-start;

@@ -18,7 +18,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key loss/restoration, outages, notification recovery,
   receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 74 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 80 client-logic
   tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
   build. Accessibility is now part of the required `npm run check` path rather than a separate,
   potentially stale result.
@@ -73,6 +73,11 @@ production readiness, or authorization to hold real rental deposits.
   invitation links, and account-session tokens. Session containment preserves the other party,
   original invitation, evidence, and account preferences, and verified rediscovery restores only
   fresh account sessions.
+- **Verified:** A browser-blocked account-inventory download now retains the already-authorized
+  JSON only in current-page memory and offers a copy fallback instead of discarding it. The file
+  name includes the complete server timestamp, identity-token changes discard the fallback and
+  ignore a stale response, assistive descriptions remain connected to an atomic status message,
+  and the recovery actions become full-width 44-pixel targets on mobile.
 - **Verified:** Tenant removal, proposal cancellation, invitation-link rotation, and account-wide
   session revocation now share a fail-closed confirmation helper. If a browser refuses to show its
   confirmation prompt, no destructive request is sent and the affected workspace shows explicit

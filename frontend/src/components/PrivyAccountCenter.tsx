@@ -9,6 +9,7 @@ import { useSetActiveWallet } from "@privy-io/wagmi";
 import { useAccount } from "wagmi";
 import { shortAddr } from "../lib/format";
 import { terminateAccountSessions } from "../lib/accountSessionTermination";
+import { deliverAccountDataInventory } from "../lib/accountDataInventoryDownload";
 import {
   clearAccountNegotiationAccesses,
   loadAccountDataInventory,
@@ -29,7 +30,6 @@ import { writeRecoveryJson } from "../lib/browserRecovery";
 import {
   confirmBrowserAction,
   copyTextToClipboard,
-  downloadTextFile,
   reloadBrowserPage,
 } from "../lib/browserActions";
 
@@ -61,6 +61,8 @@ export function PrivyAccountCenter({
   const [securityStatus, setSecurityStatus] = useState<string | null>(null);
   const [securityError, setSecurityError] = useState(false);
   const [isDownloadingInventory, setIsDownloadingInventory] = useState(false);
+  const [isCopyingInventory, setIsCopyingInventory] = useState(false);
+  const [inventoryRecovery, setInventoryRecovery] = useState<string | null>(null);
   const [walletCopyStatus, setWalletCopyStatus] = useState<{
     message: string;
     error: boolean;
@@ -71,6 +73,8 @@ export function PrivyAccountCenter({
   const [walletError, setWalletError] = useState<string | null>(null);
   const attemptedForUser = useRef<string | null>(null);
   const inviteRole = useInviteRole();
+  const activeIdentityToken = useRef(identityToken);
+  activeIdentityToken.current = identityToken;
 
   const email = user?.google?.email ?? user?.email?.address;
   const displayName = user?.google?.name?.trim() || email || "Your";
@@ -79,6 +83,14 @@ export function PrivyAccountCenter({
     () => (user ? `openescrow:notifications:${user.id}` : null),
     [user],
   );
+  useEffect(() => {
+    setInventoryRecovery(null);
+    setSecurityStatus(null);
+    setSecurityError(false);
+    setIsDownloadingInventory(false);
+    setIsCopyingInventory(false);
+  }, [identityToken]);
+
   useEffect(() => {
     if (!preferenceKey) {
       setPreferences(DEFAULT_PREFERENCES);
@@ -284,16 +296,27 @@ export function PrivyAccountCenter({
 
   async function downloadAccountDataInventory() {
     if (!identityToken || isDownloadingInventory) return;
+    const requestedIdentityToken = identityToken;
     setIsDownloadingInventory(true);
+    setInventoryRecovery(null);
     setSecurityError(false);
     setSecurityStatus("Preparing your account data inventory...");
     try {
-      const inventory = await loadAccountDataInventory(identityToken);
-      downloadTextFile(
-        `${JSON.stringify(inventory, null, 2)}\n`,
-        "application/json",
-        `openescrow-account-data-inventory-${inventory.generatedAt.slice(0, 10)}.json`,
-      );
+      const inventory = await loadAccountDataInventory(requestedIdentityToken);
+      if (activeIdentityToken.current !== requestedIdentityToken) return;
+      const delivery = deliverAccountDataInventory(inventory);
+      if (delivery.outcome === "copy_available") {
+        setInventoryRecovery(delivery.content);
+        setSecurityError(true);
+        setSecurityStatus(
+          `${
+            delivery.error instanceof Error
+              ? delivery.error.message
+              : "This browser could not start the download."
+          } The prepared inventory is available below to copy instead.`,
+        );
+        return;
+      }
       setSecurityStatus(
         `Downloaded an inventory of ${inventory.records.length} account record reference(s). Complete shared records remain available in the Record tab.`,
       );
@@ -305,7 +328,44 @@ export function PrivyAccountCenter({
           : "Your account data inventory could not be prepared.",
       );
     } finally {
-      setIsDownloadingInventory(false);
+      if (activeIdentityToken.current === requestedIdentityToken) {
+        setIsDownloadingInventory(false);
+      }
+    }
+  }
+
+  async function copyPreparedAccountDataInventory() {
+    if (
+      !identityToken ||
+      !inventoryRecovery ||
+      isCopyingInventory ||
+      isDownloadingInventory ||
+      isEndingSessions
+    ) {
+      return;
+    }
+    const requestedIdentityToken = identityToken;
+    setIsCopyingInventory(true);
+    setSecurityError(false);
+    setSecurityStatus("Copying the prepared account data inventory...");
+    try {
+      await copyTextToClipboard(inventoryRecovery);
+      if (activeIdentityToken.current !== requestedIdentityToken) return;
+      setSecurityStatus(
+        "Account data inventory copied. Paste it into a private file you control; complete shared records remain in the Record tab.",
+      );
+    } catch (error) {
+      if (activeIdentityToken.current !== requestedIdentityToken) return;
+      setSecurityError(true);
+      setSecurityStatus(
+        error instanceof Error
+          ? error.message
+          : "The prepared account data inventory could not be copied.",
+      );
+    } finally {
+      if (activeIdentityToken.current === requestedIdentityToken) {
+        setIsCopyingInventory(false);
+      }
     }
   }
 
@@ -611,21 +671,23 @@ export function PrivyAccountCenter({
           >
             <div>
               <h3 id="account-security-title">Account security</h3>
-              <p>
+              <p id="account-session-containment-description">
                 If a device or browser profile is no longer trusted, end every expiring OpenEscrow
                 record session issued to this verified account. Agreements, archive preferences,
                 invitation links, and wallet-provider sessions are not changed.
               </p>
-              <p>
+              <p id="account-data-inventory-description">
                 You can also download a privacy-safe inventory of record references and account
                 settings. It excludes evidence, addresses, other participants' details, and all
                 access tokens; use the Record tab for each complete shared record.
               </p>
               {securityStatus && (
                 <p
+                  id="account-security-status"
                   className={securityError ? "tx-error" : "field-help"}
                   role={securityError ? "alert" : "status"}
                   aria-live={securityError ? "assertive" : "polite"}
+                  aria-atomic="true"
                 >
                   {securityStatus}
                 </p>
@@ -635,15 +697,47 @@ export function PrivyAccountCenter({
               <button
                 className="btn btn-ghost small"
                 type="button"
-                disabled={!identityToken || isDownloadingInventory || isEndingSessions}
+                aria-describedby={`account-data-inventory-description${
+                  securityStatus ? " account-security-status" : ""
+                }`}
+                disabled={
+                  !identityToken ||
+                  isDownloadingInventory ||
+                  isCopyingInventory ||
+                  isEndingSessions
+                }
                 onClick={() => void downloadAccountDataInventory()}
               >
                 {isDownloadingInventory ? "Preparing inventory..." : "Download data inventory"}
               </button>
+              {inventoryRecovery && (
+                <button
+                  className="btn btn-ghost small"
+                  type="button"
+                  aria-describedby="account-data-inventory-description account-security-status"
+                  disabled={
+                    !identityToken ||
+                    isCopyingInventory ||
+                    isDownloadingInventory ||
+                    isEndingSessions
+                  }
+                  onClick={() => void copyPreparedAccountDataInventory()}
+                >
+                  {isCopyingInventory ? "Copying inventory..." : "Copy prepared inventory"}
+                </button>
+              )}
               <button
                 className="btn btn-ghost small"
                 type="button"
-                disabled={!identityToken || isEndingSessions || isDownloadingInventory}
+                aria-describedby={`account-session-containment-description${
+                  securityStatus ? " account-security-status" : ""
+                }`}
+                disabled={
+                  !identityToken ||
+                  isEndingSessions ||
+                  isDownloadingInventory ||
+                  isCopyingInventory
+                }
                 onClick={() => void endOpenEscrowSessions()}
               >
                 {isEndingSessions ? "Ending sessions..." : "End record sessions & sign out"}

@@ -88,7 +88,9 @@ statuses, archive preferences, notification settings, and active-session count. 
 agreement records remain in the Record tab. The credential-free rehearsal exercises multiple
 agreement states plus encrypted evidence, then proves the inventory excludes private evidence,
 addresses, wallets, participant details, invitation tokens, and account-session tokens while
-archive and notification preferences survive session containment and clean rediscovery.
+archive and notification preferences survive session containment and clean rediscovery. A
+blocked download keeps the prepared JSON only in current-page memory and offers an explicitly
+described **Copy prepared inventory** fallback; changing the verified identity discards it.
 
 ## Release smoke test
 

@@ -97,7 +97,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Push the validated exact source and save a newer undeployed Sites candidate without
   changing production or hosted D1/R2 data
 - [x] Internal keyboard/mobile accessibility smoke coverage plus workspace tab, address combobox,
-  proposal focus-recovery, async announcement, reduced-motion, and mobile-overflow fixes
+  proposal focus-recovery, async announcement, reduced-motion, mobile-overflow fixes, and an
+  accessible in-memory copy fallback for blocked account-inventory downloads
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a
   shared deadline clock
 - [x] Establish an initial browser performance budget and split the bootstrap from the
