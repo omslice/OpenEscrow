@@ -19,7 +19,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   outages, notification recovery, receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 114 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 118 client-logic
   tests, lint, browser account-switch, accessibility/mobile, and load-recovery smoke checks, and
   the production build. These rendered checks are part of the required `npm run check` path
   rather than separate, potentially stale results.
@@ -120,6 +120,11 @@ production readiness, or authorization to hold real rental deposits.
   atomic announcement instead of inferring severity from English message text. This improves
   screen-reader feedback without stealing keyboard focus; moderated assistive-technology testing
   remains a separate pilot task.
+- **Verified:** Proposal review now separates background-refresh feedback from user-action
+  feedback. A successful poll cannot erase an approval or compliance-action failure, while a
+  failed poll leaves the last known record visible with plain-language stale-data guidance and an
+  immediate retry. Epoch guards reject refresh responses invalidated by an in-flight or completed
+  action, preventing an older proposal response from replacing the mutation result.
 - **Verified:** The authenticated wallet/workspace is loaded behind a lightweight bootstrap, and
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the

@@ -118,6 +118,9 @@ the repository; they are not claims of legal approval or production readiness.
   outcomes use explicit atomic status/error semantics rather than message-text inference
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a
   shared deadline clock
+- [x] Proposal-review polling is isolated from user actions: stale refreshes cannot replace a
+  newer mutation result, background failures cannot erase action feedback, and current records
+  remain visible with an explicit retry control
 - [x] Consolidated onchain activity receipt polling into a shared bounded dual-event registry
   cache: the initial history scan is reused across notifications and expanded records, later polls
   rescan only a reorganization-safe tail, and failed refreshes preserve the last known-good view

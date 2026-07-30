@@ -2480,6 +2480,22 @@ a.btn.disabled {
   font-size: 13px;
 }
 
+.negotiation-refresh-warning {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 16px;
+  padding: 12px 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  background: var(--accent-bg);
+}
+
+.negotiation-refresh-warning p {
+  margin: 0;
+}
+
 .card input[aria-invalid="true"],
 .card textarea[aria-invalid="true"],
 .card select[aria-invalid="true"] {
@@ -3615,6 +3631,11 @@ a.btn.disabled {
 }
 
 @media (max-width: 680px) {
+  .negotiation-refresh-warning {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
   .workspace-tabs {
     top: 4px;
     gap: 4px;

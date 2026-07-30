@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
@@ -17,6 +17,11 @@ import {
 } from "../lib/negotiations";
 import { agreementReference, proposalReference } from "../lib/displayIds";
 import { roleLabel } from "../lib/inviteContext";
+import {
+  INITIAL_NEGOTIATION_FEEDBACK,
+  createNegotiationRefreshGuard,
+  reduceNegotiationFeedback,
+} from "../lib/negotiationFeedback";
 import { useVisiblePolling } from "../lib/visiblePolling";
 import { getDepositAssetForTerms } from "../../shared/deposit-assets.js";
 import {
@@ -188,18 +193,61 @@ function AgreementNegotiationView({
   const [complianceFactValue, setComplianceFactValue] = useState("");
   const [complianceFactNote, setComplianceFactNote] = useState("");
   const [isWorking, setIsWorking] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [feedback, dispatchFeedback] = useReducer(
+    reduceNegotiationFeedback,
+    INITIAL_NEGOTIATION_FEEDBACK,
+  );
+  const refreshGuard = useRef(createNegotiationRefreshGuard());
+  const refreshInFlight = useRef<Promise<void> | null>(null);
   const [assetConsent, setAssetConsent] = useState(false);
 
-  const refresh = useCallback(async () => {
-    try {
-      setRecord(await loadNegotiation(access));
-      setError(null);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Unable to load this proposal.");
-    }
+  const refresh = useCallback(() => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+
+    const guard = refreshGuard.current;
+    const refreshEpoch = guard.capture();
+    const request = (async () => {
+      setIsRefreshing(true);
+      try {
+        const nextRecord = await loadNegotiation(access);
+        if (!guard.isCurrent(refreshEpoch)) return;
+        setRecord(nextRecord);
+        dispatchFeedback({ type: "refresh_succeeded" });
+      } catch (loadError) {
+        if (!guard.isCurrent(refreshEpoch)) return;
+        dispatchFeedback({
+          type: "refresh_failed",
+          message:
+            loadError instanceof Error
+              ? loadError.message
+              : "Unable to load this proposal.",
+        });
+      }
+    })();
+    refreshInFlight.current = request;
+    void request.finally(() => {
+      if (refreshInFlight.current !== request) return;
+      refreshInFlight.current = null;
+      if (guard.isCurrent(refreshEpoch)) setIsRefreshing(false);
+    });
+    return request;
   }, [access]);
+
+  useEffect(() => {
+    const guard = refreshGuard.current;
+    guard.invalidate();
+    refreshInFlight.current = null;
+    setRecord(null);
+    setIsRefreshing(false);
+    setMessage(null);
+    dispatchFeedback({ type: "reset" });
+    void refresh();
+    return () => {
+      guard.invalidate();
+    };
+  }, [refresh]);
 
   useVisiblePolling(refresh, 10_000);
 
@@ -207,21 +255,42 @@ function AgreementNegotiationView({
     setAssetConsent(false);
   }, [record?.id, record?.revision]);
 
+  function beginAction() {
+    refreshGuard.current.invalidate();
+    refreshInFlight.current = null;
+    setIsWorking(true);
+    setIsRefreshing(false);
+    setMessage(null);
+    dispatchFeedback({ type: "action_started" });
+  }
+
+  function commitActionRecord(nextRecord: NegotiationRecord) {
+    refreshGuard.current.invalidate();
+    setRecord(nextRecord);
+    dispatchFeedback({ type: "action_succeeded" });
+  }
+
+  function reportActionFailure(error: unknown, fallback: string) {
+    dispatchFeedback({
+      type: "action_failed",
+      message: error instanceof Error ? error.message : fallback,
+    });
+  }
+
   async function act(
     action:
       | { type: "approve"; wallet: string; name?: string; assetConsent?: boolean }
       | { type: "propose_change"; summary: string },
     success: string,
   ) {
-    setIsWorking(true);
-    setMessage(null);
-    setError(null);
+    beginAction();
     try {
-      setRecord(await negotiationAction(access, action));
+      const nextRecord = await negotiationAction(access, action);
+      commitActionRecord(nextRecord);
       setMessage(success);
       if (action.type === "propose_change") setChangeSummary("");
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "The record could not be updated.");
+      reportActionFailure(actionError, "The record could not be updated.");
     } finally {
       setIsWorking(false);
     }
@@ -229,26 +298,22 @@ function AgreementNegotiationView({
 
   async function proposeComplianceEvent() {
     if (!complianceEventName || !complianceEventOccurredAt) return;
-    setIsWorking(true);
-    setMessage(null);
-    setError(null);
+    beginAction();
     try {
-      setRecord(
-        await negotiationAction(access, {
-          type: "propose_compliance_event",
-          eventName: complianceEventName,
-          occurredAt: new Date(complianceEventOccurredAt).toISOString(),
-          note: complianceEventNote.trim() || undefined,
-        }),
-      );
+      const nextRecord = await negotiationAction(access, {
+        type: "propose_compliance_event",
+        eventName: complianceEventName,
+        occurredAt: new Date(complianceEventOccurredAt).toISOString(),
+        note: complianceEventNote.trim() || undefined,
+      });
+      commitActionRecord(nextRecord);
       setComplianceEventOccurredAt("");
       setComplianceEventNote("");
       setMessage("The lifecycle event is recorded and awaiting confirmation by the other party.");
     } catch (actionError) {
-      setError(
-        actionError instanceof Error
-          ? actionError.message
-          : "The lifecycle event could not be recorded.",
+      reportActionFailure(
+        actionError,
+        "The lifecycle event could not be recorded.",
       );
     } finally {
       setIsWorking(false);
@@ -256,22 +321,18 @@ function AgreementNegotiationView({
   }
 
   async function confirmComplianceEvent(proposalEventId: number) {
-    setIsWorking(true);
-    setMessage(null);
-    setError(null);
+    beginAction();
     try {
-      setRecord(
-        await negotiationAction(access, {
-          type: "confirm_compliance_event",
-          proposalEventId,
-        }),
-      );
+      const nextRecord = await negotiationAction(access, {
+        type: "confirm_compliance_event",
+        proposalEventId,
+      });
+      commitActionRecord(nextRecord);
       setMessage("The lifecycle event is confirmed and its compliance deadlines are active.");
     } catch (actionError) {
-      setError(
-        actionError instanceof Error
-          ? actionError.message
-          : "The lifecycle event could not be confirmed.",
+      reportActionFailure(
+        actionError,
+        "The lifecycle event could not be confirmed.",
       );
     } finally {
       setIsWorking(false);
@@ -285,18 +346,15 @@ function AgreementNegotiationView({
     ) {
       return;
     }
-    setIsWorking(true);
-    setMessage(null);
-    setError(null);
+    beginAction();
     try {
-      setRecord(
-        await negotiationAction(access, {
-          type: "propose_compliance_fact",
-          factName: complianceFactName,
-          value: complianceFactValue === "true",
-          note: complianceFactNote.trim() || undefined,
-        }),
-      );
+      const nextRecord = await negotiationAction(access, {
+        type: "propose_compliance_fact",
+        factName: complianceFactName,
+        value: complianceFactValue === "true",
+        note: complianceFactNote.trim() || undefined,
+      });
+      commitActionRecord(nextRecord);
       setComplianceFactName("");
       setComplianceFactValue("");
       setComplianceFactNote("");
@@ -304,10 +362,9 @@ function AgreementNegotiationView({
         "The conditional fact is recorded and awaiting confirmation by the other party.",
       );
     } catch (actionError) {
-      setError(
-        actionError instanceof Error
-          ? actionError.message
-          : "The conditional fact could not be recorded.",
+      reportActionFailure(
+        actionError,
+        "The conditional fact could not be recorded.",
       );
     } finally {
       setIsWorking(false);
@@ -315,24 +372,20 @@ function AgreementNegotiationView({
   }
 
   async function confirmComplianceFact(proposalEventId: number) {
-    setIsWorking(true);
-    setMessage(null);
-    setError(null);
+    beginAction();
     try {
-      setRecord(
-        await negotiationAction(access, {
-          type: "confirm_compliance_fact",
-          proposalEventId,
-        }),
-      );
+      const nextRecord = await negotiationAction(access, {
+        type: "confirm_compliance_fact",
+        proposalEventId,
+      });
+      commitActionRecord(nextRecord);
       setMessage(
         "The conditional fact is confirmed and its deadline branch is active.",
       );
     } catch (actionError) {
-      setError(
-        actionError instanceof Error
-          ? actionError.message
-          : "The conditional fact could not be confirmed.",
+      reportActionFailure(
+        actionError,
+        "The conditional fact could not be confirmed.",
       );
     } finally {
       setIsWorking(false);
@@ -340,24 +393,20 @@ function AgreementNegotiationView({
   }
 
   async function rejectComplianceFact(proposalEventId: number) {
-    setIsWorking(true);
-    setMessage(null);
-    setError(null);
+    beginAction();
     try {
-      setRecord(
-        await negotiationAction(access, {
-          type: "reject_compliance_fact",
-          proposalEventId,
-        }),
-      );
+      const nextRecord = await negotiationAction(access, {
+        type: "reject_compliance_fact",
+        proposalEventId,
+      });
+      commitActionRecord(nextRecord);
       setMessage(
         "The conditional fact was not confirmed. Either party may record a corrected proposal.",
       );
     } catch (actionError) {
-      setError(
-        actionError instanceof Error
-          ? actionError.message
-          : "The conditional fact response could not be recorded.",
+      reportActionFailure(
+        actionError,
+        "The conditional fact response could not be recorded.",
       );
     } finally {
       setIsWorking(false);
@@ -368,7 +417,22 @@ function AgreementNegotiationView({
     return (
       <section className="card negotiation-workspace">
         <h2>Agreement proposal</h2>
-        <p>{error || "Loading the landlord's proposal..."}</p>
+        <p
+          className={feedback.refreshError ? "tx-error" : undefined}
+          role={feedback.refreshError ? "alert" : "status"}
+        >
+          {feedback.refreshError || "Loading the landlord's proposal..."}
+        </p>
+        {feedback.refreshError && (
+          <button
+            className="btn btn-secondary"
+            type="button"
+            disabled={isRefreshing}
+            onClick={() => void refresh()}
+          >
+            {isRefreshing ? "Retrying..." : "Try loading again"}
+          </button>
+        )}
       </section>
     );
   }
@@ -873,8 +937,26 @@ function AgreementNegotiationView({
         </div>
       )}
 
+      {feedback.refreshError && (
+        <div className="negotiation-refresh-warning">
+          <p role="status">
+            The latest proposal revision could not be checked. The version shown may be
+            out of date.
+          </p>
+          <button
+            className="btn btn-ghost"
+            type="button"
+            disabled={isRefreshing}
+            onClick={() => void refresh()}
+          >
+            {isRefreshing ? "Retrying..." : "Retry refresh"}
+          </button>
+        </div>
+      )}
       {message && <p className="tx-success" role="status">{message}</p>}
-      {error && <p className="tx-error" role="alert">{error}</p>}
+      {feedback.actionError && (
+        <p className="tx-error" role="alert">{feedback.actionError}</p>
+      )}
       {record.status === "finalized" && record.onchainAgreementId && (
         <p className="tx-success" role="status">
           Finalized as {agreementReference(record.onchainAgreementId)}. Open the
