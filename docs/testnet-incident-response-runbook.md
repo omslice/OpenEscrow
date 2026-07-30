@@ -16,21 +16,22 @@ From `frontend`, run:
 npm run incident:rehearse
 ```
 
-The command exercises twelve credential-free controls in memory:
+The command exercises thirteen credential-free controls in memory:
 
 1. forged, expired, and wrong-application identity rejection;
 2. cross-account record and archive isolation;
 3. cross-site agreement, report, snapshot, private-evidence, and preference read rejection;
 4. verified-account session containment;
-5. role-isolated, token-free privacy inventory;
-6. ciphertext, key-material, and digest tamper rejection;
-7. pre-rotation evidence failure on retained-key loss, readiness detection, and exact-byte
-   recovery after the approved keyring is restored;
-8. evidence-upload outage and safe retry;
-9. evidence-download outage and privacy-safe failure;
-10. notification-provider outage and idempotent recovery;
-11. Base Sepolia receipt/event spoof rejection; and
-12. bounded receipt verification during public-RPC rate limiting.
+5. targeted lost-tenant invitation replacement with co-tenant continuity;
+6. role-isolated, token-free privacy inventory;
+7. ciphertext, key-material, and digest tamper rejection;
+8. isolated D1/R2 restoration that rejects missing and mislabeled key backups, safely verifies
+   legacy metadata, and recovers exact bytes with the approved keyring;
+9. evidence-upload outage and safe retry;
+10. evidence-download outage and privacy-safe failure;
+11. notification-provider outage and idempotent recovery;
+12. Base Sepolia receipt/event spoof rejection; and
+13. bounded receipt verification during public-RPC rate limiting.
 
 Machine-readable JSON and JUnit evidence is written under
 `frontend/.incident-rehearsal/`. The artifact records the exact Git commit. It touches no hosted
@@ -98,7 +99,7 @@ still call a public contract directly, and confirmed public-chain records cannot
 | Forwarded or stolen optional-arbiter invitation | Landlord rotates the arbiter link through the guarded recovery path; verify prior arbiter sessions fail | Enable the hidden arbiter UI for a live pilot without a product decision |
 | Suspected cross-account disclosure | Stop the pilot, revoke the affected verified account's derived sessions, preserve request/event references, and escalate | Browse unrelated accounts, copy tokens, or delete records to conceal exposure |
 | Evidence upload/download outage | Preserve the file hash and failure time; retry only after storage recovery; confirm no phantom metadata or event exists | Re-upload repeatedly, publish plaintext elsewhere, or substitute public IPFS |
-| Evidence tamper or key mismatch | Stop evidence access, preserve ciphertext and metadata, verify the configured key ID/keyring, and restore only an approved backup | Guess a key, overwrite ciphertext, discard the recorded key ID, or remove old keys early |
+| Evidence tamper or key mismatch | Stop evidence access, preserve ciphertext and metadata, verify the configured key ID/keyring and readiness fingerprint counts, then restore only an approved backup; for a legacy row, let an authorized successful download verify decryption and the plaintext receipt before metadata is backfilled | Guess or relabel a key, edit a fingerprint directly, overwrite ciphertext, discard the recorded key ID, or remove old keys early |
 | Notification outage | Preserve the failed attempt and retry once after provider recovery; verify one sent event | Mark a notice sent manually or expose agreement details in fallback email |
 | RPC rate limit or uncertain transaction | Check the wallet and an independent Base Sepolia explorer/RPC before retrying; use the retained receipt-recovery control | Repeat a transaction while its status is unknown |
 | Browser storage blocked during receipt recovery | Keep the page open and use the in-memory retry; if the page was lost, recover the hash from the wallet or Base Sepolia explorer before saving the receipt | Repeat the onchain action merely because its local retry did not survive a refresh |
@@ -167,7 +168,8 @@ Resume only when the incident lead has documented all of the following:
 - the relevant automated rehearsal passes at the exact candidate commit;
 - prior affected sessions/links fail and intended replacement access succeeds;
 - no onchain transaction remains in an unknown state;
-- evidence integrity and the approved key ID/keyring are verified where relevant;
+- evidence integrity and the approved key ID/keyring are verified where relevant, with zero
+  missing, unverified, or mismatched evidence-key counts;
 - notification retries produced no phantom or duplicate sent record;
 - compliance sources and address routing are not bypassed;
 - required participant/privacy communications have an identified approver; and

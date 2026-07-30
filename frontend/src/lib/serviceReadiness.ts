@@ -105,9 +105,18 @@ export function getServiceReadinessActions(
         "Set a base64-encoded 32-byte EVIDENCE_ENCRYPTION_KEY and a stable EVIDENCE_ENCRYPTION_KEY_ID. Retain prior keys in EVIDENCE_DECRYPTION_KEYS during rotation.",
     });
   } else if (serviceReadiness.evidence.keyringReady === false) {
+    const mismatched =
+      serviceReadiness.evidence.mismatchedDecryptionKeyCount ?? 0;
+    const unverified =
+      serviceReadiness.evidence.unverifiedEncryptionKeyCount ?? 0;
     actions.push({
       label: "Restore evidence keyring",
-      detail: `Restore the approved backup for ${serviceReadiness.evidence.missingDecryptionKeyCount ?? "one or more"} retained evidence key(s) in EVIDENCE_DECRYPTION_KEYS. Do not replace or guess missing key material.`,
+      detail:
+        mismatched > 0
+          ? `The configured backup bytes do not match ${mismatched} evidence key fingerprint(s). Restore the exact approved backup under the same key ID; do not guess or relabel key material.`
+          : unverified > 0
+            ? `${unverified} stored evidence key(s) lack fingerprint metadata. Complete the documented legacy-evidence recovery and migration before relying on this keyring.`
+            : `Restore the approved backup for ${serviceReadiness.evidence.missingDecryptionKeyCount ?? "one or more"} retained evidence key(s) in EVIDENCE_DECRYPTION_KEYS. Do not replace or guess missing key material.`,
     });
   }
 

@@ -24,6 +24,8 @@ const baseReadiness = (): ServiceReadiness => ({
     encryptedAtRest: true,
     referencedEncryptionKeyCount: 1,
     missingDecryptionKeyCount: 0,
+    unverifiedEncryptionKeyCount: 0,
+    mismatchedDecryptionKeyCount: 0,
     keyringReady: true,
     decentralizedReady: false,
   },
@@ -158,6 +160,40 @@ test("readiness blocks an incomplete retained evidence keyring", () => {
   assert.equal(actions[0].label, "Restore evidence keyring");
   assert.match(actions[0].detail, /1 retained evidence key/);
   assert.match(actions[0].detail, /Do not replace or guess/);
+});
+
+test("readiness explains a retained evidence backup fingerprint mismatch", () => {
+  const degraded = baseReadiness();
+  degraded.evidence.referencedEncryptionKeyCount = 2;
+  degraded.evidence.mismatchedDecryptionKeyCount = 1;
+  degraded.evidence.keyringReady = false;
+
+  const summary = summarizeServiceReadiness(degraded);
+  assert.equal(summary.ready, false);
+  assert.equal(summary.issueCount, 1);
+
+  const actions = getServiceReadinessActions(degraded);
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].label, "Restore evidence keyring");
+  assert.match(actions[0].detail, /backup bytes do not match 1 evidence key fingerprint/);
+  assert.match(actions[0].detail, /exact approved backup/);
+  assert.match(actions[0].detail, /do not guess or relabel/);
+});
+
+test("readiness explains how legacy evidence receives verified fingerprint metadata", () => {
+  const degraded = baseReadiness();
+  degraded.evidence.unverifiedEncryptionKeyCount = 1;
+  degraded.evidence.keyringReady = false;
+
+  const summary = summarizeServiceReadiness(degraded);
+  assert.equal(summary.ready, false);
+  assert.equal(summary.issueCount, 1);
+
+  const actions = getServiceReadinessActions(degraded);
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].label, "Restore evidence keyring");
+  assert.match(actions[0].detail, /lack fingerprint metadata/);
+  assert.match(actions[0].detail, /legacy-evidence recovery and migration/);
 });
 
 test("getServiceReadinessActions returns no actions when readiness is null", () => {

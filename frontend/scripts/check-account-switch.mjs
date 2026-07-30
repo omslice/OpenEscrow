@@ -117,6 +117,8 @@ function readyServiceReadiness() {
       retainedDecryptionKeyCount: 1,
       referencedEncryptionKeyCount: 1,
       missingDecryptionKeyCount: 0,
+      unverifiedEncryptionKeyCount: 0,
+      mismatchedDecryptionKeyCount: 0,
       keyringReady: true,
       encryptionError: null,
       decentralizedReady: false,

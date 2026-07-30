@@ -61,12 +61,14 @@ const expectedScenarios = [
   },
   {
     id: "evidence-key-rotation",
-    name: "evidence key rotation fails closed on key loss and recovers after restoration",
+    name: "pilot rehearsal: isolated evidence backup restoration rejects missing and mismatched keys",
     covers: [
       "pre-rotation evidence",
       "retained keyring",
       "active key rotation",
       "missing-key readiness",
+      "mislabeled backup rejection",
+      "isolated D1 and R2 restoration",
       "exact-byte restoration",
     ],
   },

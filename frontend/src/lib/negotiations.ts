@@ -101,6 +101,8 @@ export interface ServiceReadiness {
     retainedDecryptionKeyCount?: number;
     referencedEncryptionKeyCount?: number;
     missingDecryptionKeyCount?: number;
+    unverifiedEncryptionKeyCount?: number;
+    mismatchedDecryptionKeyCount?: number;
     keyringReady?: boolean;
     encryptionError?: string | null;
     decentralizedReady: boolean;

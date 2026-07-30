@@ -127,6 +127,7 @@ CREATE TABLE IF NOT EXISTS evidence_files (
   encryption_version TEXT,
   encryption_iv TEXT,
   encryption_key_id TEXT,
+  encryption_key_fingerprint TEXT,
   created_at TEXT NOT NULL,
   FOREIGN KEY (negotiation_id) REFERENCES agreement_negotiations(id)
 )`;
@@ -1325,13 +1326,21 @@ function evidenceMasterKeyForId(env, storedKeyId) {
   return retainedKey;
 }
 
-function evidenceEncryptionReadiness(env) {
+async function evidenceMasterKeyFingerprint(rawKey) {
+  const digest = await crypto.subtle.digest("SHA-256", rawKey);
+  return `sha256:${[...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")}`;
+}
+
+async function evidenceEncryptionReadiness(env) {
   if (!env.EVIDENCE_ENCRYPTION_KEY) {
     return {
       configured: false,
       activeKeyId: null,
       retainedKeyCount: 0,
       availableKeyIds: new Set(),
+      keyFingerprints: new Map(),
       error: env.EVIDENCE_DECRYPTION_KEYS
         ? "EVIDENCE_ENCRYPTION_KEY is required even when retired decryption keys are retained."
         : null,
@@ -1339,11 +1348,24 @@ function evidenceEncryptionReadiness(env) {
   }
   try {
     const { active, retained } = evidenceEncryptionConfiguration(env);
+    const keyEntries = [
+      [active.keyId, active.rawKey],
+      ...retained.entries(),
+    ];
+    const keyFingerprints = new Map(
+      await Promise.all(
+        keyEntries.map(async ([keyId, rawKey]) => [
+          keyId,
+          await evidenceMasterKeyFingerprint(rawKey),
+        ]),
+      ),
+    );
     return {
       configured: true,
       activeKeyId: active.keyId,
       retainedKeyCount: retained.size,
       availableKeyIds: new Set([active.keyId, ...retained.keys()]),
+      keyFingerprints,
       error: null,
     };
   } catch (error) {
@@ -1352,6 +1374,7 @@ function evidenceEncryptionReadiness(env) {
       activeKeyId: null,
       retainedKeyCount: 0,
       availableKeyIds: new Set(),
+      keyFingerprints: new Map(),
       error:
         error instanceof EvidenceKeyConfigurationError
           ? error.message
@@ -1392,6 +1415,7 @@ async function encryptEvidenceBytes(env, evidenceId, bytes) {
     version: "aes-256-gcm-hkdf-v1",
     iv: encodeBase64(iv),
     keyId: activeKey.keyId,
+    keyFingerprint: await evidenceMasterKeyFingerprint(activeKey.rawKey),
   };
 }
 
@@ -1656,7 +1680,7 @@ async function notificationPreferences(request, env) {
 async function serviceReadiness(env) {
   let schedulerLastRunAt = null;
   let complianceSourceLastRunAt = null;
-  let referencedEvidenceKeyIds = [];
+  let referencedEvidenceKeys = [];
   let complianceSourceStats = {
     tracked: 0,
     changed: 0,
@@ -1669,20 +1693,17 @@ async function serviceReadiness(env) {
     await initialize(env.DB);
     const evidenceKeyRows = await env.DB
       .prepare(
-        `SELECT DISTINCT encryption_key_id
+        `SELECT DISTINCT encryption_key_id, encryption_key_fingerprint
          FROM evidence_files
          WHERE encryption_version IS NOT NULL
            AND encryption_key_id IS NOT NULL
            AND encryption_key_id <> ''`,
       )
       .all();
-    referencedEvidenceKeyIds = [
-      ...new Set(
-        (evidenceKeyRows.results || []).map((row) =>
-          String(row.encryption_key_id),
-        ),
-      ),
-    ];
+    referencedEvidenceKeys = (evidenceKeyRows.results || []).map((row) => ({
+      keyId: String(row.encryption_key_id),
+      fingerprint: cleanText(row.encryption_key_fingerprint, 80).toLowerCase(),
+    }));
     const scheduledRun = await env.DB
       .prepare("SELECT last_started_at FROM scheduled_job_runs WHERE name = ?")
       .bind("notification-reminders")
@@ -1778,10 +1799,30 @@ async function serviceReadiness(env) {
   )
     ? null
     : Math.max(0, Math.round((nowMs - complianceSourceLastRunMs) / (60 * 1000)));
-  const evidenceEncryption = evidenceEncryptionReadiness(env);
+  const evidenceEncryption = await evidenceEncryptionReadiness(env);
+  const referencedEvidenceKeyIds = [
+    ...new Set(referencedEvidenceKeys.map((key) => key.keyId)),
+  ];
   const missingEvidenceKeyCount = referencedEvidenceKeyIds.filter(
     (keyId) => !evidenceEncryption.availableKeyIds.has(keyId),
   ).length;
+  const unverifiedEvidenceKeyIds = new Set(
+    referencedEvidenceKeys
+      .filter(
+        ({ fingerprint }) => !/^sha256:[0-9a-f]{64}$/.test(fingerprint),
+      )
+      .map(({ keyId }) => keyId),
+  );
+  const mismatchedEvidenceKeyIds = new Set(
+    referencedEvidenceKeys
+      .filter(
+        ({ keyId, fingerprint }) =>
+          /^sha256:[0-9a-f]{64}$/.test(fingerprint) &&
+          evidenceEncryption.keyFingerprints.has(keyId) &&
+          evidenceEncryption.keyFingerprints.get(keyId) !== fingerprint,
+      )
+      .map(({ keyId }) => keyId),
+  );
   const decentralizedReady = Boolean(
     env.PINATA_JWT && evidenceEncryption.configured,
   );
@@ -1815,8 +1856,13 @@ async function serviceReadiness(env) {
       retainedDecryptionKeyCount: evidenceEncryption.retainedKeyCount,
       referencedEncryptionKeyCount: referencedEvidenceKeyIds.length,
       missingDecryptionKeyCount: missingEvidenceKeyCount,
+      unverifiedEncryptionKeyCount: unverifiedEvidenceKeyIds.size,
+      mismatchedDecryptionKeyCount: mismatchedEvidenceKeyIds.size,
       keyringReady:
-        evidenceEncryption.configured && missingEvidenceKeyCount === 0,
+        evidenceEncryption.configured &&
+        missingEvidenceKeyCount === 0 &&
+        unverifiedEvidenceKeyIds.size === 0 &&
+        mismatchedEvidenceKeyIds.size === 0,
       encryptionError: evidenceEncryption.error,
       decentralizedReady,
       contentTypeValidation: true,
@@ -6278,6 +6324,7 @@ async function uploadEvidence(request, env) {
   let encryptionVersion = null;
   let encryptionIv = null;
   let encryptionKeyId = null;
+  let encryptionKeyFingerprint = null;
   if (env.EVIDENCE_ENCRYPTION_KEY) {
     try {
       const encrypted = await encryptEvidenceBytes(env, evidenceId, bytes);
@@ -6285,6 +6332,7 @@ async function uploadEvidence(request, env) {
       encryptionVersion = encrypted.version;
       encryptionIv = encrypted.iv;
       encryptionKeyId = encrypted.keyId;
+      encryptionKeyFingerprint = encrypted.keyFingerprint;
     } catch (error) {
       return json(
         {
@@ -6330,8 +6378,8 @@ async function uploadEvidence(request, env) {
           `INSERT INTO evidence_files
            (id, negotiation_id, uploader_role, storage_kind, object_key, cid,
              original_name, content_type, size_bytes, sha256, encryption_version,
-             encryption_iv, encryption_key_id, created_at)
-            VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
+             encryption_iv, encryption_key_id, encryption_key_fingerprint, created_at)
+            VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .bind(
           evidenceId,
@@ -6346,6 +6394,7 @@ async function uploadEvidence(request, env) {
           encryptionVersion,
           encryptionIv,
           encryptionKeyId,
+          encryptionKeyFingerprint,
           now,
         ),
       env.DB
@@ -6420,8 +6469,8 @@ async function uploadEvidence(request, env) {
         `INSERT INTO evidence_files
          (id, negotiation_id, uploader_role, storage_kind, object_key, cid,
            original_name, content_type, size_bytes, sha256, encryption_version,
-           encryption_iv, encryption_key_id, created_at)
-          VALUES (?, ?, ?, 'encrypted-ipfs', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+           encryption_iv, encryption_key_id, encryption_key_fingerprint, created_at)
+          VALUES (?, ?, ?, 'encrypted-ipfs', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .bind(
         evidenceId,
@@ -6435,6 +6484,7 @@ async function uploadEvidence(request, env) {
         encryptionVersion,
         encryptionIv,
         encryptionKeyId,
+        encryptionKeyFingerprint,
         now,
       ),
     env.DB
@@ -6555,6 +6605,30 @@ async function downloadEvidence(request, env, evidenceId) {
     .join("")}`;
   if (sha256.toLowerCase() !== String(metadata.sha256).toLowerCase()) {
     return json({ error: "The evidence file failed its integrity check." }, 422);
+  }
+  if (
+    metadata.encryption_version &&
+    !cleanText(metadata.encryption_key_fingerprint, 80)
+  ) {
+    try {
+      const rawKey = evidenceMasterKeyForId(env, metadata.encryption_key_id);
+      const fingerprint = await evidenceMasterKeyFingerprint(rawKey);
+      await env.DB
+        .prepare(
+          `UPDATE evidence_files
+           SET encryption_key_fingerprint = ?
+           WHERE id = ?
+             AND (
+               encryption_key_fingerprint IS NULL
+               OR encryption_key_fingerprint = ''
+             )`,
+        )
+        .bind(fingerprint, evidenceId)
+        .run();
+    } catch {
+      // The authorized evidence remains readable. Readiness stays fail-closed
+      // until a later verified download can persist the legacy fingerprint.
+    }
   }
 
   const safeName = cleanText(metadata.original_name, 240).replaceAll(/[^a-zA-Z0-9._ -]/g, "_");

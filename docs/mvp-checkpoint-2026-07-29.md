@@ -7,18 +7,19 @@ production readiness, or authorization to hold real rental deposits.
 
 - **Verified:** A locally packaged Sites candidate includes the latest pilot rehearsal, security,
   accessibility, compliance-regression, funding-failure, and hidden-tab performance work.
-- **Verified:** Fourteen credential-free rehearsals pass: five lifecycle scenarios covering
+- **Verified:** Fifteen credential-free rehearsals pass: five lifecycle scenarios covering
   archive/restore, record proof, disputed claim, accepted claim, and no-claim refund, plus three
-  private-evidence and notification outage/recovery scenarios, one arbiter-link/session reset,
-  one targeted lost-tenant-link recovery with co-tenant continuity, one verified-arbiter identity
-  recovery/isolation scenario, one verified-account session containment scenario, one realistic
-  multi-agreement account data-inventory scenario with encrypted-evidence exclusion and clean
-  post-containment rediscovery, and one durable sandbox funding recovery/refund scenario.
+  private-evidence and notification outage/recovery scenarios, one isolated evidence-key backup
+  restoration scenario, one arbiter-link/session reset, one targeted lost-tenant-link recovery
+  with co-tenant continuity, one verified-arbiter identity recovery/isolation scenario, one
+  verified-account session containment scenario, one realistic multi-agreement account
+  data-inventory scenario with encrypted-evidence exclusion and clean post-containment
+  rediscovery, and one durable sandbox funding recovery/refund scenario.
 - **Verified:** A separate 13-scenario incident-response rehearsal passes for identity forgery,
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   outages, notification recovery, receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 103 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 108 client-logic
   tests, lint, browser account-switch, accessibility/mobile, and load-recovery smoke checks, and
   the production build. These rendered checks are part of the required `npm run check` path
   rather than separate, potentially stale results.
@@ -149,14 +150,17 @@ production readiness, or authorization to hold real rental deposits.
 - **Verified:** Private-evidence upload/download and notification-provider outages fail closed
   with retry guidance. Failed attempts create no phantom evidence or sent-delivery events, and
   automated recovery tests verify one successful retry remains idempotent.
-- **Verified:** The hosted pilot checker now requires both an active evidence-encryption key and
-  every retained key referenced by stored ciphertext. A missing or omitted keyring status fails
-  closed with restoration guidance instead of accepting a pilot that cannot read older evidence.
+- **Verified:** The hosted pilot checker requires both an active evidence-encryption key and every
+  retained key referenced by stored ciphertext. Each new encrypted row records a non-secret
+  master-key fingerprint, so a missing key, omitted keyring status, or wrong backup bytes under
+  the expected key ID fail closed. An authorized legacy download can backfill a missing
+  fingerprint only after successful decryption and plaintext-digest verification.
 - **Verified:** End-to-end operator-command regressions exercise a completely ready hosted
-  response and a missing-retained-key response. Both write timestamped evidence to an explicit
-  nested artifact path; the degraded case exits unsuccessfully while preserving exact recovery
-  guidance in the artifact. A hosted-readiness HTTP failure also writes one focused endpoint
-  blocker instead of throwing before evidence can be preserved.
+  response, a missing-retained-key response, and a mislabeled backup with wrong key bytes. Each
+  writes timestamped evidence to an explicit nested artifact path; degraded cases exit
+  unsuccessfully while preserving exact recovery guidance in the artifact. A hosted-readiness
+  HTTP failure also writes one focused endpoint blocker instead of throwing before evidence can
+  be preserved.
 - **Verified:** Readiness responses expose build-generated exact-commit provenance, and operator
   artifacts preserve that release identifier under a versioned schema. Missing provenance fails
   closed, while Sites packaging rejects uncommitted release inputs and verifies its generated

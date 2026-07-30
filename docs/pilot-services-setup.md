@@ -35,8 +35,10 @@ npm.cmd run pilot:check
 The required rows should all report `PASS`. The decentralized-evidence row may remain `OPTIONAL`
 for the pilot. Run this again after every deployment because the endpoint checks the deployed
 runtime, not the developer machine. Evidence readiness passes only when the active encryption key
-and every retained key referenced by stored evidence are available; restoring only the active key
-is not sufficient after a rotation.
+and every retained key referenced by stored evidence are available. It also compares each
+configured key with the non-secret fingerprint recorded beside new ciphertext, so restoring only
+the active key—or putting different bytes under an expected retained-key ID—is not sufficient
+after a rotation.
 
 To retain an exact operator-readable result at a chosen path, add
 `--json --artifact-path=<path>`. OpenEscrow creates missing parent folders and writes the artifact
@@ -49,7 +51,7 @@ provenance matches the exact source commit.
 
 ### What the automated release gate now covers
 
-The repository test gate includes 51 server/workflow scenarios and 220 passing
+The repository test gate includes 77 server/workflow scenarios and 220 passing
 contract tests, with one opt-in fork test skipped by default. The
 workflow suite exercises a landlord, two tenants, and an optional arbiter through proposal
 revision, unanimous approval, finalization, each tenant's reserve and deposit contribution,
@@ -326,6 +328,18 @@ Never reuse one ID for different key bytes. Never remove a retained key merely t
 configuration; remove it only after every file encrypted with that ID has been handled under an
 approved retention/deletion policy and any required recovery backup has been verified.
 
+New encrypted rows also record a `sha256:` fingerprint of the 32-byte master key. The fingerprint
+does not reveal the key, but it lets the hosted readiness check distinguish an exact retained
+backup from unrelated bytes stored under the same key ID. A missing or mismatched key keeps
+`keyringReady` false.
+
+Rows created before the fingerprint migration remain fail-closed until an agreement party opens
+the evidence with the approved keyring. OpenEscrow then writes the missing fingerprint only after
+AES-GCM decryption succeeds and the resulting plaintext matches the row's existing SHA-256
+receipt. A wrong backup cannot decrypt the file and cannot backfill the fingerprint. Preserve the
+ciphertext and metadata, restore only an approved backup, and never bypass readiness by editing a
+fingerprint directly.
+
 ### Recommended pilot mode: encrypted private R2
 
 ```dotenv
@@ -370,7 +384,9 @@ authorized-retrieval design should remain the same; only the upload and gateway 
 4. Open the evidence as the landlord and every tenant.
 5. Confirm an invalid invitation token receives an access error.
 6. Confirm the downloaded response includes the same SHA-256 receipt recorded by OpenEscrow.
-7. Never test with a real lease, invoice, address, or damage photograph.
+7. After a rotation, confirm readiness reports zero missing, unverified, and mismatched evidence
+   keys.
+8. Never test with a real lease, invoice, address, or damage photograph.
 
 ## Pilot go/no-go checklist
 

@@ -58,6 +58,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0008_compliance_source_release_gate.sql",
     "0009_evidence_key_rotation.sql",
     "0010_sandbox_funding_checkouts.sql",
+    "0011_evidence_key_fingerprints.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -4965,7 +4966,7 @@ test("encrypted evidence fails closed when ciphertext, key material, or digest m
   assert.notEqual(storedMetadata.sha256, `0x${"0".repeat(64)}`);
 });
 
-test("evidence key rotation fails closed on key loss and recovers after restoration", async () => {
+test("pilot rehearsal: isolated evidence backup restoration rejects missing and mismatched keys", async () => {
   const db = new TestD1();
   const evidence = new TestR2();
   const created = await create(db);
@@ -4995,11 +4996,16 @@ test("evidence key rotation fails closed on key loss and recovers after restorat
   );
   const storedMetadata = await db
     .prepare(
-      "SELECT encryption_key_id FROM evidence_files WHERE id = ?",
+      `SELECT encryption_key_id, encryption_key_fingerprint
+       FROM evidence_files WHERE id = ?`,
     )
     .bind(uploaded.cid)
     .first();
   assert.equal(storedMetadata.encryption_key_id, "primary");
+  assert.match(
+    storedMetadata.encryption_key_fingerprint,
+    /^sha256:[0-9a-f]{64}$/,
+  );
 
   const rotatedEnvironment = {
     DB: db,
@@ -5035,11 +5041,20 @@ test("evidence key rotation fails closed on key loss and recovers after restorat
   );
   const rotatedMetadata = await db
     .prepare(
-      "SELECT encryption_key_id FROM evidence_files WHERE id = ?",
+      `SELECT encryption_key_id, encryption_key_fingerprint
+       FROM evidence_files WHERE id = ?`,
     )
     .bind(rotatedUpload.cid)
     .first();
   assert.equal(rotatedMetadata.encryption_key_id, "2026-q3");
+  assert.match(
+    rotatedMetadata.encryption_key_fingerprint,
+    /^sha256:[0-9a-f]{64}$/,
+  );
+  assert.notEqual(
+    rotatedMetadata.encryption_key_fingerprint,
+    storedMetadata.encryption_key_fingerprint,
+  );
   const rotatedDownload = await worker.fetch(
     new Request(`https://openescrow.example${rotatedUpload.gatewayUrl}`),
     rotatedEnvironment,
@@ -5047,12 +5062,31 @@ test("evidence key rotation fails closed on key loss and recovers after restorat
   assert.equal(rotatedDownload.status, 200);
   assert.equal(await rotatedDownload.text(), "%PDF-1.7\npost-rotation evidence");
 
+  const recoveryDb = new TestD1();
+  recoveryDb.database.deserialize(db.database.serialize());
+  const recoveryEvidence = new TestR2();
+  for (const [objectKey, object] of evidence.objects) {
+    recoveryEvidence.objects.set(objectKey, {
+      bytes: new Uint8Array(object.bytes),
+      contentType: object.contentType,
+    });
+  }
+  assert.notEqual(recoveryDb.database, db.database);
+  assert.notEqual(recoveryEvidence.objects, evidence.objects);
+  assert.equal(recoveryEvidence.objects.size, evidence.objects.size);
+  for (const [objectKey, restoredObject] of recoveryEvidence.objects) {
+    assert.notEqual(restoredObject.bytes, evidence.objects.get(objectKey).bytes);
+  }
+
+  const recoveryEnvironment = {
+    DB: recoveryDb,
+    EVIDENCE: recoveryEvidence,
+    EVIDENCE_ENCRYPTION_KEY: rotatedKey,
+    EVIDENCE_ENCRYPTION_KEY_ID: "2026-q3",
+  };
   const missingRetainedKey = await worker.fetch(
     new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
-    {
-      ...rotatedEnvironment,
-      EVIDENCE_DECRYPTION_KEYS: undefined,
-    },
+    recoveryEnvironment,
   );
   assert.equal(missingRetainedKey.status, 503);
   assert.match(
@@ -5062,26 +5096,113 @@ test("evidence key rotation fails closed on key loss and recovers after restorat
 
   const missingKeyReadiness = await jsonResponse(
     await worker.fetch(request("/api/system/readiness"), {
-      ...rotatedEnvironment,
-      EVIDENCE_DECRYPTION_KEYS: undefined,
+      ...recoveryEnvironment,
       VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
     }),
   );
   assert.equal(missingKeyReadiness.evidence.encryptedAtRest, true);
   assert.equal(missingKeyReadiness.evidence.referencedEncryptionKeyCount, 2);
   assert.equal(missingKeyReadiness.evidence.missingDecryptionKeyCount, 1);
+  assert.equal(missingKeyReadiness.evidence.unverifiedEncryptionKeyCount, 0);
+  assert.equal(missingKeyReadiness.evidence.mismatchedDecryptionKeyCount, 0);
   assert.equal(missingKeyReadiness.evidence.keyringReady, false);
 
+  const wrongBackupEnvironment = {
+    ...recoveryEnvironment,
+    EVIDENCE_DECRYPTION_KEYS: JSON.stringify({
+      primary: Buffer.alloc(32, 99).toString("base64"),
+    }),
+  };
+  const wrongBackupReadiness = await jsonResponse(
+    await worker.fetch(request("/api/system/readiness"), {
+      ...wrongBackupEnvironment,
+      VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+    }),
+  );
+  assert.equal(wrongBackupReadiness.evidence.missingDecryptionKeyCount, 0);
+  assert.equal(wrongBackupReadiness.evidence.unverifiedEncryptionKeyCount, 0);
+  assert.equal(wrongBackupReadiness.evidence.mismatchedDecryptionKeyCount, 1);
+  assert.equal(wrongBackupReadiness.evidence.keyringReady, false);
+  const wrongBackupDownload = await worker.fetch(
+    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    wrongBackupEnvironment,
+  );
+  assert.equal(wrongBackupDownload.status, 422);
+  assert.match(
+    (await wrongBackupDownload.json()).error,
+    /could not be decrypted or was altered/,
+  );
+
+  const restoredEnvironment = {
+    ...recoveryEnvironment,
+    EVIDENCE_DECRYPTION_KEYS: JSON.stringify({ primary: originalKey }),
+  };
+  await recoveryDb
+    .prepare(
+      `UPDATE evidence_files
+       SET encryption_key_fingerprint = NULL
+       WHERE id = ?`,
+    )
+    .bind(uploaded.cid)
+    .run();
+  const legacyReadiness = await jsonResponse(
+    await worker.fetch(request("/api/system/readiness"), {
+      ...restoredEnvironment,
+      VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+    }),
+  );
+  assert.equal(legacyReadiness.evidence.missingDecryptionKeyCount, 0);
+  assert.equal(legacyReadiness.evidence.unverifiedEncryptionKeyCount, 1);
+  assert.equal(legacyReadiness.evidence.mismatchedDecryptionKeyCount, 0);
+  assert.equal(legacyReadiness.evidence.keyringReady, false);
+  const legacyWrongBackupDownload = await worker.fetch(
+    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    wrongBackupEnvironment,
+  );
+  assert.equal(legacyWrongBackupDownload.status, 422);
+  assert.equal(
+    (
+      await recoveryDb
+        .prepare(
+          `SELECT encryption_key_fingerprint
+           FROM evidence_files WHERE id = ?`,
+        )
+        .bind(uploaded.cid)
+        .first()
+    ).encryption_key_fingerprint,
+    null,
+  );
   const restoredDownload = await worker.fetch(
     new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
-    rotatedEnvironment,
+    restoredEnvironment,
   );
   assert.equal(restoredDownload.status, 200);
   assert.equal(await restoredDownload.text(), "%PDF-1.7\npre-rotation evidence");
+  assert.equal(
+    (
+      await recoveryDb
+        .prepare(
+          `SELECT encryption_key_fingerprint
+           FROM evidence_files WHERE id = ?`,
+        )
+        .bind(uploaded.cid)
+        .first()
+    ).encryption_key_fingerprint,
+    storedMetadata.encryption_key_fingerprint,
+  );
+  const restoredRotatedDownload = await worker.fetch(
+    new Request(`https://openescrow.example${rotatedUpload.gatewayUrl}`),
+    restoredEnvironment,
+  );
+  assert.equal(restoredRotatedDownload.status, 200);
+  assert.equal(
+    await restoredRotatedDownload.text(),
+    "%PDF-1.7\npost-rotation evidence",
+  );
 
   const readiness = await jsonResponse(
     await worker.fetch(request("/api/system/readiness"), {
-      ...rotatedEnvironment,
+      ...restoredEnvironment,
       VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
     }),
   );
@@ -5090,6 +5211,8 @@ test("evidence key rotation fails closed on key loss and recovers after restorat
   assert.equal(readiness.evidence.retainedDecryptionKeyCount, 1);
   assert.equal(readiness.evidence.referencedEncryptionKeyCount, 2);
   assert.equal(readiness.evidence.missingDecryptionKeyCount, 0);
+  assert.equal(readiness.evidence.unverifiedEncryptionKeyCount, 0);
+  assert.equal(readiness.evidence.mismatchedDecryptionKeyCount, 0);
   assert.equal(readiness.evidence.keyringReady, true);
   assert.equal(readiness.evidence.encryptionError, null);
 

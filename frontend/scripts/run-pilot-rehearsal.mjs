@@ -37,6 +37,17 @@ const expectedScenarios = [
     covers: ["R2 outage", "fail-closed download", "privacy-safe error"],
   },
   {
+    id: "evidence-backup-restoration",
+    name: "pilot rehearsal: isolated evidence backup restoration rejects missing and mismatched keys",
+    covers: [
+      "isolated D1 and R2 restoration",
+      "missing backup rejection",
+      "mislabeled backup rejection",
+      "key fingerprint verification",
+      "exact-byte recovery",
+    ],
+  },
+  {
     id: "notification-outage",
     name: "pilot rehearsal: a notification outage is retryable without a phantom delivery",
     covers: ["email outage", "retry", "delivery idempotency", "event consistency"],

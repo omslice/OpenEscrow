@@ -33,7 +33,8 @@ provider or hosting control that owns the secret.
   manager. Give the active evidence key a stable `EVIDENCE_ENCRYPTION_KEY_ID`;
   during rotation, retain the prior key in the secret
   `EVIDENCE_DECRYPTION_KEYS` keyring until an approved retention/deletion policy
-  permits its removal.
+  permits its removal. After restoring or rotating a key, require hosted
+  readiness to report zero missing, unverified, and mismatched evidence keys.
 - [ ] **Enter the notification, address-attestation, and evidence values in the
   existing Sites/Worker configuration.** Required values and verification
   steps are in [`pilot-services-setup.md`](./pilot-services-setup.md). Do this

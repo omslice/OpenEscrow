@@ -49,6 +49,8 @@ completeness, legality, or authorship of the underlying content.
 | Altered ciphertext or wrong encryption key | AES-GCM authentication fails closed | Tamper regression returns an alteration error and no file |
 | Altered plaintext or metadata digest | SHA-256 verified after decryption | Digest-tamper regression fails closed |
 | Key rotation makes historical evidence unreadable | Versioned active key ID plus retained decryption keyring; the pilot readiness gate requires every referenced key ID | Pre- and post-rotation files decrypt with their recorded key IDs, and the pilot checker fails closed when a retained key or keyring status is missing |
+| Wrong backup bytes are labeled with an expected key ID | Each new encrypted row records a SHA-256 master-key fingerprint; readiness compares stored fingerprints with configured key bytes without exposing those bytes | The isolated recovery rehearsal rejects missing and mismatched backups, restores copied D1/R2 state, and proves exact plaintext recovery only with the approved key bytes |
+| Legacy encrypted evidence has no key fingerprint | An authorized download may backfill the fingerprint only after AES-GCM decryption and the stored plaintext SHA-256 receipt both verify | The rehearsal proves a wrong backup cannot decrypt or write metadata, while the approved backup verifies the exact bytes and makes readiness pass |
 | Private evidence storage outage | R2 upload/download failures return privacy-safe retry guidance before metadata or success events are recorded | Upload outage leaves no phantom evidence row/event; retry succeeds; download outage fails closed |
 | Notification provider outage | Provider network failures return a retryable delivery error and do not record a sent event | Failed claim notice can be retried once and remains idempotent after recovery |
 | Misleading lifecycle record | Role/state guards, idempotency, and version-matched receipt verification | Credential-free lifecycle rehearsals and receipt-verification tests |
@@ -70,7 +72,10 @@ Implemented:
   agreements, archive preferences, other participants' sessions, or bearer invitation links. If
   the active account changes during revocation, completed server containment remains valid while
   global local cleanup, provider sign-out, and reload are skipped for the new account.
-- Evidence key rotation can retain historical decryption keys by non-secret key ID.
+- Evidence key rotation can retain historical decryption keys by non-secret key ID. New evidence
+  also records a one-way master-key fingerprint so readiness can reject wrong backup bytes under
+  the expected ID. A legacy row receives that fingerprint only after an authorized, successful
+  decrypt-and-digest verification.
 
 Not implemented and therefore pilot-limiting:
 
@@ -118,15 +123,16 @@ The exact-source credential-free incident rehearsal packages thirteen controls c
 identity tokens, cross-account access, cross-site read isolation, participant-scoped session
 containment, targeted lost-tenant-invitation rotation with co-tenant continuity, a realistic
 multi-agreement privacy inventory with encrypted-evidence exclusion and clean rediscovery,
-corrupted ciphertext/key/digest data, retained-key rotation, R2 upload/download outages,
-notification-provider recovery, spoofed receipts, and RPC fallback. It produces local JSON and
-JUnit evidence without touching hosted systems.
+corrupted ciphertext/key/digest data, isolated D1/R2 restoration with missing and mislabeled
+backup rejection, R2 upload/download outages, notification-provider recovery, spoofed receipts,
+and RPC fallback. It produces local JSON and JUnit evidence without touching hosted systems.
 
 A supervised pilot must still additionally exercise:
 
 - lost verified-email escalation and the human verification/notification steps around a lost
   invitation, without sharing secrets;
-- evidence-key backup restoration in a separate operator environment;
+- evidence-key backup restoration in a separate real operator environment, including confirmation
+  that readiness rejects missing or mismatched bytes before the approved backup is restored;
 - email/RPC/R2 outage and retry behavior;
 - suspected cross-account disclosure, including containment and participant notice;
 - privacy export plus deletion/legal-hold decision; and

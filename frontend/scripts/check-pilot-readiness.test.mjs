@@ -33,6 +33,8 @@ function readyResponse() {
       keyringReady: true,
       referencedEncryptionKeyCount: 2,
       missingDecryptionKeyCount: 0,
+      unverifiedEncryptionKeyCount: 0,
+      mismatchedDecryptionKeyCount: 0,
       contentTypeValidation: true,
       decentralizedReady: false,
     },
@@ -205,6 +207,42 @@ test("pilot readiness command saves fail-closed recovery evidence when a retaine
     );
     assert.equal(failedCheck?.ready, false);
     assert.match(failedCheck?.action, /Restore every approved key ID/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("pilot readiness command rejects a retained key backup with mismatched bytes", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "openescrow-readiness-"));
+  const artifactPath = path.join(tempDir, "nested", "mismatched-backup.json");
+  const readiness = readyResponse();
+  readiness.evidence = {
+    ...readiness.evidence,
+    keyringReady: false,
+    mismatchedDecryptionKeyCount: 1,
+  };
+
+  try {
+    const result = await runReadinessCommand(readiness, artifactPath);
+
+    assert.equal(result.code, 1, result.stderr || result.stdout);
+    assert.match(result.stdout, /ACTION\s+Evidence encryption and retained keyring/);
+    const artifact = JSON.parse(await readFile(artifactPath, "utf8"));
+    assert.equal(artifact.ok, false);
+    assert.equal(artifact.requiredActionCount, 1);
+    assert.deepEqual(artifact.required, [
+      {
+        label: "Evidence encryption and retained keyring",
+        detail:
+          "1 configured evidence key backup does not match the key material used for stored ciphertext",
+      },
+    ]);
+    const failedCheck = artifact.checks.find(
+      (check) => check.label === "Evidence encryption and retained keyring",
+    );
+    assert.equal(failedCheck?.ready, false);
+    assert.match(failedCheck?.action, /exact approved backup bytes/);
+    assert.match(failedCheck?.action, /do not guess, relabel, or replace/);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

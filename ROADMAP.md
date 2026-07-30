@@ -84,9 +84,10 @@ the repository; they are not claims of legal approval or production readiness.
   account archive/restore, and record-proof paths
 - [x] Auth/evidence threat model plus expired/forged identity, cross-account evidence, ciphertext,
   key-material, and digest-tamper regression coverage
-- [x] Hosted evidence readiness detects retained-key loss for stored ciphertext and a
-  credential-free rehearsal proves exact-byte recovery after approved keyring restoration; the
-  pilot gate also fails closed unless every referenced historical key is available
+- [x] Hosted evidence readiness detects retained-key loss and wrong backup bytes through
+  per-key fingerprints; a credential-free rehearsal restores isolated D1/R2 copies and proves
+  exact-byte recovery, while authorized legacy downloads backfill fingerprints only after
+  successful decryption and plaintext-digest verification
 - [x] Fail-closed, retryable private-evidence and notification-provider outage handling without
   phantom evidence or delivery events
 - [x] Landlord-authorized optional-arbiter invitation rotation with old-link and account-session
