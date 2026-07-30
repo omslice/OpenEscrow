@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useSendTransaction, useWallets } from "@privy-io/react-auth";
 import { encodeFunctionData } from "viem";
 import { useAccount, usePublicClient, useReadContract } from "wagmi";
@@ -9,6 +9,7 @@ import {
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import {
   clearRecoveryValue,
+  clearRecoveryValueIfMatches,
   readRecoveryTransaction,
   writeRecoveryValue,
 } from "../lib/browserRecovery";
@@ -16,6 +17,7 @@ import {
   copyTextToClipboard,
   downloadTextFile,
 } from "../lib/browserActions";
+import { createAsyncOperationScope } from "../lib/asyncOperationScope";
 import {
   loadNegotiationSnapshot,
   negotiationReportDownloadUrl,
@@ -35,7 +37,11 @@ type AnchorProps = {
   access: NegotiationAccess;
   agreementId: bigint;
   snapshot: AgreementSnapshot;
-  onAnchored: () => void;
+};
+
+type RecordExportFeedback = {
+  tone: "success" | "error";
+  message: string;
 };
 
 function useAnchorRecovery(
@@ -61,9 +67,17 @@ function useAnchorRecovery(
     if (storageKey) writeRecoveryValue(storageKey, transactionHash);
   }
 
-  function clear() {
-    setPendingTransaction(null);
-    if (storageKey) clearRecoveryValue(storageKey);
+  function clear(transactionHash?: `0x${string}`) {
+    setPendingTransaction((current) =>
+      transactionHash && current !== transactionHash ? current : null,
+    );
+    if (storageKey) {
+      if (transactionHash) {
+        clearRecoveryValueIfMatches(storageKey, transactionHash);
+      } else {
+        clearRecoveryValue(storageKey);
+      }
+    }
   }
 
   return { pendingTransaction, remember, clear };
@@ -73,7 +87,6 @@ function StandardAnchorAction({
   access,
   agreementId,
   snapshot,
-  onAnchored,
 }: AnchorProps) {
   const { address } = useAccount();
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +107,7 @@ function StandardAnchorAction({
         snapshotHash: snapshot.hash,
         transactionHash,
       });
-      recovery.clear();
+      recovery.clear(transactionHash);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -135,7 +148,6 @@ function StandardAnchorAction({
           void recordReceipt(transactionHash)
             .then(() => {
               void anchored.refetch();
-              onAnchored();
             })
             .catch(() => undefined);
         }}
@@ -158,7 +170,6 @@ function SponsoredAnchorAction({
   access,
   agreementId,
   snapshot,
-  onAnchored,
 }: AnchorProps) {
   const { address } = useAccount();
   const publicClient = usePublicClient();
@@ -182,7 +193,7 @@ function SponsoredAnchorAction({
         snapshotHash: snapshot.hash,
         transactionHash,
       });
-      recovery.clear();
+      recovery.clear(transactionHash);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -237,7 +248,6 @@ function SponsoredAnchorAction({
             recovery.remember(result.hash);
             await recordReceipt(result.hash);
             await anchored.refetch();
-            onAnchored();
           } catch (cause) {
             setError(
               cause instanceof Error
@@ -300,12 +310,32 @@ export function RecordSnapshotControls({
     archive: EncryptedRecordArchive;
     verificationKey: string;
   } | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<RecordExportFeedback | null>(null);
   const [loading, setLoading] = useState(false);
+  const exportScopeKey = JSON.stringify([
+    access.proposalId,
+    access.role,
+    access.token,
+    agreementId?.toString() ?? null,
+  ]);
+  const exportScope = useMemo(
+    () => createAsyncOperationScope(exportScopeKey),
+    [exportScopeKey],
+  );
+
+  useLayoutEffect(() => {
+    exportScope.open();
+    setSnapshot(null);
+    setEncryptedExport(null);
+    setFeedback(null);
+    setLoading(false);
+    return () => exportScope.close();
+  }, [exportScope]);
 
   async function downloadEncryptedRecord() {
+    const operationId = exportScope.start();
     setLoading(true);
-    setStatus(null);
+    setFeedback(null);
     try {
       const next = await loadNegotiationSnapshot(access);
       const encrypted = await encryptRecordSnapshot(
@@ -313,6 +343,7 @@ export function RecordSnapshotControls({
         access.proposalId,
         agreementId,
       );
+      if (!exportScope.isCurrent(operationId)) return;
       downloadTextFile(
         JSON.stringify(encrypted.archive, null, 2),
         "application/json",
@@ -320,21 +351,28 @@ export function RecordSnapshotControls({
       );
       setSnapshot(next);
       setEncryptedExport(encrypted);
-      setStatus(
-        "Encrypted record downloaded. Save the verification key separately before leaving this page.",
-      );
+      setFeedback({
+        tone: "success",
+        message:
+          "Encrypted record downloaded. Save the verification key separately before leaving this page.",
+      });
     } catch (error) {
-      setStatus(
-        error instanceof Error ? error.message : "The encrypted record could not be generated.",
-      );
+      if (!exportScope.isCurrent(operationId)) return;
+      setFeedback({
+        tone: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "The encrypted record could not be generated.",
+      });
     } finally {
-      setLoading(false);
+      if (exportScope.isCurrent(operationId)) setLoading(false);
     }
   }
 
   function downloadVerificationKey() {
     if (!encryptedExport) return;
-    setStatus(null);
+    setFeedback(null);
     try {
       downloadTextFile(
         [
@@ -348,24 +386,43 @@ export function RecordSnapshotControls({
         "text/plain",
         `openescrow-${access.proposalId}-verification-key.txt`,
       );
-      setStatus("Verification key downloaded. Keep it private and separate from the encrypted JSON.");
+      setFeedback({
+        tone: "success",
+        message:
+          "Verification key downloaded. Keep it private and separate from the encrypted JSON.",
+      });
     } catch (error) {
-      setStatus(
-        error instanceof Error ? error.message : "The verification key could not be downloaded.",
-      );
+      setFeedback({
+        tone: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "The verification key could not be downloaded.",
+      });
     }
   }
 
   async function copyVerificationKey() {
     if (!encryptedExport) return;
-    setStatus(null);
+    const operationId = exportScope.start();
+    setFeedback(null);
     try {
       await copyTextToClipboard(encryptedExport.verificationKey);
-      setStatus("Verification key copied. Keep it private and separate from the encrypted JSON.");
+      if (!exportScope.isCurrent(operationId)) return;
+      setFeedback({
+        tone: "success",
+        message:
+          "Verification key copied. Keep it private and separate from the encrypted JSON.",
+      });
     } catch (error) {
-      setStatus(
-        error instanceof Error ? error.message : "The verification key could not be copied.",
-      );
+      if (!exportScope.isCurrent(operationId)) return;
+      setFeedback({
+        tone: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "The verification key could not be copied.",
+      });
     }
   }
 
@@ -450,10 +507,10 @@ export function RecordSnapshotControls({
           </code>
           {agreementId !== undefined && registry.isReady ? (
             <AnchorAction
+              key={snapshot.hash}
               access={access}
               agreementId={agreementId}
               snapshot={snapshot}
-              onAnchored={() => setStatus("Record hash anchored onchain.")}
             />
           ) : agreementId === undefined ? (
             <p className="field-help">
@@ -479,25 +536,13 @@ export function RecordSnapshotControls({
           registryChecking={registry.isChecking}
         />
       </section>
-      {status && (
+      {feedback && (
         <p
-          className={
-            status.includes("could not") || status.includes("invalid")
-              ? "tx-error"
-              : "tx-success"
-          }
-          role={
-            status.includes("could not") || status.includes("invalid")
-              ? "alert"
-              : "status"
-          }
-          aria-live={
-            status.includes("could not") || status.includes("invalid")
-              ? "assertive"
-              : "polite"
-          }
+          className={feedback.tone === "error" ? "tx-error" : "tx-success"}
+          role={feedback.tone === "error" ? "alert" : "status"}
+          aria-live={feedback.tone === "error" ? "assertive" : "polite"}
         >
-          {status}
+          {feedback.message}
         </p>
       )}
     </div>

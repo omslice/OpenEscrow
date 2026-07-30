@@ -121,6 +121,9 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Proposal-review polling is isolated from user actions: stale refreshes cannot replace a
   newer mutation result, background failures cannot erase action feedback, and current records
   remain visible with an explicit retry control
+- [x] Encrypted Record exports are scoped to the active record and account: leaving or switching
+  scope invalidates pending downloads and feedback, export outcomes use explicit success/error
+  semantics, and an older anchor receipt cannot erase a newer recovery transaction
 - [x] Consolidated onchain activity receipt polling into a shared bounded dual-event registry
   cache: the initial history scan is reused across notifications and expanded records, later polls
   rescan only a reorganization-safe tail, and failed refreshes preserve the last known-good view

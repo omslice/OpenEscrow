@@ -63,6 +63,21 @@ export function clearRecoveryValue(
   }
 }
 
+export function clearRecoveryValueIfMatches(
+  key: string,
+  expectedValue: string,
+  storage?: BrowserRecoveryStorage,
+) {
+  try {
+    const target = browserStorage(storage);
+    if (!target || target.getItem(key) !== expectedValue) return false;
+    target.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function replaceRecoveryUrl(
   url: string | URL,
   state: unknown = null,

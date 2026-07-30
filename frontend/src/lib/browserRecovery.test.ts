@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   clearRecoveryValue,
+  clearRecoveryValueIfMatches,
   getBrowserRecoveryStorage,
   isTransactionHash,
   readRecoveryJson,
@@ -40,6 +41,23 @@ test("transaction recovery accepts exact hashes and discards corrupt values", ()
   assert.equal(readRecoveryTransaction("valid", storage), hash);
   assert.equal(readRecoveryTransaction("invalid", storage), null);
   assert.equal(storage.getItem("invalid"), null);
+});
+
+test("conditional recovery clearing preserves a newer transaction", () => {
+  const storage = new MemoryStorage();
+  const newerHash = `0x${"cd".repeat(32)}` as const;
+  storage.setItem("pending", newerHash);
+
+  assert.equal(
+    clearRecoveryValueIfMatches("pending", hash, storage),
+    false,
+  );
+  assert.equal(storage.getItem("pending"), newerHash);
+  assert.equal(
+    clearRecoveryValueIfMatches("pending", newerHash, storage),
+    true,
+  );
+  assert.equal(storage.getItem("pending"), null);
 });
 
 test("structured recovery validates data before returning it", () => {

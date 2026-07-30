@@ -19,7 +19,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   outages, notification recovery, receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 118 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 122 client-logic
   tests, lint, browser account-switch, accessibility/mobile, and load-recovery smoke checks, and
   the production build. These rendered checks are part of the required `npm run check` path
   rather than separate, potentially stale results.
@@ -125,6 +125,11 @@ production readiness, or authorization to hold real rental deposits.
   failed poll leaves the last known record visible with plain-language stale-data guidance and an
   immediate retry. Epoch guards reject refresh responses invalidated by an in-flight or completed
   action, preventing an older proposal response from replacing the mutation result.
+- **Verified:** Encrypted Record export generation is bound to the active record and account.
+  Switching scope or leaving the view invalidates pending work before it can download private
+  bytes or announce a stale completion. Export and verification-key outcomes now use explicit
+  success/error semantics, and snapshot-keyed anchor controls preserve a newer recovery
+  transaction when an older receipt finishes late.
 - **Verified:** The authenticated wallet/workspace is loaded behind a lightweight bootstrap, and
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the
