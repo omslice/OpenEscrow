@@ -86,6 +86,10 @@ sessions held by Privy, a wallet provider, Google, or an email provider.
 If the user switches to a different verified account while revocation is still running, the server
 containment still completes, but OpenEscrow does not clear account links, sign out, or reload the
 newly selected account.
+More generally, switching verified accounts must immediately clear the prior account's proposals,
+records, archive state, expanded panels, and device-local tracked agreement ids. A search or archive
+request started by the prior account must not repopulate or announce anything in the newly selected
+workspace.
 
 The account data inventory is a privacy-safe metadata manifest, not a complete access-request
 export and not a deletion request. It lists the verified account's proposal references, roles,
@@ -104,7 +108,10 @@ described **Copy prepared inventory** fallback; changing the verified identity d
 3. Confirm the site is labelled as a Base Sepolia testnet demonstration.
 4. Choose the landlord workspace and verify that no proposal or notification belonging to another
    email account appears.
-5. Expand **Account and workspace**, send a test email, and confirm it arrives with an unsubscribe
+5. Start a proposal search, switch to a different synthetic verified account before it finishes,
+   and confirm the new workspace never shows the prior account's proposals, records, tracked
+   deposits, archive result, or completion announcement.
+6. Expand **Account and workspace**, send a test email, and confirm it arrives with an unsubscribe
    link.
 
 Stop if any account can see another account's unrelated proposal, notification, document, or

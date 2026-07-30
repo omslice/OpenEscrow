@@ -18,7 +18,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key loss/restoration, outages, notification recovery,
   receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 84 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 93 client-logic
   tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
   build. Accessibility is now part of the required `npm run check` path rather than a separate,
   potentially stale result.
@@ -95,6 +95,11 @@ production readiness, or authorization to hold real rental deposits.
   cleanup, provider sign-out, and reload are skipped so the new account's fresh access is not
   disturbed. Notification preference saves and test-email responses also ignore stale
   cross-account completions.
+- **Verified:** The authenticated workspace now remounts on stable Privy-account changes, clears
+  account-derived proposals, records, archive state, panels, and discovery state, and scopes
+  device-local tracked agreement ids to that account. Manual discovery and record-archive
+  completions check the requesting identity before updating or announcing, while background
+  polling is invalidated on the same boundary.
 - **Verified:** Dynamic wallet setup, test-fund, negotiation, role-mismatch, onchain-activity,
   record-export, account-security, notification, and receipt-recovery outcomes expose explicit
   status or alert semantics. Notification failures now use an explicit error flag and assertive,

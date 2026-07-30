@@ -94,6 +94,9 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Self-service verified-account record-session revocation and local account-session cleanup
   without changing agreements, other participants, invitation links, or wallet-provider sessions;
   an in-flight revocation cannot clear access for or sign out a newly selected account
+- [x] Stable-account workspace isolation: account changes remount and clear account-derived
+  proposals, records, archives, panels, and discovery state; device-local tracked agreement ids
+  are account-scoped, and stale discovery/archive completions cannot update the new account
 - [x] Exact-source credential-free incident rehearsal plus testnet containment/privacy runbook
 - [x] Push the validated exact source and save a newer undeployed Sites candidate without
   changing production or hosted D1/R2 data

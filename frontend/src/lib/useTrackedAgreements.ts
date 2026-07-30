@@ -3,8 +3,7 @@ import {
   readRecoveryJson,
   writeRecoveryJson,
 } from "./browserRecovery";
-
-const STORAGE_KEY = "openescrow.trackedAgreementIds";
+import { trackedAgreementStorageKey } from "./trackedAgreementStorage";
 
 function isTrackedAgreementIdList(value: unknown): value is string[] {
   return (
@@ -15,45 +14,61 @@ function isTrackedAgreementIdList(value: unknown): value is string[] {
 }
 
 /**
- * There is no indexer for this MVP (see docs/mvp-spec.md frontend journey note), so
- * "which agreements does this wallet care about" is tracked client-side: an id is
- * added automatically whenever this browser creates one, and can otherwise be added
- * manually (e.g. an arbiter or tenant pastes the id a landlord shared with them).
+ * Onchain ids that are useful before or outside account discovery are retained as
+ * device-local recovery state. Authenticated ids are isolated by the stable Privy
+ * account identity so switching accounts cannot expose a previous account's list.
  */
-export function useTrackedAgreements() {
-  const [ids, setIds] = useState<bigint[]>([]);
+export function useTrackedAgreements(accountScope?: string | null) {
+  const storageKey = trackedAgreementStorageKey(accountScope);
+  const [state, setState] = useState<{
+    storageKey: string;
+    ids: bigint[];
+  }>(() => {
+    const saved = readRecoveryJson(storageKey, isTrackedAgreementIdList);
+    return {
+      storageKey,
+      ids: saved ? saved.map((id) => BigInt(id)) : [],
+    };
+  });
 
   useEffect(() => {
-    const saved = readRecoveryJson(STORAGE_KEY, isTrackedAgreementIdList);
-    if (saved) setIds(saved.map((id) => BigInt(id)));
-  }, []);
+    const saved = readRecoveryJson(storageKey, isTrackedAgreementIdList);
+    setState({
+      storageKey,
+      ids: saved ? saved.map((id) => BigInt(id)) : [],
+    });
+  }, [storageKey]);
+
+  const ids = state.storageKey === storageKey ? state.ids : [];
 
   const persist = useCallback((next: bigint[]) => {
-    setIds(next);
-    writeRecoveryJson(STORAGE_KEY, next.map((id) => id.toString()));
-  }, []);
+    setState({ storageKey, ids: next });
+    writeRecoveryJson(storageKey, next.map((id) => id.toString()));
+  }, [storageKey]);
 
   const addId = useCallback(
     (id: bigint) => {
-      setIds((prev) => {
-        if (prev.some((p) => p === id)) return prev;
+      setState((current) => {
+        const prev = current.storageKey === storageKey ? current.ids : [];
+        if (prev.some((p) => p === id)) return current;
         const next = [...prev, id];
-        writeRecoveryJson(STORAGE_KEY, next.map((savedId) => savedId.toString()));
-        return next;
+        writeRecoveryJson(storageKey, next.map((savedId) => savedId.toString()));
+        return { storageKey, ids: next };
       });
     },
-    [],
+    [storageKey],
   );
 
   const removeId = useCallback(
     (id: bigint) => {
-      setIds((prev) => {
+      setState((current) => {
+        const prev = current.storageKey === storageKey ? current.ids : [];
         const next = prev.filter((p) => p !== id);
-        writeRecoveryJson(STORAGE_KEY, next.map((savedId) => savedId.toString()));
-        return next;
+        writeRecoveryJson(storageKey, next.map((savedId) => savedId.toString()));
+        return { storageKey, ids: next };
       });
     },
-    [],
+    [storageKey],
   );
 
   return { ids, addId, removeId, persist };

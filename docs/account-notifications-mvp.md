@@ -18,6 +18,10 @@ production identity, custody, privacy, or communications design.
   out the current device without changing agreements, archive preferences, invitation links, or
   another participant's access. Global local cleanup and provider sign-out are skipped if a
   different account becomes active while revocation is in flight.
+- The authenticated workspace is keyed to Privy's stable user id. Selecting a different account
+  immediately remounts and clears account-derived proposals, records, archives, panels, and
+  discovery state. Device-local tracked agreement ids use an account-scoped recovery key, and
+  in-flight discovery or archive responses are ignored after an account change.
 - The account panel can download a role-isolated metadata inventory without agreement content,
   other-party details, evidence, addresses, or bearer access secrets.
 - Notification preference saves and test-email results are account-bound, ignore stale responses

@@ -5,7 +5,7 @@ import {
   useState,
   type KeyboardEvent,
 } from "react";
-import { useIdentityToken } from "@privy-io/react-auth";
+import { useIdentityToken, usePrivy } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
 import { Layout, type AppNotification } from "./components/Layout";
 import type {
@@ -41,6 +41,7 @@ import { useOnchainActivityNotifications } from "./lib/useOnchainActivityNotific
 import { preferredScrollBehavior } from "./lib/accessibility";
 import { startVisibilityAwarePolling } from "./lib/visiblePolling";
 import { replaceRecoveryUrl } from "./lib/browserRecovery";
+import { createAccountOperationGuard } from "./lib/accountOperationGuard";
 import "./App.css";
 
 const AgreementCard = lazy(() =>
@@ -178,14 +179,24 @@ function mergeAgreementIds(primary: bigint[], secondary: bigint[]) {
   return ids;
 }
 
-function AppView({ identityToken = null }: { identityToken?: string | null }) {
+function AppView({
+  identityToken = null,
+  accountIdentity = null,
+}: {
+  identityToken?: string | null;
+  accountIdentity?: string | null;
+}) {
   const [initialCapturedAccess] = useState(() => captureNegotiationAccessFromUrl());
   const [tab, setTab] = useState<WorkspaceTab>("overview");
   const workspaceTabRefs = useRef<Partial<Record<WorkspaceTab, HTMLButtonElement | null>>>(
     {},
   );
   const proposalOpenerRef = useRef<HTMLElement | null>(null);
-  const { ids, addId, removeId } = useTrackedAgreements();
+  const { ids, addId, removeId } = useTrackedAgreements(
+    ACCOUNT_AUTH_ENABLED ? accountIdentity : null,
+  );
+  const activeAccountIdentity = useRef(accountIdentity);
+  activeAccountIdentity.current = accountIdentity;
   const { address } = useAccount();
   const { discover, isScanning, scanError } = useDiscoverAgreements();
   const [scanMessage, setScanMessage] = useState<string | null>(null);
@@ -225,7 +236,9 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     record.onchainAgreementId ? [BigInt(record.onchainAgreementId)] : [],
   );
   const discoveredAgreementIds = ACCOUNT_AUTH_ENABLED
-    ? mergeAgreementIds(participantAgreementIds, ids)
+    ? accountIdentity
+      ? mergeAgreementIds(participantAgreementIds, ids)
+      : []
     : ids;
   const displayedIds = discoveredAgreementIds.filter(
     (id) => !unavailableAgreementIds.has(id.toString()),
@@ -336,6 +349,29 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   }, [inviteRole, workspaceRole]);
 
   useEffect(() => {
+    setSavedProposals([]);
+    setSavedRecords([]);
+    setExpandedRecordKeys({});
+    setIsRecordArchiveOpen(false);
+    setIsProposalArchiveOpen(false);
+    setRecordArchivePendingKey(null);
+    setRecordArchiveError(null);
+    setRecordArchiveAnnouncement(null);
+    setScanMessage(null);
+    setFindError(null);
+    setIsFinding(false);
+    setUnavailableAgreementIds(new Set());
+    setAgreementPanels({});
+    setAgreementFocusRequests({});
+    setProposalAccess((current) =>
+      current?.source === "account" ? null : current,
+    );
+    setActiveLandlordAccess(null);
+    setIsProposalComposerOpen(false);
+    proposalOpenerRef.current = null;
+  }, [accountIdentity]);
+
+  useEffect(() => {
     if (
       !inviteRole &&
       proposalAccess &&
@@ -398,19 +434,30 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
       active = false;
       stopPolling();
     };
-  }, [identityToken, workspaceRole]);
+  }, [accountIdentity, identityToken, workspaceRole]);
 
   async function findProposalsAndAgreements() {
+    const requestedAccountIdentity = accountIdentity;
+    const requestedIdentityToken = identityToken;
+    const requestIsCurrent = createAccountOperationGuard(
+      () => activeAccountIdentity.current,
+      requestedAccountIdentity,
+    );
     setScanMessage(null);
+    setFindError(null);
     setIsFinding(true);
     try {
-      const localAccesses = identityToken
+      const localAccesses = requestedIdentityToken
         ? []
         : listNegotiationAccesses(workspaceRole || undefined);
       const accountAccesses =
-        identityToken && workspaceRole
-          ? await discoverNegotiationsForAccount(workspaceRole, identityToken)
+        requestedIdentityToken && workspaceRole
+          ? await discoverNegotiationsForAccount(
+              workspaceRole,
+              requestedIdentityToken,
+            )
           : [];
+      if (!requestIsCurrent()) return;
       const accesses = [...localAccesses, ...accountAccesses].filter(
         (access, index, all) =>
           all.findIndex(
@@ -424,6 +471,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
           record: await loadNegotiation(access),
         })),
       );
+      if (!requestIsCurrent()) return;
       const records = loaded
         .filter(
           (result): result is PromiseFulfilledResult<SavedProposal> =>
@@ -443,6 +491,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
       let onchainCount = accountAgreementIds.length;
       if (!ACCOUNT_AUTH_ENABLED && address) {
         const found = await discover(address);
+        if (!requestIsCurrent()) return;
         found.forEach(addId);
         onchainCount = found.length;
       }
@@ -453,13 +502,16 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
         }`,
       );
     } catch (error) {
+      if (!requestIsCurrent()) return;
       setFindError(
         error instanceof Error
           ? error.message
           : "Your proposals and agreements could not be searched.",
       );
     } finally {
-      setIsFinding(false);
+      if (requestIsCurrent()) {
+        setIsFinding(false);
+      }
     }
   }
 
@@ -602,23 +654,30 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
   }
 
   async function setRecordArchived(item: SavedProposal, archived: boolean) {
-    if (!identityToken) {
+    if (!identityToken || !accountIdentity) {
       setRecordArchiveError({
         key: savedRecordKey(item),
         message: "Sign in with Google or a wallet to save record archive preferences.",
       });
       return;
     }
+    const requestedIdentityToken = identityToken;
+    const requestedAccountIdentity = accountIdentity;
+    const requestIsCurrent = createAccountOperationGuard(
+      () => activeAccountIdentity.current,
+      requestedAccountIdentity,
+    );
     const key = savedRecordKey(item);
     setRecordArchivePendingKey(key);
     setRecordArchiveError(null);
     setRecordArchiveAnnouncement(null);
     try {
       const result = await updateRecordArchivePreference(
-        identityToken,
+        requestedIdentityToken,
         item.access,
         archived,
       );
+      if (!requestIsCurrent()) return;
       setSavedRecords((current) =>
         current.map((candidate) =>
           savedRecordKey(candidate) === key
@@ -651,6 +710,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
         `${proposalReference(item.record.id)} ${archived ? "archived" : "restored"}.`,
       );
       window.requestAnimationFrame(() => {
+        if (!requestIsCurrent()) return;
         const activePanel = document.getElementById(`workspace-panel-${tab}`);
         const restoredCard = Array.from(
           activePanel?.querySelectorAll<HTMLElement>("[data-record-key]") || [],
@@ -667,6 +727,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
         });
       });
     } catch (error) {
+      if (!requestIsCurrent()) return;
       setRecordArchiveError({
         key,
         message:
@@ -675,7 +736,9 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
             : "This item could not be moved between current and archived views.",
       });
     } finally {
-      setRecordArchivePendingKey(null);
+      if (requestIsCurrent()) {
+        setRecordArchivePendingKey(null);
+      }
     }
   }
 
@@ -1730,7 +1793,15 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
 
 function AuthenticatedApp() {
   const { identityToken } = useIdentityToken();
-  return <AppView identityToken={identityToken} />;
+  const { user } = usePrivy();
+  const accountIdentity = user?.id ?? null;
+  return (
+    <AppView
+      key={accountIdentity ?? "anonymous-account"}
+      identityToken={identityToken}
+      accountIdentity={accountIdentity}
+    />
+  );
 }
 
 function App() {
