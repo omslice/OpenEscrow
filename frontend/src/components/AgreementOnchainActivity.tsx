@@ -1,10 +1,16 @@
-import { useCallback, useState } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import { usePublicClient } from "wagmi";
 import {
   getActivityRegistryItems,
   type ActivityRegistryLogClient,
   type RegistryActivityItem,
 } from "../lib/activityRegistryLogs";
+import { createAsyncOperationScope } from "../lib/asyncOperationScope";
 import { formatTimestamp, shortAddr } from "../lib/format";
 import type { NegotiationAccess } from "../lib/negotiations";
 import { useActivityRegistryReadiness } from "../lib/useActivityRegistryReadiness";
@@ -32,30 +38,52 @@ export function AgreementOnchainActivity({
   const registry = useActivityRegistryReadiness();
   const [items, setItems] = useState<RegistryActivityItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const activityScopeKey = JSON.stringify([
+    agreementId.toString(),
+    publicClient?.chain.id ?? null,
+    Boolean(publicClient),
+    registry.isReady,
+  ]);
+  const activityScope = useMemo(
+    () => createAsyncOperationScope(activityScopeKey),
+    [activityScopeKey],
+  );
+
+  useLayoutEffect(() => {
+    activityScope.open();
+    setItems([]);
+    setError(null);
+    return () => activityScope.close();
+  }, [activityScope]);
 
   const refresh = useCallback(async () => {
+    const operationId = activityScope.start();
     if (!publicClient || !registry.isReady) {
-      setItems([]);
+      if (activityScope.isCurrent(operationId)) {
+        setItems([]);
+        setError(null);
+      }
       return;
     }
     try {
-      setItems(
-        await getActivityRegistryItems(
-          publicClient as unknown as ActivityRegistryLogClient,
-          [agreementId],
-        ),
+      const nextItems = await getActivityRegistryItems(
+        publicClient as unknown as ActivityRegistryLogClient,
+        [agreementId],
       );
+      if (!activityScope.isCurrent(operationId)) return;
+      setItems(nextItems);
       setError(null);
     } catch (cause) {
+      if (!activityScope.isCurrent(operationId)) return;
       setError(
         cause instanceof Error
           ? cause.message.split("\n")[0]
           : "Onchain activity could not be loaded.",
       );
     }
-  }, [agreementId, publicClient, registry.isReady]);
+  }, [activityScope, agreementId, publicClient, registry.isReady]);
 
-  useVisiblePolling(refresh, 12_000);
+  useVisiblePolling(refresh, 12_000, activityScope.key);
 
   return (
     <section className="onchain-record-tools" aria-label="Onchain record tools">
@@ -70,6 +98,7 @@ export function AgreementOnchainActivity({
       )}
       {registry.isReady && isParty && (
         <PrivateActivityPublisher
+          key={agreementId.toString()}
           agreementId={agreementId}
           negotiationAccess={negotiationAccess}
           onPublished={() => void refresh()}

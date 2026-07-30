@@ -19,7 +19,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   outages, notification recovery, receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 123 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 124 client-logic
   tests, lint, browser account-switch, accessibility/mobile, and load-recovery smoke checks, and
   the production build. These rendered checks are part of the required `npm run check` path
   rather than separate, potentially stale results.
@@ -144,6 +144,14 @@ production readiness, or authorization to hold real rental deposits.
   12-block reorganization window. Completed tail scans atomically replace recent receipts,
   removed logs are ignored, and a failed refresh preserves the last known-good cache for retry.
   Empty and pre-deployment requests still avoid unnecessary log work.
+- **Verified:** Agreement receipt panels and account-level onchain notifications are bound to the
+  current agreement/account set. Scope changes clear the prior view and restart polling
+  immediately, while late RPC completions are rejected before they can restore removed agreement
+  activity. A current transient refresh failure keeps the last known-good agreement panel visible.
+- **Verified:** Tenant funding and operations-reserve receipt recovery now combines scoped
+  latest-operation guards with conditional browser-storage clearing. A late successful D1 save
+  clears only its matching transaction hash and cannot erase a newer pending transaction,
+  recovery control, or error message.
 - **Verified:** The exact validated candidate source is pushed to the existing Sites source
   branch and saved as a newer undeployed Sites version after each coherent slice. The public
   production deployment remains unchanged.

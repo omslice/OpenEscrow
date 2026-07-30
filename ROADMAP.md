@@ -130,6 +130,12 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Consolidated onchain activity receipt polling into a shared bounded dual-event registry
   cache: the initial history scan is reused across notifications and expanded records, later polls
   rescan only a reorganization-safe tail, and failed refreshes preserve the last known-good view
+- [x] Onchain receipt panels and account notifications are agreement/account scoped: a scope
+  change clears the old view, triggers an immediate current-scope refresh, and prevents delayed
+  RPC results from repopulating removed agreements; current refresh failures retain known-good data
+- [x] Tenant funding and operations-reserve receipt recovery is newest-transaction safe: an older
+  D1 receipt save can clear only its matching browser recovery hash and cannot erase or overwrite
+  a newer pending transaction or its feedback
 - [x] Establish an initial browser performance budget and split the bootstrap from the
   authenticated wallet/workspace bundle
 - [x] Split infrequently used proposal, deposit, and record tools into tab-level chunks

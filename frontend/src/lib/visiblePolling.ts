@@ -80,6 +80,7 @@ export function startVisibilityAwarePolling({
 export function useVisiblePolling(
   callback: () => void | Promise<void>,
   intervalMs: number,
+  restartKey: string | number | boolean | null = null,
 ) {
   const callbackRef = useRef(callback);
 
@@ -95,7 +96,7 @@ export function useVisiblePolling(
       visibilityTarget: document,
       timers: window,
     });
-  }, [intervalMs]);
+  }, [intervalMs, restartKey]);
 }
 
 export function createSharedVisibilityClock({

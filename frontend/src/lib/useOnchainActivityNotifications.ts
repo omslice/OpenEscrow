@@ -1,10 +1,16 @@
-import { useCallback, useState } from "react";
+import {
+  useCallback,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useAccount, usePublicClient } from "wagmi";
 import type { AppNotification } from "../components/Layout";
 import {
   getActivityRegistryItems,
   type ActivityRegistryLogClient,
 } from "./activityRegistryLogs";
+import { createAsyncOperationScope } from "./asyncOperationScope";
 import { agreementReference } from "./displayIds";
 import { shortAddr } from "./format";
 import { useActivityRegistryReadiness } from "./useActivityRegistryReadiness";
@@ -25,10 +31,28 @@ export function useOnchainActivityNotifications(agreementIds: readonly bigint[])
   const agreementIdsKey = Array.from(new Set(agreementIds.map((id) => id.toString())))
     .sort((left, right) => Number(BigInt(left) - BigInt(right)))
     .join(",");
+  const notificationScopeKey = JSON.stringify([
+    address?.toLowerCase() ?? null,
+    agreementIdsKey,
+    publicClient?.chain.id ?? null,
+    Boolean(publicClient),
+    registry.isReady,
+  ]);
+  const notificationScope = useMemo(
+    () => createAsyncOperationScope(notificationScopeKey),
+    [notificationScopeKey],
+  );
+
+  useLayoutEffect(() => {
+    notificationScope.open();
+    setNotifications([]);
+    return () => notificationScope.close();
+  }, [notificationScope]);
 
   const refresh = useCallback(async () => {
+    const operationId = notificationScope.start();
     if (!address || !publicClient || !agreementIdsKey || !registry.isReady) {
-      setNotifications([]);
+      if (notificationScope.isCurrent(operationId)) setNotifications([]);
       return;
     }
     try {
@@ -37,6 +61,7 @@ export function useOnchainActivityNotifications(agreementIds: readonly bigint[])
         publicClient as unknown as ActivityRegistryLogClient,
         ids,
       );
+      if (!notificationScope.isCurrent(operationId)) return;
       setNotifications(
         items.map((item) =>
           item.type === "snapshot"
@@ -65,9 +90,15 @@ export function useOnchainActivityNotifications(agreementIds: readonly bigint[])
       // Agreement dashboards surface RPC errors. Keep the global bell quiet on transient
       // provider failures so it does not obscure the rest of the account experience.
     }
-  }, [address, agreementIdsKey, publicClient, registry.isReady]);
+  }, [
+    address,
+    agreementIdsKey,
+    notificationScope,
+    publicClient,
+    registry.isReady,
+  ]);
 
-  useVisiblePolling(refresh, 15_000);
+  useVisiblePolling(refresh, 15_000, notificationScope.key);
 
   return notifications;
 }

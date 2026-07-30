@@ -1,4 +1,9 @@
-import { useEffect, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useSendTransaction, useWallets } from "@privy-io/react-auth";
 import { encodeFunctionData } from "viem";
 import {
@@ -21,10 +26,11 @@ import {
 } from "../contracts/config";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import {
-  clearRecoveryValue,
+  clearRecoveryValueIfMatches,
   readRecoveryTransaction,
   writeRecoveryValue,
 } from "../lib/browserRecovery";
+import { createAsyncOperationScope } from "../lib/asyncOperationScope";
 import { formatUSDC } from "../lib/format";
 import {
   negotiationAction,
@@ -57,17 +63,24 @@ function useTenantReceiptRecovery(
   const label = kind === "reserve" ? "reserve payment" : "deposit funding";
   const [pendingTransaction, setPendingTransaction] = useState<`0x${string}` | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
+  const recordScopeKey = storageKey ?? `inactive:${kind}`;
+  const recordScope = useMemo(
+    () => createAsyncOperationScope(recordScopeKey),
+    [recordScopeKey],
+  );
 
-  useEffect(() => {
-    if (!storageKey) {
-      setPendingTransaction(null);
-      return;
-    }
-    setPendingTransaction(readRecoveryTransaction(storageKey));
-  }, [storageKey]);
+  useLayoutEffect(() => {
+    recordScope.open();
+    setPendingTransaction(
+      storageKey ? readRecoveryTransaction(storageKey) : null,
+    );
+    setRecordError(null);
+    return () => recordScope.close();
+  }, [recordScope, storageKey]);
 
   async function record(transactionHash: `0x${string}`, amount?: bigint) {
     if (!access) return;
+    const operationId = recordScope.start();
     setPendingTransaction(transactionHash);
     setRecordError(null);
     if (storageKey) writeRecoveryValue(storageKey, transactionHash);
@@ -86,9 +99,15 @@ function useTenantReceiptRecovery(
               transactionHash,
             },
       );
-      setPendingTransaction(null);
-      if (storageKey) clearRecoveryValue(storageKey);
+      if (storageKey) {
+        clearRecoveryValueIfMatches(storageKey, transactionHash);
+      }
+      if (!recordScope.isCurrent(operationId)) return;
+      setPendingTransaction((current) =>
+        current === transactionHash ? null : current,
+      );
     } catch (cause) {
+      if (!recordScope.isCurrent(operationId)) return;
       setRecordError(
         cause instanceof Error
           ? `The ${label} succeeded, but its activity record still needs to be saved: ${cause.message}`

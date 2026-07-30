@@ -13,6 +13,7 @@ import {
   writeRecoveryValue,
   type BrowserRecoveryStorage,
 } from "./browserRecovery.ts";
+import { createAsyncOperationScope } from "./asyncOperationScope.ts";
 
 class MemoryStorage implements BrowserRecoveryStorage {
   readonly values = new Map<string, string>();
@@ -58,6 +59,26 @@ test("conditional recovery clearing preserves a newer transaction", () => {
     true,
   );
   assert.equal(storage.getItem("pending"), null);
+});
+
+test("a late receipt save cannot clear a newer scoped transaction", () => {
+  const storage = new MemoryStorage();
+  const scope = createAsyncOperationScope("tenant-funding");
+  const olderHash = hash;
+  const newerHash = `0x${"ef".repeat(32)}` as const;
+  storage.setItem("pending", olderHash);
+  const olderSave = scope.start();
+
+  storage.setItem("pending", newerHash);
+  const newerSave = scope.start();
+
+  assert.equal(scope.isCurrent(olderSave), false);
+  assert.equal(
+    clearRecoveryValueIfMatches("pending", olderHash, storage),
+    false,
+  );
+  assert.equal(storage.getItem("pending"), newerHash);
+  assert.equal(scope.isCurrent(newerSave), true);
 });
 
 test("structured recovery validates data before returning it", () => {
