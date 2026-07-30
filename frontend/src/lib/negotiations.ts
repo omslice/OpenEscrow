@@ -1,5 +1,13 @@
 import type { InviteRole } from "./inviteContext";
 import type { ComplianceFacts, ComplianceSnapshot } from "./jurisdictions";
+import {
+  clearRecoveryValue,
+  getBrowserRecoveryStorage,
+  readRecoveryValue,
+  writeRecoveryValue,
+  type BrowserRecoveryStorage,
+  type BrowserRecoveryStorageKind,
+} from "./browserRecovery.ts";
 import type {
   DepositAssetId,
   DepositAssetSnapshot,
@@ -236,6 +244,9 @@ const LATEST_LANDLORD_ACCESS = "openescrow.latestLandlordProposal";
 const LATEST_LANDLORD_BUNDLE = "openescrow.latestLandlordProposalBundle";
 const ACCESS_INDEX = "openescrow.negotiationAccessIndex";
 const LANDLORD_BUNDLE_PREFIX = "openescrow.landlordProposalBundle.";
+const memoryAccesses = new Map<string, NegotiationAccess>();
+const memoryLandlordBundles = new Map<string, string>();
+let memoryLatestLandlordAccess: NegotiationAccess | null = null;
 
 interface NegotiationAccessReference {
   proposalId: string;
@@ -254,17 +265,76 @@ function landlordBundleKey(proposalId: string) {
   return `${LANDLORD_BUNDLE_PREFIX}${proposalId}`;
 }
 
-function readAccessIndex(): NegotiationAccessReference[] {
-  try {
-    const parsed = JSON.parse(window.localStorage.getItem(ACCESS_INDEX) || "[]") as NegotiationAccessReference[];
-    return parsed.filter(
-      (item) =>
-        item?.proposalId &&
-        (item.role === "landlord" || item.role === "tenant" || item.role === "arbiter"),
-    );
-  } catch {
-    return [];
+function availableStorages(
+  kinds: BrowserRecoveryStorageKind[] = ["session", "local"],
+): BrowserRecoveryStorage[] {
+  return kinds
+    .map((kind) => getBrowserRecoveryStorage(kind))
+    .filter((storage): storage is BrowserRecoveryStorage => Boolean(storage));
+}
+
+function writeAvailable(
+  key: string,
+  value: string,
+  kinds: BrowserRecoveryStorageKind[],
+) {
+  let stored = false;
+  for (const storage of availableStorages(kinds)) {
+    stored = writeRecoveryValue(key, value, storage) || stored;
   }
+  return stored;
+}
+
+function isNegotiationAccess(value: unknown): value is NegotiationAccess {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<NegotiationAccess>;
+  return (
+    typeof candidate.proposalId === "string" &&
+    candidate.proposalId.length > 0 &&
+    typeof candidate.token === "string" &&
+    candidate.token.length > 0 &&
+    (candidate.role === "landlord" ||
+      candidate.role === "tenant" ||
+      candidate.role === "arbiter")
+  );
+}
+
+function readAccessIndex(): NegotiationAccessReference[] {
+  const references: NegotiationAccessReference[] = [];
+  for (const storage of availableStorages(["local", "session"])) {
+    const raw = readRecoveryValue(ACCESS_INDEX, storage);
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(raw) as NegotiationAccessReference[];
+      for (const item of parsed) {
+        if (
+          item?.proposalId &&
+          (item.role === "landlord" ||
+            item.role === "tenant" ||
+            item.role === "arbiter") &&
+          !references.some(
+            (saved) =>
+              saved.proposalId === item.proposalId && saved.role === item.role,
+          )
+        ) {
+          references.push(item);
+        }
+      }
+    } catch {
+      clearRecoveryValue(ACCESS_INDEX, storage);
+    }
+  }
+  for (const access of memoryAccesses.values()) {
+    if (
+      !references.some(
+        (saved) =>
+          saved.proposalId === access.proposalId && saved.role === access.role,
+      )
+    ) {
+      references.push({ proposalId: access.proposalId, role: access.role });
+    }
+  }
+  return references;
 }
 
 function rememberAccessReference(access: NegotiationAccess) {
@@ -275,48 +345,69 @@ function rememberAccessReference(access: NegotiationAccess) {
     )
   ) {
     references.push({ proposalId: access.proposalId, role: access.role });
-    window.localStorage.setItem(ACCESS_INDEX, JSON.stringify(references));
   }
+  writeAvailable(
+    ACCESS_INDEX,
+    JSON.stringify(references),
+    ["local", "session"],
+  );
 }
 
 export function storeNegotiationAccess(access: NegotiationAccess, persistent = false) {
-  const storage = persistent ? window.localStorage : window.sessionStorage;
-  storage.setItem(accessKey(access.proposalId, access.role), JSON.stringify(access));
+  const key = accessKey(access.proposalId, access.role);
+  const saved = { ...access };
+  memoryAccesses.set(key, saved);
+  const stored = writeAvailable(
+    key,
+    JSON.stringify(saved),
+    persistent ? ["local", "session"] : ["session"],
+  );
   if (persistent && access.role === "landlord") {
-    window.localStorage.setItem(LATEST_LANDLORD_ACCESS, JSON.stringify(access));
+    memoryLatestLandlordAccess = saved;
+    writeAvailable(
+      LATEST_LANDLORD_ACCESS,
+      JSON.stringify(saved),
+      ["local", "session"],
+    );
   }
   if (persistent) rememberAccessReference(access);
+  return stored ? (persistent ? "persistent" : "session") : "memory";
 }
 
 export function readNegotiationAccess(
   proposalId: string,
   role?: NegotiationRole,
 ): NegotiationAccess | null {
-  for (const storage of [window.sessionStorage, window.localStorage]) {
-    try {
-      const keys = role
-        ? [accessKey(proposalId, role), legacyAccessKey(proposalId)]
-        : [
-            accessKey(proposalId, "landlord"),
-            accessKey(proposalId, "tenant"),
-            accessKey(proposalId, "arbiter"),
-            legacyAccessKey(proposalId),
-          ];
-      for (const key of keys) {
-        const raw = storage.getItem(key);
-        if (!raw) continue;
-        const parsed = JSON.parse(raw) as NegotiationAccess;
+  const keys = role
+    ? [accessKey(proposalId, role), legacyAccessKey(proposalId)]
+    : [
+        accessKey(proposalId, "landlord"),
+        accessKey(proposalId, "tenant"),
+        accessKey(proposalId, "arbiter"),
+        legacyAccessKey(proposalId),
+      ];
+  for (const key of keys) {
+    const saved = memoryAccesses.get(key);
+    if (saved && (!role || saved.role === role)) return saved;
+  }
+  for (const storage of availableStorages()) {
+    for (const key of keys) {
+      const raw = readRecoveryValue(key, storage);
+      if (!raw) continue;
+      try {
+        const parsed: unknown = JSON.parse(raw);
         if (
+          isNegotiationAccess(parsed) &&
           parsed.proposalId === proposalId &&
-          parsed.token &&
-          parsed.role &&
           (!role || parsed.role === role)
         ) {
+          memoryAccesses.set(accessKey(parsed.proposalId, parsed.role), parsed);
           return parsed;
         }
+        clearRecoveryValue(key, storage);
+      } catch {
+        clearRecoveryValue(key, storage);
       }
-    } catch {
-      // Ignore unavailable or malformed browser storage.
     }
   }
   return null;
@@ -343,97 +434,186 @@ export function listNegotiationAccesses(role?: NegotiationRole): NegotiationAcce
 }
 
 export function clearAccountNegotiationAccesses() {
-  try {
-    const references = readAccessIndex();
-    for (const reference of references) {
-      const key = accessKey(reference.proposalId, reference.role);
-      for (const storage of [window.sessionStorage, window.localStorage]) {
-        const raw = storage.getItem(key);
+  for (const [key, access] of memoryAccesses) {
+    if (access.source === "account") memoryAccesses.delete(key);
+  }
+  if (memoryLatestLandlordAccess?.source === "account") {
+    memoryLatestLandlordAccess = null;
+  }
+
+  const references = readAccessIndex();
+  for (const reference of references) {
+    const keys = [
+      accessKey(reference.proposalId, reference.role),
+      legacyAccessKey(reference.proposalId),
+    ];
+    for (const storage of availableStorages()) {
+      for (const key of keys) {
+        const raw = readRecoveryValue(key, storage);
         if (!raw) continue;
         try {
-          const access = JSON.parse(raw) as NegotiationAccess;
-          if (access.source === "account") storage.removeItem(key);
+          const access: unknown = JSON.parse(raw);
+          if (isNegotiationAccess(access) && access.source === "account") {
+            clearRecoveryValue(key, storage);
+          }
         } catch {
-          // Leave malformed entries for the ordinary access reader to ignore.
+          clearRecoveryValue(key, storage);
         }
       }
     }
-    const remaining = references.filter((reference) =>
-      [window.sessionStorage, window.localStorage].some((storage) =>
-        storage.getItem(accessKey(reference.proposalId, reference.role)),
-      ),
-    );
-    window.localStorage.setItem(ACCESS_INDEX, JSON.stringify(remaining));
+  }
+  const remaining = references.filter((reference) =>
+    Boolean(readNegotiationAccess(reference.proposalId, reference.role)),
+  );
+  writeAvailable(
+    ACCESS_INDEX,
+    JSON.stringify(remaining),
+    ["local", "session"],
+  );
 
-    const latestLandlord = readLatestLandlordAccess();
-    if (latestLandlord?.source === "account") {
-      window.localStorage.removeItem(LATEST_LANDLORD_ACCESS);
+  for (const storage of availableStorages()) {
+    const raw = readRecoveryValue(LATEST_LANDLORD_ACCESS, storage);
+    if (!raw) continue;
+    try {
+      const latest: unknown = JSON.parse(raw);
+      if (isNegotiationAccess(latest) && latest.source === "account") {
+        clearRecoveryValue(LATEST_LANDLORD_ACCESS, storage);
+      }
+    } catch {
+      clearRecoveryValue(LATEST_LANDLORD_ACCESS, storage);
     }
-  } catch {
-    // Server-side revocation remains effective if browser storage is unavailable.
   }
 }
 
 export function readLatestLandlordAccess(): NegotiationAccess | null {
-  try {
-    const raw = window.localStorage.getItem(LATEST_LANDLORD_ACCESS);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as NegotiationAccess;
-    return parsed.role === "landlord" && parsed.proposalId && parsed.token ? parsed : null;
-  } catch {
-    return null;
+  if (
+    memoryLatestLandlordAccess?.role === "landlord" &&
+    memoryLatestLandlordAccess.proposalId &&
+    memoryLatestLandlordAccess.token
+  ) {
+    return memoryLatestLandlordAccess;
   }
+  for (const storage of availableStorages(["local", "session"])) {
+    const raw = readRecoveryValue(LATEST_LANDLORD_ACCESS, storage);
+    if (!raw) continue;
+    try {
+      const parsed: unknown = JSON.parse(raw);
+      if (isNegotiationAccess(parsed) && parsed.role === "landlord") {
+        memoryLatestLandlordAccess = parsed;
+        memoryAccesses.set(accessKey(parsed.proposalId, parsed.role), parsed);
+        return parsed;
+      }
+      clearRecoveryValue(LATEST_LANDLORD_ACCESS, storage);
+    } catch {
+      clearRecoveryValue(LATEST_LANDLORD_ACCESS, storage);
+    }
+  }
+  return null;
 }
 
 export function rememberLandlordBundle(created: CreatedNegotiation) {
   const serialized = JSON.stringify({ proposalId: created.record.id, access: created.access });
-  window.localStorage.setItem(LATEST_LANDLORD_BUNDLE, serialized);
-  window.localStorage.setItem(landlordBundleKey(created.record.id), serialized);
+  const specificKey = landlordBundleKey(created.record.id);
+  memoryLandlordBundles.set(LATEST_LANDLORD_BUNDLE, serialized);
+  memoryLandlordBundles.set(specificKey, serialized);
+  const latestStored = writeAvailable(
+    LATEST_LANDLORD_BUNDLE,
+    serialized,
+    ["local", "session"],
+  );
+  const specificStored = writeAvailable(
+    specificKey,
+    serialized,
+    ["local", "session"],
+  );
+  return latestStored && specificStored ? "persistent" : "memory";
+}
+
+function parseLandlordBundle(
+  candidate: string | null,
+  proposalId?: string,
+): {
+  proposalId: string;
+  access: CreatedNegotiation["access"];
+} | null {
+  if (!candidate) return null;
+  try {
+    const parsed = JSON.parse(candidate) as {
+      proposalId: string;
+      access: CreatedNegotiation["access"];
+    };
+    if (proposalId && parsed.proposalId !== proposalId) return null;
+    return parsed.proposalId && parsed.access?.landlord && parsed.access?.tenant
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
 }
 
 export function readLandlordBundle(proposalId?: string): {
   proposalId: string;
   access: CreatedNegotiation["access"];
 } | null {
-  try {
-    const raw = window.localStorage.getItem(
-      proposalId ? landlordBundleKey(proposalId) : LATEST_LANDLORD_BUNDLE,
+  const keys = proposalId
+    ? [landlordBundleKey(proposalId), LATEST_LANDLORD_BUNDLE]
+    : [LATEST_LANDLORD_BUNDLE];
+  for (const key of keys) {
+    const memory = parseLandlordBundle(
+      memoryLandlordBundles.get(key) || null,
+      proposalId,
     );
-    const fallback =
-      proposalId && !raw ? window.localStorage.getItem(LATEST_LANDLORD_BUNDLE) : null;
-    const candidate = raw || fallback;
-    if (!candidate) return null;
-    const parsed = JSON.parse(candidate) as {
-      proposalId: string;
-      access: CreatedNegotiation["access"];
-    };
-    if (proposalId && parsed.proposalId !== proposalId) return null;
-    return parsed.proposalId && parsed.access?.landlord && parsed.access?.tenant ? parsed : null;
-  } catch {
-    return null;
+    if (memory) return memory;
   }
+  for (const storage of availableStorages(["local", "session"])) {
+    for (const key of keys) {
+      const raw = readRecoveryValue(key, storage);
+      const parsed = parseLandlordBundle(raw, proposalId);
+      if (parsed) {
+        memoryLandlordBundles.set(key, raw || "");
+        return parsed;
+      }
+      if (raw) clearRecoveryValue(key, storage);
+    }
+  }
+  return null;
 }
 
 export function clearLandlordBundle(proposalId?: string) {
-  try {
-    const bundle = readLandlordBundle(proposalId);
-    const targetId = proposalId || bundle?.proposalId;
-    if (targetId) {
-      window.localStorage.removeItem(accessKey(targetId, "landlord"));
-      window.localStorage.removeItem(legacyAccessKey(targetId));
-      window.localStorage.removeItem(landlordBundleKey(targetId));
-      const references = readAccessIndex().filter(
-        (item) => !(item.proposalId === targetId && item.role === "landlord"),
-      );
-      window.localStorage.setItem(ACCESS_INDEX, JSON.stringify(references));
+  const bundle = readLandlordBundle(proposalId);
+  const targetId = proposalId || bundle?.proposalId;
+  if (targetId) {
+    const landlordKey = accessKey(targetId, "landlord");
+    memoryAccesses.delete(landlordKey);
+    memoryAccesses.delete(legacyAccessKey(targetId));
+    memoryLandlordBundles.delete(landlordBundleKey(targetId));
+    for (const storage of availableStorages()) {
+      clearRecoveryValue(landlordKey, storage);
+      clearRecoveryValue(legacyAccessKey(targetId), storage);
+      clearRecoveryValue(landlordBundleKey(targetId), storage);
     }
-    const latest = readLatestLandlordAccess();
-    if (!targetId || latest?.proposalId === targetId) {
-      window.localStorage.removeItem(LATEST_LANDLORD_ACCESS);
-      window.localStorage.removeItem(LATEST_LANDLORD_BUNDLE);
+    const references = readAccessIndex().filter(
+      (item) => !(item.proposalId === targetId && item.role === "landlord"),
+    );
+    writeAvailable(
+      ACCESS_INDEX,
+      JSON.stringify(references),
+      ["local", "session"],
+    );
+  }
+  const latest = readLatestLandlordAccess();
+  const latestBundle = readLandlordBundle();
+  if (
+    !targetId ||
+    latest?.proposalId === targetId ||
+    latestBundle?.proposalId === targetId
+  ) {
+    memoryLatestLandlordAccess = null;
+    memoryLandlordBundles.delete(LATEST_LANDLORD_BUNDLE);
+    for (const storage of availableStorages()) {
+      clearRecoveryValue(LATEST_LANDLORD_ACCESS, storage);
+      clearRecoveryValue(LATEST_LANDLORD_BUNDLE, storage);
     }
-  } catch {
-    // The in-memory proposal can still be cleared.
   }
 }
 
@@ -442,6 +622,19 @@ export function captureNegotiationAccessFromUrl(): NegotiationAccess | null {
   const proposalId = url.searchParams.get("proposal");
   const token = url.searchParams.get("token");
   const role = url.searchParams.get("access") || url.searchParams.get("invite");
+  if (token) {
+    url.searchParams.delete("token");
+    url.searchParams.delete("access");
+    try {
+      window.history.replaceState(null, "", url.toString());
+    } catch {
+      try {
+        window.location.replace(url.toString());
+      } catch {
+        // Continue in memory if the browser refuses both same-page URL updates.
+      }
+    }
+  }
   if (
     !proposalId ||
     !token ||
@@ -452,9 +645,6 @@ export function captureNegotiationAccessFromUrl(): NegotiationAccess | null {
 
   const access: NegotiationAccess = { proposalId, token, role, source: "invite" };
   storeNegotiationAccess(access, true);
-  url.searchParams.delete("token");
-  url.searchParams.delete("access");
-  window.history.replaceState(null, "", url.toString());
   return access;
 }
 

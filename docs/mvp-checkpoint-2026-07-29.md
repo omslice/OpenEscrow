@@ -16,7 +16,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key rotation, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 73 server tests, 46 client-logic
+- **Verified:** The full repository release check passes with 73 server tests, 48 client-logic
   tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
   build. Accessibility is now part of the required `npm run check` path rather than a separate,
   potentially stale result.
@@ -34,6 +34,11 @@ production readiness, or authorization to hold real rental deposits.
   transactions no longer depend on writable browser storage to save their D1 receipt. Blocked
   storage degrades to an in-memory retry instead of interrupting the completed action; malformed
   persisted hashes and JSON are discarded before use.
+- **Verified:** Invitation bearer tokens are scrubbed from the URL before browser persistence is
+  attempted. If local and session storage are blocked, the invitation, proposal bundle,
+  jurisdiction, tracked-agreement, preference, and notification caches degrade to current-session
+  state instead of blanking the page or making a completed action look failed. Worker
+  authorization remains unchanged.
 - **Verified:** Dynamic wallet setup, test-fund, negotiation, role-mismatch, onchain-activity,
   record-export, account-security, notification, and receipt-recovery outcomes expose explicit
   status or alert semantics. This improves screen-reader feedback without stealing keyboard focus;

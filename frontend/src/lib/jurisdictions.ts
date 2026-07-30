@@ -15,6 +15,10 @@ import {
   DEFAULT_COMPLIANCE_FACTS as SHARED_DEFAULT_COMPLIANCE_FACTS,
   normalizeComplianceFacts as sharedNormalizeComplianceFacts,
 } from "../../shared/us-compliance-overlays.js";
+import {
+  readRecoveryValue,
+  writeRecoveryValue,
+} from "./browserRecovery.ts";
 
 export type ComplianceFactValue = string | number | boolean | null;
 
@@ -213,6 +217,7 @@ export const GENERIC_TEST_POLICY = {
 } as const;
 
 const STORAGE_PREFIX = "openescrow:jurisdiction:";
+const rememberedJurisdictions = new Map<string, JurisdictionCode>();
 
 export function isJurisdictionCode(value: string): value is JurisdictionCode {
   return JURISDICTIONS.some((jurisdiction) => jurisdiction.code === value);
@@ -292,12 +297,15 @@ export function evaluateSnapshotCompliance(
 
 export function rememberJurisdiction(id: bigint, code: JurisdictionCode): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem(`${STORAGE_PREFIX}${id.toString()}`, code);
+  const key = `${STORAGE_PREFIX}${id.toString()}`;
+  rememberedJurisdictions.set(key, code);
+  writeRecoveryValue(key, code);
 }
 
 export function readJurisdiction(id: bigint): JurisdictionCode {
   if (typeof window === "undefined") return GENERIC_TEST_POLICY.jurisdiction;
-  const stored = window.localStorage.getItem(`${STORAGE_PREFIX}${id.toString()}`);
+  const key = `${STORAGE_PREFIX}${id.toString()}`;
+  const stored = rememberedJurisdictions.get(key) || readRecoveryValue(key);
   return stored && isJurisdictionCode(stored)
     ? stored
     : GENERIC_TEST_POLICY.jurisdiction;

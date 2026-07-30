@@ -1,6 +1,18 @@
 import { useCallback, useEffect, useState } from "react";
+import {
+  readRecoveryJson,
+  writeRecoveryJson,
+} from "./browserRecovery";
 
 const STORAGE_KEY = "openescrow.trackedAgreementIds";
+
+function isTrackedAgreementIdList(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= 1_000 &&
+    value.every((id) => typeof id === "string" && /^[0-9]+$/.test(id))
+  );
+}
 
 /**
  * There is no indexer for this MVP (see docs/mvp-spec.md frontend journey note), so
@@ -12,17 +24,13 @@ export function useTrackedAgreements() {
   const [ids, setIds] = useState<bigint[]>([]);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setIds(JSON.parse(raw).map((s: string) => BigInt(s)));
-    } catch {
-      // ignore malformed storage
-    }
+    const saved = readRecoveryJson(STORAGE_KEY, isTrackedAgreementIdList);
+    if (saved) setIds(saved.map((id) => BigInt(id)));
   }, []);
 
   const persist = useCallback((next: bigint[]) => {
     setIds(next);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(next.map((n) => n.toString())));
+    writeRecoveryJson(STORAGE_KEY, next.map((id) => id.toString()));
   }, []);
 
   const addId = useCallback(
@@ -30,7 +38,7 @@ export function useTrackedAgreements() {
       setIds((prev) => {
         if (prev.some((p) => p === id)) return prev;
         const next = [...prev, id];
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next.map((n) => n.toString())));
+        writeRecoveryJson(STORAGE_KEY, next.map((savedId) => savedId.toString()));
         return next;
       });
     },
@@ -41,7 +49,7 @@ export function useTrackedAgreements() {
     (id: bigint) => {
       setIds((prev) => {
         const next = prev.filter((p) => p !== id);
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(next.map((n) => n.toString())));
+        writeRecoveryJson(STORAGE_KEY, next.map((savedId) => savedId.toString()));
         return next;
       });
     },

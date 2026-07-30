@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useAccount } from "wagmi";
 import { ConnectWallet } from "./ConnectWallet";
+import { readRecoveryJson, writeRecoveryJson } from "../lib/browserRecovery";
 
 export type AppNotification = {
   id: string;
@@ -11,6 +12,14 @@ export type AppNotification = {
   onOpen?: () => void;
   agreementId?: string;
 };
+
+function isNotificationReadState(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.length <= 250 &&
+    value.every((id) => typeof id === "string" && id.length <= 200)
+  );
+}
 
 export function Layout({
   children,
@@ -24,12 +33,9 @@ export function Layout({
   const [readIds, setReadIds] = useState<string[]>([]);
 
   useEffect(() => {
-    try {
-      const stored = JSON.parse(window.localStorage.getItem(readStateKey) || "[]");
-      setReadIds(Array.isArray(stored) ? stored.filter((id) => typeof id === "string") : []);
-    } catch {
-      setReadIds([]);
-    }
+    setReadIds(
+      readRecoveryJson(readStateKey, isNotificationReadState) || [],
+    );
   }, [readStateKey]);
 
   const unreadCount = useMemo(
@@ -42,13 +48,13 @@ export function Layout({
       new Set([...notifications.map((notification) => notification.id), ...readIds]),
     ).slice(0, 250);
     setReadIds(next);
-    window.localStorage.setItem(readStateKey, JSON.stringify(next));
+    writeRecoveryJson(readStateKey, next);
   }
 
   function openNotification(notification: AppNotification) {
     const next = Array.from(new Set([notification.id, ...readIds])).slice(0, 250);
     setReadIds(next);
-    window.localStorage.setItem(readStateKey, JSON.stringify(next));
+    writeRecoveryJson(readStateKey, next);
     notification.onOpen?.();
   }
 

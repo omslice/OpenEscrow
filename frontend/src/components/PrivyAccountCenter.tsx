@@ -24,6 +24,7 @@ import {
   roleLabel,
   useInviteRole,
 } from "../lib/inviteContext";
+import { writeRecoveryJson } from "../lib/browserRecovery";
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   agreementActivity: false,
@@ -89,7 +90,7 @@ export function PrivyAccountCenter({
       .then((saved) => {
         if (cancelled) return;
         setPreferences(saved);
-        window.localStorage.setItem(preferenceKey, JSON.stringify(saved));
+        writeRecoveryJson(preferenceKey, saved);
         setPreferenceStatus(saved.updatedAt ? "Preferences synced to your account." : null);
       })
       .catch((error) => {
@@ -177,18 +178,14 @@ export function PrivyAccountCenter({
     const next = { ...preferences, [name]: checked };
     setPreferences(next);
     setPreferenceStatus(identityToken ? "Saving preferences..." : "Saved on this device.");
-    try {
-      window.localStorage.setItem(preferenceKey, JSON.stringify(next));
-    } catch {
-      // The UI still reflects the choice for this session if storage is unavailable.
-    }
+    writeRecoveryJson(preferenceKey, next);
     if (!identityToken) return;
     const write = ++preferenceWrite.current;
     try {
       const saved = await saveNotificationPreferences(identityToken, next);
       if (write !== preferenceWrite.current) return;
       setPreferences(saved);
-      window.localStorage.setItem(preferenceKey, JSON.stringify(saved));
+      writeRecoveryJson(preferenceKey, saved);
       setPreferenceStatus(
         saved.agreementActivity || saved.deadlineReminders
           ? "Preferences synced to your account with a consent timestamp."

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   clearRecoveryValue,
+  getBrowserRecoveryStorage,
   isTransactionHash,
   readRecoveryJson,
   readRecoveryTransaction,
@@ -89,4 +90,35 @@ test("blocked browser storage never interrupts transaction recovery", () => {
   assert.equal(clearRecoveryValue("pending", blocked), false);
   assert.equal(readRecoveryTransaction("pending", blocked), null);
   assert.equal(writeRecoveryJson("pending", { transactionHash: hash }, blocked), false);
+});
+
+test("browser storage discovery fails closed when storage getters are blocked", () => {
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: Object.defineProperties(
+      {},
+      {
+        localStorage: {
+          get() {
+            throw new Error("local storage blocked");
+          },
+        },
+        sessionStorage: {
+          get() {
+            throw new Error("session storage blocked");
+          },
+        },
+      },
+    ),
+  });
+  try {
+    assert.equal(getBrowserRecoveryStorage("local"), null);
+    assert.equal(getBrowserRecoveryStorage("session"), null);
+  } finally {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: originalWindow,
+    });
+  }
 });

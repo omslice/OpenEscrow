@@ -3,16 +3,24 @@ export type BrowserRecoveryStorage = Pick<
   "getItem" | "setItem" | "removeItem"
 >;
 
+export type BrowserRecoveryStorageKind = "local" | "session";
+
+export function getBrowserRecoveryStorage(
+  kind: BrowserRecoveryStorageKind = "local",
+): BrowserRecoveryStorage | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return kind === "session" ? window.sessionStorage : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 function browserStorage(
   storage?: BrowserRecoveryStorage,
 ): BrowserRecoveryStorage | null {
   if (storage) return storage;
-  if (typeof window === "undefined") return null;
-  try {
-    return window.localStorage;
-  } catch {
-    return null;
-  }
+  return getBrowserRecoveryStorage();
 }
 
 export function readRecoveryValue(
