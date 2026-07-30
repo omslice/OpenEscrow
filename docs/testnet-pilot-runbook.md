@@ -89,7 +89,9 @@ newly selected account.
 More generally, switching verified accounts must immediately clear the prior account's proposals,
 records, archive state, expanded panels, and device-local tracked agreement ids. A search or archive
 request started by the prior account must not repopulate or announce anything in the newly selected
-workspace.
+workspace. Account-inventory, wallet-copy, and embedded-wallet setup callbacks must likewise avoid
+showing a late result from the prior account, and wallet setup for the newly selected account must
+remain retryable.
 
 The account data inventory is a privacy-safe metadata manifest, not a complete access-request
 export and not a deletion request. It lists the verified account's proposal references, roles,

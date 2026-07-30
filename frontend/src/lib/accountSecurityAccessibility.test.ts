@@ -85,6 +85,33 @@ test("notification outcomes use explicit accessible error state", () => {
   );
 });
 
+test("account-bound wallet and inventory callbacks reject stale identity completions", () => {
+  const guardCreations = accountCenterSource.match(
+    /createAccountOperationGuard\(\s*\(\) => activeAccountIdentity\.current,\s*requestedAccountIdentity,\s*\)/g,
+  );
+  assert.ok((guardCreations?.length ?? 0) >= 4);
+  assert.match(
+    accountCenterSource,
+    /slowTimer = window\.setTimeout\(\(\) => \{\s*if \(requestIsCurrent\(\)\) setWalletSetup\("slow"\);/s,
+  );
+  assert.match(
+    accountCenterSource,
+    /const inventory = await loadAccountDataInventory\(requestedIdentityToken\);[\s\S]*?!requestIsCurrent\(\)/,
+  );
+  assert.match(
+    accountCenterSource,
+    /activeIdentityToken\.current !== requestedIdentityToken[\s\S]*?return;[\s\S]*?setSecurityError\(true\);/,
+  );
+  assert.match(
+    accountCenterSource,
+    /await copyTextToClipboard\(walletAddress\);\s*if \(!requestIsCurrent\(\)\) return;/,
+  );
+  assert.match(
+    accountCenterSource,
+    /setWalletCopyStatus\(null\);[\s\S]*attemptedForUser\.current = null;[\s\S]*\}, \[accountIdentity\]\);/,
+  );
+});
+
 test("mobile account security recovery actions retain full-width touch targets", () => {
   assert.match(
     appStyles,

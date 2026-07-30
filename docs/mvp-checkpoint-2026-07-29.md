@@ -18,7 +18,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key loss/restoration, outages, notification recovery,
   receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 93 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 94 client-logic
   tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
   build. Accessibility is now part of the required `npm run check` path rather than a separate,
   potentially stale result.
@@ -100,6 +100,10 @@ production readiness, or authorization to hold real rental deposits.
   device-local tracked agreement ids to that account. Manual discovery and record-archive
   completions check the requesting identity before updating or announcing, while background
   polling is invalidated on the same boundary.
+- **Verified:** Account-inventory delivery and copy recovery, wallet-address copy feedback, and
+  embedded-wallet setup now check the stable requesting account before publishing success, error,
+  slow-state, or completion feedback. Account changes reset pending wallet setup so the newly
+  selected account can make its own fresh attempt instead of inheriting a stale busy state.
 - **Verified:** Dynamic wallet setup, test-fund, negotiation, role-mismatch, onchain-activity,
   record-export, account-security, notification, and receipt-recovery outcomes expose explicit
   status or alert semantics. Notification failures now use an explicit error flag and assertive,

@@ -32,6 +32,7 @@ import {
   copyTextToClipboard,
   reloadBrowserPage,
 } from "../lib/browserActions";
+import { createAccountOperationGuard } from "../lib/accountOperationGuard";
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   agreementActivity: false,
@@ -102,6 +103,10 @@ export function PrivyAccountCenter({
   useEffect(() => {
     setIsEndingSessions(false);
     setIsTestingEmail(false);
+    setWalletSetup("idle");
+    setWalletError(null);
+    setWalletCopyStatus(null);
+    attemptedForUser.current = null;
   }, [accountIdentity]);
 
   useEffect(() => {
@@ -173,16 +178,25 @@ export function PrivyAccountCenter({
   }, [refreshServiceReadiness]);
 
   const provisionWallet = useCallback(async () => {
-    if (!user || hasWallet || walletSetup === "creating") return;
+    const requestedAccountIdentity = user?.id ?? null;
+    if (!requestedAccountIdentity || hasWallet || walletSetup === "creating") return;
+    const requestIsCurrent = createAccountOperationGuard(
+      () => activeAccountIdentity.current,
+      requestedAccountIdentity,
+    );
 
     setWalletSetup("creating");
     setWalletError(null);
     let slowTimer: number | undefined;
     try {
-      slowTimer = window.setTimeout(() => setWalletSetup("slow"), 12_000);
+      slowTimer = window.setTimeout(() => {
+        if (requestIsCurrent()) setWalletSetup("slow");
+      }, 12_000);
       await createWallet();
+      if (!requestIsCurrent()) return;
       setWalletSetup("idle");
     } catch (cause) {
+      if (!requestIsCurrent()) return;
       setWalletSetup("error");
       setWalletError(cause instanceof Error ? cause.message : "Wallet setup did not complete.");
     } finally {
@@ -345,15 +359,25 @@ export function PrivyAccountCenter({
   }
 
   async function downloadAccountDataInventory() {
-    if (!identityToken || isDownloadingInventory) return;
+    if (!identityToken || !accountIdentity || isDownloadingInventory) return;
     const requestedIdentityToken = identityToken;
+    const requestedAccountIdentity = accountIdentity;
+    const requestIsCurrent = createAccountOperationGuard(
+      () => activeAccountIdentity.current,
+      requestedAccountIdentity,
+    );
     setIsDownloadingInventory(true);
     setInventoryRecovery(null);
     setSecurityError(false);
     setSecurityStatus("Preparing your account data inventory...");
     try {
       const inventory = await loadAccountDataInventory(requestedIdentityToken);
-      if (activeIdentityToken.current !== requestedIdentityToken) return;
+      if (
+        !requestIsCurrent() ||
+        activeIdentityToken.current !== requestedIdentityToken
+      ) {
+        return;
+      }
       const delivery = deliverAccountDataInventory(inventory);
       if (delivery.outcome === "copy_available") {
         setInventoryRecovery(delivery.content);
@@ -371,6 +395,12 @@ export function PrivyAccountCenter({
         `Downloaded an inventory of ${inventory.records.length} account record reference(s). Complete shared records remain available in the Record tab.`,
       );
     } catch (error) {
+      if (
+        !requestIsCurrent() ||
+        activeIdentityToken.current !== requestedIdentityToken
+      ) {
+        return;
+      }
       setSecurityError(true);
       setSecurityStatus(
         error instanceof Error
@@ -378,7 +408,10 @@ export function PrivyAccountCenter({
           : "Your account data inventory could not be prepared.",
       );
     } finally {
-      if (activeIdentityToken.current === requestedIdentityToken) {
+      if (
+        requestIsCurrent() &&
+        activeIdentityToken.current === requestedIdentityToken
+      ) {
         setIsDownloadingInventory(false);
       }
     }
@@ -387,6 +420,7 @@ export function PrivyAccountCenter({
   async function copyPreparedAccountDataInventory() {
     if (
       !identityToken ||
+      !accountIdentity ||
       !inventoryRecovery ||
       isCopyingInventory ||
       isDownloadingInventory ||
@@ -395,17 +429,32 @@ export function PrivyAccountCenter({
       return;
     }
     const requestedIdentityToken = identityToken;
+    const requestedAccountIdentity = accountIdentity;
+    const requestIsCurrent = createAccountOperationGuard(
+      () => activeAccountIdentity.current,
+      requestedAccountIdentity,
+    );
     setIsCopyingInventory(true);
     setSecurityError(false);
     setSecurityStatus("Copying the prepared account data inventory...");
     try {
       await copyTextToClipboard(inventoryRecovery);
-      if (activeIdentityToken.current !== requestedIdentityToken) return;
+      if (
+        !requestIsCurrent() ||
+        activeIdentityToken.current !== requestedIdentityToken
+      ) {
+        return;
+      }
       setSecurityStatus(
         "Account data inventory copied. Paste it into a private file you control; complete shared records remain in the Record tab.",
       );
     } catch (error) {
-      if (activeIdentityToken.current !== requestedIdentityToken) return;
+      if (
+        !requestIsCurrent() ||
+        activeIdentityToken.current !== requestedIdentityToken
+      ) {
+        return;
+      }
       setSecurityError(true);
       setSecurityStatus(
         error instanceof Error
@@ -413,18 +462,28 @@ export function PrivyAccountCenter({
           : "The prepared account data inventory could not be copied.",
       );
     } finally {
-      if (activeIdentityToken.current === requestedIdentityToken) {
+      if (
+        requestIsCurrent() &&
+        activeIdentityToken.current === requestedIdentityToken
+      ) {
         setIsCopyingInventory(false);
       }
     }
   }
 
   async function copyWalletAddress(walletAddress: string, label: string) {
+    const requestedAccountIdentity = accountIdentity;
+    const requestIsCurrent = createAccountOperationGuard(
+      () => activeAccountIdentity.current,
+      requestedAccountIdentity,
+    );
     setWalletCopyStatus(null);
     try {
       await copyTextToClipboard(walletAddress);
+      if (!requestIsCurrent()) return;
       setWalletCopyStatus({ message: `${label} copied.`, error: false });
     } catch (error) {
+      if (!requestIsCurrent()) return;
       setWalletCopyStatus({
         message:
           error instanceof Error ? error.message : "The wallet address could not be copied.",
