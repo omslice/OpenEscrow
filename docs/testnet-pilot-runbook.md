@@ -53,10 +53,11 @@ npm.cmd run check
 
 For focused troubleshooting, run `npm.cmd run test:account-switch` or
 `npm.cmd run test:accessibility`. The account-switch check holds archive, inventory, wallet setup,
-and record-session revocation operations open across two deterministic identities and proves the
-old account cannot update, download into, or sign out the new account. The accessibility check
-covers the public yield dialog and focus return, workspace tab keyboard behavior, proposal editor
-focus recovery, keyboard address selection, and mobile-width overflow.
+record-session revocation, preference-save, and test-email operations open across two deterministic
+identities and proves the old account cannot update, download into, announce inside, or sign out
+the new account. The accessibility check covers the public yield dialog and focus return,
+workspace tab keyboard behavior, proposal editor focus recovery, keyboard address selection, and
+mobile-width overflow.
 
 Dynamic wallet setup, transaction, proposal, negotiation, account-security, notification,
 record-export, and receipt-recovery outcomes use status or alert live regions so they are announced

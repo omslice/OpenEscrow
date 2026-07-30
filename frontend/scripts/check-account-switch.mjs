@@ -97,6 +97,70 @@ function inventoryFor(account) {
   };
 }
 
+function readyServiceReadiness() {
+  const now = "2026-07-30T20:00:00.000Z";
+  return {
+    email: {
+      configured: true,
+      provider: "resend",
+      schedulerConfigured: true,
+      schedulerLastRunAt: now,
+      schedulerHealthy: true,
+      schedulerExpectedIntervalMinutes: 15,
+      schedulerAgeMinutes: 1,
+    },
+    evidence: {
+      configured: true,
+      mode: "private-r2",
+      encryptedAtRest: true,
+      activeEncryptionKeyId: "test-active-key",
+      retainedDecryptionKeyCount: 1,
+      referencedEncryptionKeyCount: 1,
+      missingDecryptionKeyCount: 0,
+      keyringReady: true,
+      encryptionError: null,
+      decentralizedReady: false,
+    },
+    recordIntegrity: {
+      lifecycleStateGuards: true,
+      transactionReceiptVerification: true,
+      chain: "Base Sepolia",
+      activityRegistry: {
+        configured: true,
+        verificationEnabled: true,
+        ready: true,
+        registryAddress: "0x1000000000000000000000000000000000000001",
+        expectedEscrowAddress: "0x2000000000000000000000000000000000000002",
+        boundEscrowAddress: "0x2000000000000000000000000000000000000002",
+        checkedAt: now,
+        error: null,
+      },
+    },
+    addressValidation: {
+      configured: true,
+      provider: "Photon / OpenStreetMap",
+      tamperResistantProfiles: true,
+    },
+    complianceSources: {
+      configured: true,
+      proposalGateEnforced: true,
+      total: 61,
+      tracked: 61,
+      changed: 0,
+      unreachable: 0,
+      pending: 0,
+      stale: 0,
+      blocked: 0,
+      lastRunAt: now,
+      monitorHealthy: true,
+      monitorExpectedIntervalMinutes: 15,
+      monitorLastRunAgeMinutes: 1,
+      maxVerificationAgeDays: 21,
+      ready: true,
+    },
+  };
+}
+
 async function waitForServer() {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
@@ -144,6 +208,10 @@ const inventoryRelease = deferred();
 const inventorySeen = deferred();
 const revokeRelease = deferred();
 const revokeSeen = deferred();
+const preferenceRelease = deferred();
+const preferenceSeen = deferred();
+const testEmailRelease = deferred();
+const testEmailSeen = deferred();
 let downloadedFiles = 0;
 let browser;
 
@@ -160,12 +228,38 @@ try {
 
   await page.route("**/api/system/readiness", async (route) => {
     await route.fulfill({
-      status: 503,
+      status: 200,
       contentType: "application/json",
-      body: JSON.stringify({ error: "Hosted readiness is intentionally unavailable in this test." }),
+      body: JSON.stringify(readyServiceReadiness()),
     });
   });
   await page.route("**/api/profile/notification-preferences", async (route) => {
+    if (route.request().method() === "PUT") {
+      assert.equal(
+        route.request().headers()["privy-id-token"],
+        "identity-token-b",
+        "The delayed preference save must remain bound to account B.",
+      );
+      assert.deepEqual(route.request().postDataJSON(), {
+        agreementActivity: true,
+        deadlineReminders: false,
+        consentedAt: null,
+        updatedAt: null,
+      });
+      preferenceSeen.resolve();
+      await preferenceRelease.promise;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          agreementActivity: true,
+          deadlineReminders: false,
+          consentedAt: "2026-07-30T20:02:00.000Z",
+          updatedAt: "2026-07-30T20:02:00.000Z",
+        }),
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -174,6 +268,25 @@ try {
         deadlineReminders: false,
         consentedAt: null,
         updatedAt: null,
+      }),
+    });
+  });
+  await page.route("**/api/profile/test-email", async (route) => {
+    assert.equal(
+      route.request().headers()["privy-id-token"],
+      "identity-token-a",
+      "The delayed test email must remain bound to account A.",
+    );
+    testEmailSeen.resolve();
+    await testEmailRelease.promise;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sent: true,
+        duplicate: false,
+        provider: "resend",
+        messageId: "account-a-test-message",
       }),
     });
   });
@@ -378,8 +491,70 @@ try {
     "Account B must remain visibly mounted after account A's revocation completes.",
   );
 
+  await page.locator("details.account-profile-disclosure > summary").click();
+  const accountBActivityPreference = page.getByRole("checkbox", {
+    name: /Agreement invitations, funding, claims, responses, and rulings/,
+  });
+  assert.equal(
+    await accountBActivityPreference.isChecked(),
+    false,
+    "Account B's activity preference starts disabled.",
+  );
+  await accountBActivityPreference.check();
+  await preferenceSeen.promise;
+  await page.evaluate(() => {
+    window.__openEscrowAccountSwitchTest?.switchAccount("account-a");
+  });
+  await page.getByTitle("account.a@example.test").waitFor();
+  await page.locator("details.account-profile-disclosure > summary").click();
+  const accountAActivityPreference = page.getByRole("checkbox", {
+    name: /Agreement invitations, funding, claims, responses, and rulings/,
+  });
+  assert.equal(
+    await accountAActivityPreference.isChecked(),
+    false,
+    "Account A must not inherit account B's optimistic preference state.",
+  );
+  preferenceRelease.resolve();
+  await page.waitForTimeout(150);
+  assert.equal(
+    await page.getByText(/Preferences synced to your account/).count(),
+    0,
+    "Account B's completed preference save must not publish feedback in account A.",
+  );
+  assert.equal(
+    await accountAActivityPreference.isChecked(),
+    false,
+    "Account B's saved preference response must not update account A.",
+  );
+
+  await page.getByRole("button", { name: "Send test email" }).click();
+  await testEmailSeen.promise;
+  await page.evaluate(() => {
+    window.__openEscrowAccountSwitchTest?.switchAccount("account-b");
+  });
+  await page.getByTitle("account.b@example.test").waitFor();
+  testEmailRelease.resolve();
+  await page.waitForTimeout(150);
+  assert.equal(
+    await page.getByText("Test email sent. Check this account's inbox.").count(),
+    0,
+    "Account A's completed test email must not publish feedback in account B.",
+  );
+  await page.locator("details.account-profile-disclosure > summary").click();
+  assert.equal(
+    await page.getByRole("button", { name: "Send test email" }).count(),
+    1,
+    "Account B must retain an idle test-email control after account A's request completes.",
+  );
+  assert.equal(
+    await page.getByRole("button", { name: "Sending..." }).count(),
+    0,
+    "Account B must not inherit account A's pending test-email state.",
+  );
+
   process.stdout.write(
-    "Account-switch browser check passed: proposals, archives, wallet setup, inventory delivery, and session containment remain isolated across live identity changes.\n",
+    "Account-switch browser check passed: proposals, archives, wallet setup, inventory delivery, session containment, notification preferences, and test-email feedback remain isolated across live identity changes.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

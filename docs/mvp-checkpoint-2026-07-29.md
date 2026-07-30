@@ -108,8 +108,9 @@ production readiness, or authorization to hold real rental deposits.
   identities while archive, inventory, wallet-setup, and record-session revocation operations are
   in flight. It proves old proposals and completion messages do not cross the account boundary,
   stale inventory bytes are not downloaded, both accounts can finish independent wallet setup,
-  and an old account's completed server revocation makes zero provider-logout calls against the
-  newly selected identity.
+  an old account's completed server revocation makes zero provider-logout calls against the newly
+  selected identity, and delayed preference/test-email responses cannot update or announce inside
+  the newly selected account.
 - **Verified:** Dynamic wallet setup, test-fund, negotiation, role-mismatch, onchain-activity,
   record-export, account-security, notification, and receipt-recovery outcomes expose explicit
   status or alert semantics. Notification failures now use an explicit error flag and assertive,
