@@ -19,7 +19,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   outages, notification recovery, receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 108 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 111 client-logic
   tests, lint, browser account-switch, accessibility/mobile, and load-recovery smoke checks, and
   the production build. These rendered checks are part of the required `npm run check` path
   rather than separate, potentially stale results.
@@ -124,6 +124,10 @@ production readiness, or authorization to hold real rental deposits.
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the
   production build; the authenticated workspace then loads asynchronously.
+- **Verified:** Onchain activity notifications now query both registry event types together in
+  bounded Base Sepolia block ranges and filter the result for every visible agreement. Polling
+  work no longer grows as two full-history RPC requests per agreement, and empty or
+  pre-deployment scans avoid unnecessary log requests.
 - **Verified:** The exact validated candidate source is pushed to the existing Sites source
   branch and saved as a newer undeployed Sites version after each coherent slice. The public
   production deployment remains unchanged.

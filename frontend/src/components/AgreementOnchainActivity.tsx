@@ -1,33 +1,16 @@
 import { useCallback, useState } from "react";
-import { parseAbiItem } from "viem";
 import { usePublicClient } from "wagmi";
 import {
-  ACTIVITY_REGISTRY_DEPLOYMENT_BLOCK,
-  AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
-} from "../contracts/config";
+  getActivityRegistryItems,
+  type ActivityRegistryLogClient,
+  type RegistryActivityItem,
+} from "../lib/activityRegistryLogs";
 import { formatTimestamp, shortAddr } from "../lib/format";
 import type { NegotiationAccess } from "../lib/negotiations";
 import { useActivityRegistryReadiness } from "../lib/useActivityRegistryReadiness";
 import { useVisiblePolling } from "../lib/visiblePolling";
 import { ActivityProofVerifier } from "./ActivityProofVerifier";
 import { PrivateActivityPublisher } from "./PrivateActivityPublisher";
-
-type ActivityItem = {
-  key: string;
-  type: "snapshot" | "activity";
-  actor: `0x${string}`;
-  contentHash: `0x${string}`;
-  activityType?: number;
-  timestamp: bigint;
-  transactionHash: `0x${string}`;
-};
-
-const snapshotEvent = parseAbiItem(
-  "event RecordSnapshotAnchored(uint256 indexed agreementId, bytes32 indexed snapshotHash, address indexed party, uint64 timestamp)",
-);
-const activityEvent = parseAbiItem(
-  "event ActivityPublished(uint256 indexed agreementId, uint8 indexed activityType, address indexed party, bytes32 contentHash, uint64 timestamp)",
-);
 
 const activityLabel: Record<number, string> = {
   1: "Private note hash published",
@@ -47,7 +30,7 @@ export function AgreementOnchainActivity({
 }) {
   const publicClient = usePublicClient();
   const registry = useActivityRegistryReadiness();
-  const [items, setItems] = useState<ActivityItem[]>([]);
+  const [items, setItems] = useState<RegistryActivityItem[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
@@ -56,42 +39,11 @@ export function AgreementOnchainActivity({
       return;
     }
     try {
-      const [snapshots, activities] = await Promise.all([
-        publicClient.getLogs({
-          address: AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
-          event: snapshotEvent,
-          args: { agreementId },
-          fromBlock: ACTIVITY_REGISTRY_DEPLOYMENT_BLOCK,
-          toBlock: "latest",
-        }),
-        publicClient.getLogs({
-          address: AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
-          event: activityEvent,
-          args: { agreementId },
-          fromBlock: ACTIVITY_REGISTRY_DEPLOYMENT_BLOCK,
-          toBlock: "latest",
-        }),
-      ]);
       setItems(
-        [
-          ...snapshots.map((log) => ({
-            key: `${log.transactionHash}-${log.logIndex}`,
-            type: "snapshot" as const,
-            actor: log.args.party,
-            contentHash: log.args.snapshotHash,
-            timestamp: log.args.timestamp,
-            transactionHash: log.transactionHash,
-          })),
-          ...activities.map((log) => ({
-            key: `${log.transactionHash}-${log.logIndex}`,
-            type: "activity" as const,
-            actor: log.args.party,
-            contentHash: log.args.contentHash,
-            activityType: log.args.activityType,
-            timestamp: log.args.timestamp,
-            transactionHash: log.transactionHash,
-          })),
-        ].sort((left, right) => Number(right.timestamp - left.timestamp)),
+        await getActivityRegistryItems(
+          publicClient as unknown as ActivityRegistryLogClient,
+          [agreementId],
+        ),
       );
       setError(null);
     } catch (cause) {
