@@ -63,6 +63,19 @@ export function clearRecoveryValue(
   }
 }
 
+export function replaceRecoveryUrl(
+  url: string | URL,
+  state: unknown = null,
+) {
+  if (typeof window === "undefined") return false;
+  try {
+    window.history.replaceState(state, "", url.toString());
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function isTransactionHash(value: unknown): value is `0x${string}` {
   return typeof value === "string" && /^0x[a-fA-F0-9]{64}$/.test(value);
 }

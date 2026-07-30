@@ -40,6 +40,7 @@ import { ACCOUNT_AUTH_ENABLED } from "./lib/accountConfig";
 import { useOnchainActivityNotifications } from "./lib/useOnchainActivityNotifications";
 import { preferredScrollBehavior } from "./lib/accessibility";
 import { startVisibilityAwarePolling } from "./lib/visiblePolling";
+import { replaceRecoveryUrl } from "./lib/browserRecovery";
 import "./App.css";
 
 const AgreementCard = lazy(() =>
@@ -597,7 +598,7 @@ function AppView({ identityToken = null }: { identityToken?: string | null }) {
     const url = new URL(window.location.href);
     url.searchParams.delete("proposal");
     url.searchParams.delete("token");
-    window.history.replaceState(null, "", url.toString());
+    replaceRecoveryUrl(url);
   }
 
   async function setRecordArchived(item: SavedProposal, archived: boolean) {

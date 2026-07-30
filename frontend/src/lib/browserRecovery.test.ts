@@ -7,6 +7,7 @@ import {
   readRecoveryJson,
   readRecoveryTransaction,
   readRecoveryValue,
+  replaceRecoveryUrl,
   writeRecoveryJson,
   writeRecoveryValue,
   type BrowserRecoveryStorage,
@@ -115,6 +116,28 @@ test("browser storage discovery fails closed when storage getters are blocked", 
   try {
     assert.equal(getBrowserRecoveryStorage("local"), null);
     assert.equal(getBrowserRecoveryStorage("session"), null);
+  } finally {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: originalWindow,
+    });
+  }
+});
+
+test("history replacement reports failure without interrupting recovery controls", () => {
+  const originalWindow = globalThis.window;
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      history: {
+        replaceState() {
+          throw new Error("history unavailable");
+        },
+      },
+    },
+  });
+  try {
+    assert.equal(replaceRecoveryUrl("https://openescrow.example/"), false);
   } finally {
     Object.defineProperty(globalThis, "window", {
       configurable: true,

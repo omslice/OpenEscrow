@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { replaceRecoveryUrl } from "../lib/browserRecovery";
 
 export function PublicIntro({ onStart }: { onStart: () => void }) {
   const yieldDialogRef = useRef<HTMLDialogElement>(null);
@@ -10,7 +11,7 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
     const baseHref = `${window.location.pathname}${window.location.search}`;
     if (shouldOpen) {
       if (window.location.hash !== `#${yieldHash}`) {
-        window.history.replaceState({}, "", `${baseHref}#${yieldHash}`);
+        replaceRecoveryUrl(`${baseHref}#${yieldHash}`, {});
       }
       if (!yieldDialogRef.current?.open) {
         yieldDialogRef.current?.showModal();
@@ -18,7 +19,7 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
       return;
     }
     if (window.location.hash === `#${yieldHash}`) {
-      window.history.replaceState({}, "", baseHref);
+      replaceRecoveryUrl(baseHref, {});
     }
     if (yieldDialogRef.current?.open) {
       yieldDialogRef.current.close();

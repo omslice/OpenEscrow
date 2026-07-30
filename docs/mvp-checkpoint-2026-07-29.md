@@ -16,7 +16,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key rotation, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 73 server tests, 48 client-logic
+- **Verified:** The full repository release check passes with 73 server tests, 50 client-logic
   tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
   build. Accessibility is now part of the required `npm run check` path rather than a separate,
   potentially stale result.
@@ -39,6 +39,10 @@ production readiness, or authorization to hold real rental deposits.
   jurisdiction, tracked-agreement, preference, and notification caches degrade to current-session
   state instead of blanking the page or making a completed action look failed. Worker
   authorization remains unchanged.
+- **Verified:** Workspace-role selection remains usable in current-page memory when session
+  storage is blocked. History API failures no longer interrupt proposal close, invitation exit,
+  or optional-yield dialog controls; invitation exit additionally attempts a clean navigation
+  before suppressing a URL that the browser refuses to replace.
 - **Verified:** Dynamic wallet setup, test-fund, negotiation, role-mismatch, onchain-activity,
   record-export, account-security, notification, and receipt-recovery outcomes expose explicit
   status or alert semantics. This improves screen-reader feedback without stealing keyboard focus;

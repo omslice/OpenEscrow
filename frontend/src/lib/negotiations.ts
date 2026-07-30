@@ -4,6 +4,7 @@ import {
   clearRecoveryValue,
   getBrowserRecoveryStorage,
   readRecoveryValue,
+  replaceRecoveryUrl,
   writeRecoveryValue,
   type BrowserRecoveryStorage,
   type BrowserRecoveryStorageKind,
@@ -625,9 +626,7 @@ export function captureNegotiationAccessFromUrl(): NegotiationAccess | null {
   if (token) {
     url.searchParams.delete("token");
     url.searchParams.delete("access");
-    try {
-      window.history.replaceState(null, "", url.toString());
-    } catch {
+    if (!replaceRecoveryUrl(url)) {
       try {
         window.location.replace(url.toString());
       } catch {
