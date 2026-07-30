@@ -41,7 +41,11 @@ is not sufficient after a rotation.
 To retain an exact operator-readable result at a chosen path, add
 `--json --artifact-path=<path>`. OpenEscrow creates missing parent folders and writes the artifact
 even when a required check or the readiness endpoint itself fails, so the failed gate and recovery
-action remain reviewable.
+action remain reviewable. Each artifact uses the `openescrow-pilot-readiness/v1` schema and records
+the packaged Worker's full Git commit. A missing or malformed release identifier is a required
+failure rather than an unattributed readiness result. The Sites packaging command also refuses
+uncommitted frontend, hosting-manifest, or migration inputs and verifies that its generated
+provenance matches the exact source commit.
 
 ### What the automated release gate now covers
 

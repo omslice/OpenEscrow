@@ -31,6 +31,7 @@ import {
   createAddressAttestation,
   verifyAddressAttestation,
 } from "./address-attestation.js";
+import { RELEASE_PROVENANCE } from "./release-provenance.js";
 
 const AGREEMENTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS agreement_negotiations (
@@ -1795,6 +1796,7 @@ async function serviceReadiness(env) {
           : "unconfigured";
   const registryReadiness = await activityRegistryReadiness(env);
   return json({
+    release: RELEASE_PROVENANCE,
     email: {
       configured: Boolean(provider),
       provider,

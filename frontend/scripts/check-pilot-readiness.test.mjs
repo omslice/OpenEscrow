@@ -14,6 +14,10 @@ const frontendDir = fileURLToPath(new URL("../", import.meta.url));
 
 function readyResponse() {
   return {
+    release: {
+      schemaVersion: "openescrow-release/v1",
+      commitSha: "50e3ffcb2a4ce2ef61225f9363a893c2944041e1",
+    },
     email: {
       configured: true,
       provider: "test-provider",
@@ -127,11 +131,45 @@ test("pilot readiness command saves a complete passing artifact to an explicit n
     assert.equal(artifact.requiredActionCount, 0);
     assert(artifact.checkedAt);
     assert.equal(
+      artifact.artifactSchemaVersion,
+      "openescrow-pilot-readiness/v1",
+    );
+    assert.deepEqual(artifact.release, {
+      schemaVersion: "openescrow-release/v1",
+      commitSha: "50e3ffcb2a4ce2ef61225f9363a893c2944041e1",
+    });
+    assert.equal(
       artifact.checks.find(
         (check) => check.label === "Evidence encryption and retained keyring",
       )?.ready,
       true,
     );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("pilot readiness command fails closed and preserves evidence when release provenance is missing", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "openescrow-readiness-"));
+  const artifactPath = path.join(tempDir, "nested", "missing-release.json");
+  const readiness = readyResponse();
+  delete readiness.release;
+
+  try {
+    const result = await runReadinessCommand(readiness, artifactPath);
+
+    assert.equal(result.code, 1, result.stderr || result.stdout);
+    assert.match(result.stdout, /ACTION\s+Exact deployed release provenance/);
+    const artifact = JSON.parse(await readFile(artifactPath, "utf8"));
+    assert.equal(artifact.ok, false);
+    assert.equal(artifact.requiredActionCount, 1);
+    assert.equal(artifact.release, null);
+    assert.deepEqual(artifact.required, [
+      {
+        label: "Exact deployed release provenance",
+        detail: "exact packaged source commit is missing or invalid",
+      },
+    ]);
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }

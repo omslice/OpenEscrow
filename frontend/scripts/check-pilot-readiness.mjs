@@ -2,6 +2,9 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { buildEvidenceEncryptionCheck } from "./pilot-readiness-evidence.mjs";
 
+const PILOT_READINESS_ARTIFACT_SCHEMA_VERSION =
+  "openescrow-pilot-readiness/v1";
+const RELEASE_PROVENANCE_SCHEMA_VERSION = "openescrow-release/v1";
 const args = process.argv.slice(2);
 const jsonOutput = args.includes("--json") || args.includes("-j");
 const artifactRequested =
@@ -56,6 +59,26 @@ function minutesLabel(minutes) {
 }
 
 const checks = [
+  {
+    label: "Exact deployed release provenance",
+    ready:
+      readiness.release?.schemaVersion ===
+        RELEASE_PROVENANCE_SCHEMA_VERSION &&
+      typeof readiness.release?.commitSha === "string" &&
+      /^[0-9a-f]{40}$/.test(readiness.release.commitSha),
+    detail:
+      readiness.release?.schemaVersion ===
+        RELEASE_PROVENANCE_SCHEMA_VERSION &&
+      typeof readiness.release?.commitSha === "string" &&
+      /^[0-9a-f]{40}$/.test(readiness.release.commitSha)
+        ? `commit ${readiness.release.commitSha}`
+        : "exact packaged source commit is missing or invalid",
+    required: true,
+    action:
+      "Build and publish the candidate through the exact-source Sites workflow, then rerun this check.",
+    validate:
+      "readiness.release.schemaVersion === openescrow-release/v1 and readiness.release.commitSha is a full Git SHA",
+  },
   {
     label: "Automatic email provider",
     ready: readiness.email?.configured === true,
@@ -240,7 +263,9 @@ if (requiredActionCount > 0) {
 }
 
 const payload = {
+  artifactSchemaVersion: PILOT_READINESS_ARTIFACT_SCHEMA_VERSION,
   baseUrl,
+  release: readiness.release ?? null,
   ok: requiredActionCount === 0,
   requiredActionCount,
   optionalAvailable,

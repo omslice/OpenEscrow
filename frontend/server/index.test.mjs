@@ -4234,6 +4234,10 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
         resendEnv,
       ),
     );
+    assert.deepEqual(readiness.release, {
+      schemaVersion: "openescrow-release/v1",
+      commitSha: null,
+    });
     assert.equal(readiness.email.configured, true);
     assert.equal(readiness.email.provider, "resend");
     assert.equal(readiness.evidence.contentTypeValidation, true);
