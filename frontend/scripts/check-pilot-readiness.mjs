@@ -1,5 +1,6 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { buildEvidenceEncryptionCheck } from "./pilot-readiness-evidence.mjs";
 
 const args = process.argv.slice(2);
 const jsonOutput = args.includes("--json") || args.includes("-j");
@@ -69,16 +70,7 @@ const checks = [
       "Verify private evidence storage binding (R2/S3) exists and read/write credentials are set in deployment.",
     validate: "readiness.evidence.configured === true",
   },
-  {
-    label: "Evidence encryption at rest",
-    ready: readiness.evidence?.encryptedAtRest === true,
-    detail: readiness.evidence?.encryptedAtRest
-      ? "enabled"
-      : "master key not configured",
-    required: true,
-    action: "Set EVIDENCE_ENCRYPTION_KEY (32+ random bytes) and restart deployment.",
-    validate: "readiness.evidence.encryptedAtRest === true",
-  },
+  buildEvidenceEncryptionCheck(readiness.evidence),
   {
     label: "Evidence file-content validation",
     ready: readiness.evidence?.contentTypeValidation === true,

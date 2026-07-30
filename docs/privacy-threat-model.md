@@ -48,7 +48,7 @@ completeness, legality, or authorship of the underlying content.
 | R2 plaintext disclosure | Optional AES-256-GCM with per-file HKDF derivation | Stored bytes do not contain plaintext |
 | Altered ciphertext or wrong encryption key | AES-GCM authentication fails closed | Tamper regression returns an alteration error and no file |
 | Altered plaintext or metadata digest | SHA-256 verified after decryption | Digest-tamper regression fails closed |
-| Key rotation makes historical evidence unreadable | Versioned active key ID plus retained decryption keyring | Pre- and post-rotation files decrypt with their recorded key IDs |
+| Key rotation makes historical evidence unreadable | Versioned active key ID plus retained decryption keyring; the pilot readiness gate requires every referenced key ID | Pre- and post-rotation files decrypt with their recorded key IDs, and the pilot checker fails closed when a retained key or keyring status is missing |
 | Private evidence storage outage | R2 upload/download failures return privacy-safe retry guidance before metadata or success events are recorded | Upload outage leaves no phantom evidence row/event; retry succeeds; download outage fails closed |
 | Notification provider outage | Provider network failures return a retryable delivery error and do not record a sent event | Failed claim notice can be retried once and remains idempotent after recovery |
 | Misleading lifecycle record | Role/state guards, idempotency, and version-matched receipt verification | Credential-free lifecycle rehearsals and receipt-verification tests |

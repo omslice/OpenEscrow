@@ -34,7 +34,9 @@ npm.cmd run pilot:check
 
 The required rows should all report `PASS`. The decentralized-evidence row may remain `OPTIONAL`
 for the pilot. Run this again after every deployment because the endpoint checks the deployed
-runtime, not the developer machine.
+runtime, not the developer machine. Evidence readiness passes only when the active encryption key
+and every retained key referenced by stored evidence are available; restoring only the active key
+is not sufficient after a rotation.
 
 ### What the automated release gate now covers
 

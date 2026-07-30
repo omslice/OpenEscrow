@@ -18,7 +18,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key loss/restoration, outages, notification recovery,
   receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 96 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 99 client-logic
   tests, lint, browser account-switch, accessibility/mobile, and load-recovery smoke checks, and
   the production build. These rendered checks are part of the required `npm run check` path
   rather than separate, potentially stale results.
@@ -149,6 +149,9 @@ production readiness, or authorization to hold real rental deposits.
 - **Verified:** Private-evidence upload/download and notification-provider outages fail closed
   with retry guidance. Failed attempts create no phantom evidence or sent-delivery events, and
   automated recovery tests verify one successful retry remains idempotent.
+- **Verified:** The hosted pilot checker now requires both an active evidence-encryption key and
+  every retained key referenced by stored ciphertext. A missing or omitted keyring status fails
+  closed with restoration guidance instead of accepting a pilot that cannot read older evidence.
 - **Verified:** Browser mutation routes reject requests marked cross-site by Fetch Metadata even
   when an `Origin` header is absent; the session-containment rehearsal proves the rejected request
   cannot revoke stored account sessions.

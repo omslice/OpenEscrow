@@ -8,7 +8,7 @@
     "build": "tsc -b && vite build",
     "build:sites": "npm run build && node prepare-sites.mjs",
     "lint": "oxlint",
-    "test:client-logic": "node --test --experimental-strip-types src/lib/*.test.ts",
+    "test:client-logic": "node --test --experimental-strip-types src/lib/*.test.ts scripts/*.test.mjs",
     "test:account-switch": "node scripts/check-account-switch.mjs",
     "test:accessibility": "node scripts/check-accessibility.mjs",
     "test:load-recovery": "node scripts/check-load-recovery.mjs",
