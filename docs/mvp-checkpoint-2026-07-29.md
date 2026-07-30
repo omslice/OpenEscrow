@@ -16,7 +16,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key rotation, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 73 server tests, 60 client-logic
+- **Verified:** The full repository release check passes with 73 server tests, 64 client-logic
   tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
   build. Accessibility is now part of the required `npm run check` path rather than a separate,
   potentially stale result.
@@ -24,6 +24,10 @@ production readiness, or authorization to hold real rental deposits.
   rules, sources, overlays, and claim checks. Snapshot-level regressions cover conditional Maine
   paths, Arizona business-day and holiday arithmetic, and fail-closed handling for unsupported
   day-count metadata without changing any legal rule.
+- **Verified:** The frontend address bridge now runs an all-51 matrix proving each validated state
+  code selects the exact versioned statewide profile. Foreign, unknown, and state-mismatched
+  addresses fail closed; every generated snapshot remains detached after its source address and
+  nested rules are edited, and current-page routing survives blocked browser storage.
 - **Verified:** Provider checkout reconciliation now prevents an immediate second purchase after
   submitted, confirmed, or indeterminate results. The user can refresh the destination wallet
   balance without recording agreement funding; only explicit cancellation or failure permits an
