@@ -124,6 +124,9 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Encrypted Record exports are scoped to the active record and account: leaving or switching
   scope invalidates pending downloads and feedback, export outcomes use explicit success/error
   semantics, and an older anchor receipt cannot erase a newer recovery transaction
+- [x] Encrypted-record and private-activity-proof verification is scoped to the active proposal
+  and agreement: switching records clears selected private inputs and invalidates delayed file,
+  decryption, receipt, and registry results before they can populate the next view
 - [x] Consolidated onchain activity receipt polling into a shared bounded dual-event registry
   cache: the initial history scan is reused across notifications and expanded records, later polls
   rescan only a reorganization-safe tail, and failed refreshes preserve the last known-good view

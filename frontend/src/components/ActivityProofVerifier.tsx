@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 import { parseAbiItem } from "viem";
 import { usePublicClient } from "wagmi";
 import {
@@ -13,6 +13,7 @@ import {
   parseActivityProofFile,
   type ActivityProofFile,
 } from "../lib/activityProof";
+import { createAsyncOperationScope } from "../lib/asyncOperationScope";
 
 type VerificationResult = {
   proof: ActivityProofFile;
@@ -30,8 +31,22 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<VerificationResult | null>(null);
+  const verificationScopeKey = agreementId.toString();
+  const verificationScope = useMemo(
+    () => createAsyncOperationScope(verificationScopeKey),
+    [verificationScopeKey],
+  );
+
+  useLayoutEffect(() => {
+    verificationScope.open();
+    setWorking(false);
+    setError(null);
+    setResult(null);
+    return () => verificationScope.close();
+  }, [verificationScope]);
 
   async function verify(file: File) {
+    const operationId = verificationScope.start();
     setWorking(true);
     setError(null);
     setResult(null);
@@ -43,6 +58,7 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
         throw new Error("The Base Sepolia connection is not ready.");
       }
       const proof = parseActivityProofFile(await file.text());
+      if (!verificationScope.isCurrent(operationId)) return;
       assertActivityProofContext(
         proof,
         OPEN_ESCROW_ADDRESS,
@@ -61,6 +77,7 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
       const receipt = await publicClient.getTransactionReceipt({
         hash: proof.transactionHash,
       });
+      if (!verificationScope.isCurrent(operationId)) return;
       if (receipt.status !== "success") {
         throw new Error("The referenced transaction did not succeed.");
       }
@@ -79,6 +96,7 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
         fromBlock: receipt.blockNumber,
         toBlock: receipt.blockNumber,
       });
+      if (!verificationScope.isCurrent(operationId)) return;
       const matchingLog = logs.find(
         (log) =>
           log.transactionHash.toLowerCase() === proof.transactionHash.toLowerCase() &&
@@ -91,11 +109,12 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
       }
       setResult({ proof, computedHash, publisher, blockNumber: receipt.blockNumber });
     } catch (cause) {
+      if (!verificationScope.isCurrent(operationId)) return;
       setError(
         cause instanceof Error ? cause.message : "The proof file could not be verified.",
       );
     } finally {
-      setWorking(false);
+      if (verificationScope.isCurrent(operationId)) setWorking(false);
     }
   }
 
@@ -109,6 +128,7 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
       <label>
         Private proof JSON
         <input
+          key={verificationScope.key}
           type="file"
           accept="application/json,.json"
           disabled={working}

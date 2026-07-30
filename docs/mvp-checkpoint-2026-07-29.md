@@ -19,7 +19,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   outages, notification recovery, receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 122 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 123 client-logic
   tests, lint, browser account-switch, accessibility/mobile, and load-recovery smoke checks, and
   the production build. These rendered checks are part of the required `npm run check` path
   rather than separate, potentially stale results.
@@ -130,6 +130,10 @@ production readiness, or authorization to hold real rental deposits.
   bytes or announce a stale completion. Export and verification-key outcomes now use explicit
   success/error semantics, and snapshot-keyed anchor controls preserve a newer recovery
   transaction when an older receipt finishes late.
+- **Verified:** Encrypted-record and private-activity-proof verification is bound to the active
+  proposal and agreement. Switching records clears selected encrypted files and verification keys
+  and rejects delayed file reads, decryption, transaction receipts, and registry log results
+  before they can publish success or error state in the next view.
 - **Verified:** The authenticated wallet/workspace is loaded behind a lightweight bootstrap, and
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the

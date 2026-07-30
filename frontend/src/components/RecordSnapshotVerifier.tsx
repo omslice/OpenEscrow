@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useLayoutEffect, useMemo, useState } from "react";
 import { usePublicClient } from "wagmi";
 import {
   AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
@@ -11,6 +11,7 @@ import {
   decryptRecordArchive,
   parseEncryptedRecordArchive,
 } from "../lib/recordArchive";
+import { createAsyncOperationScope } from "../lib/asyncOperationScope";
 import { shortAddr } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 
@@ -44,20 +45,43 @@ export function RecordSnapshotVerifier({
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<SnapshotVerification | null>(null);
+  const verificationScopeKey = JSON.stringify([
+    proposalId,
+    agreementId?.toString() ?? null,
+    registryReady,
+  ]);
+  const verificationScope = useMemo(
+    () => createAsyncOperationScope(verificationScopeKey),
+    [verificationScopeKey],
+  );
+
+  useLayoutEffect(() => {
+    verificationScope.open();
+    setFile(null);
+    setVerificationKey("");
+    setWorking(false);
+    setError(null);
+    setResult(null);
+    return () => verificationScope.close();
+  }, [verificationScope]);
 
   async function verify() {
-    if (!file) {
+    const selectedFile = file;
+    const selectedVerificationKey = verificationKey;
+    if (!selectedFile) {
       setError("Choose the encrypted OpenEscrow record JSON first.");
       return;
     }
+    const operationId = verificationScope.start();
     setWorking(true);
     setError(null);
     setResult(null);
     try {
-      if (file.size > 8_000_000) {
+      if (selectedFile.size > 8_000_000) {
         throw new Error("Encrypted record files must be smaller than 8 MB.");
       }
-      const archive = parseEncryptedRecordArchive(await file.text());
+      const archive = parseEncryptedRecordArchive(await selectedFile.text());
+      if (!verificationScope.isCurrent(operationId)) return;
       if (archive.record.proposalId !== proposalId) {
         throw new Error("This encrypted record belongs to a different OpenEscrow proposal.");
       }
@@ -67,7 +91,11 @@ export function RecordSnapshotVerifier({
       ) {
         throw new Error("This encrypted record belongs to a different onchain agreement.");
       }
-      const decrypted = await decryptRecordArchive(archive, verificationKey);
+      const decrypted = await decryptRecordArchive(
+        archive,
+        selectedVerificationKey,
+      );
+      if (!verificationScope.isCurrent(operationId)) return;
       const onchain = decrypted.snapshot.onchain as
         | {
             chainId?: number;
@@ -110,6 +138,7 @@ export function RecordSnapshotVerifier({
           functionName: "getAgreement",
           args: [agreementId],
         })) as Agreement;
+        if (!verificationScope.isCurrent(operationId)) return;
         const parties = Array.from(
           new Set(
             [agreement.landlord, agreement.tenant, agreement.arbiter]
@@ -128,6 +157,7 @@ export function RecordSnapshotVerifier({
             })) as boolean,
           })),
         );
+        if (!verificationScope.isCurrent(operationId)) return;
         anchoredBy = anchorChecks
           .filter((check) => check.anchored)
           .map((check) => check.party);
@@ -138,11 +168,12 @@ export function RecordSnapshotVerifier({
         agreementId: archive.record.agreementId,
       });
     } catch (cause) {
+      if (!verificationScope.isCurrent(operationId)) return;
       setError(
         cause instanceof Error ? cause.message : "The encrypted record could not be verified.",
       );
     } finally {
-      setWorking(false);
+      if (verificationScope.isCurrent(operationId)) setWorking(false);
     }
   }
 
@@ -158,6 +189,7 @@ export function RecordSnapshotVerifier({
       <label>
         Encrypted record JSON
         <input
+          key={verificationScope.key}
           type="file"
           accept="application/json,.json"
           disabled={working}
