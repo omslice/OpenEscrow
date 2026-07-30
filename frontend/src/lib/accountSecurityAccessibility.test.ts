@@ -39,6 +39,50 @@ test("account security controls retain their accessible descriptions and atomic 
     accountCenterSource,
     /setInventoryRecovery\(null\);[\s\S]*setSecurityStatus\(null\);/,
   );
+  assert.match(
+    accountCenterSource,
+    /activeAccountIdentity\.current === requestedAccountIdentity/,
+  );
+  assert.match(accountCenterSource, /result\.outcome === "identity_changed"/);
+  assert.match(
+    accountCenterSource,
+    /setIsEndingSessions\(false\);[\s\S]*setIsTestingEmail\(false\);[\s\S]*\}, \[accountIdentity\]\);/,
+  );
+});
+
+test("notification outcomes use explicit accessible error state", () => {
+  assert.match(
+    accountCenterSource,
+    /id="notification-preference-boundary"/,
+  );
+  assert.match(
+    accountCenterSource,
+    /id="notification-preference-status"/,
+  );
+  assert.match(
+    accountCenterSource,
+    /role=\{preferenceNotice\.error \? "alert" : "status"\}/,
+  );
+  assert.match(
+    accountCenterSource,
+    /aria-live=\{preferenceNotice\.error \? "assertive" : "polite"\}/,
+  );
+  assert.match(
+    accountCenterSource,
+    /aria-atomic="true"/,
+  );
+  assert.match(
+    accountCenterSource,
+    /preferenceNotice \? " notification-preference-status" : ""/,
+  );
+  assert.match(
+    accountCenterSource,
+    /activeAccountIdentity\.current !== requestedAccountIdentity/,
+  );
+  assert.doesNotMatch(
+    accountCenterSource,
+    /preferenceStatus\.includes\("could not"\)/,
+  );
 });
 
 test("mobile account security recovery actions retain full-width touch targets", () => {

@@ -38,7 +38,7 @@ completeness, legality, or authorship of the underlying content.
 | Cross-site browser mutation | Mutating API routes require a matching `Origin` when present and reject Fetch Metadata requests marked `Sec-Fetch-Site: cross-site`, including requests with no `Origin` header | Session-containment rehearsal proves a cross-site request cannot revoke sessions or alter stored account access |
 | Cross-site authenticated read | Agreement records, reports, snapshots, private evidence, and account preferences reject Fetch Metadata requests marked `Sec-Fetch-Site: cross-site`, including requests with no `Origin` header; public readiness and signed unsubscribe links are explicit exceptions | Incident rehearsal rejects each sensitive route, preserves same-origin record/evidence reads, and confirms both public exceptions remain reachable |
 | Cross-account proposal or archive access | Server-side email/role matching and account-scoped archive rows | Separate landlord/tenant discovery and archive-isolation rehearsal |
-| Lost or untrusted signed-in browser | Verified-user session revocation deletes only that user's derived record sessions; the client clears account-derived browser access and signs out | Containment rehearsal checks every prior user session fails while other parties and invitation links remain authorized |
+| Lost or untrusted signed-in browser | Verified-user session revocation deletes only that user's derived record sessions; the client clears account-derived browser access and signs out only if the requesting account is still active | Containment rehearsal checks every prior user session fails while other parties and invitation links remain authorized; client regressions prove an in-flight revocation cannot clear access for or sign out a newly selected identity |
 | Privacy inventory leaks shared or access data | Verified-email role lookup returns only proposal reference, role, status, archive/preference metadata, and aggregate session count; no report content or tokens | A realistic multi-agreement rehearsal stores encrypted evidence, archive and notification state, then checks role isolation, unrelated-account emptiness, cross-site denial, exclusion of evidence/address/wallet/participant/token data, session containment, preference preservation, and clean rediscovery |
 | Browser blocks the privacy-inventory download | The already-authorized JSON remains only in current-page memory and exposes an explicit copy fallback; identity-token changes discard the fallback and ignore a stale response | Client regressions preserve exact prepared bytes after a blocked download, use a timestamp-safe filename, and guard the described status and mobile recovery controls |
 | Stolen tenant invitation after reset | Random token rotation, old-link invalidation, and tenant-context session invalidation | Reset test checks the old link and active account session fail |
@@ -67,7 +67,9 @@ Implemented:
 - A verified landlord, tenant, or appointed-arbiter email can discover only its matching role and
   agreement through a capped, expiring account session.
 - A verified account can revoke all of its derived OpenEscrow record sessions without changing
-  agreements, archive preferences, other participants' sessions, or bearer invitation links.
+  agreements, archive preferences, other participants' sessions, or bearer invitation links. If
+  the active account changes during revocation, completed server containment remains valid while
+  global local cleanup, provider sign-out, and reload are skipped for the new account.
 - Evidence key rotation can retain historical decryption keys by non-secret key ID.
 
 Not implemented and therefore pilot-limiting:

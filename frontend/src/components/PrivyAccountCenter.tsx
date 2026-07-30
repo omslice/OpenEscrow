@@ -38,6 +38,11 @@ const DEFAULT_PREFERENCES: NotificationPreferences = {
   deadlineReminders: false,
 };
 
+type PreferenceNotice = {
+  message: string;
+  error: boolean;
+};
+
 export function PrivyAccountCenter({
   workspaceRole,
   onChangeWorkspaceRole,
@@ -54,7 +59,7 @@ export function PrivyAccountCenter({
   const { setActiveWallet } = useSetActiveWallet();
   const { address } = useAccount();
   const [preferences, setPreferences] = useState(DEFAULT_PREFERENCES);
-  const [preferenceStatus, setPreferenceStatus] = useState<string | null>(null);
+  const [preferenceNotice, setPreferenceNotice] = useState<PreferenceNotice | null>(null);
   const [serviceReadiness, setServiceReadiness] = useState<ServiceReadiness | null>(null);
   const [isTestingEmail, setIsTestingEmail] = useState(false);
   const [isEndingSessions, setIsEndingSessions] = useState(false);
@@ -75,6 +80,9 @@ export function PrivyAccountCenter({
   const inviteRole = useInviteRole();
   const activeIdentityToken = useRef(identityToken);
   activeIdentityToken.current = identityToken;
+  const accountIdentity = user?.id ?? null;
+  const activeAccountIdentity = useRef(accountIdentity);
+  activeAccountIdentity.current = accountIdentity;
 
   const email = user?.google?.email ?? user?.email?.address;
   const displayName = user?.google?.name?.trim() || email || "Your";
@@ -92,11 +100,17 @@ export function PrivyAccountCenter({
   }, [identityToken]);
 
   useEffect(() => {
+    setIsEndingSessions(false);
+    setIsTestingEmail(false);
+  }, [accountIdentity]);
+
+  useEffect(() => {
     if (!preferenceKey) {
       setPreferences(DEFAULT_PREFERENCES);
-      setPreferenceStatus(null);
+      setPreferenceNotice(null);
       return;
     }
+    setPreferenceNotice(null);
     try {
       const stored = window.localStorage.getItem(preferenceKey);
       const parsed = stored ? JSON.parse(stored) : DEFAULT_PREFERENCES;
@@ -114,19 +128,26 @@ export function PrivyAccountCenter({
         if (cancelled) return;
         setPreferences(saved);
         writeRecoveryJson(preferenceKey, saved);
-        setPreferenceStatus(saved.updatedAt ? "Preferences synced to your account." : null);
+        setPreferenceNotice(
+          saved.updatedAt
+            ? { message: "Preferences synced to your account.", error: false }
+            : null,
+        );
       })
       .catch((error) => {
         if (!cancelled) {
-          setPreferenceStatus(
-            error instanceof Error
-              ? error.message
-              : "Account preferences could not be loaded.",
-          );
+          setPreferenceNotice({
+            message:
+              error instanceof Error
+                ? error.message
+                : "Account preferences could not be loaded.",
+            error: true,
+          });
         }
       });
     return () => {
       cancelled = true;
+      preferenceWrite.current += 1;
     };
   }, [identityToken, preferenceKey]);
 
@@ -198,34 +219,55 @@ export function PrivyAccountCenter({
     checked: boolean,
   ) {
     if (!preferenceKey) return;
+    const requestedAccountIdentity = accountIdentity;
+    const requestedIdentityToken = identityToken;
     const next = { ...preferences, [name]: checked };
     setPreferences(next);
-    setPreferenceStatus(identityToken ? "Saving preferences..." : "Saved on this device.");
+    setPreferenceNotice({
+      message: requestedIdentityToken ? "Saving preferences..." : "Saved on this device.",
+      error: false,
+    });
     writeRecoveryJson(preferenceKey, next);
-    if (!identityToken) return;
+    if (!requestedIdentityToken || !requestedAccountIdentity) return;
     const write = ++preferenceWrite.current;
     try {
-      const saved = await saveNotificationPreferences(identityToken, next);
-      if (write !== preferenceWrite.current) return;
+      const saved = await saveNotificationPreferences(requestedIdentityToken, next);
+      if (
+        write !== preferenceWrite.current ||
+        activeAccountIdentity.current !== requestedAccountIdentity
+      ) {
+        return;
+      }
       setPreferences(saved);
       writeRecoveryJson(preferenceKey, saved);
-      setPreferenceStatus(
-        saved.agreementActivity || saved.deadlineReminders
-          ? "Preferences synced to your account with a consent timestamp."
-          : "Email notifications are turned off for this account.",
-      );
+      setPreferenceNotice({
+        message:
+          saved.agreementActivity || saved.deadlineReminders
+            ? "Preferences synced to your account with a consent timestamp."
+            : "Email notifications are turned off for this account.",
+        error: false,
+      });
     } catch (error) {
-      if (write !== preferenceWrite.current) return;
-      setPreferenceStatus(
-        error instanceof Error
-          ? error.message
-          : "Preferences are saved locally but could not be synced.",
-      );
+      if (
+        write !== preferenceWrite.current ||
+        activeAccountIdentity.current !== requestedAccountIdentity
+      ) {
+        return;
+      }
+      setPreferenceNotice({
+        message:
+          error instanceof Error
+            ? error.message
+            : "Preferences are saved locally but could not be synced.",
+        error: true,
+      });
     }
   }
 
   async function endOpenEscrowSessions() {
-    if (!identityToken || isEndingSessions) return;
+    if (!identityToken || !accountIdentity || isEndingSessions) return;
+    const requestedIdentityToken = identityToken;
+    const requestedAccountIdentity = accountIdentity;
     let confirmed = false;
     try {
       confirmed = confirmBrowserAction(
@@ -249,11 +291,14 @@ export function PrivyAccountCenter({
     setSecurityStatus("Ending OpenEscrow record sessions...");
     try {
       const result = await terminateAccountSessions({
-        revoke: () => revokeAccountSessions(identityToken),
+        revoke: () => revokeAccountSessions(requestedIdentityToken),
         clearLocalAccess: clearAccountNegotiationAccesses,
         logout,
         reload: reloadBrowserPage,
+        isCurrentIdentity: () =>
+          activeAccountIdentity.current === requestedAccountIdentity,
         onRevoked: (revokedSessions) => {
+          if (activeAccountIdentity.current !== requestedAccountIdentity) return;
           setSecurityStatus(
             revokedSessions
               ? `${revokedSessions} OpenEscrow record session(s) ended. Signing out...`
@@ -261,6 +306,8 @@ export function PrivyAccountCenter({
           );
         },
       });
+      if (result.outcome === "identity_changed") return;
+      if (activeAccountIdentity.current !== requestedAccountIdentity) return;
       if (result.outcome === "complete") return;
       setSecurityError(true);
       const revokedMessage = result.revokedSessions
@@ -283,6 +330,7 @@ export function PrivyAccountCenter({
         );
       }
     } catch (error) {
+      if (activeAccountIdentity.current !== requestedAccountIdentity) return;
       setSecurityError(true);
       setSecurityStatus(
         error instanceof Error
@@ -290,7 +338,9 @@ export function PrivyAccountCenter({
           : "OpenEscrow record sessions could not be ended.",
       );
     } finally {
-      setIsEndingSessions(false);
+      if (activeAccountIdentity.current === requestedAccountIdentity) {
+        setIsEndingSessions(false);
+      }
     }
   }
 
@@ -576,6 +626,9 @@ export function PrivyAccountCenter({
             type="checkbox"
             checked={preferences.agreementActivity}
             disabled={!email}
+            aria-describedby={`notification-preference-boundary${
+              preferenceNotice ? " notification-preference-status" : ""
+            }`}
             onChange={(event) =>
               void updatePreference("agreementActivity", event.target.checked)
             }
@@ -587,13 +640,16 @@ export function PrivyAccountCenter({
             type="checkbox"
             checked={preferences.deadlineReminders}
             disabled={!email}
+            aria-describedby={`notification-preference-boundary${
+              preferenceNotice ? " notification-preference-status" : ""
+            }`}
             onChange={(event) =>
               void updatePreference("deadlineReminders", event.target.checked)
             }
           />
           Upcoming claim, response, and arbiter deadlines
         </label>
-        <p className="notification-boundary">
+        <p id="notification-preference-boundary" className="notification-boundary">
           Preferences follow your verified account. Every optional message includes an unsubscribe
           link and intentionally omits private agreement details.
         </p>
@@ -616,26 +672,41 @@ export function PrivyAccountCenter({
             <button
               className="btn btn-ghost small"
               type="button"
-              disabled={!identityToken || !email || isTestingEmail}
+              disabled={!identityToken || !accountIdentity || !email || isTestingEmail}
+              aria-describedby={`notification-preference-boundary${
+                preferenceNotice ? " notification-preference-status" : ""
+              }`}
               onClick={async () => {
-                if (!identityToken) return;
+                if (!identityToken || !accountIdentity) return;
+                const requestedIdentityToken = identityToken;
+                const requestedAccountIdentity = accountIdentity;
                 setIsTestingEmail(true);
-                setPreferenceStatus("Sending a private configuration test...");
+                setPreferenceNotice({
+                  message: "Sending a private configuration test...",
+                  error: false,
+                });
                 try {
-                  const result = await sendNotificationTest(identityToken);
-                  setPreferenceStatus(
-                    result.duplicate
+                  const result = await sendNotificationTest(requestedIdentityToken);
+                  if (activeAccountIdentity.current !== requestedAccountIdentity) return;
+                  setPreferenceNotice({
+                    message: result.duplicate
                       ? "A test was already delivered recently. Check this account's inbox."
                       : "Test email sent. Check this account's inbox.",
-                  );
+                    error: false,
+                  });
                 } catch (error) {
-                  setPreferenceStatus(
-                    error instanceof Error
-                      ? error.message
-                      : "The test email could not be sent.",
-                  );
+                  if (activeAccountIdentity.current !== requestedAccountIdentity) return;
+                  setPreferenceNotice({
+                    message:
+                      error instanceof Error
+                        ? error.message
+                        : "The test email could not be sent.",
+                    error: true,
+                  });
                 } finally {
-                  setIsTestingEmail(false);
+                  if (activeAccountIdentity.current === requestedAccountIdentity) {
+                    setIsTestingEmail(false);
+                  }
                 }
               }}
             >
@@ -653,14 +724,15 @@ export function PrivyAccountCenter({
             </div>
           </div>
         )}
-            {preferenceStatus && (
+            {preferenceNotice && (
               <p
-                className={
-                  preferenceStatus.includes("could not") ? "tx-error" : "field-help"
-                }
-                role={preferenceStatus.includes("could not") ? "alert" : "status"}
+                id="notification-preference-status"
+                className={preferenceNotice.error ? "tx-error" : "field-help"}
+                role={preferenceNotice.error ? "alert" : "status"}
+                aria-live={preferenceNotice.error ? "assertive" : "polite"}
+                aria-atomic="true"
               >
-                {preferenceStatus}
+                {preferenceNotice.message}
               </p>
             )}
           </section>

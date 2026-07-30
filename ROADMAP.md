@@ -92,13 +92,15 @@ the repository; they are not claims of legal approval or production readiness.
   invalidation, verified-email rediscovery, and cross-account isolation, retained behind the
   disabled-by-default arbiter UI
 - [x] Self-service verified-account record-session revocation and local account-session cleanup
-  without changing agreements, other participants, invitation links, or wallet-provider sessions
+  without changing agreements, other participants, invitation links, or wallet-provider sessions;
+  an in-flight revocation cannot clear access for or sign out a newly selected account
 - [x] Exact-source credential-free incident rehearsal plus testnet containment/privacy runbook
 - [x] Push the validated exact source and save a newer undeployed Sites candidate without
   changing production or hosted D1/R2 data
 - [x] Internal keyboard/mobile accessibility smoke coverage plus workspace tab, address combobox,
   proposal focus-recovery, async announcement, reduced-motion, mobile-overflow fixes, and an
-  accessible in-memory copy fallback for blocked account-inventory downloads
+  accessible in-memory copy fallback for blocked account-inventory downloads; notification
+  outcomes use explicit atomic status/error semantics rather than message-text inference
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a
   shared deadline clock
 - [x] Establish an initial browser performance budget and split the bootstrap from the

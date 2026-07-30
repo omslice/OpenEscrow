@@ -12,6 +12,10 @@ test("account session termination completes in containment order", async () => {
     clearLocalAccess() {
       events.push("clear-local");
     },
+    isCurrentIdentity() {
+      events.push("current-identity");
+      return true;
+    },
     onRevoked(count) {
       events.push(`revoked:${count}`);
     },
@@ -30,11 +34,122 @@ test("account session termination completes in containment order", async () => {
   });
   assert.deepEqual(events, [
     "revoke",
+    "current-identity",
     "clear-local",
+    "current-identity",
     "revoked:3",
+    "current-identity",
     "logout",
     "reload",
   ]);
+});
+
+test("identity change after revocation skips provider logout and reload", async () => {
+  const events: string[] = [];
+  const result = await terminateAccountSessions({
+    async revoke() {
+      events.push("revoke");
+      return { revokedSessions: 2 };
+    },
+    clearLocalAccess() {
+      events.push("clear-local");
+    },
+    isCurrentIdentity() {
+      events.push("identity-changed");
+      return false;
+    },
+    onRevoked() {
+      events.push("revoked");
+    },
+    async logout() {
+      events.push("logout");
+    },
+    reload() {
+      events.push("reload");
+    },
+  });
+
+  assert.deepEqual(result, {
+    outcome: "identity_changed",
+    revokedSessions: 2,
+    localCleanupFailed: false,
+    localCleanupSkipped: true,
+  });
+  assert.deepEqual(events, ["revoke", "identity-changed"]);
+});
+
+test("identity change in the revoked callback still skips provider logout", async () => {
+  const events: string[] = [];
+  let currentIdentity = true;
+  const result = await terminateAccountSessions({
+    async revoke() {
+      events.push("revoke");
+      return { revokedSessions: 1 };
+    },
+    clearLocalAccess() {
+      events.push("clear-local");
+    },
+    isCurrentIdentity() {
+      events.push(`current:${currentIdentity}`);
+      return currentIdentity;
+    },
+    onRevoked() {
+      events.push("revoked");
+      currentIdentity = false;
+    },
+    async logout() {
+      events.push("logout");
+    },
+    reload() {
+      events.push("reload");
+    },
+  });
+
+  assert.deepEqual(result, {
+    outcome: "identity_changed",
+    revokedSessions: 1,
+    localCleanupFailed: false,
+    localCleanupSkipped: false,
+  });
+  assert.deepEqual(events, [
+    "revoke",
+    "current:true",
+    "clear-local",
+    "current:true",
+    "revoked",
+    "current:false",
+  ]);
+});
+
+test("identity guard failure fails closed before provider logout", async () => {
+  const events: string[] = [];
+  const result = await terminateAccountSessions({
+    async revoke() {
+      events.push("revoke");
+      return { revokedSessions: 1 };
+    },
+    clearLocalAccess() {
+      events.push("clear-local");
+    },
+    isCurrentIdentity() {
+      events.push("identity-check");
+      throw new Error("identity state unavailable");
+    },
+    async logout() {
+      events.push("logout");
+    },
+    reload() {
+      events.push("reload");
+    },
+  });
+
+  assert.deepEqual(result, {
+    outcome: "identity_changed",
+    revokedSessions: 1,
+    localCleanupFailed: false,
+    localCleanupSkipped: true,
+  });
+  assert.deepEqual(events, ["revoke", "identity-check"]);
 });
 
 test("failed server revocation stops before local or provider cleanup", async () => {

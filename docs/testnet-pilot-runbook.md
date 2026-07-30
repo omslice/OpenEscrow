@@ -58,6 +58,8 @@ Dynamic wallet setup, transaction, proposal, negotiation, account-security, noti
 record-export, and receipt-recovery outcomes use status or alert live regions so they are announced
 without moving keyboard focus. The automated smoke check does not replace a moderated screen-reader
 session with the separate landlord and tenant accounts.
+Notification preference and test-email failures use explicit assertive error announcements rather
+than relying on particular words appearing in the provider's message.
 
 A passing local rehearsal proves that the hosted workflow state machine still behaves consistently.
 It does not prove Google/Privy login, live wallet signing, Base Sepolia contracts, hosted D1/R2,
@@ -81,6 +83,9 @@ the embedded test wallet created for that identity.
 The account security control ends only expiring OpenEscrow record sessions issued through verified
 account discovery and then signs out the current device. It does not revoke invitation links or
 sessions held by Privy, a wallet provider, Google, or an email provider.
+If the user switches to a different verified account while revocation is still running, the server
+containment still completes, but OpenEscrow does not clear account links, sign out, or reload the
+newly selected account.
 
 The account data inventory is a privacy-safe metadata manifest, not a complete access-request
 export and not a deletion request. It lists the verified account's proposal references, roles,

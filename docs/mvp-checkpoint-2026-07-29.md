@@ -18,7 +18,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key loss/restoration, outages, notification recovery,
   receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 80 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 84 client-logic
   tests, lint, browser accessibility/mobile and load-recovery smoke checks, and the production
   build. Accessibility is now part of the required `npm run check` path rather than a separate,
   potentially stale result.
@@ -89,10 +89,18 @@ production readiness, or authorization to hold real rental deposits.
   unavailable. Account-wide session cleanup distinguishes completed server revocation from a
   later provider-sign-out or page-reload failure instead of reporting the completed revocation as
   unsuccessful.
+- **Verified:** Account-wide session containment now binds the provider sign-out to the stable
+  account identity that requested revocation. If a different account becomes active while the
+  server request is in flight, the completed server revocation is preserved, but global local
+  cleanup, provider sign-out, and reload are skipped so the new account's fresh access is not
+  disturbed. Notification preference saves and test-email responses also ignore stale
+  cross-account completions.
 - **Verified:** Dynamic wallet setup, test-fund, negotiation, role-mismatch, onchain-activity,
   record-export, account-security, notification, and receipt-recovery outcomes expose explicit
-  status or alert semantics. This improves screen-reader feedback without stealing keyboard focus;
-  moderated assistive-technology testing remains a separate pilot task.
+  status or alert semantics. Notification failures now use an explicit error flag and assertive,
+  atomic announcement instead of inferring severity from English message text. This improves
+  screen-reader feedback without stealing keyboard focus; moderated assistive-technology testing
+  remains a separate pilot task.
 - **Verified:** The authenticated wallet/workspace is loaded behind a lightweight bootstrap, and
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the
