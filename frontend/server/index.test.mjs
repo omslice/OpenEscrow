@@ -3446,8 +3446,65 @@ test("pilot rehearsal: a verified account can contain its record sessions withou
 
 test("pilot rehearsal: account data inventory is role-isolated and contains no access secrets", async () => {
   const db = new TestD1();
+  const evidence = new TestR2();
   const created = await create(db);
   await finalizeWithoutArbiter(db, created);
+  const pending = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Priya Pending",
+        tenantEmail: "pending-tenant@example.com",
+        arbiterName: "",
+        arbiterEmail: null,
+        terms,
+      }),
+      { DB: db },
+    ),
+  );
+  const evidencePlaintext = "%PDF-1.7\nprivate privacy-request invoice";
+  const evidenceFilename = "privacy-request-invoice.pdf";
+  const evidenceKeyId = "privacy-request-key";
+  const evidenceKey = Buffer.alloc(32, 41).toString("base64");
+  const evidenceForm = new FormData();
+  evidenceForm.set("proposalId", created.record.id);
+  evidenceForm.set("token", created.access.landlord);
+  evidenceForm.set(
+    "file",
+    new File([evidencePlaintext], evidenceFilename, {
+      type: "application/pdf",
+    }),
+  );
+  const uploadedEvidence = await jsonResponse(
+    await worker.fetch(
+      new Request("https://openescrow.example/api/evidence", {
+        method: "POST",
+        body: evidenceForm,
+      }),
+      {
+        DB: db,
+        EVIDENCE: evidence,
+        EVIDENCE_ENCRYPTION_KEY: evidenceKey,
+        EVIDENCE_ENCRYPTION_KEY_ID: evidenceKeyId,
+      },
+    ),
+  );
+  const evidenceMetadata = await db
+    .prepare(
+      `SELECT object_key, original_name, sha256, encryption_key_id
+       FROM evidence_files
+       WHERE id = ?`,
+    )
+    .bind(uploadedEvidence.cid)
+    .first();
+  assert.equal(evidenceMetadata.original_name, evidenceFilename);
+  assert.equal(evidenceMetadata.encryption_key_id, evidenceKeyId);
+  const [storedEvidence] = evidence.objects.values();
+  assert.equal(
+    new TextDecoder().decode(storedEvidence.bytes).includes(evidencePlaintext),
+    false,
+  );
 
   const appId = "test-privy-data-inventory-app";
   const kid = "test-data-inventory-key";
@@ -3509,10 +3566,30 @@ test("pilot rehearsal: account data inventory is role-isolated and contains no a
       }),
       { DB: db, PRIVY_APP_ID: appId },
     );
+  const revoke = (identityToken) =>
+    worker.fetch(
+      new Request(
+        "https://openescrow.example/api/profile/account-sessions/revoke",
+        {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": identityToken,
+          },
+        },
+      ),
+      { DB: db, PRIVY_APP_ID: appId },
+    );
 
   try {
-    await jsonResponse(await discover(landlordIdentityToken, "landlord"));
-    await jsonResponse(await discover(tenantIdentityToken, "tenant"));
+    const landlordDiscovery = await jsonResponse(
+      await discover(landlordIdentityToken, "landlord"),
+    );
+    const tenantDiscovery = await jsonResponse(
+      await discover(tenantIdentityToken, "tenant"),
+    );
+    assert.equal(landlordDiscovery.accesses.length, 2);
+    assert.equal(tenantDiscovery.accesses.length, 1);
     await jsonResponse(
       await worker.fetch(
         new Request("https://openescrow.example/api/profile/record-archives", {
@@ -3554,13 +3631,17 @@ test("pilot rehearsal: account data inventory is role-isolated and contains no a
       await inventory(landlordIdentityToken),
     );
     assert.equal(landlordInventory.schema, "openescrow.account-data-inventory.v1");
-    assert.equal(landlordInventory.records.length, 1);
+    assert.equal(landlordInventory.verifiedEmailCount, 1);
+    assert.equal(landlordInventory.records.length, 2);
+    const landlordRecords = new Map(
+      landlordInventory.records.map((record) => [record.proposalId, record]),
+    );
     assert.deepEqual(
       {
-        proposalId: landlordInventory.records[0].proposalId,
-        role: landlordInventory.records[0].role,
-        status: landlordInventory.records[0].status,
-        archived: landlordInventory.records[0].archived,
+        proposalId: landlordRecords.get(created.record.id).proposalId,
+        role: landlordRecords.get(created.record.id).role,
+        status: landlordRecords.get(created.record.id).status,
+        archived: landlordRecords.get(created.record.id).archived,
       },
       {
         proposalId: created.record.id,
@@ -3569,11 +3650,32 @@ test("pilot rehearsal: account data inventory is role-isolated and contains no a
         archived: true,
       },
     );
-    assert.equal(landlordInventory.accountSettings.activeRecordSessions, 1);
+    assert.deepEqual(
+      {
+        proposalId: landlordRecords.get(pending.record.id).proposalId,
+        role: landlordRecords.get(pending.record.id).role,
+        status: landlordRecords.get(pending.record.id).status,
+        archived: landlordRecords.get(pending.record.id).archived,
+      },
+      {
+        proposalId: pending.record.id,
+        role: "landlord",
+        status: "draft",
+        archived: false,
+      },
+    );
+    assert.equal(landlordInventory.accountSettings.activeRecordSessions, 2);
     assert.equal(landlordInventory.accountSettings.archivedRecordPreferences, 1);
     assert.equal(
       landlordInventory.accountSettings.notificationPreferences.agreementActivity,
       true,
+    );
+    assert.equal(
+      landlordInventory.accountSettings.notificationPreferences.deadlineReminders,
+      false,
+    );
+    assert.ok(
+      landlordInventory.accountSettings.notificationPreferences.consentedAt,
     );
     assert.deepEqual(landlordInventory.boundaries, {
       includesPrivateEvidence: false,
@@ -3583,10 +3685,38 @@ test("pilot rehearsal: account data inventory is role-isolated and contains no a
       publicBlockchainRecordsCanBeErased: false,
     });
     const serialized = JSON.stringify(landlordInventory);
-    assert.doesNotMatch(serialized, /tenant@example\.com/);
-    assert.doesNotMatch(serialized, /123 Main/);
-    assert.doesNotMatch(serialized, new RegExp(created.access.landlord));
-    assert.doesNotMatch(serialized, new RegExp(created.access.tenant));
+    for (const [label, privateValue] of [
+      ["requesting email", "landlord@example.com"],
+      ["finalized tenant email", "tenant@example.com"],
+      ["draft tenant email", "pending-tenant@example.com"],
+      ["finalized tenant name", "Terry Tenant"],
+      ["draft tenant name", "Priya Pending"],
+      ["property address", "123 Main"],
+      ["agreement wallet", "0x1111111111111111111111111111111111111111"],
+      ["finalized landlord invitation", created.access.landlord],
+      ["finalized tenant invitation", created.access.tenant],
+      ["draft landlord invitation", pending.access.landlord],
+      ["draft tenant invitation", pending.access.tenant],
+      ["first landlord account session", landlordDiscovery.accesses[0].token],
+      ["second landlord account session", landlordDiscovery.accesses[1].token],
+      ["tenant account session", tenantDiscovery.accesses[0].token],
+      ["evidence identifier", uploadedEvidence.cid],
+      ["evidence URI", uploadedEvidence.uri],
+      ["evidence gateway URL", uploadedEvidence.gatewayUrl],
+      ["evidence upload digest", uploadedEvidence.sha256],
+      ["evidence object key", evidenceMetadata.object_key],
+      ["evidence filename", evidenceMetadata.original_name],
+      ["evidence stored digest", evidenceMetadata.sha256],
+      ["evidence encryption key ID", evidenceMetadata.encryption_key_id],
+      ["evidence plaintext", evidencePlaintext],
+      ["evidence storage kind", "encrypted-r2"],
+    ]) {
+      assert.equal(
+        serialized.includes(privateValue),
+        false,
+        `inventory exposed ${label}`,
+      );
+    }
 
     const tenantInventory = await jsonResponse(
       await inventory(tenantIdentityToken),
@@ -3607,14 +3737,104 @@ test("pilot rehearsal: account data inventory is role-isolated and contains no a
 
     const crossOrigin = await inventory(landlordIdentityToken, {
       origin: "https://attacker.example",
-      "sec-fetch-site": "cross-site",
     });
     assert.equal(crossOrigin.status, 403);
+    const crossSiteWithoutOrigin = await inventory(landlordIdentityToken, {
+      "sec-fetch-site": "cross-site",
+    });
+    assert.equal(crossSiteWithoutOrigin.status, 403);
     assert.equal(
       db.database
         .prepare("SELECT COUNT(*) AS count FROM negotiation_account_access")
         .get().count,
-      2,
+      3,
+    );
+
+    const contained = await jsonResponse(await revoke(landlordIdentityToken));
+    assert.equal(contained.revokedSessions, 2);
+    const inventoryAfterContainment = await jsonResponse(
+      await inventory(landlordIdentityToken),
+    );
+    assert.equal(
+      inventoryAfterContainment.accountSettings.activeRecordSessions,
+      0,
+    );
+    assert.equal(
+      inventoryAfterContainment.accountSettings.archivedRecordPreferences,
+      1,
+    );
+    assert.deepEqual(
+      inventoryAfterContainment.accountSettings.notificationPreferences,
+      landlordInventory.accountSettings.notificationPreferences,
+    );
+    assert.equal(inventoryAfterContainment.records.length, 2);
+    assert.equal(
+      inventoryAfterContainment.records.find(
+        (record) => record.proposalId === created.record.id,
+      ).archived,
+      true,
+    );
+
+    for (const priorSession of landlordDiscovery.accesses) {
+      const ended = await worker.fetch(
+        request(
+          `/api/negotiations/${priorSession.proposalId}?token=${priorSession.token}`,
+        ),
+        { DB: db },
+      );
+      assert.equal(ended.status, 403);
+    }
+    const tenantUnaffected = await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${tenantDiscovery.accesses[0].token}`,
+      ),
+      { DB: db },
+    );
+    assert.equal(tenantUnaffected.status, 200);
+    const invitationUnaffected = await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${created.access.landlord}`,
+      ),
+      { DB: db },
+    );
+    assert.equal(invitationUnaffected.status, 200);
+    const evidenceUnaffected = await worker.fetch(
+      new Request(`https://openescrow.example${uploadedEvidence.gatewayUrl}`),
+      {
+        DB: db,
+        EVIDENCE: evidence,
+        EVIDENCE_ENCRYPTION_KEY: evidenceKey,
+        EVIDENCE_ENCRYPTION_KEY_ID: evidenceKeyId,
+      },
+    );
+    assert.equal(evidenceUnaffected.status, 200);
+    assert.equal(await evidenceUnaffected.text(), evidencePlaintext);
+
+    const rediscovered = await jsonResponse(
+      await discover(landlordIdentityToken, "landlord"),
+    );
+    assert.equal(rediscovered.accesses.length, 2);
+    const recoveredSession = rediscovered.accesses.find(
+      (access) => access.proposalId === created.record.id,
+    );
+    const recoveredRecord = await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${recoveredSession.token}`,
+      ),
+      { DB: db },
+    );
+    assert.equal(recoveredRecord.status, 200);
+    const recoveredInventory = await jsonResponse(
+      await inventory(landlordIdentityToken),
+    );
+    assert.equal(recoveredInventory.accountSettings.activeRecordSessions, 2);
+    assert.equal(
+      recoveredInventory.accountSettings.archivedRecordPreferences,
+      1,
+    );
+    assert.deepEqual(
+      recoveredInventory.accountSettings.notificationPreferences,
+      landlordInventory.accountSettings.notificationPreferences,
     );
   } finally {
     globalThis.fetch = originalFetch;

@@ -29,7 +29,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Landlord-controlled tenant invitation reset with old-link and active-session invalidation
 - [x] Short-lived, capped account-discovery sessions per user, role, and agreement
 - [x] Verified-user record-session containment with other-party and invitation-link isolation
-- [x] Privacy-safe verified-account data inventory with role isolation and no access secrets
+- [x] Privacy-safe verified-account data inventory with role isolation, realistic multi-agreement
+  and encrypted-evidence rehearsal, no access secrets, and clean post-containment rediscovery
 - [ ] Configure and test the hosted evidence master key, backup, versioned rotation, retention,
   and deletion (rotation/keyring support is implemented; hosted operations remain)
 - [x] Design credential-free landlord/arbiter recovery, session containment, privacy inventory,

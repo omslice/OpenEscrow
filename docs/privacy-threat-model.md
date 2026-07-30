@@ -39,7 +39,7 @@ completeness, legality, or authorship of the underlying content.
 | Cross-site authenticated read | Agreement records, reports, snapshots, private evidence, and account preferences reject Fetch Metadata requests marked `Sec-Fetch-Site: cross-site`, including requests with no `Origin` header; public readiness and signed unsubscribe links are explicit exceptions | Incident rehearsal rejects each sensitive route, preserves same-origin record/evidence reads, and confirms both public exceptions remain reachable |
 | Cross-account proposal or archive access | Server-side email/role matching and account-scoped archive rows | Separate landlord/tenant discovery and archive-isolation rehearsal |
 | Lost or untrusted signed-in browser | Verified-user session revocation deletes only that user's derived record sessions; the client clears account-derived browser access and signs out | Containment rehearsal checks every prior user session fails while other parties and invitation links remain authorized |
-| Privacy inventory leaks shared or access data | Verified-email role lookup returns only proposal reference, role, status, archive/preference metadata, and aggregate session count; no report content or tokens | Inventory rehearsal checks role isolation, unrelated-account emptiness, cross-origin denial, and absence of addresses, other-party email, and bearer tokens |
+| Privacy inventory leaks shared or access data | Verified-email role lookup returns only proposal reference, role, status, archive/preference metadata, and aggregate session count; no report content or tokens | A realistic multi-agreement rehearsal stores encrypted evidence, archive and notification state, then checks role isolation, unrelated-account emptiness, cross-site denial, exclusion of evidence/address/wallet/participant/token data, session containment, preference preservation, and clean rediscovery |
 | Stolen tenant invitation after reset | Random token rotation, old-link invalidation, and tenant-context session invalidation | Reset test checks the old link and active account session fail |
 | Invitation opened with blocked browser storage | The bearer token is removed from the URL before persistence is attempted; authorized access continues in session or memory without weakening Worker authorization | Client regression blocks both storage APIs, captures the invitation without throwing, verifies the URL is scrubbed, and retains only the current-page access |
 | Unauthorized evidence download | Agreement-token authorization before R2/IPFS access | Invalid and unrelated-agreement tokens receive an access error |
@@ -113,9 +113,10 @@ retention and key-destruction consequences are explicitly approved.
 
 The exact-source credential-free incident rehearsal packages twelve controls covering invalid
 identity tokens, cross-account access, cross-site read isolation, participant-scoped session
-containment, privacy-inventory isolation, corrupted ciphertext/key/digest data, retained-key
-rotation, R2 upload/download outages, notification-provider recovery, spoofed receipts, and RPC
-fallback. It produces local JSON and JUnit evidence without touching hosted systems.
+containment, a realistic multi-agreement privacy inventory with encrypted-evidence exclusion and
+clean rediscovery, corrupted ciphertext/key/digest data, retained-key rotation, R2
+upload/download outages, notification-provider recovery, spoofed receipts, and RPC fallback. It
+produces local JSON and JUnit evidence without touching hosted systems.
 
 A supervised pilot must still additionally exercise:
 

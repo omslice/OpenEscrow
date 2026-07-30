@@ -11,8 +11,9 @@ production readiness, or authorization to hold real rental deposits.
   archive/restore, record proof, disputed claim, accepted claim, and no-claim refund, plus three
   private-evidence and notification outage/recovery scenarios, one arbiter-link/session reset,
   one verified-arbiter identity recovery/isolation scenario, and one verified-account session
-  containment scenario, one role-isolated account data-inventory scenario, and one durable
-  sandbox-funding recovery/refund scenario.
+  containment scenario, one realistic multi-agreement account data-inventory scenario with
+  encrypted-evidence exclusion and clean post-containment rediscovery, and one durable sandbox
+  funding recovery/refund scenario.
 - **Verified:** A separate 12-scenario incident-response rehearsal passes for identity forgery,
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key loss/restoration, outages, notification recovery,
@@ -65,6 +66,13 @@ production readiness, or authorization to hold real rental deposits.
   Popup-blocked Gmail actions also point users to the copy fallback. Failed copies or popup opens
   do not create misleading invitation or notice-prepared activity, and unsupported dialog
   behavior leaves the optional-yield explanation link recoverable with an explicit error.
+- **Verified:** The privacy-request rehearsal now creates finalized and draft agreements, stores
+  encrypted evidence, and saves archive and notification preferences before generating the
+  verified-account inventory. The inventory contains only role-scoped metadata; it excludes
+  participant identities, addresses, wallets, evidence content and metadata, encryption-key IDs,
+  invitation links, and account-session tokens. Session containment preserves the other party,
+  original invitation, evidence, and account preferences, and verified rediscovery restores only
+  fresh account sessions.
 - **Verified:** Tenant removal, proposal cancellation, invitation-link rotation, and account-wide
   session revocation now share a fail-closed confirmation helper. If a browser refuses to show its
   confirmation prompt, no destructive request is sent and the affected workspace shows explicit

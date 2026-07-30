@@ -85,7 +85,10 @@ sessions held by Privy, a wallet provider, Google, or an email provider.
 The account data inventory is a privacy-safe metadata manifest, not a complete access-request
 export and not a deletion request. It lists the verified account's proposal references, roles,
 statuses, archive preferences, notification settings, and active-session count. Complete shared
-agreement records remain in the Record tab.
+agreement records remain in the Record tab. The credential-free rehearsal exercises multiple
+agreement states plus encrypted evidence, then proves the inventory excludes private evidence,
+addresses, wallets, participant details, invitation tokens, and account-session tokens while
+archive and notification preferences survive session containment and clean rediscovery.
 
 ## Release smoke test
 

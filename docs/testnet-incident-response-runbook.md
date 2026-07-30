@@ -119,6 +119,14 @@ The current product deliberately has no automated deletion endpoint.
 7. End the requesting account's derived record sessions and verify clean rediscovery remains
    possible.
 
+The credential-free incident rehearsal automates the safe portion of this sequence with two
+agreement states, an archive preference, notification preferences, and encrypted R2 evidence. It
+proves the inventory excludes emails, names, addresses, wallets, evidence identifiers and
+metadata, encryption-key IDs, invitation tokens, and account-session tokens. It then contains the
+requesting account's record sessions, confirms the other party and original invitation still
+work, verifies preferences and evidence remain unchanged, and rediscovers clean account access.
+The supervised legal-hold and provider-inventory decisions remain an owner/counsel exercise.
+
 The inventory is an intake aid, not a complete access-request response. Shared agreement data,
 provider-held data, immutable blockchain records, backups, retention duties, and other parties'
 rights require an approved production policy and qualified review.

@@ -34,7 +34,15 @@ const expectedScenarios = [
   {
     id: "privacy-inventory",
     name: "pilot rehearsal: account data inventory is role-isolated and contains no access secrets",
-    covers: ["privacy intake", "token exclusion", "cross-origin denial"],
+    covers: [
+      "privacy intake",
+      "multi-agreement metadata",
+      "encrypted-evidence exclusion",
+      "archive and notification preservation",
+      "session containment and rediscovery",
+      "token exclusion",
+      "cross-site denial",
+    ],
   },
   {
     id: "evidence-tamper",
