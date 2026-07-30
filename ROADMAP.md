@@ -118,8 +118,9 @@ the repository; they are not claims of legal approval or production readiness.
   outcomes use explicit atomic status/error semantics rather than message-text inference
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a
   shared deadline clock
-- [x] Consolidated onchain activity receipt polling into bounded dual-event registry scans instead
-  of two full-history requests for every visible agreement
+- [x] Consolidated onchain activity receipt polling into a shared bounded dual-event registry
+  cache: the initial history scan is reused across notifications and expanded records, later polls
+  rescan only a reorganization-safe tail, and failed refreshes preserve the last known-good view
 - [x] Establish an initial browser performance budget and split the bootstrap from the
   authenticated wallet/workspace bundle
 - [x] Split infrequently used proposal, deposit, and record tools into tab-level chunks
