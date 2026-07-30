@@ -102,6 +102,8 @@ the repository; they are not claims of legal approval or production readiness.
   account; a deterministic rendered switch regression also proves stale revocation cannot invoke
   provider logout for the newly selected identity
 - [x] Exact-source credential-free incident rehearsal plus testnet containment/privacy runbook
+- [x] End-to-end operator readiness evidence for both a ready pilot and fail-closed retained-key
+  recovery, including explicit nested artifact paths and actionable remediation
 - [x] Push the validated exact source and save a newer undeployed Sites candidate without
   changing production or hosted D1/R2 data
 - [x] Internal keyboard/mobile accessibility smoke coverage plus workspace tab, address combobox,

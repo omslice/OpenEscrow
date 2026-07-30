@@ -38,6 +38,10 @@ runtime, not the developer machine. Evidence readiness passes only when the acti
 and every retained key referenced by stored evidence are available; restoring only the active key
 is not sufficient after a rotation.
 
+To retain an exact operator-readable result at a chosen path, add
+`--json --artifact-path=<path>`. OpenEscrow creates missing parent folders and writes the artifact
+even when a required check fails, so the failed gate and recovery action remain reviewable.
+
 ### What the automated release gate now covers
 
 The repository test gate includes 51 server/workflow scenarios and 220 passing

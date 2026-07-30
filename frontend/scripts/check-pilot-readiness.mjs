@@ -8,6 +8,7 @@ const artifactRequested =
   args.includes("--artifact") ||
   args.includes("-a") ||
   args.some((arg) => arg.startsWith("--artifact-dir=")) ||
+  args.some((arg) => arg.startsWith("--artifact-path=")) ||
   process.env.PILOT_READINESS_ARTIFACT_DIR;
 const artifactDirArg = args.find((arg) => arg.startsWith("--artifact-dir="));
 const artifactPathArg = args.find((arg) => arg.startsWith("--artifact-path="));
@@ -155,10 +156,9 @@ const checks = [
       : "monitor not enabled",
     required: true,
     action:
-      "Set COMPLIANCE_SOURCE_MONITOR_ENABLED=true and schedule the configured compliance monitor job."
-      ,
+      "Set COMPLIANCE_SOURCE_MONITOR_ENABLED=true and schedule the configured compliance monitor job.",
     validate:
-      "readiness.complianceSources.monitorHealthy === true and readiness.complianceSources.monitorConfigured === true",
+      "readiness.complianceSources.monitorHealthy === true and readiness.complianceSources.configured === true",
   },
   {
     label: "Encrypted decentralized evidence",
@@ -232,7 +232,8 @@ if (artifactRequested) {
   const checkedAt = new Date().toISOString();
   const readinessPayload = { ...payload, checkedAt };
   if (explicitArtifactPath) {
-    const filePath = explicitArtifactPath;
+    const filePath = path.resolve(explicitArtifactPath);
+    mkdirSync(path.dirname(filePath), { recursive: true });
     writeFileSync(filePath, JSON.stringify(readinessPayload, null, 2));
     console.log(`Saved readiness evidence: ${filePath}`);
   } else {
