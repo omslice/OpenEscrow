@@ -18,7 +18,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, privacy
   inventory, evidence tamper, retained-key loss/restoration, outages, notification recovery,
   receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 101 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 102 client-logic
   tests, lint, browser account-switch, accessibility/mobile, and load-recovery smoke checks, and
   the production build. These rendered checks are part of the required `npm run check` path
   rather than separate, potentially stale results.
@@ -155,7 +155,8 @@ production readiness, or authorization to hold real rental deposits.
 - **Verified:** End-to-end operator-command regressions exercise a completely ready hosted
   response and a missing-retained-key response. Both write timestamped evidence to an explicit
   nested artifact path; the degraded case exits unsuccessfully while preserving exact recovery
-  guidance in the artifact.
+  guidance in the artifact. A hosted-readiness HTTP failure also writes one focused endpoint
+  blocker instead of throwing before evidence can be preserved.
 - **Verified:** Browser mutation routes reject requests marked cross-site by Fetch Metadata even
   when an `Origin` header is absent; the session-containment rehearsal proves the rejected request
   cannot revoke stored account sessions.

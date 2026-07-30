@@ -40,7 +40,8 @@ is not sufficient after a rotation.
 
 To retain an exact operator-readable result at a chosen path, add
 `--json --artifact-path=<path>`. OpenEscrow creates missing parent folders and writes the artifact
-even when a required check fails, so the failed gate and recovery action remain reviewable.
+even when a required check or the readiness endpoint itself fails, so the failed gate and recovery
+action remain reviewable.
 
 ### What the automated release gate now covers
 

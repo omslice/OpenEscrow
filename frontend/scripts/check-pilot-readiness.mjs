@@ -21,16 +21,30 @@ const explicitArtifactPath = artifactPathArg
 const baseUrlArg = args.find((arg) => arg && !arg.startsWith("-"));
 const baseUrl = (baseUrlArg || process.env.OPENESCROW_BASE_URL || "https://openescrow-demo.omrigross.chatgpt.site/").replace(/\/+$/, "");
 
-const response = await fetch(`${baseUrl}/api/system/readiness`, {
-  headers: { accept: "application/json" },
-});
-if (!response.ok) {
-  throw new Error(
-    `OpenEscrow readiness check failed with HTTP ${response.status}.`,
-  );
+let readiness = {};
+let readinessEndpointError = null;
+try {
+  const response = await fetch(`${baseUrl}/api/system/readiness`, {
+    headers: { accept: "application/json" },
+  });
+  if (!response.ok) {
+    throw new Error(
+      `OpenEscrow readiness check failed with HTTP ${response.status}.`,
+    );
+  }
+  const parsed = await response.json();
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error(
+      "OpenEscrow readiness check returned an invalid JSON response.",
+    );
+  }
+  readiness = parsed;
+} catch (error) {
+  readinessEndpointError =
+    error instanceof Error
+      ? error.message
+      : "OpenEscrow readiness endpoint is unavailable.";
 }
-
-const readiness = await response.json();
 
 function minutesLabel(minutes) {
   if (!Number.isFinite(minutes)) return "unknown";
@@ -171,6 +185,23 @@ const checks = [
     validate: "readiness.evidence.decentralizedReady === true",
   },
 ];
+
+const readinessEndpointCheck = {
+  label: "Hosted readiness endpoint",
+  ready: readinessEndpointError === null,
+  detail:
+    readinessEndpointError ||
+    "reachable and returned a valid HTTP 200 JSON response",
+  required: true,
+  action:
+    "Verify the deployed /api/system/readiness route and network availability, then rerun this check.",
+  validate: "GET /api/system/readiness returns HTTP 200 JSON",
+};
+if (readinessEndpointError) {
+  checks.splice(0, checks.length, readinessEndpointCheck);
+} else {
+  checks.unshift(readinessEndpointCheck);
+}
 
 console.log(`OpenEscrow pilot readiness: ${baseUrl}`);
 const requiredFailed = [];

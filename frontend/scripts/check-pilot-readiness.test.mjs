@@ -61,14 +61,18 @@ function readyResponse() {
   };
 }
 
-async function runReadinessCommand(readiness, artifactPath) {
+async function runReadinessCommand(
+  readiness,
+  artifactPath,
+  { status = 200, rawBody = null } = {},
+) {
   const server = createServer((request, response) => {
     if (request.url !== "/api/system/readiness") {
       response.writeHead(404).end();
       return;
     }
-    response.writeHead(200, { "content-type": "application/json" });
-    response.end(JSON.stringify(readiness));
+    response.writeHead(status, { "content-type": "application/json" });
+    response.end(rawBody ?? JSON.stringify(readiness));
   });
   await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 
@@ -163,6 +167,36 @@ test("pilot readiness command saves fail-closed recovery evidence when a retaine
     );
     assert.equal(failedCheck?.ready, false);
     assert.match(failedCheck?.action, /Restore every approved key ID/);
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("pilot readiness command preserves actionable evidence when the hosted endpoint fails", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "openescrow-readiness-"));
+  const artifactPath = path.join(tempDir, "nested", "endpoint-failure.json");
+  try {
+    const result = await runReadinessCommand(
+      { error: "temporarily unavailable" },
+      artifactPath,
+      { status: 503 },
+    );
+
+    assert.equal(result.code, 1, result.stderr || result.stdout);
+    assert.match(result.stdout, /ACTION\s+Hosted readiness endpoint/);
+    const artifact = JSON.parse(await readFile(artifactPath, "utf8"));
+    assert.equal(artifact.ok, false);
+    assert.equal(artifact.requiredActionCount, 1);
+    assert.deepEqual(artifact.required, [
+      {
+        label: "Hosted readiness endpoint",
+        detail: "OpenEscrow readiness check failed with HTTP 503.",
+      },
+    ]);
+    assert.match(
+      artifact.checks[0]?.action,
+      /Verify the deployed \/api\/system\/readiness route/,
+    );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
