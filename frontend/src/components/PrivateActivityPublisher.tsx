@@ -14,6 +14,7 @@ import {
   readRecoveryJson,
   writeRecoveryJson,
 } from "../lib/browserRecovery";
+import { downloadTextFile } from "../lib/browserActions";
 import {
   canonicalActivityEnvelope,
   createActivityEnvelopeV2,
@@ -150,6 +151,10 @@ export function PrivateActivityPublisher({
   const [activityType, setActivityType] = useState<1 | 2 | 3 | 4>(1);
   const [content, setContent] = useState("");
   const [proof, setProof] = useState<ActivityProof | null>(null);
+  const [proofDownloadStatus, setProofDownloadStatus] = useState<{
+    message: string;
+    error: boolean;
+  } | null>(null);
   const [pendingRecord, setPendingRecord] = useState<ActivityReceiptAction | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
   const pendingRecordKey = negotiationAccess && address
@@ -214,6 +219,7 @@ export function PrivateActivityPublisher({
 
   function downloadProof() {
     if (!proof) return;
+    setProofDownloadStatus(null);
     const payload = JSON.stringify(
       {
         algorithm: proof.algorithm,
@@ -224,13 +230,23 @@ export function PrivateActivityPublisher({
       null,
       2,
     );
-    const blob = new Blob([payload], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `openescrow-activity-${agreementId}-${proof.contentHash.slice(2, 10)}.json`;
-    anchor.click();
-    URL.revokeObjectURL(url);
+    try {
+      downloadTextFile(
+        payload,
+        "application/json",
+        `openescrow-activity-${agreementId}-${proof.contentHash.slice(2, 10)}.json`,
+      );
+      setProofDownloadStatus({
+        message: "Private proof downloaded. Keep it with the matching transaction receipt.",
+        error: false,
+      });
+    } catch (error) {
+      setProofDownloadStatus({
+        message:
+          error instanceof Error ? error.message : "The private proof could not be downloaded.",
+        error: true,
+      });
+    }
   }
 
   return (
@@ -248,6 +264,7 @@ export function PrivateActivityPublisher({
           onChange={(event) => {
             setActivityType(Number(event.target.value) as 1 | 2 | 3 | 4);
             setProof(null);
+            setProofDownloadStatus(null);
           }}
         >
           {activityTypes.map((option) => (
@@ -268,6 +285,7 @@ export function PrivateActivityPublisher({
           onChange={(event) => {
             setContent(event.target.value);
             setProof(null);
+            setProofDownloadStatus(null);
           }}
         />
       </label>
@@ -282,6 +300,7 @@ export function PrivateActivityPublisher({
             contentHash={contentHash}
             onSuccess={(transactionHash) => {
               setProof({ algorithm: "keccak256", canonical, contentHash, transactionHash });
+              setProofDownloadStatus(null);
               const action: ActivityReceiptAction = {
                 type: "activity_hash_published",
                 activityType,
@@ -316,6 +335,15 @@ export function PrivateActivityPublisher({
           >
             Open transaction receipt
           </a>
+          {proofDownloadStatus && (
+            <p
+              className={proofDownloadStatus.error ? "tx-error" : "tx-success"}
+              role={proofDownloadStatus.error ? "alert" : "status"}
+              aria-live={proofDownloadStatus.error ? "assertive" : "polite"}
+            >
+              {proofDownloadStatus.message}
+            </p>
+          )}
         </div>
       )}
       {pendingRecord && (

@@ -3,6 +3,7 @@ import { useAccount, useReadContract } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
 import { agreementReference } from "../lib/displayIds";
 import { formatUSDC, parseUSDC } from "../lib/format";
+import { copyTextToClipboard } from "../lib/browserActions";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
 import {
@@ -238,6 +239,19 @@ export function ResponseSection({
     }).then(setRecord);
   }
 
+  async function copyLandlordEmail(body: string) {
+    setNoticeStatus(null);
+    try {
+      await copyTextToClipboard(body);
+      setNoticeStatus("The landlord email was copied.");
+      recordNotice("copy");
+    } catch (error) {
+      setNoticeStatus(
+        error instanceof Error ? error.message : "The landlord email could not be copied.",
+      );
+    }
+  }
+
   if (
     !isTenant ||
     (agreement.phase !== Phase.ClaimOpen && !tenantResponded && !responseForNotice)
@@ -428,17 +442,32 @@ export function ResponseSection({
             <button
               className="btn btn-ghost"
               type="button"
-              onClick={() => {
-                void navigator.clipboard.writeText(email.body).then(() => {
-                  setNoticeStatus("The landlord email was copied.");
-                  recordNotice("copy");
-                });
-              }}
+              onClick={() => void copyLandlordEmail(email.body)}
             >
               Copy landlord email
             </button>
           </div>
-          {noticeStatus && <p className="field-help">{noticeStatus}</p>}
+          {noticeStatus && (
+            <p
+              className={
+                noticeStatus.includes("could not") || noticeStatus.includes("unavailable")
+                  ? "tx-error"
+                  : "field-help"
+              }
+              role={
+                noticeStatus.includes("could not") || noticeStatus.includes("unavailable")
+                  ? "alert"
+                  : "status"
+              }
+              aria-live={
+                noticeStatus.includes("could not") || noticeStatus.includes("unavailable")
+                  ? "assertive"
+                  : "polite"
+              }
+            >
+              {noticeStatus}
+            </p>
+          )}
         </div>
       )}
 

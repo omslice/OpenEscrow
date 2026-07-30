@@ -1,10 +1,12 @@
 import { useState } from "react";
+import { copyTextToClipboard } from "../lib/browserActions";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function TenantLandlordInvite() {
   const [landlordEmail, setLandlordEmail] = useState("");
   const [copied, setCopied] = useState(false);
+  const [copyError, setCopyError] = useState<string | null>(null);
   const normalizedEmail = landlordEmail.trim().toLowerCase();
   const isValid = EMAIL_PATTERN.test(normalizedEmail);
   const subject = "Your tenant invited you to try OpenEscrow";
@@ -26,6 +28,21 @@ export function TenantLandlordInvite() {
     normalizedEmail,
   )}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
 
+  async function copyInvite() {
+    setCopyError(null);
+    try {
+      await copyTextToClipboard(
+        `To: ${normalizedEmail}\nSubject: ${subject}\n\n${body}`,
+      );
+      setCopied(true);
+    } catch (error) {
+      setCopied(false);
+      setCopyError(
+        error instanceof Error ? error.message : "The landlord invitation could not be copied.",
+      );
+    }
+  }
+
   return (
     <section className="card tenant-landlord-invite" aria-labelledby="tenant-landlord-invite-title">
       <span className="eyebrow">Start with your landlord</span>
@@ -41,6 +58,7 @@ export function TenantLandlordInvite() {
           onChange={(event) => {
             setLandlordEmail(event.target.value);
             setCopied(false);
+            setCopyError(null);
           }}
           type="email"
           pattern="[^\s@]+@[^\s@]+\.[^\s@]+"
@@ -62,16 +80,16 @@ export function TenantLandlordInvite() {
           className="btn btn-secondary"
           type="button"
           disabled={!isValid}
-          onClick={() => {
-            void navigator.clipboard.writeText(
-              `To: ${normalizedEmail}\nSubject: ${subject}\n\n${body}`,
-            );
-            setCopied(true);
-          }}
+          onClick={() => void copyInvite()}
         >
           {copied ? "Landlord invite copied" : "Copy landlord invite"}
         </button>
       </div>
+      {copyError && (
+        <p className="tx-error" role="alert" aria-live="assertive">
+          {copyError}
+        </p>
+      )}
       <p className="field-help">
         This does not give the landlord access to your account. Their later proposal invitation
         will be tied to your tenant email.

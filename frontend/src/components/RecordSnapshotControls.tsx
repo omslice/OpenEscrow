@@ -13,6 +13,10 @@ import {
   writeRecoveryValue,
 } from "../lib/browserRecovery";
 import {
+  copyTextToClipboard,
+  downloadTextFile,
+} from "../lib/browserActions";
+import {
   loadNegotiationSnapshot,
   negotiationReportDownloadUrl,
   negotiationAction,
@@ -299,16 +303,6 @@ export function RecordSnapshotControls({
   const [status, setStatus] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  function downloadContent(content: string, type: string, filename: string) {
-    const blob = new Blob([content], { type });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = filename;
-    anchor.click();
-    URL.revokeObjectURL(url);
-  }
-
   async function downloadEncryptedRecord() {
     setLoading(true);
     setStatus(null);
@@ -319,13 +313,13 @@ export function RecordSnapshotControls({
         access.proposalId,
         agreementId,
       );
-      setSnapshot(next);
-      setEncryptedExport(encrypted);
-      downloadContent(
+      downloadTextFile(
         JSON.stringify(encrypted.archive, null, 2),
         "application/json",
         `openescrow-${access.proposalId}-${next.hash.slice(2, 10)}.encrypted.json`,
       );
+      setSnapshot(next);
+      setEncryptedExport(encrypted);
       setStatus(
         "Encrypted record downloaded. Save the verification key separately before leaving this page.",
       );
@@ -340,18 +334,39 @@ export function RecordSnapshotControls({
 
   function downloadVerificationKey() {
     if (!encryptedExport) return;
-    downloadContent(
-      [
-        "OpenEscrow encrypted record verification key",
-        "",
-        encryptedExport.verificationKey,
-        "",
-        `Record SHA-256: ${encryptedExport.archive.integrity.canonicalRecordHash}`,
-        "Keep this key private and separate from the encrypted JSON.",
-      ].join("\n"),
-      "text/plain",
-      `openescrow-${access.proposalId}-verification-key.txt`,
-    );
+    setStatus(null);
+    try {
+      downloadTextFile(
+        [
+          "OpenEscrow encrypted record verification key",
+          "",
+          encryptedExport.verificationKey,
+          "",
+          `Record SHA-256: ${encryptedExport.archive.integrity.canonicalRecordHash}`,
+          "Keep this key private and separate from the encrypted JSON.",
+        ].join("\n"),
+        "text/plain",
+        `openescrow-${access.proposalId}-verification-key.txt`,
+      );
+      setStatus("Verification key downloaded. Keep it private and separate from the encrypted JSON.");
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "The verification key could not be downloaded.",
+      );
+    }
+  }
+
+  async function copyVerificationKey() {
+    if (!encryptedExport) return;
+    setStatus(null);
+    try {
+      await copyTextToClipboard(encryptedExport.verificationKey);
+      setStatus("Verification key copied. Keep it private and separate from the encrypted JSON.");
+    } catch (error) {
+      setStatus(
+        error instanceof Error ? error.message : "The verification key could not be copied.",
+      );
+    }
   }
 
   return (
@@ -403,9 +418,7 @@ export function RecordSnapshotControls({
               <button
                 className="btn btn-ghost"
                 type="button"
-                onClick={() =>
-                  void navigator.clipboard.writeText(encryptedExport.verificationKey)
-                }
+                onClick={() => void copyVerificationKey()}
               >
                 Copy verification key
               </button>
@@ -477,6 +490,11 @@ export function RecordSnapshotControls({
             status.includes("could not") || status.includes("invalid")
               ? "alert"
               : "status"
+          }
+          aria-live={
+            status.includes("could not") || status.includes("invalid")
+              ? "assertive"
+              : "polite"
           }
         >
           {status}

@@ -4,6 +4,7 @@ import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
 import { agreementReference } from "../lib/displayIds";
 import { formatUSDC, parseUSDC } from "../lib/format";
 import { CALIFORNIA_POLICY } from "../lib/jurisdictions";
+import { copyTextToClipboard } from "../lib/browserActions";
 import {
   buildNegotiationInviteUrl,
   loadNegotiation,
@@ -505,6 +506,20 @@ export function ClaimSection({
   }
 
   const notice = tenantNotice();
+  async function copyClaimNotice() {
+    if (!notice) return;
+    setNoticeStatus(null);
+    try {
+      await copyTextToClipboard(notice.body);
+      setNoticeCopied(true);
+      recordNotice("copy");
+    } catch (error) {
+      setNoticeCopied(false);
+      setNoticeStatus(
+        error instanceof Error ? error.message : "The claim notice could not be copied.",
+      );
+    }
+  }
   const showNotice = agreement.phase === Phase.ClaimOpen || claimRecorded;
   const recordRecovery = pendingRecord && recordError && (
     <div className="receipt-recovery">
@@ -608,11 +623,7 @@ export function ClaimSection({
               <button
                 className="btn btn-secondary"
                 type="button"
-                onClick={async () => {
-                  await navigator.clipboard.writeText(notice.body);
-                  setNoticeCopied(true);
-                  recordNotice("copy");
-                }}
+                onClick={() => void copyClaimNotice()}
               >
                 {noticeCopied ? "Claim notice copied" : "Copy claim notice"}
               </button>
@@ -713,11 +724,7 @@ export function ClaimSection({
               <button
                 className="btn btn-secondary"
                 type="button"
-                onClick={async () => {
-                  await navigator.clipboard.writeText(notice.body);
-                  setNoticeCopied(true);
-                  recordNotice("copy");
-                }}
+                onClick={() => void copyClaimNotice()}
               >
                 {noticeCopied ? "Claim notice copied" : "Copy claim notice"}
               </button>

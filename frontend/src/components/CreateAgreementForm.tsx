@@ -44,6 +44,7 @@ import {
   readRecoveryJson,
   writeRecoveryJson,
 } from "../lib/browserRecovery";
+import { copyTextToClipboard } from "../lib/browserActions";
 import { preferredScrollBehavior } from "../lib/accessibility";
 import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
 import { useTrackedAgreements } from "../lib/useTrackedAgreements";
@@ -1348,9 +1349,16 @@ function AgreementForm({
   async function copyTenantInvite(tenantId: string) {
     const invitation = tenantInvite(tenantId);
     if (!invitation) return;
-    await navigator.clipboard.writeText(invitation.body);
-    setCopiedInvite(tenantId);
-    recordInvitation("tenant", "copy", tenantId);
+    setFormError(null);
+    try {
+      await copyTextToClipboard(invitation.body);
+      setCopiedInvite(tenantId);
+      recordInvitation("tenant", "copy", tenantId);
+    } catch (cause) {
+      setFormError(
+        cause instanceof Error ? cause.message : "The tenant invitation could not be copied.",
+      );
+    }
   }
 
   function openTenantInvite(tenantId: string) {
@@ -1363,9 +1371,16 @@ function AgreementForm({
   async function copyArbiterInvite() {
     const invitation = arbiterInvite();
     if (!invitation) return;
-    await navigator.clipboard.writeText(invitation.body);
-    setCopiedInvite("arbiter");
-    recordInvitation("arbiter", "copy");
+    setFormError(null);
+    try {
+      await copyTextToClipboard(invitation.body);
+      setCopiedInvite("arbiter");
+      recordInvitation("arbiter", "copy");
+    } catch (cause) {
+      setFormError(
+        cause instanceof Error ? cause.message : "The arbiter invitation could not be copied.",
+      );
+    }
   }
 
   function openArbiterInvite() {

@@ -25,6 +25,10 @@ import {
   useInviteRole,
 } from "../lib/inviteContext";
 import { writeRecoveryJson } from "../lib/browserRecovery";
+import {
+  copyTextToClipboard,
+  downloadTextFile,
+} from "../lib/browserActions";
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   agreementActivity: false,
@@ -54,6 +58,10 @@ export function PrivyAccountCenter({
   const [securityStatus, setSecurityStatus] = useState<string | null>(null);
   const [securityError, setSecurityError] = useState(false);
   const [isDownloadingInventory, setIsDownloadingInventory] = useState(false);
+  const [walletCopyStatus, setWalletCopyStatus] = useState<{
+    message: string;
+    error: boolean;
+  } | null>(null);
   const preferenceWrite = useRef(0);
   const isRefreshingReadinessRef = useRef(false);
   const [walletSetup, setWalletSetup] = useState<"idle" | "creating" | "slow" | "error">("idle");
@@ -242,17 +250,11 @@ export function PrivyAccountCenter({
     setSecurityStatus("Preparing your account data inventory...");
     try {
       const inventory = await loadAccountDataInventory(identityToken);
-      const blob = new Blob([`${JSON.stringify(inventory, null, 2)}\n`], {
-        type: "application/json",
-      });
-      const objectUrl = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = objectUrl;
-      link.download = `openescrow-account-data-inventory-${inventory.generatedAt.slice(0, 10)}.json`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+      downloadTextFile(
+        `${JSON.stringify(inventory, null, 2)}\n`,
+        "application/json",
+        `openescrow-account-data-inventory-${inventory.generatedAt.slice(0, 10)}.json`,
+      );
       setSecurityStatus(
         `Downloaded an inventory of ${inventory.records.length} account record reference(s). Complete shared records remain available in the Record tab.`,
       );
@@ -265,6 +267,20 @@ export function PrivyAccountCenter({
       );
     } finally {
       setIsDownloadingInventory(false);
+    }
+  }
+
+  async function copyWalletAddress(walletAddress: string, label: string) {
+    setWalletCopyStatus(null);
+    try {
+      await copyTextToClipboard(walletAddress);
+      setWalletCopyStatus({ message: `${label} copied.`, error: false });
+    } catch (error) {
+      setWalletCopyStatus({
+        message:
+          error instanceof Error ? error.message : "The wallet address could not be copied.",
+        error: true,
+      });
     }
   }
 
@@ -304,7 +320,9 @@ export function PrivyAccountCenter({
                   {address && (
                     <button
                       className="btn btn-secondary"
-                      onClick={() => void navigator.clipboard.writeText(address)}
+                      onClick={() =>
+                        void copyWalletAddress(address, `Your ${inviteRole} wallet address`)
+                      }
                     >
                       Copy my {inviteRole} wallet
                     </button>
@@ -387,7 +405,9 @@ export function PrivyAccountCenter({
                             )}
                             <button
                               className="btn btn-ghost"
-                              onClick={() => void navigator.clipboard.writeText(wallet.address)}
+                              onClick={() =>
+                                void copyWalletAddress(wallet.address, "Wallet address")
+                              }
                             >
                               Copy address
                             </button>
@@ -396,6 +416,15 @@ export function PrivyAccountCenter({
                       );
                     })}
                   </ul>
+                )}
+                {walletCopyStatus && (
+                  <p
+                    className={walletCopyStatus.error ? "tx-error" : "field-help"}
+                    role={walletCopyStatus.error ? "alert" : "status"}
+                    aria-live={walletCopyStatus.error ? "assertive" : "polite"}
+                  >
+                    {walletCopyStatus.message}
+                  </p>
                 )}
                 <button
                   className="btn btn-secondary"
