@@ -2208,6 +2208,72 @@ test("monitored compliance sources fail closed for pending, changed, and stale p
   );
 });
 
+test("a user-triggered state source check reports provenance without rewriting a profile", async () => {
+  const db = new TestD1();
+  await worker.fetch(request("/api/system/readiness"), { DB: db });
+  const originalFetch = globalThis.fetch;
+  let sourceBody = "official requirements baseline";
+  let fetchCount = 0;
+  globalThis.fetch = async () => {
+    fetchCount += 1;
+    return new Response(sourceBody, {
+      status: 200,
+      headers: {
+        "content-type": "text/html",
+        etag: `"version-${fetchCount}"`,
+      },
+    });
+  };
+  const sourceRequest = () =>
+    request("/api/compliance/source-status", "POST", {
+      jurisdiction: newYorkProfile.code,
+      profileVersion: newYorkProfile.version,
+    });
+  const env = {
+    DB: db,
+    COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+  };
+
+  try {
+    const baseline = await jsonResponse(await worker.fetch(sourceRequest(), env));
+    assert.equal(baseline.source.status, "unchanged");
+    assert.equal(baseline.source.requiresReview, false);
+    assert.match(baseline.source.url, /^https:/);
+    assert.ok(baseline.source.lastCheckedAt);
+    assert.match(baseline.immutableSnapshotNotice, /keep their recorded/i);
+    assert.equal(fetchCount, 1);
+
+    const throttled = await jsonResponse(await worker.fetch(sourceRequest(), env));
+    assert.equal(throttled.source.status, "unchanged");
+    assert.equal(fetchCount, 1, "A recent manual source check should be reused.");
+
+    await db
+      .prepare(
+        `UPDATE compliance_source_checks
+         SET last_checked_at = '2020-01-01T00:00:00.000Z'
+         WHERE source_key = 'state:ny'`,
+      )
+      .run();
+    sourceBody = "official requirements changed";
+    const changed = await jsonResponse(await worker.fetch(sourceRequest(), env));
+    assert.equal(changed.source.status, "changed");
+    assert.equal(changed.source.requiresReview, true);
+    assert.equal(changed.profileVersion, newYorkProfile.version);
+    assert.equal(fetchCount, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const unknown = await worker.fetch(
+    request("/api/compliance/source-status", "POST", {
+      jurisdiction: newYorkProfile.code,
+      profileVersion: "unreviewed-version",
+    }),
+    env,
+  );
+  assert.equal(unknown.status, 404);
+});
+
 test("every reviewed local overlay requires its exact monitored source", async () => {
   const db = new TestD1();
   await worker.fetch(request("/api/system/readiness"), { DB: db });

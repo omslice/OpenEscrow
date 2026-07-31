@@ -50,6 +50,9 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Deadline events that require party confirmation when based on off-chain facts
 - [x] Regression coverage for registry completeness, holiday-aware business days, conditional
   deadline branches, and address-applied local-overlay source gates
+- [x] Address-routed proposals show the profile research date and official state source, with a
+  version-pinned source recheck that detects possible changes but cannot rewrite reviewed rules
+  or finalized agreement snapshots
 - [ ] Select initial cities/counties and implement approved local overlays
 - [ ] Complete official-source baselines and resolve every change/unreachable-source alert
 - [ ] Obtain qualified counsel review for each launched jurisdiction and tenancy segment
@@ -138,6 +141,8 @@ the repository; they are not claims of legal approval or production readiness.
   outcomes use explicit atomic status/error semantics rather than message-text inference
 - [x] Supporting-evidence upload recovery with an explicit same-file retry, announced busy/error
   states, focus restoration, agreement/access-scope isolation, and rendered mobile regression
+- [x] Consumer-facing activity summaries keep hashes and storage receipts behind expandable
+  verification details, and the optional-yield dialog remains spaced and legible at 80% zoom
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a
   shared deadline clock
 - [x] Proposal-review polling is isolated from user actions: stale refreshes cannot replace a
@@ -175,6 +180,33 @@ the repository; they are not claims of legal approval or production readiness.
 - [ ] Run separate-account testnet pilot and accessibility/usability reviews
 - [ ] Commission independent contract/application security and privacy/threat-model reviews
 - [ ] Approve operating policies, support, incident response, stop conditions, and release envelope
+
+## 6. International compliance expansion
+
+**Status: planned after the U.S. testnet MVP; architecture work may proceed opportunistically**
+
+The product should describe these profiles as an official-source-based starting point, not a
+guarantee or automated legal opinion. A landlord must review and confirm the populated information,
+but that confirmation does not permit OpenEscrow to publish misleading or unreviewed rules.
+
+- [ ] Generalize the profile schema from U.S. state/local routing to
+  country/region/locality/tenancy-segment routing without weakening existing U.S. snapshots
+- [ ] Add international address validation, currency, language, tenancy-type, custody-model, and
+  dispute-forum fields while keeping finalized snapshots immutable
+- [ ] Define a first-market sequence; Canada, the United Kingdom, Australia, and Germany are the
+  current research candidates after the U.S. pilot
+- [ ] Build versioned official-source inventories and consumer-readable profiles for the first
+  market cohort, with source date, last-check date, coverage gaps, and explicit landlord review
+- [ ] Extend source monitoring so a detected change blocks adoption of that profile version and
+  opens a human review task; never auto-rewrite a legal rule or finalized agreement
+- [ ] Add country/region/local regression matrices, conditional-rule tests, and synthetic pilot
+  rehearsals for each custody and dispute model
+- [ ] Obtain qualified local review and approve product language before enabling each market
+
+Planning estimate: 2â€“4 weeks for an international-ready schema, 3â€“5 months for an initial
+five-market cohort with dedicated research/engineering capacity, 9â€“18 months for roughly
+20â€“25 major countries, and 2â€“3 years for broad 50+ country coverage. Every estimate assumes
+security-deposit requirements only and an ongoing maintenance program.
 
 ## Production boundary
 

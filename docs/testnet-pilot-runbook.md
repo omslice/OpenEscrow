@@ -58,7 +58,8 @@ account-switch check holds archive, inventory, wallet setup,
 record-session revocation, preference-save, and test-email operations open across two deterministic
 identities and proves the old account cannot update, download into, announce inside, or sign out
 the new account. The accessibility check covers the public yield dialog and focus return,
-workspace tab keyboard behavior, proposal editor focus recovery, keyboard address selection, and
+80%-zoom yield-card spacing and badge legibility, workspace tab keyboard behavior, proposal editor
+focus recovery, keyboard address selection, the official-source provenance/recheck control, and
 mobile-width overflow.
 
 Dynamic wallet setup, transaction, proposal, negotiation, account-security, notification,

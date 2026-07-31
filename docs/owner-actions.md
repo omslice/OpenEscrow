@@ -44,7 +44,9 @@ provider or hosting control that owns the secret.
 - [ ] **Let the official-source baseline complete and resolve every blocking
   source alert.** Ask Codex for the deployed readiness report after each
   scheduled batch; a changed source needs a new official-source review and
-  versioned rule update, not a configuration bypass.
+  versioned rule update, not a configuration bypass. The proposal's source
+  recheck also remains unavailable until the hosted monitor and D1 storage are
+  enabled.
 - [ ] **Run the separate-account operator test.** Use invented identities,
   separate landlord and tenant Google accounts, and worthless Base Sepolia
   tokens; follow [`testnet-pilot-runbook.md`](./testnet-pilot-runbook.md).
@@ -84,6 +86,18 @@ provider or hosting control that owns the secret.
   disputes, accessibility, privacy requests, and breach notification.
 - [ ] **Approve the mainnet release envelope** only after the legal, security,
   provider, reliability, and supervised-pilot gates are documented as passed.
+
+## Needed before international expansion
+
+- [ ] **Choose the first international market cohort.** Canada, the United
+  Kingdom, Australia, and Germany are current research candidates, but the
+  launch order should follow actual pilot demand.
+- [ ] **Choose supported languages, currencies, tenancy segments, and local
+  coverage for each market.** Deposit-only residential coverage is the current
+  planning boundary.
+- [ ] **Retain qualified local reviewers before enabling a market.** The
+  landlord confirmation and official-source links are safeguards, not a
+  substitute for accurate product guidance and local review.
 
 ## Completed owner actions
 

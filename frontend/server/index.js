@@ -1289,6 +1289,77 @@ function complianceSourceGateResponse(gate) {
   );
 }
 
+async function complianceSourceStatus(request, env) {
+  if (!sameOriginPost(request)) {
+    return json({ error: "Cross-origin compliance checks are not allowed." }, 403);
+  }
+  if (!env.DB || env.COMPLIANCE_SOURCE_MONITOR_ENABLED !== "true") {
+    return json(
+      {
+        error:
+          "Official-source checking is not available in this environment. The recorded profile and source link remain visible.",
+      },
+      503,
+    );
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "A valid compliance profile is required." }, 400);
+  }
+  const jurisdiction = cleanText(body?.jurisdiction, 100);
+  const profileVersion = cleanText(body?.profileVersion, 100);
+  const profile = US_JURISDICTION_PROFILE_BY_CODE[jurisdiction];
+  const sourceItem = COMPLIANCE_SOURCE_REGISTRY.find(
+    (item) =>
+      item.scope === "state" &&
+      item.jurisdiction === jurisdiction &&
+      item.version === profileVersion,
+  );
+  if (!profile || profile.version !== profileVersion || !sourceItem) {
+    return json({ error: "That versioned compliance profile is not available." }, 404);
+  }
+
+  await initialize(env.DB);
+  await seedComplianceSources(env.DB);
+  let row = await env.DB
+    .prepare("SELECT * FROM compliance_source_checks WHERE source_key = ?")
+    .bind(sourceItem.key)
+    .first();
+  const lastCheckedMs = row?.last_checked_at
+    ? new Date(row.last_checked_at).getTime()
+    : Number.NaN;
+  const minimumRefreshIntervalMs = 5 * 60 * 1000;
+  if (
+    !Number.isFinite(lastCheckedMs) ||
+    Date.now() - lastCheckedMs >= minimumRefreshIntervalMs
+  ) {
+    await checkComplianceSource(env.DB, row, new Date());
+    row = await env.DB
+      .prepare("SELECT * FROM compliance_source_checks WHERE source_key = ?")
+      .bind(sourceItem.key)
+      .first();
+  }
+
+  const status = cleanText(row?.status, 40) || "pending";
+  return json({
+    jurisdiction,
+    profileVersion,
+    source: {
+      citation: sourceItem.citation,
+      url: sourceItem.url,
+      status,
+      lastCheckedAt: row?.last_checked_at || null,
+      lastVerifiedAt: row?.last_verified_at || null,
+      requiresReview: status === "changed" || status === "pending",
+    },
+    immutableSnapshotNotice:
+      "Finalized agreements keep their recorded compliance snapshot. A source change must be reviewed and published as a new profile version before a draft can adopt it.",
+  });
+}
+
 function randomToken() {
   const bytes = new Uint8Array(32);
   crypto.getRandomValues(bytes);
@@ -7630,6 +7701,12 @@ const worker = {
     }
     if (url.pathname === "/api/address-suggestions" && request.method === "GET") {
       return addressSuggestions(request, env);
+    }
+    if (
+      url.pathname === "/api/compliance/source-status" &&
+      request.method === "POST"
+    ) {
+      return complianceSourceStatus(request, env);
     }
     if (url.pathname === "/api/system/readiness" && request.method === "GET") {
       return serviceReadiness(env);

@@ -21,7 +21,7 @@ production readiness, or authorization to hold real rental deposits.
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   R2/encrypted-IPFS cleanup after metadata failure, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 80 server tests, 137 client-logic
+- **Verified:** The full repository release check passes with 81 server tests, 140 client-logic
   tests, lint, browser account-switch, funding-recovery, accessibility/mobile, and load-recovery
   smoke checks, and the production build. These rendered checks are part of the required
   `npm run check` path rather than separate, potentially stale results.
@@ -34,6 +34,9 @@ production readiness, or authorization to hold real rental deposits.
   code selects the exact versioned statewide profile. Foreign, unknown, and state-mismatched
   addresses fail closed; every generated snapshot remains detached after its source address and
   nested rules are edited, and current-page routing survives blocked browser storage.
+- **Verified:** A validated statewide profile now shows its research date and official source
+  link. A rate-limited, version-pinned recheck reports when that source was checked and flags
+  possible changes without silently rewriting the reviewed profile or a finalized agreement.
 - **Verified:** The compliance source registry is immutable, uniquely keyed, HTTPS-only, and
   version-matched to every statewide and overlay source. Missing exact sources now fail closed in
   automated proposal tests for all three reviewed local overlays: Chicago, Seattle, and Portland.
@@ -211,6 +214,10 @@ production readiness, or authorization to hold real rental deposits.
 - **Verified:** Supporting-evidence uploads now expose an explicit same-file retry, announce busy,
   success, and error states, restore keyboard focus after recovery, and reject a delayed completion
   after the agreement or access token changes. A rendered mobile regression covers this flow.
+- **Verified:** The optional-yield dialog has explicit heading-to-card spacing and larger asset
+  badges, with a rendered 80%-zoom regression. Technical hashes and receipt text in the Record
+  activity feed now sit behind **Details for verification**, while the main feed uses
+  consumer-readable descriptions.
 - **Verified:** The exact validated candidate source is pushed to the existing Sites source
   branch and saved as a newer undeployed Sites version after each coherent slice. The public
   production deployment remains unchanged.
@@ -228,6 +235,10 @@ production readiness, or authorization to hold real rental deposits.
   fiat, mainnet contracts, FRNT, and USDY remain disabled.
 - **Planned:** Complete external legal, smart-contract, application-security, privacy, provider,
   and operating-policy reviews before any real-money release.
+- **Planned:** International compliance is now a lower-priority staged roadmap track behind the
+  U.S. testnet pilot: generalize country/region/local routing first, then build versioned
+  official-source profiles and regressions market by market. No foreign profile is implemented or
+  approved yet.
 - **Verified:** Infrequently used proposal, deposit, funding, invitation, and record tools load
   only when their tab or expanded section needs them. This reduced the main workspace chunk from
   about 345.9 KB to 74.2 KB (about 79%) while preserving keyboard focus behavior.

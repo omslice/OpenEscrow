@@ -42,6 +42,10 @@ import { preferredScrollBehavior } from "./lib/accessibility";
 import { startVisibilityAwarePolling } from "./lib/visiblePolling";
 import { replaceRecoveryUrl } from "./lib/browserRecovery";
 import { createAccountOperationGuard } from "./lib/accountOperationGuard";
+import {
+  activityHasVerificationDetails,
+  friendlyActivitySummary,
+} from "./lib/activityDisplay";
 import "./App.css";
 
 const AgreementCard = lazy(() =>
@@ -757,7 +761,7 @@ function AppView({
           id: `${item.record.id}-${event.id}`,
           createdAt: event.createdAt,
           actor: roleLabel[event.actorRole as keyof typeof roleLabel] || "System",
-          summary: event.summary,
+          summary: friendlyActivitySummary(event),
           onOpen: () => openProposalNotification(item, event.action),
         })),
     ),
@@ -1183,7 +1187,13 @@ function AppView({
                       <strong>
                         {roleLabel[event.actorRole as keyof typeof roleLabel] || "System"}
                       </strong>
-                      <span>{event.summary}</span>
+                      <span>{friendlyActivitySummary(event)}</span>
+                      {activityHasVerificationDetails(event) && (
+                        <details className="activity-verification-details">
+                          <summary>Details for verification</summary>
+                          <p>{event.summary}</p>
+                        </details>
+                      )}
                     </li>
                   ))}
                 </ol>

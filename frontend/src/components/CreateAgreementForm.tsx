@@ -50,8 +50,14 @@ import {
   openExternalWindow,
 } from "../lib/browserActions";
 import { preferredScrollBehavior } from "../lib/accessibility";
+import { createAsyncOperationScope } from "../lib/asyncOperationScope";
 import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
 import type { InviteRole } from "../lib/inviteContext";
+import {
+  checkComplianceSourceStatus,
+  complianceSourceStatusMessage,
+  type ComplianceSourceStatus,
+} from "../lib/complianceSourceStatus";
 import {
   buildNegotiationInviteUrl,
   addNegotiationTenant,
@@ -247,6 +253,20 @@ function totalFundingAmount(deposit: string, reserve: string) {
   }
 }
 
+function readableComplianceDate(value: string | null | undefined): string {
+  if (!value) return "Not checked yet";
+  const date = new Date(value.length === 10 ? `${value}T00:00:00Z` : value);
+  if (!Number.isFinite(date.getTime())) return value;
+  return new Intl.DateTimeFormat(undefined, {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    ...(value.length === 10
+      ? {}
+      : { hour: "numeric", minute: "2-digit", timeZoneName: "short" }),
+  }).format(date);
+}
+
 function TenantFundingDue({
   deposit,
   reserve,
@@ -344,6 +364,22 @@ function AgreementForm({
   const [complianceFacts, setComplianceFacts] = useState<ComplianceFacts>({
     ...DEFAULT_COMPLIANCE_FACTS,
   });
+  const complianceSourceScope = useMemo(
+    () =>
+      createAsyncOperationScope(
+        selectedJurisdiction
+          ? `${selectedJurisdiction.code}:${selectedJurisdiction.version}`
+          : "no-jurisdiction",
+      ),
+    [selectedJurisdiction],
+  );
+  const [complianceSourceResult, setComplianceSourceResult] =
+    useState<ComplianceSourceStatus | null>(null);
+  const [complianceSourceError, setComplianceSourceError] = useState<string | null>(
+    null,
+  );
+  const [isCheckingComplianceSource, setIsCheckingComplianceSource] =
+    useState(false);
   const [primaryTenantShareBps, setPrimaryTenantShareBps] = useState(10000);
   const [tenantShareDraft, setTenantShareDraft] = useState<Record<string, number>>({});
   const [deposit, setDeposit] = useState("100");
@@ -419,6 +455,40 @@ function AgreementForm({
           complianceFacts,
         )
       : null;
+
+  useEffect(() => {
+    complianceSourceScope.open();
+    setComplianceSourceResult(null);
+    setComplianceSourceError(null);
+    setIsCheckingComplianceSource(false);
+    return () => complianceSourceScope.close();
+  }, [complianceSourceScope]);
+
+  async function refreshComplianceSource() {
+    if (!selectedJurisdiction) return;
+    const operationId = complianceSourceScope.start();
+    setComplianceSourceError(null);
+    setIsCheckingComplianceSource(true);
+    try {
+      const result = await checkComplianceSourceStatus(
+        selectedJurisdiction.code,
+        selectedJurisdiction.version,
+      );
+      if (!complianceSourceScope.isCurrent(operationId)) return;
+      setComplianceSourceResult(result);
+    } catch (cause) {
+      if (!complianceSourceScope.isCurrent(operationId)) return;
+      setComplianceSourceError(
+        cause instanceof Error
+          ? cause.message
+          : "OpenEscrow could not check the official source right now. Try again later.",
+      );
+    } finally {
+      if (complianceSourceScope.isCurrent(operationId)) {
+        setIsCheckingComplianceSource(false);
+      }
+    }
+  }
 
   const landlordAccess = useMemo<NegotiationAccess | null>(
     () =>
@@ -2504,16 +2574,6 @@ function AgreementForm({
                 </li>
               ))}
               <li>Deposit baseline: {selectedJurisdiction.depositCapSummary}</li>
-              <li>
-                Primary source:{" "}
-                <a
-                  href={selectedJurisdiction.statuteUrl}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {selectedJurisdiction.statuteCitation}
-                </a>
-              </li>
             </ul>
             <details>
               <summary>Applied statewide requirement checklist</summary>
@@ -2562,10 +2622,76 @@ function AgreementForm({
                 )}
               </details>
             )}
+            <section
+              className="compliance-source-panel"
+              aria-labelledby="compliance-source-title"
+              aria-busy={isCheckingComplianceSource}
+            >
+              <div>
+                <strong id="compliance-source-title">Official requirements source</strong>
+                <p>
+                  <a
+                    href={selectedJurisdiction.statuteUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    {selectedJurisdiction.statuteCitation}
+                  </a>
+                </p>
+                <p className="field-help">
+                  Profile research date:{" "}
+                  <time dateTime={selectedJurisdiction.researchedOn}>
+                    {readableComplianceDate(selectedJurisdiction.researchedOn)}
+                  </time>
+                  {complianceSourceResult?.source.lastCheckedAt && (
+                    <>
+                      {" "}
+                      · Official source last checked:{" "}
+                      <time dateTime={complianceSourceResult.source.lastCheckedAt}>
+                        {readableComplianceDate(
+                          complianceSourceResult.source.lastCheckedAt,
+                        )}
+                      </time>
+                    </>
+                  )}
+                </p>
+              </div>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                disabled={isCheckingComplianceSource}
+                onClick={() => void refreshComplianceSource()}
+              >
+                {isCheckingComplianceSource
+                  ? "Checking official source..."
+                  : "Check official source for updates"}
+              </button>
+              {complianceSourceResult && (
+                <p
+                  className={
+                    complianceSourceResult.source.requiresReview
+                      ? "tx-error"
+                      : "tx-success"
+                  }
+                  role="status"
+                  aria-live="polite"
+                  aria-atomic="true"
+                >
+                  {complianceSourceStatusMessage(complianceSourceResult.source)}{" "}
+                  Finalized agreements keep their recorded compliance snapshot.
+                </p>
+              )}
+              {complianceSourceError && (
+                <p className="tx-error" role="alert">
+                  {complianceSourceError}
+                </p>
+              )}
+            </section>
             <p className="field-help">
-              Official-source snapshot checked {selectedJurisdiction.researchedOn}. City, county,
-              housing-program, property-type, and fact-specific overlays remain flagged for
-              resolution. This software output is not legal advice or a guarantee.
+              City, county, housing-program, property-type, and fact-specific overlays remain
+              flagged for resolution. A source check detects possible changes but never rewrites
+              legal requirements automatically. This software output is not legal advice or a
+              guarantee.
             </p>
           </>
         ) : (

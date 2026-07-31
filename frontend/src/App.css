@@ -545,12 +545,14 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 20px;
+  margin-bottom: 24px;
 }
 
 .yield-explainer-heading h3 {
   margin: 4px 0 0;
   color: var(--text-h);
   font-size: clamp(24px, 4vw, 34px);
+  line-height: 1.08;
   letter-spacing: -0.035em;
 }
 
@@ -644,12 +646,14 @@
 .yield-asset-card > .yield-asset-badge {
   display: inline-flex;
   width: auto;
-  height: auto;
-  padding: 5px 8px;
+  min-height: 32px;
+  padding: 7px 12px;
+  align-items: center;
   border: 1px solid var(--border);
   border-radius: 999px;
-  font-size: 10px;
-  line-height: 1.2;
+  font-size: 12px;
+  line-height: 1.25;
+  letter-spacing: 0.015em;
 }
 
 .yield-asset-card > .yield-asset-badge.no-yield {
@@ -1423,6 +1427,30 @@
 }
 
 .california-policy p {
+  margin: 0;
+}
+
+.compliance-source-panel {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 76%, transparent);
+}
+
+.compliance-source-panel > div {
+  display: grid;
+  gap: 4px;
+}
+
+.compliance-source-panel .btn {
+  width: fit-content;
+  min-height: 42px;
+}
+
+.compliance-source-panel .tx-error,
+.compliance-source-panel .tx-success {
   margin: 0;
 }
 
@@ -3376,6 +3404,27 @@ a.btn.disabled {
   text-transform: capitalize;
 }
 
+.activity-verification-details {
+  grid-column: 3;
+  margin-top: 3px;
+}
+
+.activity-verification-details summary {
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.activity-verification-details p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .record-snapshot {
   display: grid;
   gap: 0;
@@ -3897,6 +3946,10 @@ a.btn.disabled {
   .activity-timeline li {
     grid-template-columns: 1fr;
     gap: 3px;
+  }
+
+  .activity-verification-details {
+    grid-column: 1;
   }
 
   .onchain-activity-item {

@@ -105,6 +105,7 @@ try {
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   let destructiveProposalRequests = 0;
+  let complianceSourceChecks = 0;
 
   await page.route("**/api/address-suggestions**", async (route) => {
     await route.fulfill({
@@ -137,6 +138,29 @@ try {
             attestation: "test-attestation",
           },
         ],
+      }),
+    });
+  });
+  await page.route("**/api/compliance/source-status", async (route) => {
+    complianceSourceChecks += 1;
+    assert.equal(route.request().method(), "POST");
+    const input = route.request().postDataJSON();
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        jurisdiction: input.jurisdiction,
+        profileVersion: input.profileVersion,
+        source: {
+          citation: "California Civil Code",
+          url: "https://leginfo.legislature.ca.gov/",
+          status: "unchanged",
+          lastCheckedAt: "2026-07-30T12:00:00.000Z",
+          lastVerifiedAt: "2026-07-30T12:00:00.000Z",
+          requiresReview: false,
+        },
+        immutableSnapshotNotice:
+          "Finalized agreements keep their recorded compliance snapshot.",
       }),
     });
   });
@@ -173,6 +197,37 @@ try {
     "Close yield explanation",
     "The yield dialog should move focus to its close control.",
   );
+  const yieldZoomGeometry = await page.evaluate(() => {
+    document.documentElement.style.zoom = "0.8";
+    const heading = document.querySelector(".yield-explainer-heading");
+    const firstCard = document.querySelector(".yield-asset-card");
+    const badges = Array.from(document.querySelectorAll(".yield-asset-badge"));
+    const headingBox = heading?.getBoundingClientRect();
+    const cardBox = firstCard?.getBoundingClientRect();
+    return {
+      headingBottom: headingBox?.bottom || 0,
+      cardTop: cardBox?.top || 0,
+      badges: badges.map((badge) => ({
+        height: badge.getBoundingClientRect().height,
+        fontSize: Number.parseFloat(getComputedStyle(badge).fontSize),
+      })),
+    };
+  });
+  assert.equal(
+    yieldZoomGeometry.cardTop - yieldZoomGeometry.headingBottom >= 12,
+    true,
+    `The yield heading must not overlap its cards at 80% zoom: ${JSON.stringify(yieldZoomGeometry)}`,
+  );
+  assert.equal(
+    yieldZoomGeometry.badges.every(
+      (badge) => badge.height >= 24 && badge.fontSize >= 12,
+    ),
+    true,
+    `Yield asset badges should remain readable at 80% zoom: ${JSON.stringify(yieldZoomGeometry.badges)}`,
+  );
+  await page.evaluate(() => {
+    document.documentElement.style.zoom = "";
+  });
   await page.keyboard.press("Escape");
   await yieldDialog.waitFor({ state: "hidden" });
   await page.waitForFunction(
@@ -242,6 +297,24 @@ try {
   );
 
   await page.getByRole("button", { name: "Continue to deposit terms" }).click();
+  const sourcePanel = page.getByRole("region", {
+    name: "Official requirements source",
+  });
+  assert.equal(
+    await sourcePanel.getByRole("link").getAttribute("href"),
+    "https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CIV&sectionNum=1950.5.",
+    "The address-routed profile should expose its official source link.",
+  );
+  await sourcePanel
+    .getByRole("button", { name: "Check official source for updates" })
+    .click();
+  await sourcePanel
+    .getByText("The official source matches the reviewed profile baseline.", {
+      exact: false,
+    })
+    .waitFor({ state: "visible" });
+  assert.equal(complianceSourceChecks, 1);
+  assert.match(await sourcePanel.textContent(), /Official source last checked:/);
   await page.getByLabel("Monthly rent").fill("1500");
   await page.getByRole("button", { name: "Continue to review" }).click();
   await page.getByRole("button", { name: "Save proposal for review" }).click();
