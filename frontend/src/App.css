@@ -4040,6 +4040,10 @@ a.btn.disabled {
     justify-content: flex-start;
   }
 
+  .account-entry .btn {
+    min-height: 44px;
+  }
+
   .account-connection-controls {
     max-width: none;
   }

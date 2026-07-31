@@ -472,6 +472,79 @@ try {
   );
   await agreementInvitationContext.close();
 
+  const returningAccountContext = await browser.newContext();
+  await returningAccountContext.addInitScript(() => {
+    window.localStorage.setItem(
+      "openescrow:account-provider-activated",
+      "1",
+    );
+  });
+  const returningAccountPage = await returningAccountContext.newPage();
+  await returningAccountPage.goto(`${baseUrl}/?public-access-test=1`, {
+    waitUntil: "domcontentloaded",
+  });
+  await returningAccountPage.waitForFunction(
+    () => Boolean(window.__openEscrowAccountSwitchTest),
+  );
+  await returningAccountPage
+    .getByRole("button", { name: "Continue with Google" })
+    .waitFor({ state: "visible" });
+  assert.deepEqual(
+    await returningAccountPage.evaluate(
+      () => window.__openEscrowAccountSwitchTest?.snapshot().loginAttempts,
+    ),
+    [],
+    "A prior activation hint may restore the provider but must not start sign-in by itself.",
+  );
+  await returningAccountContext.close();
+
+  const rejectedLoginContext = await browser.newContext();
+  const rejectedLoginPage = await rejectedLoginContext.newPage();
+  await rejectedLoginPage.goto(
+    `${baseUrl}/?public-access-test=1&login-reject-test=1`,
+    { waitUntil: "domcontentloaded" },
+  );
+  await rejectedLoginPage
+    .getByRole("button", { name: "Continue with a wallet" })
+    .click();
+  await rejectedLoginPage
+    .getByRole("alert")
+    .filter({ hasText: "Sign-in did not open" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await rejectedLoginPage
+      .getByRole("heading", { name: "A better way to handle rental deposits." })
+      .count(),
+    1,
+    "A rejected provider-on-demand sign-in must retain the public explanation.",
+  );
+  assert.equal(
+    await rejectedLoginPage.getByRole("tab", { name: "Overview" }).count(),
+    0,
+    "A rejected sign-in must not load an authenticated workspace.",
+  );
+  await rejectedLoginPage
+    .getByRole("button", { name: "Continue with a wallet" })
+    .click();
+  await rejectedLoginPage
+    .getByRole("alert")
+    .filter({ hasText: "Sign-in could not start" })
+    .waitFor({ state: "visible" });
+  await rejectedLoginPage
+    .getByRole("button", { name: "Continue with a wallet" })
+    .click();
+  await rejectedLoginPage
+    .getByRole("heading", { name: "How are you using OpenEscrow today?" })
+    .waitFor({ state: "visible" });
+  assert.deepEqual(
+    await rejectedLoginPage.evaluate(
+      () => window.__openEscrowAccountSwitchTest?.snapshot().loginAttempts,
+    ),
+    ["wallet", "wallet", "wallet"],
+    "Rejected automatic and direct wallet sign-in attempts must recover through the same method without a reload.",
+  );
+  await rejectedLoginContext.close();
+
   await page.goto(`${baseUrl}/?public-access-test=1`, {
     waitUntil: "networkidle",
   });
@@ -489,6 +562,13 @@ try {
   await page
     .getByRole("heading", { name: "How are you using OpenEscrow today?" })
     .waitFor();
+  assert.deepEqual(
+    await page.evaluate(
+      () => window.__openEscrowAccountSwitchTest?.snapshot().loginAttempts,
+    ),
+    ["google"],
+    "The first public Google choice must open the matching provider method without a second click.",
+  );
   await page.getByRole("button", { name: /I am a landlord/ }).click();
   await page.getByRole("tab", { name: "Proposals" }).click();
   await page.getByRole("heading", { name: "OE-P-AAAAAAAA" }).waitFor();

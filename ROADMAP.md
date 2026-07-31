@@ -173,6 +173,9 @@ the repository; they are not claims of legal approval or production readiness.
   finalization failures remain visible for a safe retry
 - [x] Establish an initial browser performance budget and split the bootstrap from the
   authenticated wallet/workspace bundle
+- [x] Keep first-time public visits provider-free until an explicit Google/wallet choice, preserve
+  returning-account discovery through a non-sensitive device hint, and capture role-locked
+  invitations before the provider module finishes loading
 - [x] Split infrequently used proposal, deposit, and record tools into tab-level chunks
 - [x] Load each agreement's funding and claims tools only after that panel is visited, preserve
   the mounted panel after first use, and contain deferred-load failures within the agreement

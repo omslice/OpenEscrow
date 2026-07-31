@@ -26,11 +26,13 @@ export function Layout({
   notifications = [],
   notificationStorageScope = "guest",
   showNotifications = true,
+  accountEntry,
 }: {
   children: ReactNode;
   notifications?: AppNotification[];
   notificationStorageScope?: string | null;
   showNotifications?: boolean;
+  accountEntry?: ReactNode;
 }) {
   const readStateKey = `openescrow:read-notifications:${
     notificationStorageScope?.toLowerCase() || "guest"
@@ -154,7 +156,7 @@ export function Layout({
               </div>
             </details>
           )}
-          <ConnectWallet />
+          {accountEntry === undefined ? <ConnectWallet /> : accountEntry}
         </div>
       </header>
       <div className="demo-notice" role="status">

@@ -66,17 +66,17 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** Deferred workspace loading, bounded onchain event reads, shared receipt polling,
   one-snapshot wallet discovery, and workspace-only blockchain wallet providers reduce initial and
   repeat network work without weakening account recognition, invitation roles, or receipt checks.
-- **Verified:** A clean logged-out visit now shows neutral Google/wallet sign-in instead of loading
-  the agreement workspace or asking for a role. Only a valid invitation can preselect a role, and
-  its bearer token is scrubbed before the lazy workspace loads. If the account provider is
-  unreachable, the public explanation renders immediately with a focused retry instead of an
-  indefinite loading screen; restricted invitations retain their token only in the current tab
-  and fail closed before workspace or wallet code loads. The production browser budget holds the
-  landing path to 48 or fewer JavaScript requests and 2.27 MB or less, keeps the 62 KB U.S.
-  jurisdiction registry and blockchain wallet providers deferred, and verifies mobile access and
-  focus. A provider-independent rendered regression separately proves normal Google/wallet entry,
-  exact invitation roles, and same-tab recovery from a failed first workspace download without
-  restoring the bearer to the URL.
+- **Verified:** A clean logged-out visit shows neutral Google/wallet choices without loading the
+  account provider, agreement workspace, jurisdiction registry, or blockchain wallet code. The
+  provider loads only after an explicit choice, opens the selected method without a second click,
+  and recovers from both automatic and direct sign-in rejection without hiding the public page or
+  loading a workspace. A non-sensitive device hint restores the provider for returning users but
+  never starts sign-in by itself. The production regression now measures 10 initial JavaScript
+  requests and about 245 KB, with enforced ceilings of 12 requests and 300 KB, roughly 79% fewer
+  requests and 89% fewer bytes than the prior 48-request, 2.25 MB checkpoint. Valid invitations
+  still preselect only their exact role, capture current-tab recovery and scrub the bearer before
+  the provider module finishes loading, and fail closed before workspace or wallet code during an
+  outage. Mobile sign-in, retry, focus, and same-tab workspace-download recovery remain covered.
 - **Verified:** The shared public/workspace footer explains testnet file safety in plain language
   and offers an accessible, mobile-size control to copy the optional `omslice.eth` donation
   address. Donations are explicitly separate from deposits and product access.

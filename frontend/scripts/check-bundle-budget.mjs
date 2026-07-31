@@ -39,13 +39,19 @@ const agreementCardChunk =
   { name: "none", size: 0 };
 
 const budgets = {
-  initialBytes: 350 * 1_024,
+  initialAssetCount: 12,
+  initialBytes: 300 * 1_024,
   totalJsBytes: 6_500 * 1_024,
   largestChunkBytes: 750 * 1_024,
   appChunkBytes: 250 * 1_024,
   agreementCardChunkBytes: 40 * 1_024,
 };
 const failures = [];
+if (initialAssetNames.length > budgets.initialAssetCount) {
+  failures.push(
+    `initial JavaScript ${initialAssetNames.length} files exceeds ${budgets.initialAssetCount}`,
+  );
+}
 if (initialBytes > budgets.initialBytes) {
   failures.push(
     `initial JavaScript ${initialBytes} bytes exceeds ${budgets.initialBytes}`,

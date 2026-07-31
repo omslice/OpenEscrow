@@ -102,14 +102,18 @@ try {
     .waitFor({ state: "visible" });
   await landingPage.waitForTimeout(1_500);
 
-  const jurisdictionAsset = [...landingAssets].find((assetName) =>
+  const initialLandingAssets = new Set(landingAssets);
+  const jurisdictionAsset = [...initialLandingAssets].find((assetName) =>
     assetName.startsWith("jurisdictions-"),
   );
-  const workspaceAsset = [...landingAssets].find((assetName) =>
+  const workspaceAsset = [...initialLandingAssets].find((assetName) =>
     assetName.startsWith("WorkspaceApp-"),
   );
-  const walletProvidersAsset = [...landingAssets].find((assetName) =>
+  const walletProvidersAsset = [...initialLandingAssets].find((assetName) =>
     assetName.startsWith("WalletProviders-"),
+  );
+  const accountProviderAsset = [...initialLandingAssets].find((assetName) =>
+    assetName.startsWith("AuthenticatedRoot-"),
   );
   assert.equal(
     jurisdictionAsset,
@@ -126,29 +130,32 @@ try {
     undefined,
     "A clean logged-out visit must not preload blockchain wallet providers.",
   );
-  assert.ok(
-    landingAssets.size <= 48,
-    `The public landing page loaded ${landingAssets.size} JavaScript files; expected at most 48.`,
-  );
-  const landingBytes = await totalAssetBytes(landingAssets);
-  assert.ok(
-    landingBytes <= 2_270_000,
-    `The public landing page loaded ${landingBytes} JavaScript bytes; expected at most 2270000.`,
-  );
-  const retrySecureSignIn = landingPage.getByRole("button", {
-    name: "Retry secure sign-in",
-  });
-  await retrySecureSignIn.waitFor({ state: "visible" });
-  await landingPage
-    .getByRole("alert")
-    .filter({ hasText: "Sign-in is taking longer than expected" })
-    .waitFor({ state: "visible" });
   assert.equal(
-    await landingPage
-      .getByRole("heading", { name: "A better way to handle rental deposits." })
-      .count(),
-    1,
-    "An account-provider outage must not hide the public landing page.",
+    accountProviderAsset,
+    undefined,
+    "A clean logged-out visit must not preload the account provider before a sign-in choice.",
+  );
+  assert.ok(
+    initialLandingAssets.size <= 12,
+    `The public landing page loaded ${initialLandingAssets.size} JavaScript files; expected at most 12.`,
+  );
+  const landingBytes = await totalAssetBytes(initialLandingAssets);
+  assert.ok(
+    landingBytes <= 300_000,
+    `The public landing page loaded ${landingBytes} JavaScript bytes; expected at most 300000.`,
+  );
+  const continueWithGoogle = landingPage.getByRole("button", {
+    name: "Continue with Google",
+  });
+  const continueWithWallet = landingPage.getByRole("button", {
+    name: "Continue with a wallet",
+  });
+  await continueWithGoogle.waitFor({ state: "visible" });
+  await continueWithWallet.waitFor({ state: "visible" });
+  assert.equal(
+    await landingPage.getByRole("button", { name: "Retry secure sign-in" }).count(),
+    0,
+    "The account provider must remain idle rather than entering an outage state before sign-in.",
   );
   assert.equal(
     await landingPage.locator("details.notification-center").count(),
@@ -205,7 +212,7 @@ try {
     .getByRole("button", { name: "Try the testnet demo" })
     .click();
   await landingPage.waitForFunction(
-    () => document.activeElement?.textContent?.trim() === "Retry secure sign-in",
+    () => document.activeElement?.textContent?.trim() === "Continue with Google",
   );
   await landingPage.setViewportSize({ width: 390, height: 844 });
   await landingPage
@@ -219,10 +226,15 @@ try {
     mobilePromptButtonBox && mobilePromptButtonBox.height >= 44,
     "The public sign-in recovery action must remain a full-size mobile touch target.",
   );
-  const mobileSignInRetryBox = await retrySecureSignIn.boundingBox();
+  const mobileGoogleBox = await continueWithGoogle.boundingBox();
   assert.ok(
-    mobileSignInRetryBox && mobileSignInRetryBox.height >= 44,
-    "The account-provider retry must remain a full-size mobile touch target.",
+    mobileGoogleBox && mobileGoogleBox.height >= 44,
+    "The provider-on-demand Google action must remain a full-size mobile touch target.",
+  );
+  const mobileWalletBox = await continueWithWallet.boundingBox();
+  assert.ok(
+    mobileWalletBox && mobileWalletBox.height >= 44,
+    "The provider-on-demand wallet action must remain a full-size mobile touch target.",
   );
   const mobileDonationButtonBox = await copyDonationAddress.boundingBox();
   assert.ok(
@@ -235,6 +247,44 @@ try {
     ),
     true,
     "The public sign-in prompt must not create horizontal overflow at mobile width.",
+  );
+
+  await continueWithGoogle.click();
+  const retrySecureSignIn = landingPage.getByRole("button", {
+    name: "Retry secure sign-in",
+  });
+  await retrySecureSignIn.waitFor({ state: "visible" });
+  await landingPage
+    .getByRole("alert")
+    .filter({ hasText: "Sign-in is taking longer than expected" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await landingPage
+      .getByRole("heading", { name: "A better way to handle rental deposits." })
+      .count(),
+    1,
+    "An account-provider outage after an explicit sign-in choice must not hide the public landing page.",
+  );
+  assert.equal(
+    [...landingAssets].some((assetName) =>
+      assetName.startsWith("AuthenticatedRoot-"),
+    ),
+    true,
+    "An explicit sign-in choice must load the account provider boundary.",
+  );
+  assert.equal(
+    [...landingAssets].some(
+      (assetName) =>
+        assetName.startsWith("WorkspaceApp-") ||
+        assetName.startsWith("WalletProviders-"),
+    ),
+    false,
+    "An account-provider outage must still avoid authenticated workspace and blockchain wallet code.",
+  );
+  const mobileSignInRetryBox = await retrySecureSignIn.boundingBox();
+  assert.ok(
+    mobileSignInRetryBox && mobileSignInRetryBox.height >= 44,
+    "The account-provider retry must remain a full-size mobile touch target.",
   );
   await landingContext.close();
 
@@ -261,10 +311,44 @@ try {
   await isolateFromExternalProviders(invitationContext);
   const invitationPage = await invitationContext.newPage();
   const invitationAssets = observeLocalScripts(invitationPage);
+  let releaseAccountProvider;
+  const accountProviderHeld = new Promise((resolve) => {
+    releaseAccountProvider = resolve;
+  });
+  let accountProviderRequestSeen = false;
+  await invitationPage.route(
+    "**/assets/AuthenticatedRoot-*.js",
+    async (route) => {
+      accountProviderRequestSeen = true;
+      await accountProviderHeld;
+      await route.continue();
+    },
+  );
   await invitationPage.goto(
     `${baseUrl}/?proposal=pilot-proposal&token=pilot-secret&invite=tenant`,
     { waitUntil: "domcontentloaded" },
   );
+  await invitationPage.waitForFunction(
+    () => !new URL(window.location.href).searchParams.has("token"),
+  );
+  assert.equal(
+    accountProviderRequestSeen,
+    true,
+    "A role-restricted invitation must begin loading secure sign-in automatically.",
+  );
+  assert.equal(
+    await invitationPage.evaluate(
+      () =>
+        JSON.parse(
+          window.sessionStorage.getItem(
+            "openescrow.negotiationAccess.pilot-proposal.tenant",
+          ) || "{}",
+        ).token,
+    ),
+    "pilot-secret",
+    "Invitation access must be captured in current-tab recovery before the account provider finishes loading.",
+  );
+  releaseAccountProvider();
   await invitationPage
     .getByRole("heading", { name: "Secure sign-in is unavailable" })
     .waitFor({ state: "visible" });
@@ -294,18 +378,6 @@ try {
     new URL(invitationPage.url()).searchParams.has("token"),
     false,
     "A role-restricted invitation must scrub its bearer token from the URL.",
-  );
-  assert.equal(
-    await invitationPage.evaluate(
-      () =>
-        JSON.parse(
-          window.sessionStorage.getItem(
-            "openescrow.negotiationAccess.pilot-proposal.tenant",
-          ) || "{}",
-        ).token,
-    ),
-    "pilot-secret",
-    "A provider outage must retain the scrubbed invitation only in the current tab.",
   );
   assert.equal(
     [...invitationAssets].some(
@@ -414,7 +486,7 @@ try {
   await agreementInvitationContext.close();
 
   console.log(
-    `Landing-load check passed: ${landingAssets.size} JavaScript file(s), ${landingBytes} bytes, no eager workspace, jurisdiction registry, or blockchain wallet providers; the public explanation remains available during an account-provider outage, invitations retain same-tab recovery, and restricted entry fails closed before workspace code.`,
+    `Landing-load check passed: ${initialLandingAssets.size} initial JavaScript file(s), ${landingBytes} bytes, no account, workspace, jurisdiction, or blockchain provider before an explicit sign-in choice; the public explanation remains available during a later provider outage, invitations capture same-tab recovery before provider load, and restricted entry fails closed before workspace code.`,
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

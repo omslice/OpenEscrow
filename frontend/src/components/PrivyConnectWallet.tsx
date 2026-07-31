@@ -72,6 +72,22 @@ function AccountConnectionControls() {
 export function PrivyConnectWallet() {
   const { ready, authenticated, login } = usePrivy();
   const inviteRole = useInviteRole();
+  const [loginError, setLoginError] = useState<string | null>(null);
+
+  function startLogin(method: "google" | "wallet") {
+    setLoginError(null);
+    const reportLoginError = () => {
+      setLoginError(
+        "Sign-in could not start. Check your connection and choose Google or wallet again.",
+      );
+    };
+    try {
+      const loginResult = login({ loginMethods: [method] });
+      void Promise.resolve(loginResult).catch(reportLoginError);
+    } catch {
+      reportLoginError();
+    }
+  }
 
   if (!ready) {
     return <AccountConnectionControls />;
@@ -80,12 +96,17 @@ export function PrivyConnectWallet() {
   if (!authenticated) {
     return (
       <div className="account-entry">
-        <button className="btn btn-primary" onClick={() => login({ loginMethods: ["google"] })}>
+        <button className="btn btn-primary" onClick={() => startLogin("google")}>
           {inviteRole ? `Continue as ${inviteRole} with Google` : "Continue with Google"}
         </button>
-        <button className="btn btn-ghost" onClick={() => login({ loginMethods: ["wallet"] })}>
+        <button className="btn btn-ghost" onClick={() => startLogin("wallet")}>
           {inviteRole ? `Use a ${inviteRole} wallet` : "Continue with a wallet"}
         </button>
+        {loginError && (
+          <span className="account-connection-error" role="alert" aria-live="assertive">
+            {loginError}
+          </span>
+        )}
       </div>
     );
   }

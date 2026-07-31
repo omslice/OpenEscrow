@@ -364,17 +364,20 @@ detailed validation ledger.
   reports zero vulnerabilities, and a required candidate check imports the affected connector
   modules, verifies UUID generation/validation, and proves an undersized output buffer fails
   closed.
-- **Verified:** A clean logged-out production visit now loads a dedicated public entry instead of
-  the full agreement workspace and offers neutral Google/wallet sign-in without a role selector.
-  Only a structurally valid invitation can load role-aware entry; its bearer token is scrubbed
-  before the lazy workspace request, while invalid roles fail back to neutral sign-in. The required
-  production Playwright budget measures 48 JavaScript requests and about 2.25 MB, rejects eager
-  workspace, jurisdiction, and blockchain-wallet-provider chunks, verifies sign-in focus and
-  mobile-width usability, and proves the public explanation remains usable when external account
-  requests are unavailable. In that outage, invitations retain access only in the current tab and
-  fail closed before workspace code. A provider-independent rendered regression separately proves
-  normal role-aware invitation entry and recovery after an intentionally failed first workspace
-  download without leaving the bearer in persistent local storage.
+- **Verified:** A clean logged-out production visit now renders its complete public entry before
+  importing the account provider and offers neutral Google/wallet choices without a role selector.
+  The selected method opens automatically after its provider loads; rejected automatic and direct
+  attempts remain on the public page with an actionable same-method retry. A non-sensitive device
+  hint restores the provider for returning users without starting login. The required production
+  Playwright budget now measures 10 initial JavaScript requests and about 245 KB, enforces ceilings
+  of 12 requests and 300 KB, and rejects eager account-provider, workspace, jurisdiction, and
+  blockchain-wallet-provider chunks. This is roughly a 79% request reduction and 89% byte
+  reduction from the prior 48-request, 2.25 MB checkpoint. A structurally valid invitation still
+  loads secure sign-in automatically, but its bearer is captured only in current-tab recovery and
+  scrubbed before the account-provider module finishes loading; invalid roles remain neutral, and
+  provider outages fail closed before workspace code. Provider-independent rendered regressions
+  preserve exact invitation roles, mobile targets, and recovery after a failed first workspace
+  download without persistent bearer storage.
 - **Verified:** The shared landing/workspace footer now pairs plain-language testnet file-safety
   guidance with an accessible copy control for the optional `omslice.eth` donation address. A
   production-build browser regression verifies the exact copied value, visible success feedback,

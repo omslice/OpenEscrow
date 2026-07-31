@@ -1,190 +1,20 @@
 import { lazy, useEffect, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { DeferredLoadBoundary } from "./components/DeferredLoadBoundary";
-import { Layout } from "./components/Layout";
-import { PublicIntro } from "./components/PublicIntro";
+import { PublicLanding } from "./components/PublicLanding";
 import { ACCOUNT_AUTH_ENABLED } from "./lib/accountConfig";
-import { preferredScrollBehavior } from "./lib/accessibility";
+import { rememberAccountProviderActivation } from "./lib/accountProviderActivation";
 import { reloadBrowserPage } from "./lib/browserActions";
-import { replaceRecoveryUrl } from "./lib/browserRecovery";
 import {
-  preserveNegotiationAccessForReload,
-  recoverNegotiationAccessForEntry,
-  recoverUniqueNegotiationAccessForProposal,
-} from "./lib/negotiationAccessRecovery";
-import type { NegotiationAccess, NegotiationRole } from "./lib/negotiations";
-import "./App.css";
+  captureEntryContext,
+  type AccountLoginMethod,
+  type EntryContext,
+} from "./lib/entryContext";
+import type { NegotiationAccess } from "./lib/negotiations";
 
 const WorkspaceApp = lazy(() => import("./WorkspaceApp"));
 const WalletProviders = lazy(() => import("./WalletProviders"));
 const ACCOUNT_CONNECTION_TIMEOUT_MS = 5_000;
-
-type EntryContext = {
-  initialAccess: NegotiationAccess | null;
-  roleLocked: boolean;
-};
-
-let currentPageEntryAccess: NegotiationAccess | null = null;
-
-function captureEntryContext(): EntryContext {
-  const url = new URL(window.location.href);
-  const proposalId = url.searchParams.get("proposal");
-  const token = url.searchParams.get("token");
-  const accessRole = url.searchParams.get("access");
-  const inviteRole = url.searchParams.get("invite");
-  const role = accessRole || inviteRole;
-  const validRole =
-    role === "landlord" || role === "tenant" || role === "arbiter";
-  const validNegotiationInvitation = Boolean(proposalId && token && validRole);
-  const currentPageRecovery =
-    proposalId &&
-    currentPageEntryAccess?.proposalId === proposalId &&
-    (!validRole || currentPageEntryAccess.role === role)
-      ? currentPageEntryAccess
-      : null;
-  const recoveredAccess =
-    !token && proposalId
-      ? validRole
-        ? recoverNegotiationAccessForEntry(proposalId, role) ||
-          currentPageRecovery
-        : recoverUniqueNegotiationAccessForProposal(proposalId) ||
-          currentPageRecovery
-      : null;
-  const validNegotiationRecovery = Boolean(recoveredAccess);
-  const agreementId = url.searchParams.get("id");
-  let validAgreementInvitation = false;
-  if (
-    agreementId &&
-    (inviteRole === "tenant" || inviteRole === "arbiter")
-  ) {
-    try {
-      validAgreementInvitation = BigInt(agreementId) >= 0n;
-    } catch {
-      validAgreementInvitation = false;
-    }
-  }
-
-  let needsCleanup = false;
-  if (token) {
-    url.searchParams.delete("token");
-    url.searchParams.delete("access");
-    needsCleanup = true;
-  } else if (accessRole) {
-    url.searchParams.delete("access");
-    needsCleanup = true;
-  }
-  if (
-    inviteRole &&
-    !validNegotiationInvitation &&
-    !validNegotiationRecovery &&
-    !validAgreementInvitation
-  ) {
-    url.searchParams.delete("invite");
-    needsCleanup = true;
-  }
-  if (needsCleanup && !replaceRecoveryUrl(url)) {
-    try {
-      window.location.replace(url.toString());
-    } catch {
-      // Keep the captured access in current-page memory if URL cleanup is blocked.
-    }
-  }
-
-  if (proposalId && token && validRole) {
-    const initialAccess: NegotiationAccess = {
-      proposalId,
-      token,
-      role: role as NegotiationRole,
-      source: "invite",
-    };
-    currentPageEntryAccess = initialAccess;
-    preserveNegotiationAccessForReload(initialAccess);
-    return {
-      initialAccess,
-      roleLocked: true,
-    };
-  }
-  if (recoveredAccess) {
-    currentPageEntryAccess = recoveredAccess;
-    return {
-      initialAccess: recoveredAccess,
-      roleLocked: true,
-    };
-  }
-  return {
-    initialAccess: null,
-    roleLocked: validAgreementInvitation,
-  };
-}
-
-function PublicLanding({ accountReady = true }: { accountReady?: boolean }) {
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const idParam = params.get("id");
-    const jurisdictionParam = params.get("jurisdiction");
-    if (!idParam || !jurisdictionParam) return;
-    const linkedId = idParam;
-    const linkedJurisdiction = jurisdictionParam;
-    let active = true;
-
-    async function rememberLinkedJurisdiction() {
-      try {
-        const id = BigInt(linkedId);
-        const { isJurisdictionCode, rememberJurisdiction } = await import(
-          "./lib/jurisdictions"
-        );
-        if (active && isJurisdictionCode(linkedJurisdiction)) {
-          rememberJurisdiction(id, linkedJurisdiction);
-        }
-      } catch {
-        // A malformed or unsupported hint must not interrupt public sign-in.
-      }
-    }
-
-    void rememberLinkedJurisdiction();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  function focusSignIn() {
-    const signInTarget = document.querySelector<HTMLElement>(
-      ".header-actions .account-entry button:not(:disabled)",
-    ) || document.querySelector<HTMLElement>(
-      ".header-actions .account-entry [role='status'], .header-actions .account-entry [role='alert']",
-    );
-    signInTarget?.scrollIntoView({
-      behavior: preferredScrollBehavior(),
-      block: "center",
-    });
-    window.requestAnimationFrame(() => {
-      signInTarget?.focus({ preventScroll: true });
-    });
-  }
-
-  return (
-    <Layout showNotifications={false}>
-      <PublicIntro onStart={focusSignIn} />
-      <section
-        className="card public-access-prompt"
-        aria-labelledby="public-access-title"
-      >
-        <div>
-          <span className="eyebrow">Testnet access</span>
-          <h2 id="public-access-title">Sign in to try OpenEscrow</h2>
-          <p>
-            {accountReady
-              ? "Continue with Google or a wallet using the sign-in options above. Your workspace role is chosen after sign-in; only a specific invitation link can preselect it."
-              : "Google and wallet sign-in are still connecting. You can review how OpenEscrow works while you wait, then use the retry control above if sign-in remains unavailable."}
-          </p>
-        </div>
-        <button className="btn btn-secondary" type="button" onClick={focusSignIn}>
-          Show sign-in options
-        </button>
-      </section>
-    </Layout>
-  );
-}
 
 function WorkspaceBoundary({
   initialAccess,
@@ -289,9 +119,45 @@ function AccountConnectionPage() {
   );
 }
 
-function AccountApp() {
-  const { ready, authenticated } = usePrivy();
-  const [entryContext] = useState(captureEntryContext);
+function AccountApp({
+  entryContext,
+  initialLoginMethod,
+}: {
+  entryContext: EntryContext;
+  initialLoginMethod?: AccountLoginMethod | null;
+}) {
+  const { ready, authenticated, login } = usePrivy();
+  const loginAttempted = useRef(false);
+  const [signInError, setSignInError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (ready && authenticated) rememberAccountProviderActivation();
+  }, [authenticated, ready]);
+
+  useEffect(() => {
+    if (
+      !ready ||
+      authenticated ||
+      entryContext.roleLocked ||
+      !initialLoginMethod ||
+      loginAttempted.current
+    ) {
+      return;
+    }
+    loginAttempted.current = true;
+    setSignInError(null);
+    const reportSignInError = () => {
+      setSignInError(
+        "Sign-in did not open. Choose Google or a wallet above to try again.",
+      );
+    };
+    try {
+      const loginResult = login({ loginMethods: [initialLoginMethod] });
+      void Promise.resolve(loginResult).catch(reportSignInError);
+    } catch {
+      reportSignInError();
+    }
+  }, [authenticated, entryContext.roleLocked, initialLoginMethod, login, ready]);
 
   if (!ready) {
     return entryContext.roleLocked ? (
@@ -301,13 +167,29 @@ function AccountApp() {
     );
   }
   if (!authenticated && !entryContext.roleLocked) {
-    return <PublicLanding />;
+    return <PublicLanding signInError={signInError} />;
   }
   return <WorkspaceBoundary initialAccess={entryContext.initialAccess} />;
 }
 
-function App() {
-  return ACCOUNT_AUTH_ENABLED ? <AccountApp /> : <WorkspaceBoundary />;
+function App({
+  entryContext: suppliedEntryContext,
+  initialLoginMethod,
+}: {
+  entryContext?: EntryContext;
+  initialLoginMethod?: AccountLoginMethod | null;
+}) {
+  const [entryContext] = useState(
+    () => suppliedEntryContext || captureEntryContext(),
+  );
+  return ACCOUNT_AUTH_ENABLED ? (
+    <AccountApp
+      entryContext={entryContext}
+      initialLoginMethod={initialLoginMethod}
+    />
+  ) : (
+    <WorkspaceBoundary initialAccess={entryContext.initialAccess} />
+  );
 }
 
 export default App;

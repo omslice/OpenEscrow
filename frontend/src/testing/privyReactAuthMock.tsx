@@ -26,6 +26,7 @@ type TestAccount = {
 
 type TestSnapshot = {
   currentAccount: TestAccountId;
+  loginAttempts: Array<"google" | "wallet">;
   logoutCalls: Record<TestAccountId, number>;
   walletAttempts: Record<TestAccountId, number>;
   walletCounts: Record<TestAccountId, number>;
@@ -72,7 +73,9 @@ type MockContextValue = {
   authenticated: boolean;
   wallets: TestWallet[];
   createWallet: () => Promise<void>;
-  login: () => Promise<void>;
+  login: (options?: {
+    loginMethods?: Array<"google" | "wallet">;
+  }) => Promise<void>;
   logout: () => Promise<void>;
   switchAccount: (accountId: TestAccountId) => void;
 };
@@ -105,6 +108,7 @@ export function PrivyProvider({ children }: { children: ReactNode }) {
     "account-a": 0,
     "account-b": 0,
   });
+  const loginAttemptsRef = useRef<Array<"google" | "wallet">>([]);
   const walletsRef = useRef(wallets);
   walletsRef.current = wallets;
   const accountIdRef = useRef(accountId);
@@ -135,7 +139,19 @@ export function PrivyProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     logoutCallsRef.current[accountIdRef.current] += 1;
   }, []);
-  const login = useCallback(async () => {
+  const login = useCallback(async (options?: {
+    loginMethods?: Array<"google" | "wallet">;
+  }) => {
+    const method = options?.loginMethods?.[0];
+    if (method === "google" || method === "wallet") {
+      loginAttemptsRef.current.push(method);
+    }
+    if (
+      new URLSearchParams(window.location.search).has("login-reject-test") &&
+      loginAttemptsRef.current.length <= 2
+    ) {
+      throw new Error("Synthetic account-provider rejection.");
+    }
     setAuthenticated(true);
   }, []);
 
@@ -149,6 +165,7 @@ export function PrivyProvider({ children }: { children: ReactNode }) {
       snapshot() {
         return {
           currentAccount: accountIdRef.current,
+          loginAttempts: [...loginAttemptsRef.current],
           logoutCalls: { ...logoutCallsRef.current },
           walletAttempts: { ...attemptsRef.current },
           walletCounts: {
