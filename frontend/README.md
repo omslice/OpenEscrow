@@ -82,9 +82,11 @@ party-authorized evidence uploads, and multi-tenant proposal review. Saved propo
 the notification bell includes wallet-scoped Base Sepolia registry receipts and keeps read state
 locally per wallet.
 
-Agreement discovery has two paths: a "Scan for my agreements" button that chunked-scans
-`AgreementProposed`/`ArbiterReplaced` event logs for the connected address (see
-`src/lib/useDiscoverAgreements.ts`), and manual add-by-id (or a shared `?id=` link) as a fallback.
+Agreement discovery has two paths: a "Scan for my agreements" button that takes one chain-head
+snapshot, then chunked-scans `AgreementProposed`, `TenantParticipantAdded`, and `ArbiterReplaced`
+event logs for the connected address (see `src/lib/agreementDiscovery.ts`), and manual add-by-id
+(or a shared `?id=` link) as a fallback. The unfiltered proposal stream is reused for both
+landlord and original-arbiter matching, rather than scanning the full proposal history twice.
 This is a reasonable trade-off for a testnet demo with a handful of agreements - it is not how a
 production version should do discovery at scale (that needs a real indexer/subgraph).
 

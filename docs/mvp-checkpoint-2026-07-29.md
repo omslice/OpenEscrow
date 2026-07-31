@@ -23,7 +23,7 @@ production readiness, or authorization to hold real rental deposits.
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   R2/encrypted-IPFS cleanup after metadata failure, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 90 server tests, 142 client-logic
+- **Verified:** The full repository release check passes with 90 server tests, 145 client-logic
   tests, lint, browser account-switch, funding-recovery, accessibility/mobile, and load-recovery
   smoke checks, and the production build. These rendered checks are part of the required
   `npm run check` path rather than separate, potentially stale results.
@@ -178,6 +178,11 @@ production readiness, or authorization to hold real rental deposits.
   12-block reorganization window. Completed tail scans atomically replace recent receipts,
   removed logs are ignored, and a failed refresh preserves the last known-good cache for retry.
   Empty and pre-deployment requests still avoid unnecessary log work.
+- **Verified:** Wallet-only agreement discovery now snapshots the chain head once per manual
+  search and scans each required event family once. The same unfiltered proposal stream identifies
+  both landlord and original-arbiter records, removing one full historical log scan and three
+  redundant block-number requests while retaining bounded ranges, co-tenant discovery, replacement
+  arbiters, duplicate suppression, and pre-deployment short-circuiting.
 - **Verified:** Agreement receipt panels and account-level onchain notifications are bound to the
   current agreement/account set. Scope changes clear the prior view and restart polling
   immediately, while late RPC completions are rejected before they can restore removed agreement
