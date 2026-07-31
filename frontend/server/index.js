@@ -257,6 +257,83 @@ CREATE UNIQUE INDEX IF NOT EXISTS funding_checkout_events_reconciliation_idx
 ON funding_checkout_events (reconciliation_key)
 WHERE reconciliation_key IS NOT NULL`;
 
+const FUNDING_CHECKOUT_EVENTS_PROVENANCE_INSERT_GUARD = `
+CREATE TRIGGER IF NOT EXISTS funding_checkout_events_provenance_insert_guard
+BEFORE INSERT ON funding_checkout_events
+FOR EACH ROW
+WHEN NOT COALESCE((
+  (
+    NEW.source = 'browser_callback'
+    AND NEW.verification = 'unverified'
+    AND NEW.reconciliation_key IS NULL
+    AND NEW.payload_digest IS NULL
+  )
+  OR
+  (
+    NEW.source = 'provider_webhook'
+    AND NEW.verification = 'provider_signed'
+    AND length(NEW.reconciliation_key) = 71
+    AND substr(NEW.reconciliation_key, 1, 7) = 'sha256:'
+    AND substr(NEW.reconciliation_key, 8) NOT GLOB '*[^0-9a-f]*'
+    AND length(NEW.payload_digest) = 71
+    AND substr(NEW.payload_digest, 1, 7) = 'sha256:'
+    AND substr(NEW.payload_digest, 8) NOT GLOB '*[^0-9a-f]*'
+  )
+  OR
+  (
+    NEW.source = 'operator_reconciliation'
+    AND NEW.verification = 'operator_verified'
+    AND length(NEW.reconciliation_key) = 71
+    AND substr(NEW.reconciliation_key, 1, 7) = 'sha256:'
+    AND substr(NEW.reconciliation_key, 8) NOT GLOB '*[^0-9a-f]*'
+    AND length(NEW.payload_digest) = 71
+    AND substr(NEW.payload_digest, 1, 7) = 'sha256:'
+    AND substr(NEW.payload_digest, 8) NOT GLOB '*[^0-9a-f]*'
+  )
+), 0)
+BEGIN
+  SELECT RAISE(ABORT, 'invalid funding checkout event provenance');
+END`;
+
+const FUNDING_CHECKOUT_EVENTS_PROVENANCE_UPDATE_GUARD = `
+CREATE TRIGGER IF NOT EXISTS funding_checkout_events_provenance_update_guard
+BEFORE UPDATE OF source, verification, reconciliation_key, payload_digest
+ON funding_checkout_events
+FOR EACH ROW
+WHEN NOT COALESCE((
+  (
+    NEW.source = 'browser_callback'
+    AND NEW.verification = 'unverified'
+    AND NEW.reconciliation_key IS NULL
+    AND NEW.payload_digest IS NULL
+  )
+  OR
+  (
+    NEW.source = 'provider_webhook'
+    AND NEW.verification = 'provider_signed'
+    AND length(NEW.reconciliation_key) = 71
+    AND substr(NEW.reconciliation_key, 1, 7) = 'sha256:'
+    AND substr(NEW.reconciliation_key, 8) NOT GLOB '*[^0-9a-f]*'
+    AND length(NEW.payload_digest) = 71
+    AND substr(NEW.payload_digest, 1, 7) = 'sha256:'
+    AND substr(NEW.payload_digest, 8) NOT GLOB '*[^0-9a-f]*'
+  )
+  OR
+  (
+    NEW.source = 'operator_reconciliation'
+    AND NEW.verification = 'operator_verified'
+    AND length(NEW.reconciliation_key) = 71
+    AND substr(NEW.reconciliation_key, 1, 7) = 'sha256:'
+    AND substr(NEW.reconciliation_key, 8) NOT GLOB '*[^0-9a-f]*'
+    AND length(NEW.payload_digest) = 71
+    AND substr(NEW.payload_digest, 1, 7) = 'sha256:'
+    AND substr(NEW.payload_digest, 8) NOT GLOB '*[^0-9a-f]*'
+  )
+), 0)
+BEGIN
+  SELECT RAISE(ABORT, 'invalid funding checkout event provenance');
+END`;
+
 const BACKFILL_PRIMARY_TENANTS = `
 INSERT OR IGNORE INTO negotiation_tenants
   (id, negotiation_id, name, email, token_hash, approved_revision, wallet,
@@ -1565,6 +1642,8 @@ async function initialize(db) {
     db.prepare(FUNDING_CHECKOUT_EVENTS_SCHEMA),
     db.prepare(FUNDING_CHECKOUT_EVENTS_INDEX),
     db.prepare(FUNDING_CHECKOUT_EVENTS_RECONCILIATION_INDEX),
+    db.prepare(FUNDING_CHECKOUT_EVENTS_PROVENANCE_INSERT_GUARD),
+    db.prepare(FUNDING_CHECKOUT_EVENTS_PROVENANCE_UPDATE_GUARD),
     db.prepare(BACKFILL_PRIMARY_TENANTS),
     db.prepare(SCHEDULED_JOB_RUNS_SCHEMA),
     db.prepare(COMPLIANCE_SOURCE_CHECKS_SCHEMA),

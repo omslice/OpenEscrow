@@ -197,6 +197,9 @@ production readiness, or authorization to hold real rental deposits.
   the exact payload digest. The lifecycle rejects missing, malformed, conflicting, or repeated
   identities, while a partial unique D1 index prevents the same non-null reconciliation key from
   being applied across attempts. Browser callbacks are required to keep both fields null.
+- **Verified:** D1 insert and update guards enforce the same provenance pairing and lowercase
+  SHA-256 identity format on already-migrated databases. Direct malformed writes therefore fail
+  closed even if they bypass the application lifecycle validator.
 - **Verified:** Arrow-key workspace navigation moves focus to the selected tab synchronously,
   eliminating an intermittent animation-frame race in the required accessibility smoke check.
 - **Verified:** The exact validated candidate source is pushed to the existing Sites source

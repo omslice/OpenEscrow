@@ -79,6 +79,8 @@ the repository; they are not claims of legal approval or production readiness.
   locked in production until a signed webhook or authorized operator reconciliation exists
 - [x] Reserve replay-resistant reconciliation keys and exact payload digests for future trusted
   events, with a global D1 uniqueness gate and no client path for minting trusted provenance
+- [x] Enforce provenance and SHA-256 identity pairing at the D1 insert/update boundary for both
+  fresh and already-migrated databases
 - [ ] Enable and validate an eligible provider sandbox in the Privy dashboard
 - [ ] Decide whether the pilot needs separate ACH/bank-deposit support
 - [ ] Complete provider approval, KYC/AML, fees, refunds, webhooks, reconciliation, and support

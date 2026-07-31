@@ -61,6 +61,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0011_evidence_key_fingerprints.sql",
     "0012_funding_event_provenance.sql",
     "0013_funding_reconciliation_identity.sql",
+    "0014_funding_event_provenance_guards.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -97,31 +98,103 @@ test("the packaged D1 migration applies cleanly", () => {
     reconciliationIndexes.includes("funding_checkout_events_reconciliation_idx"),
     true,
   );
+  const fundingEventTriggers = database
+    .prepare(
+      `SELECT name
+       FROM sqlite_master
+       WHERE type = 'trigger' AND tbl_name = 'funding_checkout_events'
+       ORDER BY name`,
+    )
+    .all()
+    .map((row) => row.name);
+  assert.deepEqual(fundingEventTriggers, [
+    "funding_checkout_events_provenance_insert_guard",
+    "funding_checkout_events_provenance_update_guard",
+  ]);
   const reconciliationKey = `sha256:${"a".repeat(64)}`;
   const payloadDigest = `sha256:${"b".repeat(64)}`;
   database.exec("PRAGMA foreign_keys = OFF");
-  const insertReconciliationEvent = database.prepare(
+  const insertFundingEvent = database.prepare(
     `INSERT INTO funding_checkout_events
      (attempt_id, event_id, status, provider_status, source, verification,
       reconciliation_key, payload_digest, occurred_at)
-     VALUES (?, ?, 'confirmed', 'completed', 'provider_webhook', 'provider_signed',
-             ?, ?, '2026-07-30T00:00:00.000Z')`,
+     VALUES (?, ?, 'confirmed', 'completed', ?, ?, ?, ?,
+             '2026-07-30T00:00:00.000Z')`,
   );
-  insertReconciliationEvent.run(
+  insertFundingEvent.run(
     "migration-attempt-1",
     "migration-event-1",
+    "provider_webhook",
+    "provider_signed",
     reconciliationKey,
     payloadDigest,
   );
   assert.throws(
     () =>
-      insertReconciliationEvent.run(
+      insertFundingEvent.run(
         "migration-attempt-2",
         "migration-event-2",
+        "provider_webhook",
+        "provider_signed",
         reconciliationKey,
         payloadDigest,
-    ),
+      ),
     /unique/i,
+  );
+  insertFundingEvent.run(
+    "migration-attempt-browser",
+    "migration-event-browser",
+    "browser_callback",
+    "unverified",
+    null,
+    null,
+  );
+  assert.throws(
+    () =>
+      insertFundingEvent.run(
+        "migration-attempt-browser-key",
+        "migration-event-browser-key",
+        "browser_callback",
+        "unverified",
+        `sha256:${"c".repeat(64)}`,
+        `sha256:${"d".repeat(64)}`,
+      ),
+    /invalid funding checkout event provenance/i,
+  );
+  assert.throws(
+    () =>
+      insertFundingEvent.run(
+        "migration-attempt-missing-digest",
+        "migration-event-missing-digest",
+        "provider_webhook",
+        "provider_signed",
+        `sha256:${"e".repeat(64)}`,
+        null,
+      ),
+    /invalid funding checkout event provenance/i,
+  );
+  assert.throws(
+    () =>
+      insertFundingEvent.run(
+        "migration-attempt-uppercase",
+        "migration-event-uppercase",
+        "operator_reconciliation",
+        "operator_verified",
+        `sha256:${"F".repeat(64)}`,
+        `sha256:${"f".repeat(64)}`,
+      ),
+    /invalid funding checkout event provenance/i,
+  );
+  assert.throws(
+    () =>
+      database
+        .prepare(
+          `UPDATE funding_checkout_events
+           SET verification = 'unverified'
+           WHERE event_id = 'migration-event-1'`,
+        )
+        .run(),
+    /invalid funding checkout event provenance/i,
   );
   database.exec("PRAGMA foreign_keys = ON");
 });

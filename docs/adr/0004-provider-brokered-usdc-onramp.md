@@ -66,7 +66,8 @@ It would also incorrectly imply that a DEX is needed to enter or exit Aave.
     have not been implemented. A trusted event must also carry a SHA-256 reconciliation key and
     exact payload digest. D1 enforces global uniqueness for non-null reconciliation keys so one
     verified external event cannot be applied to two attempts; browser callbacks carry neither
-    field.
+    field. Insert and update guards apply the same provenance and lowercase SHA-256 shape rules
+    to already-migrated D1 databases, not only newly created tables.
 
 ## Why not choose a single onramp vendor now?
 
