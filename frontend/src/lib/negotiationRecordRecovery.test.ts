@@ -60,3 +60,17 @@ test("invitation and notice audit saves cannot reject without visible recovery g
   assert.doesNotMatch(responseSource, /\}\)\.then\(setRecord\)/);
   assert.doesNotMatch(proposalSource, /\}\)\.then\(setDraft\)/);
 });
+
+test("claim email delivery remains distinct from its follow-up record refresh", () => {
+  assert.match(claimSource, /async function sendTenantClaimNotification\(\)/);
+  assert.match(claimSource, /tenantNotificationScope\.isCurrent\(operationId\)/);
+  assert.match(claimSource, /disabled=\{isSendingTenantNotification\}/);
+  assert.match(
+    claimSource,
+    /accepted for delivery, but OpenEscrow could not refresh the private record display/,
+  );
+  assert.doesNotMatch(
+    claimSource,
+    /setRecord\(await loadNegotiation\(negotiationAccess\)\)/,
+  );
+});

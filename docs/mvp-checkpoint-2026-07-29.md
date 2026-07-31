@@ -395,7 +395,10 @@ detailed validation ledger.
   promises: the primary copy, email, or onchain action remains intact and the user receives
   plain-language recovery guidance. A rendered 390-pixel browser regression holds both retries
   open long enough to verify `aria-busy` and disabled-button progress, proves a failed retry
-  restores focus, then proves the next retry recovers without horizontal overflow.
+  restores focus, then proves the next retry recovers without horizontal overflow. The same
+  rendered flow proves a tenant-claim email accepted for delivery is never relabeled as failed
+  when only the subsequent private-record refresh is unavailable; delivery is disabled while in
+  flight, bound to the initiating access scope, and the record-only retry cannot resend it.
 
 ## Remaining
 

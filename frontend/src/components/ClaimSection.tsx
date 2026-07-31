@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
 import { agreementReference } from "../lib/displayIds";
@@ -8,6 +8,7 @@ import {
   copyTextToClipboard,
   openExternalWindow,
 } from "../lib/browserActions";
+import { createAsyncOperationScope } from "../lib/asyncOperationScope";
 import {
   buildNegotiationInviteUrl,
   loadNegotiation,
@@ -77,6 +78,7 @@ export function ClaimSection({
   const [recordError, setRecordError] = useState<string | null>(null);
   const [noticeCopied, setNoticeCopied] = useState(false);
   const [noticeStatus, setNoticeStatus] = useState<string | null>(null);
+  const [isSendingTenantNotification, setIsSendingTenantNotification] = useState(false);
   const [itemizationConfirmed, setItemizationConfirmed] = useState(false);
   const [documentsConfirmed, setDocumentsConfirmed] = useState(false);
   const [moveInPhotosConfirmed, setMoveInPhotosConfirmed] = useState(false);
@@ -97,6 +99,16 @@ export function ClaimSection({
     ? `${recordLoadProposalId}:landlord:${recordLoadToken}`
     : null;
   const previousRecordLoadScope = useRef<string | null>(null);
+  const tenantNotificationScope = useMemo(
+    () => createAsyncOperationScope(recordLoadScope || "no-landlord-record"),
+    [recordLoadScope],
+  );
+
+  useEffect(() => {
+    tenantNotificationScope.open();
+    setIsSendingTenantNotification(false);
+    return () => tenantNotificationScope.close();
+  }, [tenantNotificationScope]);
 
   useEffect(() => {
     if (!recordLoadProposalId || !recordLoadToken) {
@@ -602,6 +614,57 @@ export function ClaimSection({
   }
 
   const notice = tenantNotice();
+  async function sendTenantClaimNotification() {
+    if (
+      !notice ||
+      !negotiationAccess ||
+      negotiationAccess.role !== "landlord" ||
+      isSendingTenantNotification
+    ) {
+      return;
+    }
+    const operationId = tenantNotificationScope.start();
+    setIsSendingTenantNotification(true);
+    setNoticeStatus("Sending the tenant claim email...");
+    try {
+      try {
+        await sendClaimNotification(negotiationAccess, {
+          reviewUrl: notice.reviewUrl,
+          agreementId: id.toString(),
+          amount: amount || formatUSDC(agreement.claimedAmount),
+          items,
+          note: note.trim(),
+          evidenceUri: uri,
+        });
+      } catch (emailError) {
+        if (!tenantNotificationScope.isCurrent(operationId)) return;
+        setNoticeStatus(
+          emailError instanceof Error
+            ? emailError.message
+            : "Automatic email could not be sent. Use the Gmail fallback.",
+        );
+        return;
+      }
+      if (!tenantNotificationScope.isCurrent(operationId)) return;
+      setNoticeStatus("Tenant claim email sent and added to the record.");
+      try {
+        const updatedRecord = await loadNegotiation(negotiationAccess);
+        if (!tenantNotificationScope.isCurrent(operationId)) return;
+        setRecord(updatedRecord);
+        setRecordLoadError(null);
+      } catch {
+        if (!tenantNotificationScope.isCurrent(operationId)) return;
+        setRecordLoadError(
+          "The tenant claim email was accepted for delivery, but OpenEscrow could not refresh the private record display. The email, claim receipt, and onchain agreement are unchanged. Try loading the claim requirements again.",
+        );
+      }
+    } finally {
+      if (tenantNotificationScope.isCurrent(operationId)) {
+        setIsSendingTenantNotification(false);
+      }
+    }
+  }
+
   async function copyClaimNotice() {
     if (!notice) return;
     setNoticeStatus(null);
@@ -693,29 +756,10 @@ export function ClaimSection({
                 <button
                   className="btn btn-primary"
                   type="button"
-                  onClick={async () => {
-                    setNoticeStatus(null);
-                    try {
-                      await sendClaimNotification(negotiationAccess, {
-                        reviewUrl: notice.reviewUrl,
-                        agreementId: id.toString(),
-                        amount: amount || formatUSDC(agreement.claimedAmount),
-                        items,
-                        note: note.trim(),
-                        evidenceUri: uri,
-                      });
-                      setNoticeStatus("Tenant claim email sent and added to the record.");
-                      setRecord(await loadNegotiation(negotiationAccess));
-                    } catch (emailError) {
-                      setNoticeStatus(
-                        emailError instanceof Error
-                          ? emailError.message
-                          : "Automatic email could not be sent. Use the Gmail fallback.",
-                      );
-                    }
-                  }}
+                  disabled={isSendingTenantNotification}
+                  onClick={() => void sendTenantClaimNotification()}
                 >
-                  Send tenant email(s)
+                  {isSendingTenantNotification ? "Sending tenant email(s)..." : "Send tenant email(s)"}
                 </button>
               )}
               <button
@@ -791,29 +835,10 @@ export function ClaimSection({
                 <button
                   className="btn btn-primary"
                   type="button"
-                  onClick={async () => {
-                    setNoticeStatus(null);
-                    try {
-                      await sendClaimNotification(negotiationAccess, {
-                        reviewUrl: notice.reviewUrl,
-                        agreementId: id.toString(),
-                        amount: amount || formatUSDC(agreement.claimedAmount),
-                        items,
-                        note: note.trim(),
-                        evidenceUri: uri,
-                      });
-                      setNoticeStatus("Tenant claim email sent and added to the record.");
-                      setRecord(await loadNegotiation(negotiationAccess));
-                    } catch (emailError) {
-                      setNoticeStatus(
-                        emailError instanceof Error
-                          ? emailError.message
-                          : "Automatic email could not be sent. Use the Gmail fallback.",
-                      );
-                    }
-                  }}
+                  disabled={isSendingTenantNotification}
+                  onClick={() => void sendTenantClaimNotification()}
                 >
-                  Send tenant email(s)
+                  {isSendingTenantNotification ? "Sending tenant email(s)..." : "Send tenant email(s)"}
                 </button>
               )}
               <button

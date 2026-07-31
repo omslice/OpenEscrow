@@ -68,12 +68,12 @@ async function waitForServer() {
   throw new Error(`Timed out waiting for ${baseUrl}.`);
 }
 
-function routePrivateRecord(page) {
+function routePrivateRecord(page, failAttempts = new Set([1, 2])) {
   let attempts = 0;
   return page.route(/\/api\/negotiations\/OE-P-RECOVERY\?token=/, async (route) => {
     attempts += 1;
     await new Promise((resolve) => setTimeout(resolve, 80));
-    if (attempts <= 2) {
+    if (failAttempts.has(attempts)) {
       await route.fulfill({
         status: 503,
         contentType: "application/json",
@@ -119,7 +119,17 @@ try {
   browser = await chromium.launch({ headless: true });
 
   const claimPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
-  await routePrivateRecord(claimPage);
+  await routePrivateRecord(claimPage, new Set([1, 2, 4]));
+  let claimNotificationAttempts = 0;
+  await claimPage.route(/\/api\/notifications\/claim$/, async (route) => {
+    claimNotificationAttempts += 1;
+    await new Promise((resolve) => setTimeout(resolve, 80));
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({ messageId: "synthetic-message-id" }),
+    });
+  });
   await claimPage.goto(
     `${baseUrl}/testing/private-record-recovery.html?role=landlord`,
     { waitUntil: "networkidle" },
@@ -174,6 +184,49 @@ try {
     ),
     true,
     "Claim recovery should not overflow a mobile viewport.",
+  );
+
+  const sendClaimEmail = claimPage.getByRole("button", {
+    name: "Send tenant email(s)",
+  });
+  await sendClaimEmail.click();
+  const sendingClaimEmail = claimPage.getByRole("button", {
+    name: "Sending tenant email(s)...",
+  });
+  await sendingClaimEmail.waitFor({ state: "visible" });
+  assert.equal(
+    await sendingClaimEmail.isDisabled(),
+    true,
+    "The automatic claim email must not allow duplicate sends while pending.",
+  );
+  await claimPage
+    .getByText("Tenant claim email sent and added to the record.")
+    .waitFor({ state: "visible" });
+  await claimAlert.waitFor({ state: "visible" });
+  assert.match(
+    await claimAlert.innerText(),
+    /accepted for delivery, but OpenEscrow could not refresh/i,
+    "A successful delivery followed by a refresh outage must not be reported as an email failure.",
+  );
+  assert.equal(
+    claimNotificationAttempts,
+    1,
+    "A display refresh outage must not repeat the delivered email.",
+  );
+  const postDeliveryRetry = claimPage.getByRole("button", {
+    name: "Try loading claim requirements again",
+  });
+  assert.equal(
+    await postDeliveryRetry.evaluate((element) => element === document.activeElement),
+    true,
+    "The post-delivery refresh outage should focus its retry control.",
+  );
+  await postDeliveryRetry.press("Enter");
+  await claimAlert.waitFor({ state: "detached" });
+  assert.equal(
+    claimNotificationAttempts,
+    1,
+    "Refreshing the private record must never resend the tenant email.",
   );
 
   const responsePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
@@ -231,7 +284,7 @@ try {
   );
 
   process.stdout.write(
-    "Private-record recovery browser check passed: claim requirements fail closed, time-sensitive tenant responses remain available, retries announce progress, failed retries restore focus, and successful retries recover at mobile width.\n",
+    "Private-record recovery browser check passed: claim requirements fail closed, time-sensitive tenant responses remain available, retries announce progress and restore focus, successful retries recover at mobile width, and a delivered claim email is never repeated by a record-only retry.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

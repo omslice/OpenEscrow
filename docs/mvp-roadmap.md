@@ -44,7 +44,10 @@ production custody, or reliance on the compliance research as legal advice.
   retry path. A rendered mobile-width browser regression proves retry progress remains visible,
   failed retries restore keyboard focus, and later recovery succeeds. Invitation and notice
   audit-save failures are caught and explained without undoing a successfully opened email,
-  copied link, submitted claim, or submitted response.
+  copied link, submitted claim, or submitted response. Automatic tenant-claim email delivery is
+  separately scoped from its follow-up record refresh: pending delivery cannot be double-sent,
+  an account/access change discards stale completion, and a refresh-only outage retries without
+  resending the email.
 - **Verified:** The Record workspace now leads with plain-language report, private-backup, public-
   proof, and independent-check guidance. Encryption algorithms and raw fingerprints remain
   available in keyboard-accessible collapsed disclosures; the rendered rehearsal still proves

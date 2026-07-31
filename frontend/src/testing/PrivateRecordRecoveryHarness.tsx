@@ -3,7 +3,11 @@ import { createRoot } from "react-dom/client";
 import { ClaimSection } from "../components/ClaimSection";
 import { ResponseSection } from "../components/ResponseSection";
 import { Phase, ZERO_ADDRESS } from "../contracts/config";
-import type { NegotiationAccess } from "../lib/negotiations";
+import {
+  rememberLandlordBundle,
+  type CreatedNegotiation,
+  type NegotiationAccess,
+} from "../lib/negotiations";
 import type { Agreement } from "../lib/useAgreement";
 import "../index.css";
 import "../App.css";
@@ -50,6 +54,18 @@ const access: NegotiationAccess = {
   token: "synthetic-private-record-recovery-token",
   source: "invite",
 };
+
+if (role !== "tenant") {
+  rememberLandlordBundle({
+    record: { id: access.proposalId },
+    access: {
+      landlord: access.token,
+      tenant: "synthetic-tenant-invitation-token",
+      tenants: [],
+      arbiter: null,
+    },
+  } as CreatedNegotiation);
+}
 
 createRoot(document.getElementById("root")!).render(
   <main className="app-shell">
