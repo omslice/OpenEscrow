@@ -317,7 +317,8 @@ production readiness, or authorization to hold real rental deposits.
   hash and finishes the exact receipt-verified access update. The server suite covers wrong
   nominees, parties, senders, old/new arbiter fields, lost-link rotation, cancellation, signed-in
   discovery, terminal expiry, recovery by an authorized participant, and post-acceptance access
-  isolation.
+  isolation. Replacement invitations also use the shared permission-safe clipboard path, with a
+  visible link that remains manually selectable if browser copy access is blocked.
 
 ## Material unknowns
 

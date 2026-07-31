@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { isAddress } from "viem";
 import { useAccount } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
+import { copyTextToClipboard } from "../lib/browserActions";
 import { shortAddr } from "../lib/format";
 import {
   arbiterReplacementAction,
@@ -141,7 +142,7 @@ export function ArbiterReplacementSection({
   async function copyInvite() {
     if (!inviteUrl) return;
     try {
-      await navigator.clipboard.writeText(inviteUrl);
+      await copyTextToClipboard(inviteUrl);
       setRecordStatus("Replacement-arbiter invitation copied.");
     } catch {
       setRecordError("The browser could not copy the invitation. Select and copy the link below.");
