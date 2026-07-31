@@ -27,6 +27,12 @@ production readiness, or authorization to hold real rental deposits.
   tests, lint, browser account-switch, funding-recovery, accessibility/mobile, and load-recovery
   smoke checks, and the production build. These rendered checks are part of the required
   `npm run check` path rather than separate, potentially stale results.
+- **Verified:** The complete Foundry suite passes 221 contract tests across 20 suites, with one
+  opt-in Base Sepolia fork test skipped when no RPC URL is supplied. The candidate activity
+  registry now authorizes the landlord, every nonzero-share tenant, and the current arbiter;
+  a secondary-tenant regression proves independent snapshot anchoring and activity publishing.
+  This source-level fix is not active until the owner broadcasts the version-matched registry and
+  the release is configured to its validated address.
 - **Verified:** Base Sepolia receipt verification now rejects a real event when its participant,
   amount, selected token, record hash, or activity type does not match the validated action.
   Finalization proves the complete approved tenant/share set, primary tenant, optional arbiter,

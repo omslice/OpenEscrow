@@ -3,7 +3,8 @@
 ## Why a registry must be versioned with the escrow
 
 `AgreementActivityRegistry` stores an immutable `ESCROW` reference and authorizes
-record anchors by reading the parties of that exact contract. Agreement IDs begin
+record anchors by reading the landlord, every nonzero-share tenant, and current
+arbiter of that exact contract. Agreement IDs begin
 again at zero after an escrow redeployment, so a registry from an earlier release
 must never be reused for a newer escrow.
 
@@ -66,5 +67,7 @@ Before publishing the frontend:
 6. Regenerate `AgreementActivityRegistryABI.json`.
 7. Run contract tests, server tests, lint, the production build, and a fork or
    live test that publishes then verifies one version-2 private activity proof.
+8. For a multi-tenant pilot, prove a secondary tenant can independently anchor a
+   snapshot and publish a privacy-safe activity hash.
 
 Do not reuse the retired registry address as a fallback.

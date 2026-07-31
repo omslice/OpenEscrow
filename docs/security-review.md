@@ -245,7 +245,7 @@ MIME type. Evidence downloads and printable reports add no-referrer, no-sniffing
 restrictive content-security headers. Static app responses also receive no-referrer and no-sniffing
 headers.
 
-Automated coverage at this addendum is 173 passing Solidity tests across 15 suites, including the
+Automated coverage at this addendum is 221 passing Solidity tests across 20 suites, including the
 three 32,768-call stateful invariants and 512-run fuzz cases, plus 87 passing hosted workflow tests.
 The workflow suite contains a complete two-tenant/optional-arbiter negotiation, funding, claim,
 response, dispute, ruling, refund, and withdrawal scenario. Receipt regressions independently
@@ -256,6 +256,11 @@ amounts; wrong timeout outcomes; and altered private-record hashes, activity typ
 Finalization coverage also rejects altered arbiter/deadline/share fields, missing participant
 logs, and two partial logs that only match when improperly combined. Operations-reserve coverage
 rejects the wrong contract, escrow, agreement, tenant, token, transaction sender, or exact share.
+The candidate activity registry now authorizes every tenant through the escrow's immutable
+nonzero ownership share instead of recognizing only the primary tenant stored in the agreement
+struct. A secondary-tenant contract regression proves record anchoring and private-activity
+publication, while the existing stranger regression remains fail-closed. This registry change is
+not deployed until a new version-matched registry is broadcast and validated.
 
 ### Residual hosted-workflow risks
 

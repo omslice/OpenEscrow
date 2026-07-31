@@ -6,6 +6,7 @@ import {AgreementActivityRegistry} from "../contracts/AgreementActivityRegistry.
 
 contract AgreementActivityRegistryTest is Base {
     AgreementActivityRegistry internal registry;
+    address internal tenantTwo = makeAddr("activityTenantTwo");
     bytes32 internal constant SNAPSHOT = bytes32(uint256(1));
     bytes32 internal constant ACTIVITY = bytes32(uint256(2));
 
@@ -32,6 +33,35 @@ contract AgreementActivityRegistryTest is Base {
         assertTrue(registry.anchoredBy(id, SNAPSHOT, landlord));
         assertTrue(registry.anchoredBy(id, SNAPSHOT, tenant));
         assertTrue(registry.anchoredBy(id, SNAPSHOT, arbiter));
+    }
+
+    function test_everyCoTenantCanAnchorAndPublish() public {
+        address[] memory tenants = new address[](2);
+        tenants[0] = tenant;
+        tenants[1] = tenantTwo;
+        uint16[] memory shares = new uint16[](2);
+        shares[0] = 6_000;
+        shares[1] = 4_000;
+
+        vm.prank(landlord);
+        uint256 id = escrow.createMultiTenantAgreementWithToken(
+            tenants,
+            shares,
+            arbiter,
+            address(usdc),
+            DEPOSIT,
+            uint64(block.timestamp),
+            CLAIM_PERIOD,
+            RESPONSE_PERIOD,
+            ARBITER_PERIOD
+        );
+
+        vm.startPrank(tenantTwo);
+        registry.anchorSnapshot(id, SNAPSHOT);
+        registry.publishActivity(id, registry.ACTIVITY_DOCUMENT(), ACTIVITY);
+        vm.stopPrank();
+
+        assertTrue(registry.anchoredBy(id, SNAPSHOT, tenantTwo));
     }
 
     function test_nonPartyCannotAnchorOrPublish() public {

@@ -77,7 +77,7 @@ Commission a professional review of the exact intended deployment commit. The sc
 - frontend transaction construction;
 - a remediation review after fixes.
 
-The existing AI-assisted reviews, 173-test contract suite, and 38-test hosted-workflow suite are
+The existing AI-assisted reviews, 221-test contract suite, and 87-test hosted-workflow suite are
 useful inputs, not substitutes for this engagement.
 
 ## Go/no-go checklist

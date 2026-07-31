@@ -4,7 +4,7 @@ pragma solidity 0.8.26;
 import {OpenEscrow} from "./OpenEscrow.sol";
 
 /// @title OpenEscrow Agreement Activity Registry
-/// @notice Lets the landlord, tenant, or current arbiter attest to canonical
+/// @notice Lets the landlord, every tenant, or current arbiter attest to canonical
 ///         agreement-record snapshots and publish privacy-safe activity hashes.
 /// @dev No raw messages, emails, evidence, or document pointers are stored here.
 ///      A hash proves a caller saw particular content; it does not prove that the
@@ -66,7 +66,8 @@ contract AgreementActivityRegistry {
 
     function _requireAgreementParty(uint256 agreementId) internal view {
         OpenEscrow.Agreement memory agreement = ESCROW.getAgreement(agreementId);
-        if (msg.sender != agreement.landlord && msg.sender != agreement.tenant && msg.sender != agreement.arbiter) {
+        bool isTenant = ESCROW.tenantShareBps(agreementId, msg.sender) != 0;
+        if (msg.sender != agreement.landlord && !isTenant && msg.sender != agreement.arbiter) {
             revert NotAgreementParty();
         }
     }
