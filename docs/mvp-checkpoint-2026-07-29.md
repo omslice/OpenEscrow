@@ -16,26 +16,27 @@ detailed validation ledger.
   rehearsal summaries, binds their JUnit reports by SHA-256, and records a deterministic digest of
   every packaged Sites file. The live-deploy wrapper runs readiness only after a successful
   publish and passes the new deployment URL positionally to the readiness checker.
-- **Verified:** Seventeen credential-free rehearsals pass: five lifecycle scenarios covering
-  archive/restore, record proof, disputed claim, accepted claim, and no-claim refund, plus five
-  private-evidence and notification outage/recovery scenarios—including cleanup when storage
-  succeeds before its D1 record—one isolated evidence-key backup restoration scenario, one
-  arbiter-link/session reset, one targeted lost-tenant-link recovery with co-tenant continuity,
-  one verified-arbiter identity recovery/isolation scenario, one verified-account session
-  containment scenario, one realistic multi-agreement account data-inventory scenario with
-  encrypted-evidence exclusion and clean post-containment rediscovery, and one durable sandbox
-  funding recovery/refund scenario. The no-claim rehearsal now uses separately signed
-  landlord/tenant identities and proves deposit funding, premature-withdrawal denial, the
-  one-time refund and withdrawal, final report contents, and repeatable snapshot integrity.
+- **Verified:** Eighteen credential-free rehearsals pass: lifecycle scenarios cover
+  archive/restore, record proof, disputed claim, accepted claim, and no-claim refund, while a
+  rendered Record scenario proves encrypted JSON export, separate-key download, wrong-key
+  rejection, keyboard disclosure, narrow-screen layout, and local verification during a public-
+  proof outage. Five private-evidence and notification outage/recovery scenarios include cleanup
+  when storage succeeds before its D1 record; the remaining rehearsals cover isolated evidence-key
+  backup restoration, arbiter and tenant link/session recovery, verified identity and account-
+  session isolation, privacy inventory, and durable sandbox funding recovery/refund. The no-claim
+  rehearsal uses separately signed landlord/tenant identities and proves deposit funding,
+  premature-withdrawal denial, the one-time refund and withdrawal, final report contents, and
+  repeatable snapshot integrity.
 - **Verified:** A separate 15-scenario incident-response rehearsal passes for identity forgery,
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   R2/encrypted-IPFS cleanup after metadata failure, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 90 server tests, 166 client-logic
-  tests, lint, browser account-switch, funding-recovery, accessibility/mobile, and load-recovery
-  smoke checks, and the production build. These rendered checks are part of the required
-  `npm run check` path rather than separate, potentially stale results.
+- **Verified:** The full repository release check passes the complete server and client-logic
+  suites, lint, browser account-switch, funding-recovery, record-verification,
+  accessibility/mobile, landing-budget, and load-recovery checks, plus the production build.
+  These rendered checks are part of the required `npm run check` path rather than separate,
+  potentially stale results.
 - **Verified:** The complete Foundry suite passes 221 contract tests across 20 suites, with one
   opt-in Base Sepolia fork test skipped when no RPC URL is supplied. The candidate activity
   registry now authorizes the landlord, every nonzero-share tenant, and the current arbiter;

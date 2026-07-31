@@ -140,6 +140,7 @@ function writeRehearsalFixture({
   directory,
   schema,
   sourceCommit,
+  additionalTestTargets = [],
 }) {
   const artifactDirectory = path.join(frontendRoot, directory);
   mkdirSync(artifactDirectory, { recursive: true });
@@ -156,6 +157,8 @@ function writeRehearsalFixture({
       status: "passed",
       executionMode: "local-credential-free",
       sourceCommit,
+      testTarget: "server/index.test.mjs",
+      additionalTestTargets,
       tests: { expected: 1, passed: 1, failed: 0, missing: 0 },
       scenarios: [{ id: "scenario", status: "passed" }],
       junitArtifact,
@@ -174,6 +177,7 @@ function candidateArtifactFixture(t) {
     directory: ".pilot-rehearsal",
     schema: "openescrow.pilot-rehearsal.v1",
     sourceCommit: commitSha,
+    additionalTestTargets: ["scripts/check-record-verification.mjs"],
   });
   writeRehearsalFixture({
     frontendRoot,
@@ -222,6 +226,10 @@ test("candidate artifacts bind both rehearsals and every packaged Sites byte", (
   });
 
   assert.equal(first.pilotRehearsal.sourceCommit, commitSha);
+  assert.deepEqual(first.pilotRehearsal.testTargets, [
+    "server/index.test.mjs",
+    "scripts/check-record-verification.mjs",
+  ]);
   assert.equal(first.incidentRehearsal.scenarioCount, 1);
   assert.equal(first.sitesBuild.release.commitSha, commitSha);
   assert.equal(first.sitesBuild.hosting.d1, "DB");
@@ -256,5 +264,24 @@ test("candidate artifacts reject rehearsal evidence from another commit", (t) =>
         commitSha,
       }),
     /incidentRehearsal evidence is not a passing credential-free artifact/,
+  );
+});
+
+test("candidate artifacts require the rendered record-verification target", (t) => {
+  const fixture = candidateArtifactFixture(t);
+  writeRehearsalFixture({
+    frontendRoot: fixture.frontendRoot,
+    directory: ".pilot-rehearsal",
+    schema: "openescrow.pilot-rehearsal.v1",
+    sourceCommit: commitSha,
+  });
+
+  assert.throws(
+    () =>
+      collectCandidateArtifacts({
+        ...fixture,
+        commitSha,
+      }),
+    /missing required rendered target/,
   );
 });

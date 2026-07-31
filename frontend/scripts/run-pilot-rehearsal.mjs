@@ -12,6 +12,20 @@ const expectedScenarios = [
     covers: ["report export", "canonical JSON", "snapshot hash", "receipt trail"],
   },
   {
+    id: "rendered-record-verification",
+    name: "pilot rehearsal: encrypted record export and local verification remain usable",
+    covers: [
+      "rendered Record workflow",
+      "encrypted JSON export",
+      "separate verification key",
+      "wrong-key rejection",
+      "local integrity verification",
+      "public-proof outage",
+      "keyboard disclosure",
+      "mobile width",
+    ],
+  },
+  {
     id: "disputed-claim",
     name: "pilot rehearsal: a disputed claim completes funding, ruling, and withdrawals once",
     covers: ["multi-tenant funding", "partial dispute", "arbiter ruling", "withdrawals"],
@@ -153,4 +167,12 @@ runServerRehearsal({
   testNamePattern: "^pilot rehearsal:",
   safetyBoundary:
     "In-memory workflow simulation only; no hosted identities, wallets, contracts, providers, secrets, or real funds.",
+  additionalChecks: [
+    {
+      name: "pilot rehearsal: encrypted record export and local verification remain usable",
+      target: "scripts/check-record-verification.mjs",
+      command: process.execPath,
+      args: ["scripts/check-record-verification.mjs"],
+    },
+  ],
 });

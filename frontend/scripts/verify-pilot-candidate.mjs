@@ -41,6 +41,9 @@ const REHEARSAL_ARTIFACTS = Object.freeze([
     key: "pilotRehearsal",
     directory: ".pilot-rehearsal",
     schema: "openescrow.pilot-rehearsal.v1",
+    requiredAdditionalTargets: Object.freeze([
+      "scripts/check-record-verification.mjs",
+    ]),
   }),
   Object.freeze({
     key: "incidentRehearsal",
@@ -205,6 +208,20 @@ function verifiedRehearsalArtifact({
   ) {
     throw new Error(`${descriptor.key} evidence has incomplete scenario results.`);
   }
+  const testTargets = [
+    summary.testTarget,
+    ...(Array.isArray(summary.additionalTestTargets)
+      ? summary.additionalTestTargets
+      : []),
+  ].filter((target) => typeof target === "string" && target.length > 0);
+  const missingTargets = (descriptor.requiredAdditionalTargets || []).filter(
+    (target) => !testTargets.includes(target),
+  );
+  if (missingTargets.length > 0) {
+    throw new Error(
+      `${descriptor.key} evidence is missing required rendered target(s): ${missingTargets.join(", ")}.`,
+    );
+  }
   if (
     typeof summary.junitArtifact !== "string" ||
     path.basename(summary.junitArtifact) !== summary.junitArtifact ||
@@ -223,6 +240,7 @@ function verifiedRehearsalArtifact({
     generatedAt: summary.generatedAt,
     sourceCommit: summary.sourceCommit,
     scenarioCount: expected,
+    testTargets,
     summary: {
       path: relativeArtifactPath(repositoryRoot, summaryPath),
       sha256: sha256(summaryBytes),

@@ -20,7 +20,9 @@ production custody, or reliance on the compliance research as legal advice.
 
 - **Verified:** Repeatable landlord/tenant rehearsals cover no-claim refund, accepted claim,
   disputed claim, archive/restore, record export and verification, privacy requests, service
-  outages, and recovery paths with synthetic identities and testnet-only assets.
+  outages, and recovery paths with synthetic identities and testnet-only assets. The machine-
+  readable pilot artifact includes the rendered encrypted-record workflow rather than relying
+  only on a separate release check.
 - **Verified:** Authorization, invitation, cross-account isolation, evidence encryption/keyring
   recovery, tamper detection, transaction receipt binding, and privacy failure modes have
   dedicated server, client, and operator-command regressions.

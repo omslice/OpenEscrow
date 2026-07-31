@@ -22,6 +22,9 @@ ephemeral signed test identities. It independently exercises:
 - a two-tenant partial dispute, arbiter ruling, and all final withdrawals;
 - account-isolated archive and restore preferences; and
 - the complete report, canonical JSON snapshot, snapshot hash, and recorded receipt trail;
+- the rendered encrypted-record workflow, including a separate verification-key download,
+  wrong-key rejection, local verification during a public-proof outage, keyboard disclosure, and
+  narrow-screen layout;
 - private-evidence upload and download outages that fail closed without phantom records; and
 - a notification-provider outage followed by one idempotent recovery delivery; and
 - landlord-authorized arbiter link rotation with old-link and active-session invalidation; and
