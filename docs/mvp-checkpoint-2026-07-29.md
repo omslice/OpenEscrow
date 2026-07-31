@@ -25,7 +25,7 @@ detailed validation ledger.
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   R2/encrypted-IPFS cleanup after metadata failure, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 90 server tests, 148 client-logic
+- **Verified:** The full repository release check passes with 90 server tests, 153 client-logic
   tests, lint, browser account-switch, funding-recovery, accessibility/mobile, and load-recovery
   smoke checks, and the production build. These rendered checks are part of the required
   `npm run check` path rather than separate, potentially stale results.
@@ -250,6 +250,11 @@ detailed validation ledger.
   planned work, material unknowns, and owner-only actions. The required release check rejects
   misplaced status labels, stale hard-coded production-version claims, and obsolete handoffs that
   still look authoritative.
+- **Verified:** The stricter release envelope now parses the production dependency audit instead
+  of relying only on a severity threshold. High/critical findings, unknown moderate advisories,
+  expired exceptions, and stale exceptions all fail closed. The current transitive `uuid`
+  advisory is documented as one exact testnet-only exception through 2026-08-30; it cannot
+  authorize a production release.
 - **Verified:** A fresh 2026-07-30 check of the public readiness endpoint returned HTTP 200 but no
   exact release provenance and eight required actions. The result is recorded as deployed-state
   evidence only; it does not describe or block saving the newer undeployed candidate.
@@ -316,8 +321,10 @@ detailed validation ledger.
   consumer-readable recovery card instead of a terse retry. It states that the deposit was not
   removed, warns the participant to check the wallet and Record before repeating a payment,
   claim, or withdrawal, announces retry progress and failure, and restores keyboard focus after a
-  failed retry. The rendered load-recovery check covers keyboard retry, retry failure and success,
-  duplicate-action guidance, and mobile-width behavior.
+  failed retry. Focus restoration now waits for React to commit the enabled retry control instead
+  of racing the parent's loading-state update; five consecutive rendered checks passed. The
+  load-recovery check covers keyboard retry, retry failure and success, duplicate-action guidance,
+  and mobile-width behavior.
 - **Verified:** The compliance evaluator now rejects malformed deadline metadata before a
   triggering event can make the error visible, propagates an invalid member into an
   earlier-of/later-of controlling deadline, and rejects a snapshot whose recorded jurisdiction

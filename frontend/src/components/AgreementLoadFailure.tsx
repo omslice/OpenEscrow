@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { agreementReference } from "../lib/displayIds";
 
 export function AgreementLoadFailure({
@@ -16,6 +16,14 @@ export function AgreementLoadFailure({
   const guidanceId = `agreement-${id.toString()}-load-error-guidance`;
   const retryErrorId = `agreement-${id.toString()}-load-retry-error`;
 
+  useEffect(() => {
+    if (retrying || !retryError) return;
+    const frame = window.requestAnimationFrame(() => {
+      retryButtonRef.current?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [retryError, retrying]);
+
   async function retry() {
     setRetryError(null);
     try {
@@ -24,7 +32,6 @@ export function AgreementLoadFailure({
       setRetryError(
         "OpenEscrow still could not reconnect to this deposit. Check your connection and try again. Before repeating any payment, claim, or withdrawal, check your wallet and the Record tab.",
       );
-      window.requestAnimationFrame(() => retryButtonRef.current?.focus());
     }
   }
 

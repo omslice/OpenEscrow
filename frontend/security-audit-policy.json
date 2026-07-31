@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "openescrow-npm-audit-policy/v1",
+  "exceptions": [
+    {
+      "advisory": "GHSA-w5hq-g745-h8pq",
+      "package": "uuid",
+      "reviewedVersions": [
+        "8.3.2",
+        "9.0.1"
+      ],
+      "severity": "moderate",
+      "expiresOn": "2026-08-30",
+      "scope": "Base Sepolia testnet candidate only",
+      "rationale": "The affected uuid v3/v5/v6 buffer-output API is not called by OpenEscrow or found in the installed wallet-provider source paths. The registry offers only a breaking Privy downgrade, so this exact upstream advisory is time-bounded instead of forcing an unsafe authentication rollback."
+    }
+  ]
+}
