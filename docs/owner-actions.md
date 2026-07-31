@@ -11,10 +11,11 @@ provider or hosting control that owns the secret.
 
 ## Actionable now
 
-- [ ] **Review and explicitly approve the newest saved Sites candidate before deployment.** The
-  public site is older than the validated branch and currently exposes no exact release
-  provenance. A newer candidate is saved but undeployed; selecting and promoting that exact
-  candidate remains a separate production action.
+- [ ] **Review and explicitly approve the newest exact Sites candidate before deployment.** Wait
+  until Codex reports that the latest validated Git commit was successfully saved as a Sites
+  version; the current Sites source handoff is returning HTTP 500 and its saved source predates
+  the latest branch. The public site is older still and exposes no exact release provenance.
+  Selecting and promoting an exact saved candidate remains a separate production action.
 - [ ] **Broadcast the version-matched Base Sepolia activity registry.**
   The candidate registry now recognizes every nonzero-share co-tenant as an agreement party; the
   prior deployed/retired registry must not be reused for a multi-tenant pilot.

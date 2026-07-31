@@ -338,11 +338,20 @@ detailed validation ledger.
   conflicts with its validated address. The official-source gate also treats a future-dated
   verification as stale instead of trusting it indefinitely. These are integrity checks only;
   no legal rule, source, period, or jurisdiction profile changed.
+- **Verified:** The critical Record workspace now introduces the complete report, encrypted
+  backup, optional public proof, and independent verification in plain language. AES-256-GCM,
+  SHA-256, and the exact fingerprint remain available in collapsed technical disclosures. The
+  rendered rehearsal proves the raw fingerprint is hidden by default but keyboard-accessible on
+  request, the expanded workflow fits a narrow viewport, and encrypted export, separate-key
+  download, wrong-key rejection, and local verification remain usable during a public-proof
+  service outage.
 
 ## Remaining
 
-- **Planned:** Review the newest saved candidate and explicitly approve a production deployment
-  when the testnet release envelope is acceptable.
+- **Planned:** Save the newest exact candidate after the Sites source handoff recovers, then review
+  that saved version and explicitly approve a production deployment when the testnet release
+  envelope is acceptable. The latest validated Git source is newer than the currently saved Sites
+  source because the handoff is returning HTTP 500.
 - **Planned:** Configure and validate the seven hosted pilot gates: email delivery, scheduler,
   evidence encryption, version-matched activity registry, address attestation, official-source
   baseline, and source-monitor freshness.

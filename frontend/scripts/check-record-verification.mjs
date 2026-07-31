@@ -225,6 +225,9 @@ try {
     { waitUntil: "domcontentloaded" },
   );
   await page.getByRole("tab", { name: "Record" }).click();
+  await page.getByText(
+    "Download the complete timestamped report, save a private encrypted backup, and check it against an optional public proof.",
+  ).waitFor({ state: "visible" });
   const recordToggle = page.getByRole("button", {
     name: /Finalized agreement record/,
   });
@@ -266,8 +269,27 @@ try {
     name: "Verify encrypted record",
   });
   await page.getByText(
-    "The Base Sepolia anchor check will be skipped until the record service is connected to this OpenEscrow release.",
+    "The public proof check will be skipped until the record service is connected to this OpenEscrow release.",
   ).waitFor({ state: "visible" });
+  const fingerprintDetails = page.locator(".record-proof-details summary");
+  const snapshotFingerprint = page.locator(".record-proof-details code");
+  assert.equal(
+    await snapshotFingerprint.isVisible(),
+    false,
+    "The raw record fingerprint should stay collapsed by default.",
+  );
+  await fingerprintDetails.focus();
+  assert.equal(
+    await fingerprintDetails.evaluate((element) => document.activeElement === element),
+    true,
+    "The technical fingerprint disclosure should be keyboard focusable.",
+  );
+  await page.keyboard.press("Enter");
+  assert.equal(
+    await snapshotFingerprint.isVisible(),
+    true,
+    "The exact record fingerprint should remain available on request.",
+  );
   const keyPayloadIndex = "oe1_".length;
   const wrongKey = `${verificationKey.slice(0, keyPayloadIndex)}${
     verificationKey[keyPayloadIndex] === "A" ? "B" : "A"
@@ -286,16 +308,37 @@ try {
   await keyInput.fill(verificationKey);
   await verifyButton.click();
   await page.getByText(
-    "Record integrity verified; onchain check unavailable",
+    "Record verified; public proof check unavailable",
   ).waitFor({ state: "visible" });
+  const verificationDetails = page.getByText("View verification details");
+  const verifiedFingerprint = page.locator(".verification-proof-details code");
   assert.equal(
-    await page.locator(".proof-verification-warning code").getAttribute("title"),
+    await verifiedFingerprint.isVisible(),
+    false,
+    "Verification should lead with the plain-language result.",
+  );
+  await verificationDetails.click();
+  assert.equal(
+    await verifiedFingerprint.isVisible(),
+    true,
+    "Technical verification details should remain available on request.",
+  );
+  assert.equal(
+    await verifiedFingerprint.getAttribute("title"),
     snapshot.hash,
     "The rendered verifier should show the exact downloaded record hash.",
   );
+  await page.setViewportSize({ width: 390, height: 844 });
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "The expanded Record workflow should not cause horizontal overflow on a narrow screen.",
+  );
 
   process.stdout.write(
-    "Record verification browser check passed: encrypted export, separate key download, wrong-key rejection, and local integrity verification remain usable during an onchain registry outage.\n",
+    "Record verification browser check passed: plain-language guidance, keyboard-accessible technical details, mobile width, encrypted export, separate key download, wrong-key rejection, and local integrity verification remain usable during a public-proof outage.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

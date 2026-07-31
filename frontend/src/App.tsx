@@ -1244,7 +1244,7 @@ function AppView({
             <div className="record-workspace-body" id={contentId}>
               <DeferredLoadBoundary
                 area="workspace"
-                fallback={<WorkspaceToolFallback label="Loading onchain record..." />}
+                fallback={<WorkspaceToolFallback label="Loading agreement record..." />}
               >
                 <AgreementOnchainActivity agreementId={id} isParty={false} />
               </DeferredLoadBoundary>
@@ -1260,8 +1260,8 @@ function AppView({
           <span className="eyebrow">Audit trail</span>
           <h2>Proposal and agreement record</h2>
           <p>
-            Download the complete timestamped report, preserve an encrypted evidence copy,
-            and verify its integrity hash onchain.
+            Download the complete timestamped report, save a private encrypted backup, and
+            check it against an optional public proof.
           </p>
         </div>
         {currentRecords.length === 0 && unlinkedAgreementIds.length === 0 && (

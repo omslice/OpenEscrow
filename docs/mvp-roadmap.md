@@ -31,6 +31,11 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** Critical flows have rendered accessibility, keyboard/focus, mobile-width, loading,
   error, and retry checks. Remaining usability work requires moderated human sessions rather than
   another code-only claim.
+- **Verified:** The Record workspace now leads with plain-language report, private-backup, public-
+  proof, and independent-check guidance. Encryption algorithms and raw fingerprints remain
+  available in keyboard-accessible collapsed disclosures; the rendered rehearsal still proves
+  narrow-screen layout, separate-key export, wrong-key rejection, and local verification during
+  a public-proof outage.
 - **Verified:** Validated U.S. addresses route to immutable, versioned state snapshots with
   conditional/business-day deadline regression coverage and fail-closed official-source gates.
   This is a best-effort research aid, not an assertion that every legal rule is complete.
@@ -44,14 +49,16 @@ production custody, or reliance on the compliance research as legal advice.
   site is older than the saved candidate and exposes no exact release provenance. It reported
   eight required pilot actions: release provenance, email, scheduler, evidence keyring, activity
   registry binding, address attestation, official-source baseline, and monitor freshness.
-- **Verified:** Exact candidate source is pushed and saved as an undeployed Sites version after
-  each coherent slice. D1, R2, hosted data, runtime secrets, configuration, and the public
-  deployment remain unchanged.
+- **Verified:** Exact candidate source is pushed after each coherent slice. The newest source is
+  release-checked locally, while the Sites source branch remains on the prior saved candidate
+  because the source handoff is returning HTTP 500. D1, R2, hosted data, runtime secrets,
+  configuration, and the public deployment remain unchanged.
 
 ## Remaining
 
-- **Planned:** Review and explicitly approve a saved candidate, deploy that exact testnet source,
-  then rerun the hosted readiness check so release provenance is verifiable.
+- **Planned:** Save the newest exact candidate when the Sites source service accepts it, review and
+  explicitly approve that version, deploy that exact testnet source, then rerun the hosted
+  readiness check so release provenance is verifiable.
 - **Planned:** Complete the hosted pilot gates listed in
   [owner actions](./owner-actions.md): notification delivery and scheduler, evidence encryption
   and retained-key recovery, version-matched activity registry, address attestation, and a clean,

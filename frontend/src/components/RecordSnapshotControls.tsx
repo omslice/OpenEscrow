@@ -111,8 +111,8 @@ function StandardAnchorAction({
     } catch (cause) {
       setError(
         cause instanceof Error
-          ? `The anchor succeeded, but the activity record could not be updated: ${cause.message}`
-          : "The anchor succeeded, but the activity record could not be updated.",
+          ? `The public proof was saved, but its receipt could not be added to the private activity record: ${cause.message}`
+          : "The public proof was saved, but its receipt could not be added to the private activity record.",
       );
     }
   }
@@ -120,14 +120,16 @@ function StandardAnchorAction({
   if (anchored.data === true) {
     return (
       <>
-        <p className="tx-success" role="status">This wallet has anchored this exact snapshot onchain.</p>
+        <p className="tx-success" role="status">
+          This wallet has saved proof of this exact record on the test network.
+        </p>
         {recovery.pendingTransaction && (
           <button
             className="btn btn-ghost small"
             type="button"
             onClick={() => void recordReceipt(recovery.pendingTransaction!)}
           >
-            Retry saving the transaction receipt
+            Retry saving the proof receipt
           </button>
         )}
         {error && <p className="tx-error" role="alert">{error}</p>}
@@ -142,7 +144,7 @@ function StandardAnchorAction({
         abi={AgreementActivityRegistryABI}
         functionName="anchorSnapshot"
         args={[agreementId, snapshot.hash]}
-        label="Anchor this snapshot onchain"
+        label="Save public proof of this record"
         onSuccess={(transactionHash) => {
           recovery.remember(transactionHash);
           void recordReceipt(transactionHash)
@@ -158,7 +160,7 @@ function StandardAnchorAction({
           type="button"
           onClick={() => void recordReceipt(recovery.pendingTransaction!)}
         >
-          Retry saving the transaction receipt
+          Retry saving the proof receipt
         </button>
       )}
       {error && <p className="tx-error" role="alert">{error}</p>}
@@ -197,8 +199,8 @@ function SponsoredAnchorAction({
     } catch (cause) {
       setError(
         cause instanceof Error
-          ? `The anchor succeeded, but the activity record could not be updated: ${cause.message}`
-          : "The anchor succeeded, but the activity record could not be updated.",
+          ? `The public proof was saved, but its receipt could not be added to the private activity record: ${cause.message}`
+          : "The public proof was saved, but its receipt could not be added to the private activity record.",
       );
     }
   }
@@ -206,14 +208,16 @@ function SponsoredAnchorAction({
   if (anchored.data === true) {
     return (
       <>
-        <p className="tx-success" role="status">This wallet has anchored this exact snapshot onchain.</p>
+        <p className="tx-success" role="status">
+          This wallet has saved proof of this exact record on the test network.
+        </p>
         {recovery.pendingTransaction && (
           <button
             className="btn btn-ghost small"
             type="button"
             onClick={() => void recordReceipt(recovery.pendingTransaction!)}
           >
-            Retry saving the transaction receipt
+            Retry saving the proof receipt
           </button>
         )}
         {error && <p className="tx-error" role="alert">{error}</p>}
@@ -259,7 +263,7 @@ function SponsoredAnchorAction({
           }
         }}
       >
-        {working ? "Anchoring with gas covered..." : "Anchor this snapshot—gas covered"}
+        {working ? "Saving public proof..." : "Save public proof—network fee covered"}
       </button>
       {recovery.pendingTransaction && (
         <button
@@ -267,7 +271,7 @@ function SponsoredAnchorAction({
           type="button"
           onClick={() => void recordReceipt(recovery.pendingTransaction!)}
         >
-          Retry saving the transaction receipt
+          Retry saving the proof receipt
         </button>
       )}
       {error && <p className="tx-error" role="alert">{error}</p>}
@@ -447,12 +451,19 @@ export function RecordSnapshotControls({
 
       <section className="record-export-step">
         <div>
-          <span className="eyebrow">2 · Encrypted evidence copy</span>
-          <strong>Download the encrypted record and verification key</strong>
+          <span className="eyebrow">2 · Private backup</span>
+          <strong>Download an encrypted backup and its key</strong>
           <p className="field-help">
-            The complete canonical JSON is encrypted in this browser with a new AES-256-GCM key.
-            The plaintext record is not uploaded during export.
+            The backup is locked in this browser before it downloads. OpenEscrow does not receive
+            the readable record during export.
           </p>
+          <details className="technical-details">
+            <summary>Technical details</summary>
+            <p>
+              The complete canonical JSON is encrypted locally with a new AES-256-GCM key. The
+              readable JSON is not uploaded during export.
+            </p>
+          </details>
         </div>
         <div className="button-row">
           <button
@@ -486,7 +497,8 @@ export function RecordSnapshotControls({
           <div className="record-key-warning" role="status">
             <strong>Save the verification key now.</strong>
             <span>
-              OpenEscrow cannot recover it. Keep it private and separate from the encrypted JSON.
+              You need both the encrypted record and this key to open or verify the backup.
+              OpenEscrow cannot recover the key.
             </span>
           </div>
         )}
@@ -495,16 +507,19 @@ export function RecordSnapshotControls({
       {snapshot && (
         <section className="record-export-step snapshot-anchor">
           <div>
-            <span className="eyebrow">3 · Onchain integrity receipt</span>
-            <strong>Save this record hash onchain</strong>
+            <span className="eyebrow">3 · Optional public proof</span>
+            <strong>Save proof that this record has not changed</strong>
           </div>
           <p className="field-help">
-            Only the SHA-256 hash and the anchoring wallet are public. Names, emails, notes,
-            documents, the encrypted file, and its verification key stay private.
+            The test network stores a digital fingerprint and the saving wallet—not the record
+            itself. Names, emails, notes, documents, the encrypted file, and its key stay private.
           </p>
-          <code className="snapshot-hash" title={snapshot.hash}>
-            {snapshot.algorithm}: {snapshot.hash}
-          </code>
+          <details className="technical-details record-proof-details">
+            <summary>View technical fingerprint</summary>
+            <code className="snapshot-hash" title={snapshot.hash}>
+              {snapshot.algorithm}: {snapshot.hash}
+            </code>
+          </details>
           {agreementId !== undefined && registry.isReady ? (
             <AnchorAction
               key={snapshot.hash}
@@ -514,21 +529,21 @@ export function RecordSnapshotControls({
             />
           ) : agreementId === undefined ? (
             <p className="field-help">
-              Finalize this proposal before saving its record hash onchain.
+              Finalize this proposal before saving a public proof.
             </p>
           ) : registry.isChecking ? (
-            <p className="field-help">Checking the onchain record service…</p>
+            <p className="field-help">Checking the public proof service…</p>
           ) : (
             <p className="tx-error" role="alert">
-              Onchain anchoring is temporarily unavailable because the record service
-              is not connected to this OpenEscrow release.
+              Public proof is temporarily unavailable because the record service is not
+              connected to this OpenEscrow release.
             </p>
           )}
         </section>
       )}
 
       <section className="record-export-step">
-        <span className="eyebrow">4 · Independent verification</span>
+        <span className="eyebrow">4 · Independent check</span>
         <RecordSnapshotVerifier
           proposalId={access.proposalId}
           agreementId={agreementId}
