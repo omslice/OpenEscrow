@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 const appSource = readFileSync(
-  new URL("../App.tsx", import.meta.url),
+  new URL("../WorkspaceApp.tsx", import.meta.url),
   "utf8",
 );
 const trackedAgreementsSource = readFileSync(

@@ -1,4 +1,4 @@
-# Testnet MVP checkpoint — updated 2026-07-30
+# Testnet MVP checkpoint — updated 2026-07-31
 
 This checkpoint records repository and delivery evidence without claiming legal approval,
 production readiness, or authorization to hold real rental deposits.
@@ -355,11 +355,14 @@ detailed validation ledger.
   reports zero vulnerabilities, and a required candidate check imports the affected connector
   modules, verifies UUID generation/validation, and proves an undersized output buffer fails
   closed.
-- **Verified:** The logged-out production landing path now defers the 62 KB U.S. jurisdiction
-  registry until an address or agreement link needs it. A required Playwright budget measures the
-  built site at 62 JavaScript requests and 2,424,736 bytes, rejects an eager jurisdiction chunk,
-  and separately proves a linked agreement loads the chunk and persists its validated
-  jurisdiction hint before tracking the agreement.
+- **Verified:** A clean logged-out production visit now loads a dedicated public entry instead of
+  the full agreement workspace and offers neutral Google/wallet sign-in without a role selector.
+  Only a structurally valid invitation can load role-aware entry; its bearer token is scrubbed
+  before the lazy workspace request, while invalid roles fail back to neutral sign-in. The required
+  Playwright budget measures 54 JavaScript requests and about 2.35 MB, rejects eager workspace
+  and jurisdiction chunks, verifies sign-in focus and mobile-width usability, proves agreement
+  links persist validated jurisdiction hints on demand, and proves valid invitations retain their
+  locked role.
 
 ## Remaining
 

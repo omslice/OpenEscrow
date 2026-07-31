@@ -89,19 +89,64 @@ try {
   const jurisdictionAsset = [...landingAssets].find((assetName) =>
     assetName.startsWith("jurisdictions-"),
   );
+  const workspaceAsset = [...landingAssets].find((assetName) =>
+    assetName.startsWith("WorkspaceApp-"),
+  );
   assert.equal(
     jurisdictionAsset,
     undefined,
     "The public landing page must not preload the U.S. jurisdiction registry.",
   );
+  assert.equal(
+    workspaceAsset,
+    undefined,
+    "A clean logged-out visit must not preload the authenticated workspace.",
+  );
   assert.ok(
-    landingAssets.size <= 62,
-    `The public landing page loaded ${landingAssets.size} JavaScript files; expected at most 62.`,
+    landingAssets.size <= 54,
+    `The public landing page loaded ${landingAssets.size} JavaScript files; expected at most 54.`,
   );
   const landingBytes = await totalAssetBytes(landingAssets);
   assert.ok(
-    landingBytes <= 2_450_000,
-    `The public landing page loaded ${landingBytes} JavaScript bytes; expected at most 2450000.`,
+    landingBytes <= 2_370_000,
+    `The public landing page loaded ${landingBytes} JavaScript bytes; expected at most 2370000.`,
+  );
+  const googleSignIn = landingPage.getByRole("button", {
+    name: "Continue with Google",
+  });
+  await googleSignIn.waitFor({ state: "visible" });
+  await landingPage
+    .getByRole("button", { name: "Continue with a wallet" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await landingPage.getByRole("button", { name: /I am a landlord/ }).count(),
+    0,
+    "A clean logged-out visit must not ask the visitor to choose a workspace role.",
+  );
+  await landingPage
+    .getByRole("button", { name: "Try the testnet demo" })
+    .click();
+  await landingPage.waitForFunction(
+    () => document.activeElement?.textContent?.trim() === "Continue with Google",
+  );
+  await landingPage.setViewportSize({ width: 390, height: 844 });
+  await landingPage
+    .getByRole("heading", { name: "Sign in to try OpenEscrow" })
+    .waitFor({ state: "visible" });
+  const mobilePromptButton = landingPage.getByRole("button", {
+    name: "Show sign-in options",
+  });
+  const mobilePromptButtonBox = await mobilePromptButton.boundingBox();
+  assert.ok(
+    mobilePromptButtonBox && mobilePromptButtonBox.height >= 44,
+    "The public sign-in recovery action must remain a full-size mobile touch target.",
+  );
+  assert.equal(
+    await landingPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "The public sign-in prompt must not create horizontal overflow at mobile width.",
   );
   await landingContext.close();
 
@@ -121,8 +166,124 @@ try {
   );
   await linkedContext.close();
 
+  const invitationContext = await browser.newContext();
+  const invitationPage = await invitationContext.newPage();
+  const invitationAssets = observeLocalScripts(invitationPage);
+  await invitationPage.goto(
+    `${baseUrl}/?proposal=pilot-proposal&token=pilot-secret&invite=tenant`,
+    { waitUntil: "domcontentloaded" },
+  );
+  await invitationPage
+    .getByRole("button", { name: "Continue as tenant with Google" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    new URL(invitationPage.url()).searchParams.has("token"),
+    false,
+    "A role-restricted invitation must scrub its bearer token from the URL.",
+  );
+  assert.equal(
+    [...invitationAssets].some((assetName) =>
+      assetName.startsWith("WorkspaceApp-"),
+    ),
+    true,
+    "A specific invitation link must load the role-aware workspace.",
+  );
+  assert.equal(
+    await invitationPage
+      .getByRole("button", { name: /I am a landlord/ })
+      .count(),
+    0,
+    "An invitation must not expose an unrestricted role selector.",
+  );
+  await invitationContext.close();
+
+  const invalidInvitationContext = await browser.newContext();
+  const invalidInvitationPage = await invalidInvitationContext.newPage();
+  const invalidInvitationAssets = observeLocalScripts(invalidInvitationPage);
+  await invalidInvitationPage.goto(
+    `${baseUrl}/?token=pilot-secret&invite=tenant`,
+    { waitUntil: "domcontentloaded" },
+  );
+  await invalidInvitationPage
+    .getByRole("button", { name: "Continue with Google" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    new URL(invalidInvitationPage.url()).searchParams.has("token"),
+    false,
+    "An invalid invitation must still scrub its bearer token from the URL.",
+  );
+  assert.equal(
+    new URL(invalidInvitationPage.url()).searchParams.has("invite"),
+    false,
+    "An invalid invitation must remove its untrusted role hint.",
+  );
+  assert.equal(
+    [...invalidInvitationAssets].some((assetName) =>
+      assetName.startsWith("WorkspaceApp-"),
+    ),
+    false,
+    "An invalid invitation role must not preload the workspace.",
+  );
+  assert.equal(
+    await invalidInvitationPage
+      .getByRole("button", { name: /I am a landlord/ })
+      .count(),
+    0,
+    "An invalid invitation must fall back to neutral sign-in without role selection.",
+  );
+  await invalidInvitationContext.close();
+
+  const roleHintContext = await browser.newContext();
+  const roleHintPage = await roleHintContext.newPage();
+  const roleHintAssets = observeLocalScripts(roleHintPage);
+  await roleHintPage.goto(`${baseUrl}/?invite=tenant`, {
+    waitUntil: "domcontentloaded",
+  });
+  await roleHintPage
+    .getByRole("button", { name: "Continue with Google" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    new URL(roleHintPage.url()).searchParams.has("invite"),
+    false,
+    "A bare role hint is not an invitation and must be removed.",
+  );
+  assert.equal(
+    [...roleHintAssets].some((assetName) =>
+      assetName.startsWith("WorkspaceApp-"),
+    ),
+    false,
+    "A bare role hint must keep the role-neutral public entry experience.",
+  );
+  await roleHintContext.close();
+
+  const agreementInvitationContext = await browser.newContext();
+  const agreementInvitationPage = await agreementInvitationContext.newPage();
+  const agreementInvitationAssets = observeLocalScripts(
+    agreementInvitationPage,
+  );
+  await agreementInvitationPage.goto(
+    `${baseUrl}/?id=43&jurisdiction=us-ca&invite=tenant`,
+    { waitUntil: "domcontentloaded" },
+  );
+  await agreementInvitationPage
+    .getByRole("button", { name: "Continue as tenant with Google" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    [...agreementInvitationAssets].some((assetName) =>
+      assetName.startsWith("WorkspaceApp-"),
+    ),
+    true,
+    "A specific agreement invitation must load the role-aware workspace.",
+  );
+  assert.equal(
+    new URL(agreementInvitationPage.url()).searchParams.get("invite"),
+    "tenant",
+    "A valid agreement invitation must retain its role restriction.",
+  );
+  await agreementInvitationContext.close();
+
   console.log(
-    `Landing-load check passed: ${landingAssets.size} JavaScript file(s), ${landingBytes} bytes, no eager jurisdiction registry; agreement links load it on demand.`,
+    `Landing-load check passed: ${landingAssets.size} JavaScript file(s), ${landingBytes} bytes, no eager workspace or jurisdiction registry; clean visits show neutral sign-in, agreement hints remain deferred, and invitations retain role-aware entry.`,
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

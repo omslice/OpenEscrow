@@ -55,8 +55,11 @@ npm.cmd run check
 For focused troubleshooting, run `npm.cmd run test:account-switch` or
 `npm.cmd run test:accessibility`. Run `npm.cmd run test:evidence-recovery` for the supporting-file
 same-file retry, status announcements, scope isolation, and mobile-width regression. The
-production landing-load budget runs through `npm.cmd run check:landing-load`; it keeps nationwide
-compliance data off the public landing path while proving agreement links load it on demand. The
+production landing-load budget runs through `npm.cmd run check:landing-load`; it keeps the
+agreement workspace and nationwide compliance data off a clean logged-out visit, shows neutral
+Google/wallet sign-in without a role selector, verifies mobile focus and sizing, and proves
+agreement links load jurisdiction hints on demand while valid invitations retain role-locked
+entry and scrub their bearer token. The
 account-switch check holds archive, inventory, wallet setup,
 record-session revocation, preference-save, and test-email operations open across two deterministic
 identities and proves the old account cannot update, download into, announce inside, or sign out

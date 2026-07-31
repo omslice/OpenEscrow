@@ -182,6 +182,13 @@ test("blocked storage cannot blank an invitation or leave its bearer token in th
     assert.equal(captureNegotiationAccessFromUrl(), null);
     assert.equal(currentUrl.searchParams.get("token"), null);
     assert.equal(currentUrl.searchParams.get("access"), null);
+
+    currentUrl = new URL(
+      "https://openescrow.example/?invite=tenant&token=missing-proposal",
+    );
+    assert.equal(captureNegotiationAccessFromUrl(), null);
+    assert.equal(currentUrl.searchParams.get("token"), null);
+    assert.equal(currentUrl.searchParams.get("invite"), null);
   } finally {
     Object.defineProperty(globalThis, "window", {
       configurable: true,

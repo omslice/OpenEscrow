@@ -69,8 +69,10 @@ const ACCOUNTS: Record<TestAccountId, TestAccount> = {
 type MockContextValue = {
   accountId: TestAccountId;
   account: TestAccount;
+  authenticated: boolean;
   wallets: TestWallet[];
   createWallet: () => Promise<void>;
+  login: () => Promise<void>;
   logout: () => Promise<void>;
   switchAccount: (accountId: TestAccountId) => void;
 };
@@ -85,6 +87,12 @@ function useMockPrivyContext() {
 
 export function PrivyProvider({ children }: { children: ReactNode }) {
   const [accountId, setAccountId] = useState<TestAccountId>("account-a");
+  const [authenticated, setAuthenticated] = useState(
+    () =>
+      !new URLSearchParams(window.location.search).has(
+        "public-access-test",
+      ),
+  );
   const [wallets, setWallets] = useState<Record<TestAccountId, TestWallet[]>>({
     "account-a": [],
     "account-b": [],
@@ -127,6 +135,9 @@ export function PrivyProvider({ children }: { children: ReactNode }) {
   const logout = useCallback(async () => {
     logoutCallsRef.current[accountIdRef.current] += 1;
   }, []);
+  const login = useCallback(async () => {
+    setAuthenticated(true);
+  }, []);
 
   useEffect(() => {
     window.__openEscrowAccountSwitchTest = {
@@ -157,8 +168,10 @@ export function PrivyProvider({ children }: { children: ReactNode }) {
       value={{
         accountId,
         account: ACCOUNTS[accountId],
+        authenticated,
         wallets: wallets[accountId],
         createWallet,
+        login,
         logout,
         switchAccount,
       }}
@@ -169,10 +182,11 @@ export function PrivyProvider({ children }: { children: ReactNode }) {
 }
 
 export function usePrivy() {
-  const { account, logout, switchAccount } = useMockPrivyContext();
+  const { account, authenticated, login, logout, switchAccount } =
+    useMockPrivyContext();
   return {
     ready: true,
-    authenticated: true,
+    authenticated,
     user: {
       id: account.id,
       google: {
@@ -180,7 +194,7 @@ export function usePrivy() {
         name: account.name,
       },
     },
-    login: async () => undefined,
+    login,
     logout,
     linkGoogle: async () => undefined,
     linkWallet: async () => undefined,

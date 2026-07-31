@@ -1,6 +1,6 @@
 # OpenEscrow testnet MVP roadmap
 
-Updated 2026-07-30. This is the canonical high-level project status. The
+Updated 2026-07-31. This is the canonical high-level project status. The
 [validation ledger](./mvp-checkpoint-2026-07-29.md) contains detailed evidence, and
 [owner actions](./owner-actions.md) contains only work that needs credentials, signatures,
 external professional review, or an owner decision.
@@ -50,10 +50,12 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** Deferred workspace loading, bounded onchain event reads, shared receipt polling,
   and one-snapshot wallet discovery reduce initial and repeat network work without weakening role
   or receipt checks.
-- **Verified:** The public landing path no longer downloads the 62 KB U.S. jurisdiction registry
-  before an address or linked agreement needs it. A production-build browser budget now holds the
-  logged-out landing path to 62 JavaScript requests and 2.45 MB while proving an agreement link
-  loads and applies its jurisdiction hint on demand.
+- **Verified:** A clean logged-out visit now shows neutral Google/wallet sign-in instead of loading
+  the agreement workspace or asking for a role. Only a valid invitation can preselect a role, and
+  its bearer token is scrubbed before the lazy workspace loads. The production browser budget
+  holds the landing path to 54 JavaScript requests and 2.37 MB, keeps the 62 KB U.S. jurisdiction
+  registry deferred, verifies mobile access and focus, and proves linked agreements and valid
+  invitations retain their intended routing.
 - **Verified:** The public readiness endpoint returned HTTP 200 on 2026-07-30, but the deployed
   site is older than the saved candidate and exposes no exact release provenance. It reported
   eight required pilot actions: release provenance, email, scheduler, evidence keyring, activity

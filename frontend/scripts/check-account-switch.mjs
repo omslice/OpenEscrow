@@ -375,7 +375,23 @@ try {
     });
   });
 
-  await page.goto(baseUrl, { waitUntil: "networkidle" });
+  await page.goto(`${baseUrl}/?public-access-test=1`, {
+    waitUntil: "networkidle",
+  });
+  await page
+    .getByRole("heading", { name: "Sign in to try OpenEscrow" })
+    .waitFor();
+  assert.equal(
+    await page.getByRole("button", { name: /I am a landlord/ }).count(),
+    0,
+    "A clean signed-out visit must not choose an agreement role before account authentication.",
+  );
+  await page
+    .getByRole("button", { name: "Continue with Google" })
+    .click();
+  await page
+    .getByRole("heading", { name: "How are you using OpenEscrow today?" })
+    .waitFor();
   await page.getByRole("button", { name: /I am a landlord/ }).click();
   await page.getByRole("tab", { name: "Proposals" }).click();
   await page.getByRole("heading", { name: "OE-P-AAAAAAAA" }).waitFor();
@@ -556,7 +572,7 @@ try {
   );
 
   process.stdout.write(
-    "Account-switch browser check passed: proposals, archives, wallet setup, inventory delivery, session containment, notification preferences, and test-email feedback remain isolated across live identity changes.\n",
+    "Account-switch browser check passed: neutral sign-in transitions into the workspace, while proposals, archives, wallet setup, inventory delivery, session containment, notification preferences, and test-email feedback remain isolated across live identity changes.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

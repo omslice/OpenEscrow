@@ -671,9 +671,13 @@ export function captureNegotiationAccessFromUrl(): NegotiationAccess | null {
   const proposalId = url.searchParams.get("proposal");
   const token = url.searchParams.get("token");
   const role = url.searchParams.get("access") || url.searchParams.get("invite");
+  const validRole =
+    role === "landlord" || role === "tenant" || role === "arbiter";
+  const validInvitation = Boolean(proposalId && token && validRole);
   if (token) {
     url.searchParams.delete("token");
     url.searchParams.delete("access");
+    if (!validInvitation) url.searchParams.delete("invite");
     if (!replaceRecoveryUrl(url)) {
       try {
         window.location.replace(url.toString());
@@ -685,7 +689,7 @@ export function captureNegotiationAccessFromUrl(): NegotiationAccess | null {
   if (
     !proposalId ||
     !token ||
-    (role !== "landlord" && role !== "tenant" && role !== "arbiter")
+    !validRole
   ) {
     return null;
   }

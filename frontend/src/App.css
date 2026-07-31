@@ -329,6 +329,32 @@
   text-decoration: none;
 }
 
+.public-access-prompt {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 28px;
+}
+
+.public-access-prompt > div {
+  max-width: 720px;
+}
+
+.public-access-prompt h2 {
+  margin: 5px 0 7px;
+}
+
+.public-access-prompt p {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.public-access-prompt .btn {
+  flex: 0 0 auto;
+}
+
 .how-it-works p {
   color: var(--text);
   font-size: 13px;
@@ -3868,6 +3894,16 @@ a.btn.disabled {
   .public-intro {
     grid-template-columns: 1fr;
     padding: 22px;
+  }
+
+  .public-access-prompt {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .public-access-prompt .btn {
+    width: 100%;
+    min-height: 44px;
   }
 
   .how-it-works {
