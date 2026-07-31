@@ -325,6 +325,12 @@ production readiness, or authorization to hold real rental deposits.
   claim, or withdrawal, announces retry progress and failure, and restores keyboard focus after a
   failed retry. The rendered load-recovery check covers keyboard retry, retry failure and success,
   duplicate-action guidance, and mobile-width behavior.
+- **Verified:** The compliance evaluator now rejects malformed deadline metadata before a
+  triggering event can make the error visible, propagates an invalid member into an
+  earlier-of/later-of controlling deadline, and rejects a snapshot whose recorded jurisdiction
+  conflicts with its validated address. The official-source gate also treats a future-dated
+  verification as stale instead of trusting it indefinitely. These are integrity checks only;
+  no legal rule, source, period, or jurisdiction profile changed.
 
 ## Material unknowns
 

@@ -903,6 +903,63 @@ test("versioned business-day deadlines fail closed on unsupported rule metadata"
     ),
     null,
   );
+
+  const invalidBeforeEvent = structuredClone(snapshot);
+  invalidBeforeEvent.deadlines[0].dayType = "unsupported-day-type";
+  const rejectedBeforeEvent = evaluateComplianceSnapshot(invalidBeforeEvent);
+  assert.equal(rejectedBeforeEvent.deadlines[0].status, "invalid-rule");
+  assert.equal(rejectedBeforeEvent.deadlines[0].dueAt, null);
+
+  const invalidCondition = structuredClone(snapshot);
+  invalidCondition.deadlines[0].condition = {
+    fact: "landlordClaimsDeposit",
+  };
+  const rejectedCondition = evaluateComplianceSnapshot(invalidCondition, {
+    facts: { landlordClaimsDeposit: true },
+  });
+  assert.equal(rejectedCondition.deadlines[0].status, "invalid-rule");
+  assert.equal(rejectedCondition.deadlines[0].dueAt, null);
+
+  const invalidComparison = structuredClone(snapshot);
+  invalidComparison.deadlines[0].comparison = "soonest";
+  const rejectedComparison = evaluateComplianceSnapshot(invalidComparison);
+  assert.equal(rejectedComparison.deadlines[0].status, "invalid-rule");
+  assert.equal(rejectedComparison.deadlines[0].dueAt, null);
+
+  const mismatchedJurisdiction = structuredClone(snapshot);
+  mismatchedJurisdiction.jurisdiction = "us-nv";
+  assert.equal(
+    evaluateComplianceSnapshot(mismatchedJurisdiction, {
+      events: { statutoryClockStartedAt: "2027-01-08T12:00:00Z" },
+    }),
+    null,
+  );
+
+  const connecticutProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "CT",
+  );
+  const connecticutSnapshot = buildComplianceSnapshot(connecticutProfile, {
+    ...snapshot.address,
+    providerFeatureId: "R:connecticut:invalid-comparison",
+    label: "1 Main Street, Hartford, CT 06103",
+    stateCode: "CT",
+    city: "Hartford",
+    county: "Hartford County",
+    postalCode: "06103",
+    latitude: 41.7658,
+    longitude: -72.6734,
+  });
+  const invalidCombined = structuredClone(connecticutSnapshot);
+  invalidCombined.deadlines[0].dayType = "unsupported-day-type";
+  const rejectedCombined = evaluateComplianceSnapshot(invalidCombined, {
+    events: {
+      tenancyTerminatedAt: "2027-01-01T12:00:00Z",
+      forwardingAddressReceivedAt: "2027-01-10T12:00:00Z",
+    },
+  });
+  assert.equal(rejectedCombined.deadlines[0].status, "invalid-rule");
+  assert.equal(rejectedCombined.combinedDeadlines[0].status, "invalid-rule");
+  assert.equal(rejectedCombined.combinedDeadlines[0].dueAt, null);
 });
 
 test("Florida conditional deadline stages remain fact-gated and event-gated", () => {
@@ -2439,6 +2496,28 @@ test("monitored compliance sources fail closed for pending, changed, and stale p
   assert.equal(stale.status, 503);
   assert.equal(
     (await stale.json()).sourceStatus.find(
+      (sourceItem) => sourceItem.key === "state:ny",
+    ).status,
+    "stale",
+  );
+
+  await db
+    .prepare(
+      `UPDATE compliance_source_checks
+       SET status = 'unreachable',
+           current_signature = baseline_signature,
+           last_verified_at = ?
+       WHERE source_key = 'state:ny'`,
+    )
+    .bind(new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString())
+    .run();
+  const futureDated = await worker.fetch(
+    request("/api/negotiations", "POST", proposalBody),
+    monitoredEnv,
+  );
+  assert.equal(futureDated.status, 503);
+  assert.equal(
+    (await futureDated.json()).sourceStatus.find(
       (sourceItem) => sourceItem.key === "state:ny",
     ).status,
     "stale",

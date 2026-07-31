@@ -1937,6 +1937,7 @@ async function complianceSourceGate(terms, env, now = new Date()) {
     ),
   );
   const staleBefore = now.getTime() - COMPLIANCE_SOURCE_FRESHNESS_MS;
+  const currentTime = now.getTime();
   const sources = requiredSources.map((sourceItem, index) => {
     const row = rows[index];
     const verifiedAt = row?.last_verified_at
@@ -1956,7 +1957,8 @@ async function complianceSourceGate(terms, env, now = new Date()) {
       status = "pending";
     } else if (status !== "changed" && (
       !Number.isFinite(verifiedAt) ||
-      verifiedAt < staleBefore
+      verifiedAt < staleBefore ||
+      verifiedAt > currentTime
     )) {
       status = "stale";
     }
@@ -2609,7 +2611,8 @@ async function serviceReadiness(env) {
       .all();
     const rows = sourceRows.results || [];
     const rowByKey = new Map(rows.map((row) => [row.source_key, row]));
-    const staleBefore = Date.now() - COMPLIANCE_SOURCE_FRESHNESS_MS;
+    const sourceEvaluationTime = Date.now();
+    const staleBefore = sourceEvaluationTime - COMPLIANCE_SOURCE_FRESHNESS_MS;
     const blockedKeys = new Set();
     let tracked = 0;
     let changed = 0;
@@ -2636,7 +2639,9 @@ async function serviceReadiness(env) {
       if (row.status === "unreachable") unreachable += 1;
       if (row.status === "pending") pending += 1;
       const isStale =
-        !Number.isFinite(verifiedAt) || verifiedAt < staleBefore;
+        !Number.isFinite(verifiedAt) ||
+        verifiedAt < staleBefore ||
+        verifiedAt > sourceEvaluationTime;
       if (isStale) stale += 1;
       if (
         !versionMatches ||

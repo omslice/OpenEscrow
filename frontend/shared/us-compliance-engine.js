@@ -9,6 +9,7 @@ const VERSIONED_COMPLIANCE_SNAPSHOT_SCHEMAS = new Set([
   "openescrow.us-compliance-profile.v4",
 ]);
 const DEADLINE_DAY_TYPES = new Set(["calendar", "business"]);
+const DEADLINE_COMPARISONS = new Set(["earlier-of", "later-of"]);
 
 function cloneAndFreeze(value) {
   if (Array.isArray(value)) {
@@ -190,6 +191,126 @@ function conditionStatus(condition, facts) {
   return actual === condition.equals ? "applies" : "not-applicable";
 }
 
+function isComplianceScalar(value) {
+  return (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean"
+  );
+}
+
+function validDeadlineCondition(condition) {
+  if (condition === null || condition === undefined) return true;
+  if (
+    !condition ||
+    typeof condition !== "object" ||
+    Array.isArray(condition) ||
+    !cleanString(condition.fact, 80)
+  ) {
+    return false;
+  }
+  const hasEquals = Object.prototype.hasOwnProperty.call(condition, "equals");
+  const hasOneOf = Object.prototype.hasOwnProperty.call(condition, "oneOf");
+  if (hasEquals === hasOneOf) return false;
+  if (hasEquals) return isComplianceScalar(condition.equals);
+  return (
+    Array.isArray(condition.oneOf) &&
+    condition.oneOf.length > 0 &&
+    condition.oneOf.every(isComplianceScalar)
+  );
+}
+
+function validDeadlineRule(rule) {
+  return Boolean(
+    rule &&
+      typeof rule === "object" &&
+      !Array.isArray(rule) &&
+      cleanString(rule.id, 120) &&
+      cleanString(rule.label, 200) &&
+      cleanString(rule.trigger, 80) &&
+      Number.isInteger(rule.days) &&
+      rule.days >= 0 &&
+      rule.days <= 730 &&
+      DEADLINE_DAY_TYPES.has(rule.dayType) &&
+      (rule.comparison === null ||
+        rule.comparison === undefined ||
+        DEADLINE_COMPARISONS.has(rule.comparison)) &&
+      validDeadlineCondition(rule.condition),
+  );
+}
+
+function evaluateDeadlineRules(rules, facts, events, holidayDates) {
+  return rules.map((rule) => {
+    if (!validDeadlineRule(rule)) {
+      return Object.freeze({
+        ...(rule && typeof rule === "object" && !Array.isArray(rule) ? rule : {}),
+        applicability: "invalid-rule",
+        status: "invalid-rule",
+        dueAt: null,
+      });
+    }
+    const applicability = conditionStatus(rule.condition, facts);
+    const start = dateFrom(events[rule.trigger]);
+    const dueAt =
+      applicability === "applies" && start
+        ? calculateDeadline(start, rule.days, rule.dayType, holidayDates)
+        : null;
+    return Object.freeze({
+      ...rule,
+      applicability,
+      status:
+        applicability !== "applies"
+          ? applicability
+          : start
+            ? dueAt
+              ? "scheduled"
+              : "invalid-rule"
+            : "waiting-for-event",
+      dueAt,
+    });
+  });
+}
+
+function combinedDeadlineEvaluations(deadlines) {
+  return ["earlier-of", "later-of"]
+    .map((comparison) => {
+      const members = deadlines.filter(
+        (deadline) => deadline.comparison === comparison,
+      );
+      if (members.length < 2) return null;
+      const hasInvalidRule = members.some(
+        (deadline) => deadline.status === "invalid-rule",
+      );
+      const scheduled = members.filter(
+        (deadline) => deadline.status === "scheduled" && deadline.dueAt,
+      );
+      const dueTimes = scheduled.map((deadline) =>
+        new Date(deadline.dueAt).getTime(),
+      );
+      const fullyScheduled = !hasInvalidRule && scheduled.length === members.length;
+      const dueTime =
+        fullyScheduled && comparison === "earlier-of"
+          ? Math.min(...dueTimes)
+          : fullyScheduled
+            ? Math.max(...dueTimes)
+            : null;
+      return Object.freeze({
+        id: `${comparison}-controlling-deadline`,
+        label: `Controlling ${comparison.replace("-", " ")} deadline`,
+        comparison,
+        memberIds: Object.freeze(members.map((deadline) => deadline.id)),
+        status: hasInvalidRule
+          ? "invalid-rule"
+          : fullyScheduled
+            ? "scheduled"
+            : "waiting-for-event",
+        dueAt: dueTime === null ? null : new Date(dueTime).toISOString(),
+      });
+    })
+    .filter(Boolean);
+}
+
 function dateFrom(value) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return new Date(value.getTime());
@@ -289,27 +410,12 @@ export function evaluateCompliance(profile, input = {}) {
   });
   const events = input.events && typeof input.events === "object" ? input.events : {};
   const holidayDates = Array.isArray(input.holidayDates) ? input.holidayDates : [];
-  const deadlines = profile.deadlines.map((rule) => {
-    const applicability = conditionStatus(rule.condition, facts);
-    const start = dateFrom(events[rule.trigger]);
-    const dueAt =
-      applicability === "applies" && start
-        ? calculateDeadline(start, rule.days, rule.dayType, holidayDates)
-        : null;
-    return Object.freeze({
-      ...rule,
-      applicability,
-      status:
-        applicability !== "applies"
-          ? applicability
-          : start
-            ? dueAt
-              ? "scheduled"
-              : "invalid-rule"
-            : "waiting-for-event",
-      dueAt,
-    });
-  });
+  const deadlines = evaluateDeadlineRules(
+    profile.deadlines,
+    facts,
+    events,
+    holidayDates,
+  );
   const missingFacts = [
     ...new Set(
       deadlines
@@ -317,35 +423,7 @@ export function evaluateCompliance(profile, input = {}) {
         .map((deadline) => deadline.condition.fact),
     ),
   ];
-  const combinedDeadlines = ["earlier-of", "later-of"]
-    .map((comparison) => {
-      const members = deadlines.filter(
-        (deadline) => deadline.comparison === comparison,
-      );
-      if (members.length < 2) return null;
-      const scheduled = members.filter(
-        (deadline) => deadline.status === "scheduled" && deadline.dueAt,
-      );
-      const dueTimes = scheduled.map((deadline) =>
-        new Date(deadline.dueAt).getTime(),
-      );
-      const fullyScheduled = scheduled.length === members.length;
-      const dueTime =
-        fullyScheduled && comparison === "earlier-of"
-          ? Math.min(...dueTimes)
-          : fullyScheduled
-            ? Math.max(...dueTimes)
-            : null;
-      return Object.freeze({
-        id: `${comparison}-controlling-deadline`,
-        label: `Controlling ${comparison.replace("-", " ")} deadline`,
-        comparison,
-        memberIds: Object.freeze(members.map((deadline) => deadline.id)),
-        status: fullyScheduled ? "scheduled" : "waiting-for-event",
-        dueAt: dueTime === null ? null : new Date(dueTime).toISOString(),
-      });
-    })
-    .filter(Boolean);
+  const combinedDeadlines = combinedDeadlineEvaluations(deadlines);
   const overlayResolution = resolveComplianceOverlays(address, facts);
   const overlayEvaluations = [
     ...overlayResolution.federal,
@@ -353,26 +431,12 @@ export function evaluateCompliance(profile, input = {}) {
   ].map((overlay) => {
     const deadlines =
       overlay.applicability === "applies"
-        ? overlay.deadlines.map((rule) => {
-            const start = dateFrom(events[rule.trigger]);
-            const dueAt = start
-              ? calculateDeadline(
-                  start,
-                  rule.days,
-                  rule.dayType,
-                  holidayDates,
-                )
-              : null;
-            return Object.freeze({
-              ...rule,
-              status: start
-                ? dueAt
-                  ? "scheduled"
-                  : "invalid-rule"
-                : "waiting-for-event",
-              dueAt,
-            });
-          })
+        ? evaluateDeadlineRules(
+            overlay.deadlines,
+            facts,
+            events,
+            holidayDates,
+          )
         : [];
     return Object.freeze({ ...overlay, deadlines: Object.freeze(deadlines) });
   });
@@ -417,7 +481,13 @@ export function evaluateComplianceSnapshot(snapshot, input = {}) {
     return null;
   }
   const address = normalizeAddressResolution(snapshot.address);
-  if (!address) return null;
+  if (
+    !address ||
+    cleanString(snapshot.jurisdiction, 100).toLowerCase() !==
+      `us-${address.stateCode.toLowerCase()}`
+  ) {
+    return null;
+  }
   const inputFacts =
     input.facts && typeof input.facts === "object" ? input.facts : {};
   const rawFacts = {
@@ -435,62 +505,22 @@ export function evaluateComplianceSnapshot(snapshot, input = {}) {
   const holidayDates = Array.isArray(input.holidayDates)
     ? input.holidayDates
     : [];
-  const evaluateRules = (rules) =>
-    rules.map((rule) => {
-      const applicability = conditionStatus(rule.condition, facts);
-      const start = dateFrom(events[rule.trigger]);
-      const dueAt =
-        applicability === "applies" && start
-          ? calculateDeadline(start, rule.days, rule.dayType, holidayDates)
-          : null;
-      return Object.freeze({
-        ...rule,
-        applicability,
-        status:
-          applicability !== "applies"
-            ? applicability
-            : start
-              ? dueAt
-                ? "scheduled"
-                : "invalid-rule"
-              : "waiting-for-event",
-        dueAt,
-      });
-    });
-  const deadlines = evaluateRules(snapshot.deadlines);
-  const combinedDeadlines = ["earlier-of", "later-of"]
-    .map((comparison) => {
-      const members = deadlines.filter(
-        (deadline) => deadline.comparison === comparison,
-      );
-      if (members.length < 2) return null;
-      const scheduled = members.filter(
-        (deadline) => deadline.status === "scheduled" && deadline.dueAt,
-      );
-      const dueTimes = scheduled.map((deadline) =>
-        new Date(deadline.dueAt).getTime(),
-      );
-      const fullyScheduled = scheduled.length === members.length;
-      const dueTime =
-        fullyScheduled && comparison === "earlier-of"
-          ? Math.min(...dueTimes)
-          : fullyScheduled
-            ? Math.max(...dueTimes)
-            : null;
-      return Object.freeze({
-        id: `${comparison}-controlling-deadline`,
-        label: `Controlling ${comparison.replace("-", " ")} deadline`,
-        comparison,
-        memberIds: Object.freeze(members.map((deadline) => deadline.id)),
-        status: fullyScheduled ? "scheduled" : "waiting-for-event",
-        dueAt: dueTime === null ? null : new Date(dueTime).toISOString(),
-      });
-    })
-    .filter(Boolean);
+  const deadlines = evaluateDeadlineRules(
+    snapshot.deadlines,
+    facts,
+    events,
+    holidayDates,
+  );
+  const combinedDeadlines = combinedDeadlineEvaluations(deadlines);
   const overlayEvaluations = snapshot.overlays.map((overlay) => {
     const deadlines =
       overlay.applicability === "applies" && Array.isArray(overlay.deadlines)
-        ? evaluateRules(overlay.deadlines)
+        ? evaluateDeadlineRules(
+            overlay.deadlines,
+            facts,
+            events,
+            holidayDates,
+          )
         : [];
     return Object.freeze({
       ...overlay,
