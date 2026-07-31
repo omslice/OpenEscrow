@@ -73,6 +73,8 @@ the repository; they are not claims of legal approval or production readiness.
   session, proposal, wallet, asset, amount, and environment so late completions cannot cross scope
 - [x] Isolate browser checkout recovery by proposal and authorized tenant as well as wallet,
   asset, amount, and environment, without storing invitation or account-session bearer tokens
+- [x] Rehearse the rendered funding UI across same-wallet agreements and co-tenants with
+  out-of-order provider completions, isolated browser caches, and correctly scoped durable events
 - [ ] Enable and validate an eligible provider sandbox in the Privy dashboard
 - [ ] Decide whether the pilot needs separate ACH/bank-deposit support
 - [ ] Complete provider approval, KYC/AML, fees, refunds, webhooks, reconciliation, and support

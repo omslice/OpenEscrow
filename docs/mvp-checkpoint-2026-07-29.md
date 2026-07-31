@@ -20,9 +20,9 @@ production readiness, or authorization to hold real rental deposits.
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   outages, notification recovery, receipt spoofing, and RPC fallback.
 - **Verified:** The full repository release check passes with 78 server tests, 135 client-logic
-  tests, lint, browser account-switch, accessibility/mobile, and load-recovery smoke checks, and
-  the production build. These rendered checks are part of the required `npm run check` path
-  rather than separate, potentially stale results.
+  tests, lint, browser account-switch, funding-recovery, accessibility/mobile, and load-recovery
+  smoke checks, and the production build. These rendered checks are part of the required
+  `npm run check` path rather than separate, potentially stale results.
 - **Verified:** Address-routed compliance snapshots now recursively detach and freeze nested
   rules, sources, overlays, and claim checks. Snapshot-level regressions cover conditional Maine
   paths, every fact- and event-gated Florida deadline stage, Arizona business-day and holiday
@@ -183,6 +183,11 @@ production readiness, or authorization to hold real rental deposits.
   wallet and amount cannot import each other's local provider result, while a rotated invitation
   or account session can still recover the same tenant's durable sandbox attempt without storing
   its bearer token in the browser key.
+- **Verified:** A rendered browser rehearsal holds three sandbox checkout calls open across two
+  agreements and two co-tenants that intentionally share the same wallet, asset, and amount. It
+  resolves the provider calls out of order and proves each scope gets a separate browser recovery
+  key, each result is saved to its original durable attempt, bearer tokens are absent from key
+  names, and late completions do not update the currently visible agreement.
 - **Verified:** Arrow-key workspace navigation moves focus to the selected tab synchronously,
   eliminating an intermittent animation-frame race in the required accessibility smoke check.
 - **Verified:** The exact validated candidate source is pushed to the existing Sites source
