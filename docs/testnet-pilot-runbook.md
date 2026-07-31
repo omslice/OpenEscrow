@@ -16,7 +16,8 @@ npm.cmd run pilot:rehearse
 This local rehearsal uses an in-memory D1 database, deterministic fake transaction receipts, and
 ephemeral signed test identities. It independently exercises:
 
-- a no-claim refund and one-time withdrawal;
+- a funded no-claim agreement using separate signed landlord and tenant identities, including
+  premature-withdrawal denial, the full refund, one-time withdrawal, report, and stable snapshot;
 - a fully accepted claim and both final withdrawals;
 - a two-tenant partial dispute, arbiter ruling, and all final withdrawals;
 - account-isolated archive and restore preferences; and

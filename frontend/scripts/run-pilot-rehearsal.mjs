@@ -24,7 +24,16 @@ const expectedScenarios = [
   {
     id: "no-claim-refund",
     name: "pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-time",
-    covers: ["no-claim timeout", "refund", "role authorization", "idempotency"],
+    covers: [
+      "separate signed landlord and tenant identities",
+      "funded agreement",
+      "premature withdrawal denial",
+      "no-claim timeout",
+      "refund",
+      "role authorization",
+      "idempotency",
+      "report and stable snapshot",
+    ],
   },
   {
     id: "evidence-upload-outage",

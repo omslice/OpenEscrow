@@ -8051,46 +8051,239 @@ test("pilot rehearsal: an accepted claim resolves allocations, withdrawals, and 
 test("pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-time", async () => {
   const db = new TestD1();
   const created = await create(db);
-  await finalizeWithoutArbiter(db, created);
-
-  const landlordRefund = await act(
-    db,
-    created.record.id,
-    created.access.landlord,
-    {
-      type: "timeout_executed",
-      timeout: "no_claim_refund",
-      transactionHash: transactionHash(30),
-    },
+  const appId = "test-privy-no-claim-app";
+  const kid = "test-no-claim-key";
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
   );
-  assert.equal(landlordRefund.status, 403);
-
-  await jsonResponse(
-    await act(db, created.record.id, created.access.tenant, {
-      type: "timeout_executed",
-      timeout: "no_claim_refund",
-      transactionHash: transactionHash(31),
-    }),
+  const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  const landlordIdentityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "landlord@example.com",
+    { sub: "did:privy:no-claim-landlord" },
   );
-  const duplicateRefund = await act(
-    db,
-    created.record.id,
-    created.access.tenant,
-    {
-      type: "timeout_executed",
-      timeout: "no_claim_refund",
-      transactionHash: transactionHash(32),
-    },
+  const tenantIdentityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "tenant@example.com",
+    { sub: "did:privy:no-claim-tenant" },
   );
-  assert.equal(duplicateRefund.status, 409);
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    assert.equal(
+      String(input),
+      `https://auth.privy.io/api/v1/apps/${appId}/jwks.json`,
+    );
+    return Response.json({ keys: [{ ...publicJwk, kid, alg: "ES256", use: "sig" }] });
+  };
 
-  await jsonResponse(
-    await act(db, created.record.id, created.access.tenant, {
+  const discover = async (identityToken, role) =>
+    jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/negotiations/discover", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": identityToken,
+          },
+          body: JSON.stringify({ role }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+
+  try {
+    const landlordDiscovery = await discover(landlordIdentityToken, "landlord");
+    const tenantDiscovery = await discover(tenantIdentityToken, "tenant");
+    assert.equal(landlordDiscovery.accesses.length, 1);
+    assert.equal(landlordDiscovery.accesses[0].role, "landlord");
+    assert.equal(tenantDiscovery.accesses.length, 1);
+    assert.equal(tenantDiscovery.accesses[0].role, "tenant");
+    assert.equal(
+      (await discover(landlordIdentityToken, "tenant")).accesses.length,
+      0,
+    );
+    assert.equal(
+      (await discover(tenantIdentityToken, "landlord")).accesses.length,
+      0,
+    );
+
+    const landlordToken = landlordDiscovery.accesses[0].token;
+    const tenantToken = tenantDiscovery.accesses[0].token;
+    await jsonResponse(
+      await act(db, created.record.id, tenantToken, {
+        type: "approve",
+        wallet: "0x1111111111111111111111111111111111111111",
+      }),
+    );
+    await jsonResponse(
+      await act(db, created.record.id, landlordToken, {
+        type: "finalize",
+        agreementId: "42",
+        transactionHash: transactionHash(30),
+      }),
+    );
+    await jsonResponse(
+      await act(db, created.record.id, tenantToken, {
+        type: "operations_reserve_paid",
+        transactionHash: transactionHash(31),
+      }),
+    );
+    await jsonResponse(
+      await act(db, created.record.id, tenantToken, {
+        type: "agreement_funded",
+        transactionHash: transactionHash(32),
+      }),
+    );
+
+    const prematureWithdrawal = await act(db, created.record.id, tenantToken, {
       type: "withdrawal_completed",
       amount: "1200",
       transactionHash: transactionHash(33),
-    }),
-  );
+    });
+    assert.equal(prematureWithdrawal.status, 409);
+    assert.match((await prematureWithdrawal.json()).error, /must be resolved/);
+
+    const landlordRefund = await act(db, created.record.id, landlordToken, {
+      type: "timeout_executed",
+      timeout: "no_claim_refund",
+      transactionHash: transactionHash(34),
+    });
+    assert.equal(landlordRefund.status, 403);
+
+    const refunded = await jsonResponse(
+      await act(db, created.record.id, tenantToken, {
+        type: "timeout_executed",
+        timeout: "no_claim_refund",
+        transactionHash: transactionHash(35),
+      }),
+    );
+    assert.equal(refunded.events.at(-1).action, "timeout_executed");
+    assert.equal(refunded.events.at(-1).metadata.timeout, "no_claim_refund");
+
+    const duplicateRefund = await act(db, created.record.id, tenantToken, {
+      type: "timeout_executed",
+      timeout: "no_claim_refund",
+      transactionHash: transactionHash(36),
+    });
+    assert.equal(duplicateRefund.status, 409);
+
+    const claimAfterRefund = await act(db, created.record.id, landlordToken, {
+      type: "claim_submitted",
+      amount: "1",
+      category: "Damage beyond ordinary wear",
+      items: [
+        {
+          category: "11",
+          description: "A claim cannot be added after the no-claim refund.",
+          amount: "1",
+        },
+      ],
+      transactionHash: transactionHash(37),
+    });
+    assert.equal(claimAfterRefund.status, 409);
+    assert.match((await claimAfterRefund.json()).error, /refund is already recorded/);
+
+    await jsonResponse(
+      await act(db, created.record.id, tenantToken, {
+        type: "withdrawal_completed",
+        amount: "1200",
+        transactionHash: transactionHash(38),
+      }),
+    );
+    const duplicateWithdrawal = await act(db, created.record.id, tenantToken, {
+      type: "withdrawal_completed",
+      amount: "1",
+      transactionHash: transactionHash(39),
+    });
+    assert.equal(duplicateWithdrawal.status, 409);
+
+    const record = await jsonResponse(
+      await worker.fetch(
+        request(
+          `/api/negotiations/${created.record.id}?token=${landlordToken}`,
+        ),
+        { DB: db },
+      ),
+    );
+    assert.equal(
+      record.events.filter((event) => event.action === "operations_reserve_paid").length,
+      1,
+    );
+    assert.equal(
+      record.events.filter((event) => event.action === "agreement_funded").length,
+      1,
+    );
+    const refundEvents = record.events.filter(
+      (event) =>
+        event.action === "timeout_executed" &&
+        event.metadata?.timeout === "no_claim_refund",
+    );
+    assert.equal(refundEvents.length, 1);
+    assert.equal(refundEvents[0].metadata.transactionHash, transactionHash(35));
+    const withdrawalEvents = record.events.filter(
+      (event) => event.action === "withdrawal_completed",
+    );
+    assert.equal(withdrawalEvents.length, 1);
+    assert.equal(withdrawalEvents[0].actorRole, "tenant");
+    assert.equal(withdrawalEvents[0].metadata.transactionHash, transactionHash(38));
+    assert.equal(
+      record.events.some((event) =>
+        [
+          "deduction_claim_submitted",
+          "claim_response_submitted",
+          "arbiter_ruling_submitted",
+        ].includes(event.action),
+      ),
+      false,
+    );
+
+    const report = await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}/report?token=${tenantToken}`,
+      ),
+      { DB: db },
+    );
+    assert.equal(report.status, 200);
+    const reportHtml = await report.text();
+    assert.match(reportHtml, /no-claim full tenant refund/i);
+    assert.match(reportHtml, /Terry Tenant withdrew 1200 shares/);
+    assert.match(reportHtml, new RegExp(transactionHash(32)));
+    assert.match(reportHtml, new RegExp(transactionHash(35)));
+    assert.match(reportHtml, new RegExp(transactionHash(38)));
+
+    const firstSnapshot = await jsonResponse(
+      await worker.fetch(
+        request(
+          `/api/negotiations/${created.record.id}/snapshot?token=${tenantToken}`,
+        ),
+        { DB: db },
+      ),
+    );
+    const repeatedSnapshot = await jsonResponse(
+      await worker.fetch(
+        request(
+          `/api/negotiations/${created.record.id}/snapshot?token=${tenantToken}`,
+        ),
+        { DB: db },
+      ),
+    );
+    assert.equal(firstSnapshot.hash, repeatedSnapshot.hash);
+    assert.equal(firstSnapshot.canonical, repeatedSnapshot.canonical);
+    assert.equal(
+      firstSnapshot.snapshot.events.filter(
+        (event) => event.action === "withdrawal_completed",
+      ).length,
+      1,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("a landlord can retract an unanswered claim but cannot replace or increase it", async () => {

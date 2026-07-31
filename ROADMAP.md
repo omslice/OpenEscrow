@@ -100,7 +100,9 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Fail-closed Sites project/binding, asset, eligibility, and fiat-production configuration checks
 - [x] Hosted readiness endpoint for email, scheduler, evidence, receipts, registry, address, and sources
 - [x] Credential-free pilot rehearsals for no-claim, accepted-claim, disputed-claim, withdrawals,
-  account archive/restore, and record-proof paths
+  account archive/restore, and record-proof paths; the no-claim path uses separate signed
+  landlord/tenant identities and proves funding, premature-withdrawal denial, one-time refund and
+  withdrawal, report contents, and stable snapshots
 - [x] Auth/evidence threat model plus expired/forged identity, cross-account evidence, ciphertext,
   key-material, and digest-tamper regression coverage
 - [x] Hosted evidence readiness detects retained-key loss and wrong backup bytes through

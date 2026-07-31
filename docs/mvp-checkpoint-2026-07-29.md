@@ -15,7 +15,9 @@ production readiness, or authorization to hold real rental deposits.
   one verified-arbiter identity recovery/isolation scenario, one verified-account session
   containment scenario, one realistic multi-agreement account data-inventory scenario with
   encrypted-evidence exclusion and clean post-containment rediscovery, and one durable sandbox
-  funding recovery/refund scenario.
+  funding recovery/refund scenario. The no-claim rehearsal now uses separately signed
+  landlord/tenant identities and proves deposit funding, premature-withdrawal denial, the
+  one-time refund and withdrawal, final report contents, and repeatable snapshot integrity.
 - **Verified:** A separate 15-scenario incident-response rehearsal passes for identity forgery,
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
