@@ -41,8 +41,10 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** Claim requirements now fail closed when their private agreement record cannot be
   loaded, with a focused retry action before any claim or amendment can proceed. Tenant response
   remains available for time-sensitive onchain action while its private summary has a separate
-  retry path. Invitation and notice audit-save failures are caught and explained without undoing
-  a successfully opened email, copied link, submitted claim, or submitted response.
+  retry path. A rendered mobile-width browser regression proves retry progress remains visible,
+  failed retries restore keyboard focus, and later recovery succeeds. Invitation and notice
+  audit-save failures are caught and explained without undoing a successfully opened email,
+  copied link, submitted claim, or submitted response.
 - **Verified:** The Record workspace now leads with plain-language report, private-backup, public-
   proof, and independent-check guidance. Encryption algorithms and raw fingerprints remain
   available in keyboard-accessible collapsed disclosures; the rendered rehearsal still proves

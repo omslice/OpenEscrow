@@ -6,14 +6,34 @@ import react from '@vitejs/plugin-react'
 export default defineConfig(({ mode }) => {
   const accountSwitchTest = mode === 'account-switch-test'
   const fundingRecoveryTest = mode === 'funding-recovery-test'
+  const privateRecordRecoveryTest = mode === 'private-record-recovery-test'
   return {
     plugins: [react()],
     optimizeDeps: fundingRecoveryTest
       ? { entries: ['testing/funding-recovery.html'] }
-      : undefined,
+      : privateRecordRecoveryTest
+        ? {
+            entries: ['testing/private-record-recovery.html'],
+            exclude: ['@privy-io/react-auth', '@privy-io/wagmi'],
+          }
+        : undefined,
     resolve: {
-      alias: accountSwitchTest || fundingRecoveryTest
-        ? [
+      alias: [
+        ...(privateRecordRecoveryTest
+          ? [
+              {
+                find: /^wagmi$/,
+                replacement: fileURLToPath(
+                  new URL(
+                    './src/testing/wagmiPrivateRecordRecoveryMock.ts',
+                    import.meta.url,
+                  ),
+                ),
+              },
+            ]
+          : []),
+        ...(accountSwitchTest || fundingRecoveryTest
+          ? [
             {
               find: '@privy-io/react-auth',
               replacement: fileURLToPath(
@@ -25,18 +45,15 @@ export default defineConfig(({ mode }) => {
                 ),
               ),
             },
-            ...(accountSwitchTest || fundingRecoveryTest
-              ? [
-                  {
-                    find: '@privy-io/wagmi',
-                    replacement: fileURLToPath(
-                      new URL('./src/testing/privyWagmiMock.tsx', import.meta.url),
-                    ),
-                  },
-                ]
-              : []),
+            {
+              find: '@privy-io/wagmi',
+              replacement: fileURLToPath(
+                new URL('./src/testing/privyWagmiMock.tsx', import.meta.url),
+              ),
+            },
           ]
-        : [],
+          : []),
+      ],
     },
   }
 })

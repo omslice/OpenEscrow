@@ -84,6 +84,16 @@ export function ResponseSection({
   const [recordError, setRecordError] = useState<string | null>(null);
   const [noticeStatus, setNoticeStatus] = useState<string | null>(null);
   const recordRetryButton = useRef<HTMLButtonElement>(null);
+  const recordLoadProposalId = negotiationAccess?.role === "tenant"
+    ? negotiationAccess.proposalId
+    : null;
+  const recordLoadToken = negotiationAccess?.role === "tenant"
+    ? negotiationAccess.token
+    : null;
+  const recordLoadScope = recordLoadProposalId && recordLoadToken
+    ? `${recordLoadProposalId}:tenant:${recordLoadToken}`
+    : null;
+  const previousRecordLoadScope = useRef<string | null>(null);
 
   const { data: tenantShare } = useReadContract({
     address: OPEN_ESCROW_ADDRESS,
@@ -118,19 +128,29 @@ export function ResponseSection({
   });
 
   useEffect(() => {
-    if (!negotiationAccess || negotiationAccess.role !== "tenant") {
+    if (!recordLoadProposalId || !recordLoadToken) {
+      previousRecordLoadScope.current = null;
       setRecord(null);
       setRecordLoadError(null);
       setIsLoadingRecord(false);
       return;
     }
     let active = true;
+    const scopeChanged = previousRecordLoadScope.current !== recordLoadScope;
+    previousRecordLoadScope.current = recordLoadScope;
     setRecord(null);
-    setRecordLoadError(null);
+    if (scopeChanged) setRecordLoadError(null);
     setIsLoadingRecord(true);
-    void loadNegotiation(negotiationAccess)
+    void loadNegotiation({
+      proposalId: recordLoadProposalId,
+      role: "tenant",
+      token: recordLoadToken,
+    })
       .then((loadedRecord) => {
-        if (active) setRecord(loadedRecord);
+        if (active) {
+          setRecord(loadedRecord);
+          setRecordLoadError(null);
+        }
       })
       .catch(() => {
         if (active) {
@@ -145,7 +165,12 @@ export function ResponseSection({
     return () => {
       active = false;
     };
-  }, [negotiationAccess, recordLoadAttempt]);
+  }, [
+    recordLoadAttempt,
+    recordLoadProposalId,
+    recordLoadScope,
+    recordLoadToken,
+  ]);
 
   useEffect(() => {
     if (recordLoadError && !isLoadingRecord) {
@@ -344,7 +369,10 @@ export function ResponseSection({
             className="btn btn-ghost small"
             type="button"
             disabled={isLoadingRecord}
-            onClick={() => setRecordLoadAttempt((attempt) => attempt + 1)}
+            onClick={() => {
+              setIsLoadingRecord(true);
+              setRecordLoadAttempt((attempt) => attempt + 1);
+            }}
           >
             {isLoadingRecord
               ? "Loading response details..."

@@ -87,21 +87,41 @@ export function ClaimSection({
   >({});
   const restoredClaim = useRef(false);
   const recordRetryButton = useRef<HTMLButtonElement>(null);
+  const recordLoadProposalId = negotiationAccess?.role === "landlord"
+    ? negotiationAccess.proposalId
+    : null;
+  const recordLoadToken = negotiationAccess?.role === "landlord"
+    ? negotiationAccess.token
+    : null;
+  const recordLoadScope = recordLoadProposalId && recordLoadToken
+    ? `${recordLoadProposalId}:landlord:${recordLoadToken}`
+    : null;
+  const previousRecordLoadScope = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!negotiationAccess || negotiationAccess.role !== "landlord") {
+    if (!recordLoadProposalId || !recordLoadToken) {
+      previousRecordLoadScope.current = null;
       setRecord(null);
       setRecordLoadError(null);
       setIsLoadingRecord(false);
       return;
     }
     let active = true;
+    const scopeChanged = previousRecordLoadScope.current !== recordLoadScope;
+    previousRecordLoadScope.current = recordLoadScope;
     setRecord(null);
-    setRecordLoadError(null);
+    if (scopeChanged) setRecordLoadError(null);
     setIsLoadingRecord(true);
-    void loadNegotiation(negotiationAccess)
+    void loadNegotiation({
+      proposalId: recordLoadProposalId,
+      role: "landlord",
+      token: recordLoadToken,
+    })
       .then((loadedRecord) => {
-        if (active) setRecord(loadedRecord);
+        if (active) {
+          setRecord(loadedRecord);
+          setRecordLoadError(null);
+        }
       })
       .catch(() => {
         if (active) {
@@ -116,7 +136,12 @@ export function ClaimSection({
     return () => {
       active = false;
     };
-  }, [negotiationAccess, recordLoadAttempt]);
+  }, [
+    recordLoadAttempt,
+    recordLoadProposalId,
+    recordLoadScope,
+    recordLoadToken,
+  ]);
 
   useEffect(() => {
     if (recordLoadError && !isLoadingRecord) {
@@ -345,7 +370,10 @@ export function ClaimSection({
             className="btn btn-ghost small"
             type="button"
             disabled={isLoadingRecord}
-            onClick={() => setRecordLoadAttempt((attempt) => attempt + 1)}
+            onClick={() => {
+              setIsLoadingRecord(true);
+              setRecordLoadAttempt((attempt) => attempt + 1);
+            }}
           >
             {isLoadingRecord
               ? "Loading claim requirements..."

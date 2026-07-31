@@ -393,7 +393,9 @@ detailed validation ledger.
   time-sensitive onchain action available while separately retrying the unavailable private
   summary. Proposal-invitation and claim/response notice audit saves no longer leave unhandled
   promises: the primary copy, email, or onchain action remains intact and the user receives
-  plain-language recovery guidance.
+  plain-language recovery guidance. A rendered 390-pixel browser regression holds both retries
+  open long enough to verify `aria-busy` and disabled-button progress, proves a failed retry
+  restores focus, then proves the next retry recovers without horizontal overflow.
 
 ## Remaining
 
