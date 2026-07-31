@@ -142,8 +142,69 @@ try {
     "A successful retry should return to the deposit without submitting a new action.",
   );
 
+  const activityPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await activityPage.goto(`${baseUrl}/testing/activity-load-recovery.html`, {
+    waitUntil: "networkidle",
+  });
+  const activityAlert = activityPage.getByRole("alert", {
+    name: "Public record receipts could not be loaded",
+  });
+  await activityAlert.waitFor({ state: "visible" });
+  assert.match(
+    await activityAlert.innerText(),
+    /agreement and saved activity have not been removed/i,
+    "A receipt connection failure should not imply that agreement activity disappeared.",
+  );
+  const connectionError = activityAlert.getByText("Simulated RPC gateway timeout");
+  assert.equal(
+    await connectionError.isVisible(),
+    false,
+    "Technical receipt errors should be collapsed by default.",
+  );
+  const activityRetry = activityPage.getByRole("button", {
+    name: "Try loading public receipts again",
+  });
+  await activityRetry.focus();
+  await activityRetry.press("Enter");
+  await activityAlert
+    .getByText("Simulated RPC gateway still unavailable")
+    .waitFor({ state: "attached" });
+  await activityPage.waitForFunction(
+    () => document.activeElement?.textContent?.includes("Try loading public receipts again"),
+    undefined,
+    { timeout: 1_000 },
+  );
+  assert.equal(
+    await activityRetry.evaluate((element) => element === document.activeElement),
+    true,
+    "A failed receipt retry should return focus to its recovery action.",
+  );
+  assert.equal(
+    await activityAlert.getAttribute("aria-busy"),
+    "false",
+    "The receipt failure should clear its busy state after a failed retry.",
+  );
+  await activityAlert.getByText("Connection details").click();
+  await activityAlert
+    .getByText("Simulated RPC gateway still unavailable")
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await activityPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "Receipt recovery should not overflow a mobile viewport.",
+  );
+  await activityRetry.press("Enter");
+  await activityPage.getByRole("status").waitFor({ state: "visible" });
+  assert.match(
+    await activityPage.getByRole("status").innerText(),
+    /without repeating an agreement action/i,
+    "A successful receipt retry should recover without submitting another agreement action.",
+  );
+
   process.stdout.write(
-    "Load recovery check passed: app, workspace, and deposit connection failures remain accessible and actionable without duplicate transactions or blank pages.\n",
+    "Load recovery check passed: app, workspace, deposit, and public-receipt connection failures remain visible, accessible, and actionable without duplicate transactions or blank pages.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

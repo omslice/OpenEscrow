@@ -36,6 +36,10 @@ production custody, or reliance on the compliance research as legal advice.
   available in keyboard-accessible collapsed disclosures; the rendered rehearsal still proves
   narrow-screen layout, separate-key export, wrong-key rejection, and local verification during
   a public-proof outage.
+- **Verified:** A public-receipt query failure is no longer hidden inside collapsed history.
+  The visible recovery panel explains that agreement activity was not removed, keeps raw
+  connection text in an optional disclosure, offers an explicit retry, restores keyboard focus
+  after a failed retry, and remains usable at mobile width without repeating an agreement action.
 - **Verified:** Validated U.S. addresses route to immutable, versioned state snapshots with
   conditional/business-day deadline regression coverage and fail-closed official-source gates.
   This is a best-effort research aid, not an assertion that every legal rule is complete.

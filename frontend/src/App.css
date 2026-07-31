@@ -3660,6 +3660,26 @@ a.btn.disabled {
   margin: 0;
 }
 
+.activity-load-failure {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+  border: 1px solid var(--warning-border);
+  border-radius: 9px;
+  padding: 12px;
+  background: var(--warning-bg);
+}
+
+.activity-load-failure p,
+.activity-load-failure .technical-details {
+  margin: 0;
+}
+
+.activity-load-failure code {
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
 .evidence-upload,
 .claim-notice-actions {
   display: grid;

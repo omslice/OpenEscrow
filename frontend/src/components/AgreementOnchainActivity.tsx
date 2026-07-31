@@ -15,14 +15,15 @@ import { formatTimestamp, shortAddr } from "../lib/format";
 import type { NegotiationAccess } from "../lib/negotiations";
 import { useActivityRegistryReadiness } from "../lib/useActivityRegistryReadiness";
 import { useVisiblePolling } from "../lib/visiblePolling";
+import { ActivityLoadFailure } from "./ActivityLoadFailure";
 import { ActivityProofVerifier } from "./ActivityProofVerifier";
 import { PrivateActivityPublisher } from "./PrivateActivityPublisher";
 
 const activityLabel: Record<number, string> = {
-  1: "Private note hash published",
-  2: "Document hash published",
-  3: "Notice hash published",
-  4: "Decision hash published",
+  1: "Private note proof saved",
+  2: "Document proof saved",
+  3: "Notice proof saved",
+  4: "Decision proof saved",
 };
 
 export function AgreementOnchainActivity({
@@ -63,38 +64,47 @@ export function AgreementOnchainActivity({
         setItems([]);
         setError(null);
       }
-      return;
+      return false;
     }
     try {
       const nextItems = await getActivityRegistryItems(
         publicClient as unknown as ActivityRegistryLogClient,
         [agreementId],
       );
-      if (!activityScope.isCurrent(operationId)) return;
+      if (!activityScope.isCurrent(operationId)) return false;
       setItems(nextItems);
       setError(null);
+      return true;
     } catch (cause) {
-      if (!activityScope.isCurrent(operationId)) return;
+      if (!activityScope.isCurrent(operationId)) return false;
       setError(
         cause instanceof Error
           ? cause.message.split("\n")[0]
-          : "Onchain activity could not be loaded.",
+          : "The public receipt service did not respond.",
       );
+      return false;
     }
   }, [activityScope, agreementId, publicClient, registry.isReady]);
 
-  useVisiblePolling(refresh, 12_000, activityScope.key);
+  const pollActivity = useCallback(async () => {
+    await refresh();
+  }, [refresh]);
+
+  useVisiblePolling(pollActivity, 12_000, activityScope.key);
 
   return (
-    <section className="onchain-record-tools" aria-label="Onchain record tools">
+    <section className="onchain-record-tools" aria-label="Agreement public record tools">
       {registry.isChecking && (
-        <p className="field-help">Checking the onchain record service…</p>
+        <p className="field-help">Checking the public receipt service…</p>
       )}
       {!registry.isChecking && !registry.isReady && (
         <p className="tx-error" role="alert">
-          Onchain record receipts are temporarily unavailable because the record service
-          is not connected to this OpenEscrow release.
+          Public record receipts are temporarily unavailable because the record service is not
+          connected to this OpenEscrow release.
         </p>
+      )}
+      {registry.isReady && error && (
+        <ActivityLoadFailure error={error} onRetry={refresh} />
       )}
       {registry.isReady && isParty && (
         <PrivateActivityPublisher
@@ -105,16 +115,16 @@ export function AgreementOnchainActivity({
         />
       )}
       {registry.isReady && isParty && <ActivityProofVerifier agreementId={agreementId} />}
-      {registry.isReady && (items.length > 0 || error) && (
+      {registry.isReady && items.length > 0 && (
         <details className="technical-details onchain-activity">
-          <summary>Onchain record receipts ({items.length})</summary>
+          <summary>Public record receipts ({items.length})</summary>
           {items.map((item) => (
             <div className="onchain-activity-item" key={item.key}>
               <div>
                 <strong>
                   {item.type === "snapshot"
-                    ? "Agreement snapshot anchored"
-                    : activityLabel[item.activityType || 0] || "Activity hash published"}
+                    ? "Agreement record proof saved"
+                    : activityLabel[item.activityType || 0] || "Activity proof saved"}
                 </strong>
                 <span>
                   {formatTimestamp(item.timestamp)} · {shortAddr(item.actor)}
@@ -130,7 +140,6 @@ export function AgreementOnchainActivity({
               </a>
             </div>
           ))}
-          {error && <p className="tx-error" role="alert">{error}</p>}
         </details>
       )}
     </section>

@@ -345,6 +345,11 @@ detailed validation ledger.
   request, the expanded workflow fits a narrow viewport, and encrypted export, separate-key
   download, wrong-key rejection, and local verification remain usable during a public-proof
   service outage.
+- **Verified:** Public activity-receipt query failures now render as a visible alert instead of
+  being hidden in a closed receipt-history disclosure. The alert distinguishes a connection
+  problem from missing agreement data, retains a manual retry, keeps raw RPC text collapsed,
+  restores focus after a failed keyboard retry, clears busy state, fits a 390-pixel viewport,
+  and proves successful recovery does not repeat an agreement action.
 
 ## Remaining
 
