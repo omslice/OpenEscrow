@@ -1,14 +1,17 @@
 import {
+  lstatSync,
   mkdirSync,
   readFileSync,
+  readdirSync,
   writeFileSync,
 } from "node:fs";
+import { createHash } from "node:crypto";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 export const PILOT_CANDIDATE_SCHEMA_VERSION =
-  "openescrow-pilot-candidate/v1";
+  "openescrow-pilot-candidate/v2";
 
 export const PILOT_CANDIDATE_STEPS = Object.freeze([
   Object.freeze({
@@ -30,6 +33,19 @@ export const PILOT_CANDIDATE_STEPS = Object.freeze([
     id: "sites-build",
     script: "build:sites",
     label: "Exact-source Sites build",
+  }),
+]);
+
+const REHEARSAL_ARTIFACTS = Object.freeze([
+  Object.freeze({
+    key: "pilotRehearsal",
+    directory: ".pilot-rehearsal",
+    schema: "openescrow.pilot-rehearsal.v1",
+  }),
+  Object.freeze({
+    key: "incidentRehearsal",
+    directory: ".incident-rehearsal",
+    schema: "openescrow.incident-rehearsal.v1",
   }),
 ]);
 
@@ -58,6 +74,7 @@ export async function executeCandidateVerification({
   commitSha,
   hosting,
   runScript,
+  collectArtifacts,
   now = () => new Date(),
 }) {
   const startedAt = now();
@@ -98,6 +115,23 @@ export async function executeCandidateVerification({
     failed = status === "failed";
   }
 
+  let artifacts = null;
+  let artifactError = null;
+  if (!failed && collectArtifacts) {
+    try {
+      artifacts = await collectArtifacts();
+      if (!artifacts) {
+        throw new Error("Candidate artifact collection returned no evidence.");
+      }
+    } catch (caught) {
+      artifactError =
+        caught instanceof Error
+          ? caught.message
+          : "Candidate artifacts could not be verified.";
+      failed = true;
+    }
+  }
+
   const finishedAt = now();
   return {
     artifactSchemaVersion: PILOT_CANDIDATE_SCHEMA_VERSION,
@@ -122,7 +156,198 @@ export async function executeCandidateVerification({
         }
       : null,
     steps,
+    artifacts,
+    artifactError,
   };
+}
+
+function sha256(bytes) {
+  return `sha256:${createHash("sha256").update(bytes).digest("hex")}`;
+}
+
+function relativeArtifactPath(repositoryRoot, artifactPath) {
+  return path
+    .relative(repositoryRoot, artifactPath)
+    .split(path.sep)
+    .join("/");
+}
+
+function verifiedRehearsalArtifact({
+  frontendRoot,
+  repositoryRoot,
+  commitSha,
+  descriptor,
+}) {
+  const artifactDirectory = path.join(frontendRoot, descriptor.directory);
+  const summaryPath = path.join(artifactDirectory, "latest.json");
+  const summaryBytes = readFileSync(summaryPath);
+  const summary = JSON.parse(summaryBytes.toString("utf8"));
+  if (
+    summary.schema !== descriptor.schema ||
+    summary.status !== "passed" ||
+    summary.executionMode !== "local-credential-free" ||
+    summary.sourceCommit !== commitSha
+  ) {
+    throw new Error(
+      `${descriptor.key} evidence is not a passing credential-free artifact for ${commitSha}.`,
+    );
+  }
+  const expected = Number(summary.tests?.expected);
+  if (
+    !Number.isInteger(expected) ||
+    expected <= 0 ||
+    summary.tests?.passed !== expected ||
+    summary.tests?.failed !== 0 ||
+    summary.tests?.missing !== 0 ||
+    !Array.isArray(summary.scenarios) ||
+    summary.scenarios.length !== expected ||
+    summary.scenarios.some((scenario) => scenario?.status !== "passed")
+  ) {
+    throw new Error(`${descriptor.key} evidence has incomplete scenario results.`);
+  }
+  if (
+    typeof summary.junitArtifact !== "string" ||
+    path.basename(summary.junitArtifact) !== summary.junitArtifact ||
+    !summary.junitArtifact.endsWith(".xml")
+  ) {
+    throw new Error(`${descriptor.key} evidence has an invalid JUnit reference.`);
+  }
+  const junitPath = path.join(artifactDirectory, summary.junitArtifact);
+  const junitBytes = readFileSync(junitPath);
+  if (junitBytes.length === 0) {
+    throw new Error(`${descriptor.key} JUnit evidence is empty.`);
+  }
+
+  return {
+    schema: summary.schema,
+    generatedAt: summary.generatedAt,
+    sourceCommit: summary.sourceCommit,
+    scenarioCount: expected,
+    summary: {
+      path: relativeArtifactPath(repositoryRoot, summaryPath),
+      sha256: sha256(summaryBytes),
+    },
+    junit: {
+      path: relativeArtifactPath(repositoryRoot, junitPath),
+      sha256: sha256(junitBytes),
+    },
+  };
+}
+
+function digestDirectory(directory) {
+  const manifestHash = createHash("sha256");
+  let fileCount = 0;
+  let totalBytes = 0;
+
+  function visit(currentDirectory) {
+    const entries = readdirSync(currentDirectory, { withFileTypes: true }).sort(
+      (left, right) =>
+        left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+    );
+    for (const entry of entries) {
+      const absolutePath = path.join(currentDirectory, entry.name);
+      const metadata = lstatSync(absolutePath);
+      if (metadata.isSymbolicLink()) {
+        throw new Error("Packaged Sites output must not contain symbolic links.");
+      }
+      if (metadata.isDirectory()) {
+        visit(absolutePath);
+        continue;
+      }
+      if (!metadata.isFile()) continue;
+      const bytes = readFileSync(absolutePath);
+      const relativePath = path
+        .relative(directory, absolutePath)
+        .split(path.sep)
+        .join("/");
+      const fileHash = sha256(bytes);
+      manifestHash.update(
+        `${relativePath}\0${bytes.length}\0${fileHash}\n`,
+        "utf8",
+      );
+      fileCount += 1;
+      totalBytes += bytes.length;
+    }
+  }
+
+  visit(directory);
+  if (fileCount === 0) {
+    throw new Error("Packaged Sites output is empty.");
+  }
+  return {
+    algorithm: "sha256-file-manifest-v1",
+    sha256: `sha256:${manifestHash.digest("hex")}`,
+    fileCount,
+    totalBytes,
+  };
+}
+
+export function collectCandidateArtifacts({
+  frontendRoot,
+  repositoryRoot,
+  commitSha,
+}) {
+  const artifacts = {};
+  for (const descriptor of REHEARSAL_ARTIFACTS) {
+    artifacts[descriptor.key] = verifiedRehearsalArtifact({
+      frontendRoot,
+      repositoryRoot,
+      commitSha,
+      descriptor,
+    });
+  }
+
+  const sitesDirectory = path.join(repositoryRoot, "dist");
+  const releasePath = path.join(
+    sitesDirectory,
+    "server",
+    "release-provenance.js",
+  );
+  const releaseSource = readFileSync(releasePath, "utf8");
+  const schemaMatch = releaseSource.match(
+    /RELEASE_PROVENANCE_SCHEMA\s*=\s*"([^"]+)"/,
+  );
+  const commitMatch = releaseSource.match(/commitSha:\s*"([0-9a-f]{40})"/);
+  if (
+    schemaMatch?.[1] !== "openescrow-release/v1" ||
+    commitMatch?.[1] !== commitSha
+  ) {
+    throw new Error(
+      "Packaged Sites release provenance does not match the candidate commit.",
+    );
+  }
+  const packagedHostingPath = path.join(
+    sitesDirectory,
+    ".openai",
+    "hosting.json",
+  );
+  const packagedHosting = JSON.parse(
+    readFileSync(packagedHostingPath, "utf8"),
+  );
+  const hostingErrors = validateCandidateContext({
+    commitSha,
+    hosting: packagedHosting,
+  });
+  if (hostingErrors.length > 0) {
+    throw new Error(
+      `Packaged Sites hosting metadata failed validation: ${hostingErrors.join(" ")}`,
+    );
+  }
+
+  artifacts.sitesBuild = {
+    path: relativeArtifactPath(repositoryRoot, sitesDirectory),
+    release: {
+      schemaVersion: schemaMatch[1],
+      commitSha: commitMatch[1],
+    },
+    hosting: {
+      projectId: packagedHosting.project_id,
+      d1: packagedHosting.d1,
+      r2: packagedHosting.r2,
+    },
+    ...digestDirectory(sitesDirectory),
+  };
+  return artifacts;
 }
 
 function npmInvocation(scriptName) {
@@ -192,10 +417,17 @@ async function runCli() {
     // The preflight evidence below reports the missing/invalid hosting context.
   }
 
+  const commitSha = gitHead(repositoryRoot);
   const evidence = await executeCandidateVerification({
-    commitSha: gitHead(repositoryRoot),
+    commitSha,
     hosting,
     runScript: (scriptName) => runNpmScript(frontendRoot, scriptName),
+    collectArtifacts: () =>
+      collectCandidateArtifacts({
+        frontendRoot,
+        repositoryRoot,
+        commitSha,
+      }),
   });
   const destination = artifactPath(
     frontendRoot,

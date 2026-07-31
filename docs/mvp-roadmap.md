@@ -86,8 +86,9 @@ production custody, or reliance on the compliance research as legal advice.
 - `npm run pilot:rehearse` and `npm run incident:rehearse` exercise credential-free pilot and
   incident scenarios.
 - `npm run deploy:pilot-candidate` runs the credential-free release, rehearsal, incident, and
-  exact-source packaging gates in dependency order and saves machine-readable evidence without
-  querying or changing the live site.
+  exact-source packaging gates in dependency order. Its machine-readable evidence binds both
+  rehearsal summaries, their JUnit reports, and every packaged Sites byte to the candidate commit
+  without querying or changing the live site.
 - `npm run pilot:check` evaluates the currently deployed readiness endpoint and intentionally
   exits unsuccessfully while required hosted gates remain.
 - `npm run build:sites` builds the candidate and verifies exact Git provenance before packaging.

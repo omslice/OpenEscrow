@@ -12,8 +12,10 @@ detailed validation ledger.
 - **Verified:** The credential-free candidate command now runs the release, pilot rehearsal,
   incident rehearsal, and exact-source Sites packaging gates in dependency order, fails closed on
   the existing project/D1/R2 bindings, and records machine-readable evidence without querying or
-  changing the live site. The live-deploy wrapper runs readiness only after a successful publish
-  and passes the new deployment URL positionally to the readiness checker.
+  changing the live site. The versioned candidate manifest also verifies the exact commit in both
+  rehearsal summaries, binds their JUnit reports by SHA-256, and records a deterministic digest of
+  every packaged Sites file. The live-deploy wrapper runs readiness only after a successful
+  publish and passes the new deployment URL positionally to the readiness checker.
 - **Verified:** Seventeen credential-free rehearsals pass: five lifecycle scenarios covering
   archive/restore, record proof, disputed claim, accepted claim, and no-claim refund, plus five
   private-evidence and notification outage/recovery scenarios—including cleanup when storage
@@ -30,7 +32,7 @@ detailed validation ledger.
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   R2/encrypted-IPFS cleanup after metadata failure, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 90 server tests, 163 client-logic
+- **Verified:** The full repository release check passes with 90 server tests, 166 client-logic
   tests, lint, browser account-switch, funding-recovery, accessibility/mobile, and load-recovery
   smoke checks, and the production build. These rendered checks are part of the required
   `npm run check` path rather than separate, potentially stale results.
