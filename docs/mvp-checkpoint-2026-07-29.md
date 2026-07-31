@@ -350,6 +350,11 @@ detailed validation ledger.
   problem from missing agreement data, retains a manual retry, keeps raw RPC text collapsed,
   restores focus after a failed keyboard retry, clears busy state, fits a 390-pixel viewport,
   and proves successful recovery does not repeat an agreement action.
+- **Verified:** The temporary transitive `uuid` dependency exception has been eliminated. Every
+  locked Privy/Wagmi wallet-provider UUID path now resolves to 11.1.1, the production audit
+  reports zero vulnerabilities, and a required candidate check imports the affected connector
+  modules, verifies UUID generation/validation, and proves an undersized output buffer fails
+  closed.
 
 ## Remaining
 

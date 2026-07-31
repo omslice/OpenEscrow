@@ -45,6 +45,40 @@ const policy = {
   ],
 };
 
+test("accepts a clean audit with no policy exceptions", () => {
+  assert.deepEqual(
+    evaluateProductionAudit(
+      {
+        auditReportVersion: 2,
+        vulnerabilities: {},
+        metadata: {
+          vulnerabilities: {
+            total: 0,
+            moderate: 0,
+            high: 0,
+            critical: 0,
+          },
+        },
+      },
+      {
+        schemaVersion: "openescrow-npm-audit-policy/v1",
+        exceptions: [],
+      },
+      new Date("2026-07-31T12:00:00Z"),
+    ),
+    {
+      errors: [],
+      summary: {
+        total: 0,
+        moderate: 0,
+        high: 0,
+        critical: 0,
+        exceptions: 0,
+      },
+    },
+  );
+});
+
 test("accepts one traceable, active moderate exception across transitive paths", () => {
   assert.deepEqual(
     evaluateProductionAudit(

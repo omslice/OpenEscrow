@@ -25,9 +25,10 @@ production custody, or reliance on the compliance research as legal advice.
   recovery, tamper detection, transaction receipt binding, and privacy failure modes have
   dedicated server, client, and operator-command regressions.
 - **Verified:** The release dependency audit blocks every high/critical finding and every unknown
-  moderate advisory. The sole current upstream `uuid` advisory is an exact, testnet-only,
-  time-bounded exception that expires on 2026-08-30 instead of silently passing or forcing a
-  breaking authentication downgrade.
+  moderate advisory. The former transitive `uuid` advisory is removed from the locked
+  wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector
+  imports are exercised on every candidate, and the production dependency audit is clean with no
+  active exceptions.
 - **Verified:** Critical flows have rendered accessibility, keyboard/focus, mobile-width, loading,
   error, and retry checks. Remaining usability work requires moderated human sessions rather than
   another code-only claim.
@@ -71,9 +72,6 @@ production custody, or reliance on the compliance research as legal advice.
   Production fiat, mainnet contracts, FRNT, USDY, and yield-bearing deposit routes stay disabled.
 - **Planned:** Complete qualified legal, smart-contract, application-security, privacy, provider,
   accessibility, and operating-policy reviews before any real-money release.
-- **Planned:** Remove the temporary `uuid` audit exception by upgrading the compatible
-  Privy/Wagmi wallet-provider chain, or remove the affected connector path, before its review
-  deadline and before any production/mainnet release.
 - **Planned:** Add local U.S. overlays only for selected pilot markets and verified official
   sources. International compliance remains a later country/region/local expansion track.
 - **Planned:** Validate managed hosting, professional workflows, integrations, and support as

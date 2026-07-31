@@ -17,10 +17,11 @@
     "test:load-recovery": "node scripts/check-load-recovery.mjs",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "check:audit": "node scripts/check-production-audit.mjs",
+    "check:wallet-dependencies": "node scripts/check-wallet-dependency-compat.mjs",
     "check:roadmap": "node scripts/check-roadmap-status.mjs",
     "check:sites-provenance": "node scripts/check-sites-provenance.mjs",
     "check": "npm run lint && npm run test:server && npm run test:client-logic && npm run test:account-switch && npm run test:funding-recovery && npm run test:evidence-recovery && npm run test:record-verification && npm run test:accessibility && npm run test:load-recovery && npm run check:roadmap && npm run build && npm run check:bundle",
-    "release:check": "npm run check && npm run check:audit && node scripts/check-release-config.mjs",
+    "release:check": "npm run check && npm run check:audit && npm run check:wallet-dependencies && node scripts/check-release-config.mjs",
     "pilot:check": "node scripts/check-pilot-readiness.mjs",
     "pilot:check:artifact": "node scripts/check-pilot-readiness.mjs --json --artifact",
     "pilot:check:json": "node scripts/check-pilot-readiness.mjs --json",
@@ -54,6 +55,7 @@
   },
   "overrides": {
     "axios": "1.18.1",
+    "uuid": "11.1.1",
     "ws": "8.21.1"
   }
 }
