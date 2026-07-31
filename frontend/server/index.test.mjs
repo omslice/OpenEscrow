@@ -1165,6 +1165,84 @@ function transactionHash(index) {
   return `0x${BigInt(index).toString(16).padStart(64, "0")}`;
 }
 
+function receiptWord(value) {
+  return `0x${BigInt(value).toString(16).padStart(64, "0")}`;
+}
+
+function receiptAddressWord(value) {
+  return `0x${value.toLowerCase().slice(2).padStart(64, "0")}`;
+}
+
+function receiptData(...words) {
+  return `0x${words.map((word) => word.slice(2)).join("")}`;
+}
+
+const RECEIPT_TEST_LANDLORD = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const RECEIPT_TEST_TENANT = "0x1111111111111111111111111111111111111111";
+const RECEIPT_TEST_OTHER_TENANT = "0x2222222222222222222222222222222222222222";
+const RECEIPT_TEST_USDC = "0xe129b23bd89904d363ba226ee52dec74185d7789";
+const RECEIPT_TEST_YIELD_USDC = "0x2746034ff16371a65c133016470f85535992dabc";
+const AGREEMENT_PROPOSED_TOPIC =
+  "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6";
+const TENANT_PARTICIPANT_ADDED_TOPIC =
+  "0x30ab399feb0ae9b4c920d576e81a8e47863afdae2efa0fc6d97a13114f5440ad";
+const TENANT_SHARE_FUNDED_TOPIC =
+  "0xa59b69e1d871c72525782e2de73d8b4a83a1bf00840689625923330b4464544d";
+const AGREEMENT_FUNDED_TOPIC =
+  "0xce24c0ae1d73d57cf2e6d1d90b94b11b288e5cfb1c0aa6e7f8ed3391f0c0f021";
+const RECORD_SNAPSHOT_ANCHORED_TOPIC =
+  "0x4012b6d2c58584f354b2ad24151a4b24d5e18ea9aff9ced4667a2ffe01305ab6";
+const ACTIVITY_PUBLISHED_TOPIC =
+  "0x2aca0841f18e301ab87df30a3dd50b022d848e0b1ee373dcbe9f914886b2eea7";
+
+function finalizationReceipt(agreementId, mutation = "valid") {
+  const agreementTopic = receiptWord(agreementId);
+  const tenant =
+    mutation === "wrong-tenant"
+      ? RECEIPT_TEST_OTHER_TENANT
+      : RECEIPT_TEST_TENANT;
+  const deposit = mutation === "wrong-amount" ? 1_199_000_000n : 1_200_000_000n;
+  return {
+    status: "0x1",
+    blockNumber: "0x2a",
+    from: RECEIPT_TEST_LANDLORD,
+    logs: [
+      {
+        address: "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99",
+        topics: [
+          AGREEMENT_PROPOSED_TOPIC,
+          agreementTopic,
+          receiptAddressWord(RECEIPT_TEST_LANDLORD),
+          receiptAddressWord(tenant),
+        ],
+        data: receiptData(
+          receiptAddressWord("0x0000000000000000000000000000000000000000"),
+          receiptWord(deposit),
+          receiptWord(Math.floor(new Date(terms.claimWindowStart).getTime() / 1_000)),
+          receiptWord(Number(terms.claimDays) * 86_400),
+          receiptWord(Number(terms.responseDays) * 86_400),
+          receiptWord(Number(terms.arbiterDays) * 86_400),
+        ),
+      },
+      {
+        address: "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99",
+        topics: [
+          TENANT_PARTICIPANT_ADDED_TOPIC,
+          agreementTopic,
+          receiptAddressWord(tenant),
+        ],
+        data: receiptData(receiptWord(10_000)),
+      },
+    ],
+  };
+}
+
+function agreementStateResult(tokenAddress = RECEIPT_TEST_USDC) {
+  const words = Array.from({ length: 29 }, () => receiptWord(0));
+  words[12] = receiptAddressWord(tokenAddress);
+  return receiptData(...words);
+}
+
 async function finalizeWithoutArbiter(db, created) {
   await jsonResponse(
     await act(db, created.record.id, created.access.tenant, {
@@ -8409,29 +8487,31 @@ test("configured receipt verification accepts only the expected Base Sepolia agr
     }),
   );
   const originalFetch = globalThis.fetch;
-  let includeExpectedEvent = false;
+  let receiptMutation = "missing";
+  let stateToken = RECEIPT_TEST_USDC;
   globalThis.fetch = async (url, options) => {
     assert.equal(String(url), "https://sepolia.base.org/");
     const rpcRequest = JSON.parse(options.body);
+    if (rpcRequest.method === "eth_call") {
+      return Response.json({
+        jsonrpc: "2.0",
+        id: 2,
+        result: agreementStateResult(stateToken),
+      });
+    }
     assert.equal(rpcRequest.method, "eth_getTransactionReceipt");
     return Response.json({
       jsonrpc: "2.0",
       id: 1,
-      result: {
-        status: "0x1",
-        blockNumber: "0x2a",
-        logs: includeExpectedEvent
-          ? [
-              {
-                address: "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99",
-                topics: [
-                  "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6",
-                  `0x${BigInt(42).toString(16).padStart(64, "0")}`,
-                ],
-              },
-            ]
-          : [],
-      },
+      result:
+        receiptMutation === "missing"
+          ? {
+              status: "0x1",
+              blockNumber: "0x2a",
+              from: RECEIPT_TEST_LANDLORD,
+              logs: [],
+            }
+          : finalizationReceipt(42, receiptMutation),
     });
   };
   const env = {
@@ -8452,7 +8532,50 @@ test("configured receipt verification accepts only the expected Base Sepolia agr
     assert.equal(rejected.status, 400);
     assert.match((await rejected.json()).error, /expected event/);
 
-    includeExpectedEvent = true;
+    receiptMutation = "wrong-tenant";
+    const wrongTenant = await act(
+      db,
+      created.record.id,
+      created.access.landlord,
+      {
+        type: "finalize",
+        agreementId: "42",
+        transactionHash: transactionHash(51),
+      },
+      env,
+    );
+    assert.equal(wrongTenant.status, 400);
+
+    receiptMutation = "wrong-amount";
+    const wrongAmount = await act(
+      db,
+      created.record.id,
+      created.access.landlord,
+      {
+        type: "finalize",
+        agreementId: "42",
+        transactionHash: transactionHash(52),
+      },
+      env,
+    );
+    assert.equal(wrongAmount.status, 400);
+
+    receiptMutation = "valid";
+    stateToken = RECEIPT_TEST_YIELD_USDC;
+    const wrongToken = await act(
+      db,
+      created.record.id,
+      created.access.landlord,
+      {
+        type: "finalize",
+        agreementId: "42",
+        transactionHash: transactionHash(53),
+      },
+      env,
+    );
+    assert.equal(wrongToken.status, 400);
+
+    stateToken = RECEIPT_TEST_USDC;
     const finalized = await jsonResponse(
       await act(
         db,
@@ -8473,6 +8596,11 @@ test("configured receipt verification accepts only the expected Base Sepolia agr
     assert.equal(verified.metadata.transactionHash, transactionHash(50));
     assert.equal(verified.metadata.blockNumber, "0x2a");
     assert.equal(verified.metadata.chainId, 84532);
+    assert.equal(verified.metadata.actorAddress, RECEIPT_TEST_LANDLORD);
+    assert.equal(
+      finalized.events.filter((event) => event.action === "posted_onchain").length,
+      1,
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -8492,26 +8620,24 @@ test("receipt verification falls back when the official public RPC is rate limit
   globalThis.fetch = async (url, options) => {
     requestedUrls.push(String(url));
     const rpcRequest = JSON.parse(options.body);
-    assert.equal(rpcRequest.method, "eth_getTransactionReceipt");
     if (String(url) === "https://sepolia.base.org/") {
       return new Response("rate limited", { status: 429 });
     }
     assert.equal(String(url), "https://base-sepolia-rpc.publicnode.com/");
+    if (rpcRequest.method === "eth_call") {
+      return Response.json({
+        jsonrpc: "2.0",
+        id: 2,
+        result: agreementStateResult(),
+      });
+    }
+    assert.equal(rpcRequest.method, "eth_getTransactionReceipt");
     return Response.json({
       jsonrpc: "2.0",
       id: 1,
       result: {
-        status: "0x1",
+        ...finalizationReceipt(43),
         blockNumber: "0x2b",
-        logs: [
-          {
-            address: "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99",
-            topics: [
-              "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6",
-              `0x${BigInt(43).toString(16).padStart(64, "0")}`,
-            ],
-          },
-        ],
       },
     });
   };
@@ -8533,7 +8659,264 @@ test("receipt verification falls back when the official public RPC is rate limit
     assert.deepEqual(requestedUrls, [
       "https://sepolia.base.org/",
       "https://base-sepolia-rpc.publicnode.com/",
+      "https://sepolia.base.org/",
+      "https://base-sepolia-rpc.publicnode.com/",
     ]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("receipt verification binds tenant funding to the exact participant and amount", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const originalFetch = globalThis.fetch;
+  let receiptMode = "wrong-tenant";
+  globalThis.fetch = async (_url, options) => {
+    const rpcRequest = JSON.parse(options.body);
+    assert.equal(rpcRequest.method, "eth_getTransactionReceipt");
+    const tenant =
+      receiptMode === "wrong-tenant"
+        ? RECEIPT_TEST_OTHER_TENANT
+        : RECEIPT_TEST_TENANT;
+    const eventTopic =
+      receiptMode === "aggregate-only"
+        ? AGREEMENT_FUNDED_TOPIC
+        : TENANT_SHARE_FUNDED_TOPIC;
+    const amount =
+      receiptMode === "wrong-amount" ? 1_199_000_000n : 1_200_000_000n;
+    return Response.json({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        status: "0x1",
+        blockNumber: "0x2c",
+        from: RECEIPT_TEST_TENANT,
+        logs: [
+          {
+            address: "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99",
+            topics:
+              eventTopic === TENANT_SHARE_FUNDED_TOPIC
+                ? [
+                    eventTopic,
+                    receiptWord(42),
+                    receiptAddressWord(tenant),
+                  ]
+                : [eventTopic, receiptWord(42)],
+            data:
+              eventTopic === TENANT_SHARE_FUNDED_TOPIC
+                ? receiptData(receiptWord(amount), receiptWord(amount))
+                : receiptData(receiptWord(amount)),
+          },
+        ],
+      },
+    });
+  };
+  const action = {
+    type: "tenant_share_funded",
+    amount: "1200",
+    transactionHash: transactionHash(60),
+  };
+  try {
+    const wrongTenant = await act(
+      db,
+      created.record.id,
+      created.access.tenant,
+      action,
+      { VERIFY_TRANSACTION_RECEIPTS: "true" },
+    );
+    assert.equal(wrongTenant.status, 400);
+
+    receiptMode = "wrong-amount";
+    const wrongAmount = await act(
+      db,
+      created.record.id,
+      created.access.tenant,
+      { ...action, transactionHash: transactionHash(61) },
+      { VERIFY_TRANSACTION_RECEIPTS: "true" },
+    );
+    assert.equal(wrongAmount.status, 400);
+
+    receiptMode = "aggregate-only";
+    const aggregateOnly = await act(
+      db,
+      created.record.id,
+      created.access.tenant,
+      { ...action, transactionHash: transactionHash(62) },
+      { VERIFY_TRANSACTION_RECEIPTS: "true" },
+    );
+    assert.equal(aggregateOnly.status, 400);
+
+    receiptMode = "valid";
+    const funded = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.tenant,
+        { ...action, transactionHash: transactionHash(63) },
+        { VERIFY_TRANSACTION_RECEIPTS: "true" },
+      ),
+    );
+    assert.equal(
+      funded.events.filter((event) => event.action === "tenant_share_funded")
+        .length,
+      1,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("receipt verification binds private record anchors to the submitted hash, type, and participant", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const originalFetch = globalThis.fetch;
+  const snapshotHash = transactionHash(70);
+  const contentHash = transactionHash(71);
+  let mode = "snapshot-wrong-hash";
+  globalThis.fetch = async (_url, options) => {
+    const rpcRequest = JSON.parse(options.body);
+    assert.equal(rpcRequest.method, "eth_getTransactionReceipt");
+    const isActivity = mode.startsWith("activity");
+    const party =
+      mode === "snapshot-wrong-party" || mode === "activity-wrong-party"
+        ? RECEIPT_TEST_OTHER_TENANT
+        : RECEIPT_TEST_TENANT;
+    const loggedSnapshotHash =
+      mode === "snapshot-wrong-hash" ? transactionHash(72) : snapshotHash;
+    const loggedActivityType = mode === "activity-wrong-type" ? 4 : 3;
+    const loggedContentHash =
+      mode === "activity-wrong-content" ? transactionHash(73) : contentHash;
+    return Response.json({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        status: "0x1",
+        blockNumber: "0x2d",
+        from: RECEIPT_TEST_TENANT,
+        logs: [
+          isActivity
+            ? {
+                address: "0xC004dF4C43146FE55e5761EA1BB3C14f01161951",
+                topics: [
+                  ACTIVITY_PUBLISHED_TOPIC,
+                  receiptWord(42),
+                  receiptWord(loggedActivityType),
+                  receiptAddressWord(party),
+                ],
+                data: receiptData(
+                  loggedContentHash,
+                  receiptWord(1_785_000_000),
+                ),
+              }
+            : {
+                address: "0xC004dF4C43146FE55e5761EA1BB3C14f01161951",
+                topics: [
+                  RECORD_SNAPSHOT_ANCHORED_TOPIC,
+                  receiptWord(42),
+                  loggedSnapshotHash,
+                  receiptAddressWord(party),
+                ],
+                data: receiptData(receiptWord(1_785_000_000)),
+              },
+        ],
+      },
+    });
+  };
+  const verificationEnv = { VERIFY_TRANSACTION_RECEIPTS: "true" };
+  try {
+    const wrongHash = await act(
+      db,
+      created.record.id,
+      created.access.tenant,
+      {
+        type: "record_snapshot_anchored",
+        snapshotHash,
+        transactionHash: transactionHash(74),
+      },
+      verificationEnv,
+    );
+    assert.equal(wrongHash.status, 400);
+
+    mode = "snapshot-wrong-party";
+    const wrongParty = await act(
+      db,
+      created.record.id,
+      created.access.tenant,
+      {
+        type: "record_snapshot_anchored",
+        snapshotHash,
+        transactionHash: transactionHash(75),
+      },
+      verificationEnv,
+    );
+    assert.equal(wrongParty.status, 400);
+
+    mode = "snapshot-valid";
+    const anchored = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.tenant,
+        {
+          type: "record_snapshot_anchored",
+          snapshotHash,
+          transactionHash: transactionHash(76),
+        },
+        verificationEnv,
+      ),
+    );
+    assert.equal(
+      anchored.events.filter(
+        (event) => event.action === "record_snapshot_anchored",
+      ).length,
+      1,
+    );
+
+    for (const [activityMode, hashIndex] of [
+      ["activity-wrong-type", 77],
+      ["activity-wrong-party", 78],
+      ["activity-wrong-content", 79],
+    ]) {
+      mode = activityMode;
+      const rejected = await act(
+        db,
+        created.record.id,
+        created.access.tenant,
+        {
+          type: "activity_hash_published",
+          activityType: 3,
+          contentHash,
+          transactionHash: transactionHash(hashIndex),
+        },
+        verificationEnv,
+      );
+      assert.equal(rejected.status, 400);
+    }
+
+    mode = "activity-valid";
+    const published = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.tenant,
+        {
+          type: "activity_hash_published",
+          activityType: 3,
+          contentHash,
+          transactionHash: transactionHash(80),
+        },
+        verificationEnv,
+      ),
+    );
+    assert.equal(
+      published.events.filter(
+        (event) => event.action === "activity_hash_published",
+      ).length,
+      1,
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

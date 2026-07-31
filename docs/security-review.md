@@ -230,8 +230,15 @@ The hosted action handler now:
   conflated.
 
 Base Sepolia receipt verification is enabled by default. Every recorded transaction must have a
-successful receipt with the current deployment address, expected event signature, and agreement
-ID. It can be disabled only through an explicit emergency diagnostics setting.
+successful receipt whose single matching event proves the current deployment address, event
+signature, agreement ID, and every action-specific field available in that event. Finalization
+also proves every approved tenant wallet/share, the primary tenant, optional arbiter, deposit,
+deadlines, selected token at the confirmed block, and the creating landlord wallet. Tenant
+funding, responses, withdrawals, and private-registry actions bind the submitted participant;
+amount-bearing events bind the validated amount; record anchors and activity receipts bind the
+submitted hash and activity type. Aggregate `AgreementFunded` and `ClaimResponded` events cannot
+stand in for participant-specific events. Verification can be disabled only through an explicit
+emergency diagnostics setting.
 
 Evidence upload now checks PDF/JPEG/PNG/WebP file signatures instead of trusting a browser-provided
 MIME type. Evidence downloads and printable reports add no-referrer, no-sniffing, anti-framing, and
@@ -239,15 +246,22 @@ restrictive content-security headers. Static app responses also receive no-refer
 headers.
 
 Automated coverage at this addendum is 173 passing Solidity tests across 15 suites, including the
-three 32,768-call stateful invariants and 512-run fuzz cases, plus 70 passing hosted workflow tests.
+three 32,768-call stateful invariants and 512-run fuzz cases, plus 83 passing hosted workflow tests.
 The workflow suite contains a complete two-tenant/optional-arbiter negotiation, funding, claim,
-response, dispute, ruling, refund, and withdrawal scenario.
+response, dispute, ruling, refund, and withdrawal scenario. Receipt regressions independently
+reject wrong finalization participants, amounts, and tokens; another tenant's funding event;
+aggregate-event substitution; and altered private-record hashes, activity types, or actors.
 
 ### Residual hosted-workflow risks
 
 - Receipt verification depends on a Base Sepolia RPC endpoint. A temporary provider outage can
   delay saving the readable receipt record, although it does not alter the completed onchain
   transaction and the UI retains a retry path.
+- Older finalized records created before landlord-wallet capture can verify landlord actions only
+  by excluding every approved tenant and the saved arbiter while relying on the escrow contract's
+  role check. Newly verified finalizations preserve the exact landlord wallet in the audit event.
+  Arbiter replacement must be mirrored into the hosted record before a replaced arbiter can pass
+  exact-wallet receipt verification.
 - Invitation URLs are bearer credentials. A landlord can reset a tenant or optional-arbiter link
   without changing approved terms; the reset invalidates the prior direct link and the affected
   account-discovery sessions, while the matching verified email can discover a fresh session.

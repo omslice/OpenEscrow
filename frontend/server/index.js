@@ -397,6 +397,8 @@ const COMPLIANCE_SOURCE_FRESHNESS_MS = 21 * 24 * 60 * 60 * 1000;
 const DEFAULT_BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org";
 const FALLBACK_BASE_SEPOLIA_RPC_URL = "https://base-sepolia-rpc.publicnode.com";
 const DEFAULT_OPEN_ESCROW_ADDRESS = "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99";
+const DEFAULT_USDC_ADDRESS = "0xE129b23BD89904D363ba226eE52deC74185D7789";
+const DEFAULT_YIELD_USDC_ADDRESS = "0x2746034FF16371A65c133016470f85535992dabC";
 const DEFAULT_OPERATIONS_RESERVE_ADDRESS =
   "0x5d2E9c429F9d117c7b028c8f0f67d37252aDceC0";
 const DEFAULT_ACTIVITY_REGISTRY_ADDRESS =
@@ -410,6 +412,8 @@ const COMPLIANCE_SOURCE_MONITOR_GRACE_MS = 2 * COMPLIANCE_SOURCE_MONITOR_INTERVA
 const RECEIPT_EVENT_TOPICS = Object.freeze({
   agreementProposed:
     "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6",
+  tenantParticipantAdded:
+    "0x30ab399feb0ae9b4c920d576e81a8e47863afdae2efa0fc6d97a13114f5440ad",
   operationsReservePaid:
     "0x8817d9a1dd298236cd746a97680a13cf2e5d0a9d970b20e26b8fa0ee32cd855b",
   tenantShareFunded:
@@ -594,19 +598,144 @@ async function activityRegistryReadiness(env) {
 function uint256Topic(value) {
   try {
     const encoded = BigInt(value).toString(16);
+    if (encoded.startsWith("-") || encoded.length > 64) return null;
     return `0x${encoded.padStart(64, "0")}`;
   } catch {
     return null;
   }
 }
 
-function receiptExpectation(body, row, env) {
+function addressTopic(value) {
+  const address = cleanText(value, 80).toLowerCase();
+  return WALLET_PATTERN.test(address)
+    ? `0x${address.slice(2).padStart(64, "0")}`
+    : null;
+}
+
+function topicAddress(value) {
+  const word = cleanText(value, 80).toLowerCase();
+  if (!/^0x0{24}[a-f0-9]{40}$/.test(word)) return null;
+  return `0x${word.slice(-40)}`;
+}
+
+function normalizedReceiptWord(value) {
+  const word = cleanText(value, 80).toLowerCase();
+  return /^0x[a-f0-9]{64}$/.test(word) ? word : null;
+}
+
+function receiptDataWords(value) {
+  const data = cleanText(value, 20_000).toLowerCase();
+  if (data === "0x") return [];
+  if (!/^0x(?:[a-f0-9]{64})+$/.test(data)) return null;
+  return data
+    .slice(2)
+    .match(/.{64}/g)
+    .map((word) => `0x${word}`);
+}
+
+function tokenAddressForTerms(terms, env) {
+  const configured =
+    terms?.tokenChoice === "yield"
+      ? env.YIELD_USDC_ADDRESS || DEFAULT_YIELD_USDC_ADDRESS
+      : env.USDC_ADDRESS || DEFAULT_USDC_ADDRESS;
+  const address = cleanText(configured, 80).toLowerCase();
+  return WALLET_PATTERN.test(address) ? address : null;
+}
+
+function latestVerifiedLandlordWallet(recordedEvents) {
+  const event = [...recordedEvents]
+    .reverse()
+    .find(
+      (candidate) =>
+        candidate.action === "transaction_receipt_verified" &&
+        candidate.metadata?.eventType === "posted_onchain" &&
+        WALLET_PATTERN.test(candidate.metadata?.actorAddress || ""),
+    );
+  return event?.metadata?.actorAddress?.toLowerCase() || null;
+}
+
+async function receiptParticipantContext(db, row, role, token, recordedEvents) {
+  const tenantRows = await tenantsFor(db, row.id);
+  const tenant = role === "tenant" ? await tenantForToken(db, row.id, token) : null;
+  const tenantWallets = tenantRows
+    .map((candidate) => cleanText(candidate.wallet, 80).toLowerCase())
+    .filter((wallet) => WALLET_PATTERN.test(wallet));
+  const fundingTenant =
+    tenantRows.find((candidate) => candidate.is_funding_tenant === 1) ||
+    tenantRows[0] ||
+    null;
+  const arbiterWallet = WALLET_PATTERN.test(row.arbiter_wallet || "")
+    ? row.arbiter_wallet.toLowerCase()
+    : null;
+  const landlordWallet = latestVerifiedLandlordWallet(recordedEvents);
+  const exactWallet =
+    role === "tenant"
+      ? WALLET_PATTERN.test(tenant?.wallet || "")
+        ? tenant.wallet.toLowerCase()
+        : null
+      : role === "arbiter"
+        ? arbiterWallet
+        : role === "landlord"
+          ? landlordWallet
+          : null;
+  return {
+    role,
+    tenant,
+    tenantRows,
+    tenantWallets,
+    fundingTenant,
+    arbiterWallet,
+    landlordWallet,
+    exactWallet,
+    forbiddenLandlordWallets: [
+      ...new Set([...tenantWallets, arbiterWallet].filter(Boolean)),
+    ],
+  };
+}
+
+function variant({
+  address,
+  topic0,
+  agreementTopic,
+  agreementTopicIndex = 1,
+  topicWords = {},
+  dataWords = {},
+  topicCount,
+  dataWordCount,
+  exactSender = null,
+  forbiddenSenders = [],
+  senderTopicIndex = null,
+  captureActorTopicIndex = null,
+}) {
+  return {
+    address,
+    topic0,
+    topicWords: {
+      [agreementTopicIndex]: agreementTopic,
+      ...topicWords,
+    },
+    dataWords,
+    topicCount,
+    dataWordCount,
+    exactSender,
+    forbiddenSenders,
+    senderTopicIndex,
+    captureActorTopicIndex,
+  };
+}
+
+function receiptExpectation(body, row, env, context, recordedEvents) {
   const agreementId = cleanText(
     body.type === "finalize" ? body.agreementId : row.onchain_agreement_id,
     80,
   );
   const agreementTopic = uint256Topic(agreementId);
-  if (!agreementTopic) return null;
+  if (!agreementTopic) {
+    return {
+      error: "The agreement id required to verify this transaction is unavailable.",
+      status: 409,
+    };
+  }
   const openEscrowAddress = cleanText(
     env.OPEN_ESCROW_ADDRESS || DEFAULT_OPEN_ESCROW_ADDRESS,
     80,
@@ -619,71 +748,469 @@ function receiptExpectation(body, row, env) {
     env.ACTIVITY_REGISTRY_ADDRESS || DEFAULT_ACTIVITY_REGISTRY_ADDRESS,
     80,
   ).toLowerCase();
-
-  const expectation = {
-    addresses: [openEscrowAddress],
-    topics: [],
-    agreementTopic,
-    agreementTopicIndex: 1,
+  const terms = JSON.parse(row.terms_json);
+  const depositMicros = tokenMicros(terms.deposit);
+  const actorTopic = addressTopic(context.exactWallet);
+  const exactSender = context.exactWallet;
+  const landlordActor = {
+    exactSender,
+    forbiddenSenders: exactSender ? [] : context.forbiddenLandlordWallets,
   };
+  const requireKnownActor = (label) =>
+    actorTopic
+      ? null
+      : {
+          error: `The approved ${label} wallet required to verify this transaction is unavailable.`,
+          status: 409,
+        };
+  let variants = [];
+  const extra = {};
+
   if (body.type === "finalize") {
-    expectation.topics = [RECEIPT_EVENT_TOPICS.agreementProposed];
+    const tenantRows = context.tenantRows;
+    const tenantWallets = tenantRows.map((tenant) =>
+      WALLET_PATTERN.test(tenant.wallet || "") ? tenant.wallet.toLowerCase() : null,
+    );
+    const fundingTenantWallet = WALLET_PATTERN.test(context.fundingTenant?.wallet || "")
+      ? context.fundingTenant.wallet.toLowerCase()
+      : null;
+    const arbiterAddress = row.arbiter_email
+      ? context.arbiterWallet
+      : "0x0000000000000000000000000000000000000000";
+    const claimWindowStart = Math.floor(
+      new Date(terms.claimWindowStart).getTime() / 1_000,
+    );
+    const claimPeriod = Number(terms.claimDays) * 86_400;
+    const responsePeriod = Number(terms.responseDays) * 86_400;
+    const arbiterRulingPeriod = Number(terms.arbiterDays) * 86_400;
+    const expectedTokenAddress = tokenAddressForTerms(terms, env);
+    const dataWords = {
+      0: addressTopic(arbiterAddress),
+      1: uint256Topic(depositMicros),
+      2: uint256Topic(claimWindowStart),
+      3: uint256Topic(claimPeriod),
+      4: uint256Topic(responsePeriod),
+      5: uint256Topic(arbiterRulingPeriod),
+    };
+    if (
+      !fundingTenantWallet ||
+      tenantWallets.some((wallet) => !wallet) ||
+      Object.values(dataWords).some((word) => !word) ||
+      !expectedTokenAddress
+    ) {
+      return {
+        error:
+          "The approved participant wallets, token, amount, or deadlines required to verify finalization are unavailable.",
+        status: 409,
+      };
+    }
+    variants = [
+      variant({
+        address: openEscrowAddress,
+        topic0: RECEIPT_EVENT_TOPICS.agreementProposed,
+        agreementTopic,
+        topicWords: { 3: addressTopic(fundingTenantWallet) },
+        dataWords,
+        topicCount: 4,
+        dataWordCount: 6,
+        forbiddenSenders: context.forbiddenLandlordWallets,
+        senderTopicIndex: 2,
+        captureActorTopicIndex: 2,
+      }),
+    ];
+    extra.participantLogs = tenantRows.map((tenant) => ({
+      address: openEscrowAddress,
+      topic0: RECEIPT_EVENT_TOPICS.tenantParticipantAdded,
+      topicWords: {
+        1: agreementTopic,
+        2: addressTopic(tenant.wallet),
+      },
+      dataWords: { 0: uint256Topic(tenant.deposit_share_bps) },
+      topicCount: 3,
+      dataWordCount: 1,
+    }));
+    extra.participantLogCount = tenantRows.length;
+    extra.expectedAgreementToken = expectedTokenAddress;
+    extra.openEscrowAddress = openEscrowAddress;
+    extra.agreementTopic = agreementTopic;
   } else if (body.type === "operations_reserve_paid") {
-    expectation.addresses = [reserveAddress];
-    expectation.topics = [RECEIPT_EVENT_TOPICS.operationsReservePaid];
-    expectation.agreementTopicIndex = 2;
+    const missingActor = requireKnownActor("tenant");
+    if (missingActor) return missingActor;
+    const tenantIndex = context.tenantRows.findIndex(
+      (candidate) => candidate.id === context.tenant?.id,
+    );
+    const base = 5_000_000n / BigInt(context.tenantRows.length);
+    const amount =
+      tenantIndex === context.tenantRows.length - 1
+        ? 5_000_000n - base * BigInt(context.tenantRows.length - 1)
+        : base;
+    const tokenAddress = tokenAddressForTerms(terms, env);
+    variants = [
+      variant({
+        address: reserveAddress,
+        topic0: RECEIPT_EVENT_TOPICS.operationsReservePaid,
+        agreementTopic,
+        agreementTopicIndex: 2,
+        topicWords: {
+          1: addressTopic(openEscrowAddress),
+          3: actorTopic,
+        },
+        dataWords: {
+          0: addressTopic(tokenAddress),
+          1: uint256Topic(amount),
+        },
+        topicCount: 4,
+        dataWordCount: 2,
+        exactSender,
+      }),
+    ];
   } else if (
     body.type === "tenant_share_funded" ||
     body.type === "agreement_funded"
   ) {
-    expectation.topics = [
-      RECEIPT_EVENT_TOPICS.tenantShareFunded,
-      RECEIPT_EVENT_TOPICS.agreementFunded,
+    const missingActor = requireKnownActor("tenant");
+    if (missingActor) return missingActor;
+    const tenantIndex = context.tenantRows.findIndex(
+      (candidate) => candidate.id === context.tenant?.id,
+    );
+    let allocatedMicros = 0n;
+    for (let index = 0; index < context.tenantRows.length - 1; index += 1) {
+      allocatedMicros +=
+        (depositMicros * BigInt(context.tenantRows[index].deposit_share_bps)) /
+        10_000n;
+    }
+    const contribution =
+      tenantIndex === context.tenantRows.length - 1
+        ? depositMicros - allocatedMicros
+        : (depositMicros * BigInt(context.tenant.deposit_share_bps)) / 10_000n;
+    const previouslyFunded = recordedEvents
+      .filter(
+        (event) =>
+          event.action === "tenant_share_funded" ||
+          event.action === "agreement_funded",
+      )
+      .reduce(
+        (total, event) => total + (tokenMicros(event.metadata?.amount) || 0n),
+        0n,
+      );
+    variants = [
+      variant({
+        address: openEscrowAddress,
+        topic0: RECEIPT_EVENT_TOPICS.tenantShareFunded,
+        agreementTopic,
+        topicWords: { 2: actorTopic },
+        dataWords: {
+          0: uint256Topic(contribution),
+          1: uint256Topic(previouslyFunded + contribution),
+        },
+        topicCount: 3,
+        dataWordCount: 2,
+        exactSender,
+      }),
     ];
   } else if (body.type === "claim_submitted") {
-    expectation.topics = [RECEIPT_EVENT_TOPICS.claimSubmitted];
+    const amount = tokenMicros(body.amount);
+    variants = [
+      variant({
+        address: openEscrowAddress,
+        topic0: RECEIPT_EVENT_TOPICS.claimSubmitted,
+        agreementTopic,
+        dataWords: {
+          0: uint256Topic(amount),
+          1: uint256Topic(depositMicros - amount),
+        },
+        topicCount: 2,
+        dataWordCount: 2,
+        ...landlordActor,
+      }),
+    ];
   } else if (body.type === "claim_amended") {
-    expectation.topics = [
-      tokenMicros(body.amount) === 0n
-        ? RECEIPT_EVENT_TOPICS.claimRetracted
-        : RECEIPT_EVENT_TOPICS.claimAmended,
+    const priorClaim = latestClaimEvent(recordedEvents);
+    const priorAmount = tokenMicros(priorClaim?.metadata?.amount);
+    const amount = tokenMicros(body.amount);
+    variants = [
+      amount === 0n
+        ? variant({
+            address: openEscrowAddress,
+            topic0: RECEIPT_EVENT_TOPICS.claimRetracted,
+            agreementTopic,
+            topicCount: 2,
+            dataWordCount: 0,
+            ...landlordActor,
+          })
+        : variant({
+            address: openEscrowAddress,
+            topic0: RECEIPT_EVENT_TOPICS.claimAmended,
+            agreementTopic,
+            dataWords: {
+              0: uint256Topic(amount),
+              1: uint256Topic(priorAmount - amount),
+            },
+            topicCount: 2,
+            dataWordCount: 2,
+            ...landlordActor,
+          }),
     ];
   } else if (body.type === "claim_response") {
-    expectation.topics = [
-      RECEIPT_EVENT_TOPICS.tenantClaimResponse,
-      RECEIPT_EVENT_TOPICS.legacyClaimResponse,
+    const missingActor = requireKnownActor("tenant");
+    if (missingActor) return missingActor;
+    const priorResponses = recordedEvents.filter(
+      (event) => event.action === "claim_response_submitted",
+    ).length;
+    variants = [
+      variant({
+        address: openEscrowAddress,
+        topic0: RECEIPT_EVENT_TOPICS.tenantClaimResponse,
+        agreementTopic,
+        topicWords: { 2: actorTopic },
+        dataWords: {
+          0: uint256Topic(tokenMicros(body.acceptedAmount)),
+          1: uint256Topic(priorResponses + 1),
+          2: uint256Topic(context.tenantRows.length),
+        },
+        topicCount: 3,
+        dataWordCount: 3,
+        exactSender,
+      }),
     ];
   } else if (body.type === "arbiter_ruling") {
-    expectation.topics = [RECEIPT_EVENT_TOPICS.disputeResolved];
+    const missingActor = requireKnownActor("arbiter");
+    if (missingActor) return missingActor;
+    const dispute = claimDisputeState(recordedEvents, context.tenantRows);
+    const award = tokenMicros(body.awardToLandlord);
+    variants = [
+      variant({
+        address: openEscrowAddress,
+        topic0: RECEIPT_EVENT_TOPICS.disputeResolved,
+        agreementTopic,
+        dataWords: {
+          0: uint256Topic(award),
+          1: uint256Topic(dispute.disputedMicros - award),
+        },
+        topicCount: 2,
+        dataWordCount: 2,
+        exactSender,
+      }),
+    ];
   } else if (body.type === "withdrawal_completed") {
-    expectation.topics = [RECEIPT_EVENT_TOPICS.withdrawn];
+    if (context.role === "tenant" && !actorTopic) {
+      return requireKnownActor("tenant");
+    }
+    variants = [
+      variant({
+        address: openEscrowAddress,
+        topic0: RECEIPT_EVENT_TOPICS.withdrawn,
+        agreementTopic,
+        topicWords: actorTopic ? { 2: actorTopic } : {},
+        dataWords: { 0: uint256Topic(tokenMicros(body.amount)) },
+        topicCount: 3,
+        dataWordCount: 1,
+        ...(context.role === "landlord" ? landlordActor : { exactSender }),
+        senderTopicIndex: 2,
+        captureActorTopicIndex: 2,
+      }),
+    ];
   } else if (body.type === "timeout_executed") {
-    expectation.topics = [
+    const dispute = claimDisputeState(recordedEvents, context.tenantRows);
+    const amount =
       body.timeout === "no_claim_refund"
-        ? RECEIPT_EVENT_TOPICS.noClaimWithdrawal
+        ? depositMicros
         : body.timeout === "no_response_dispute"
-          ? RECEIPT_EVENT_TOPICS.responseTimedOut
-          : RECEIPT_EVENT_TOPICS.arbiterTimedOut,
+          ? dispute.claimMicros
+          : dispute.disputedMicros;
+    if (body.timeout === "no_claim_refund" && !actorTopic) {
+      return requireKnownActor("tenant");
+    }
+    variants = [
+      variant({
+        address: openEscrowAddress,
+        topic0:
+          body.timeout === "no_claim_refund"
+            ? RECEIPT_EVENT_TOPICS.noClaimWithdrawal
+            : body.timeout === "no_response_dispute"
+              ? RECEIPT_EVENT_TOPICS.responseTimedOut
+              : RECEIPT_EVENT_TOPICS.arbiterTimedOut,
+        agreementTopic,
+        dataWords: { 0: uint256Topic(amount) },
+        topicCount: 2,
+        dataWordCount: 1,
+        exactSender:
+          body.timeout === "no_claim_refund" ? context.exactWallet : null,
+      }),
     ];
   } else if (body.type === "record_snapshot_anchored") {
-    expectation.addresses = [registryAddress];
-    expectation.topics = [RECEIPT_EVENT_TOPICS.recordSnapshotAnchored];
+    if (context.role !== "landlord" && !actorTopic) {
+      return requireKnownActor(context.role);
+    }
+    variants = [
+      variant({
+        address: registryAddress,
+        topic0: RECEIPT_EVENT_TOPICS.recordSnapshotAnchored,
+        agreementTopic,
+        topicWords: {
+          2: normalizedReceiptWord(body.snapshotHash),
+          ...(actorTopic ? { 3: actorTopic } : {}),
+        },
+        dataWordCount: 1,
+        topicCount: 4,
+        ...(context.role === "landlord" ? landlordActor : { exactSender }),
+        senderTopicIndex: 3,
+        captureActorTopicIndex: 3,
+      }),
+    ];
   } else if (body.type === "activity_hash_published") {
-    expectation.addresses = [registryAddress];
-    expectation.topics = [RECEIPT_EVENT_TOPICS.activityPublished];
+    if (context.role !== "landlord" && !actorTopic) {
+      return requireKnownActor(context.role);
+    }
+    variants = [
+      variant({
+        address: registryAddress,
+        topic0: RECEIPT_EVENT_TOPICS.activityPublished,
+        agreementTopic,
+        topicWords: {
+          2: uint256Topic(body.activityType),
+          ...(actorTopic ? { 3: actorTopic } : {}),
+        },
+        dataWords: { 0: normalizedReceiptWord(body.contentHash) },
+        dataWordCount: 2,
+        topicCount: 4,
+        ...(context.role === "landlord" ? landlordActor : { exactSender }),
+        senderTopicIndex: 3,
+        captureActorTopicIndex: 3,
+      }),
+    ];
   } else {
-    return null;
+    return {
+      error: "This transaction type cannot be verified.",
+      status: 409,
+    };
   }
-  return expectation;
+  if (
+    variants.some(
+      (candidate) =>
+        !candidate.address ||
+        !candidate.topic0 ||
+        Object.values(candidate.topicWords).some((word) => !word) ||
+        Object.values(candidate.dataWords).some((word) => !word),
+    )
+  ) {
+    return {
+      error: "The exact receipt fields required for verification are unavailable.",
+      status: 409,
+    };
+  }
+  return { variants, ...extra };
 }
 
-async function verifiedBaseSepoliaReceipt(env, body, row, transactionHash) {
-  const expectation = receiptExpectation(body, row, env);
-  if (!expectation) {
+function receiptLogMatchesVariant(log, receipt, candidate) {
+  if (
+    cleanText(log?.address, 80).toLowerCase() !== candidate.address ||
+    cleanText(log?.topics?.[0], 80).toLowerCase() !== candidate.topic0
+  ) {
+    return false;
+  }
+  const topics = Array.isArray(log?.topics) ? log.topics : [];
+  if (candidate.topicCount !== undefined && topics.length !== candidate.topicCount) {
+    return false;
+  }
+  for (const [index, expectedWord] of Object.entries(candidate.topicWords)) {
+    if (normalizedReceiptWord(topics[Number(index)]) !== expectedWord) return false;
+  }
+  const words = receiptDataWords(log?.data);
+  if (!words) return false;
+  if (
+    candidate.dataWordCount !== undefined &&
+    words.length !== candidate.dataWordCount
+  ) {
+    return false;
+  }
+  for (const [index, expectedWord] of Object.entries(candidate.dataWords)) {
+    if (words[Number(index)] !== expectedWord) return false;
+  }
+  const sender = cleanText(receipt?.from, 80).toLowerCase();
+  if (candidate.exactSender && sender !== candidate.exactSender) return false;
+  if ((candidate.forbiddenSenders || []).includes(sender)) return false;
+  if (
+    candidate.senderTopicIndex !== null &&
+    candidate.senderTopicIndex !== undefined
+  ) {
+    const loggedActor = topicAddress(topics[candidate.senderTopicIndex]);
+    if (!loggedActor || sender !== loggedActor) return false;
+  }
+  return true;
+}
+
+async function agreementTokenAtReceipt(
+  parsedRpcUrls,
+  openEscrowAddress,
+  agreementTopic,
+  blockNumber,
+) {
+  const callData = `0x4f9f6fe6${agreementTopic.slice(2)}`;
+  let rpcResponded = false;
+  for (const parsedRpcUrl of parsedRpcUrls) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 4_000);
+    try {
+      const response = await fetch(parsedRpcUrl.toString(), {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 2,
+          method: "eth_call",
+          params: [
+            { to: openEscrowAddress, data: callData },
+            blockNumber || "latest",
+          ],
+        }),
+        signal: controller.signal,
+      });
+      if (!response.ok) continue;
+      const result = await response.json();
+      if (result?.error) continue;
+      rpcResponded = true;
+      const words = receiptDataWords(result?.result);
+      if (words && words.length >= 13) {
+        return { ok: true, tokenAddress: topicAddress(words[12]) };
+      }
+    } catch {
+      // Try the next approved Base Sepolia endpoint.
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+  return { ok: false, rpcResponded };
+}
+
+async function verifiedBaseSepoliaReceipt(
+  env,
+  db,
+  body,
+  row,
+  role,
+  recordedEvents,
+  transactionHash,
+) {
+  const context = await receiptParticipantContext(
+    db,
+    row,
+    role,
+    body.token,
+    recordedEvents,
+  );
+  const expectation = receiptExpectation(
+    body,
+    row,
+    env,
+    context,
+    recordedEvents,
+  );
+  if (expectation.error) {
     return {
       ok: false,
-      status: 409,
-      error: "The agreement id required to verify this transaction is unavailable.",
+      status: expectation.status,
+      error: expectation.error,
     };
   }
   const configuredRpcUrl = cleanText(env.BASE_SEPOLIA_RPC_URL, 1000);
@@ -763,14 +1290,14 @@ async function verifiedBaseSepoliaReceipt(env, body, row, transactionHash) {
       error: "The submitted Base Sepolia transaction reverted and cannot be recorded.",
     };
   }
-  const matchingLog = (Array.isArray(receipt.logs) ? receipt.logs : []).find(
-    (log) =>
-      expectation.addresses.includes(cleanText(log?.address, 80).toLowerCase()) &&
-      expectation.topics.includes(cleanText(log?.topics?.[0], 80).toLowerCase()) &&
-      cleanText(
-        log?.topics?.[expectation.agreementTopicIndex],
-        80,
-      ).toLowerCase() === expectation.agreementTopic,
+  const logs = Array.isArray(receipt.logs) ? receipt.logs : [];
+  let matchedVariant = null;
+  const matchingLog = logs.find((log) =>
+    expectation.variants.some((candidate) => {
+      if (!receiptLogMatchesVariant(log, receipt, candidate)) return false;
+      matchedVariant = candidate;
+      return true;
+    }),
   );
   if (!matchingLog) {
     return {
@@ -780,10 +1307,65 @@ async function verifiedBaseSepoliaReceipt(env, body, row, transactionHash) {
         "This transaction does not contain the expected event for the current OpenEscrow agreement.",
     };
   }
+  if (expectation.participantLogs) {
+    const matchingParticipantLogs = logs.filter(
+      (log) =>
+        cleanText(log?.address, 80).toLowerCase() ===
+          expectation.openEscrowAddress &&
+        cleanText(log?.topics?.[0], 80).toLowerCase() ===
+          RECEIPT_EVENT_TOPICS.tenantParticipantAdded &&
+        normalizedReceiptWord(log?.topics?.[1]) === expectation.agreementTopic,
+    );
+    if (
+      matchingParticipantLogs.length !== expectation.participantLogCount ||
+      !expectation.participantLogs.every((candidate) =>
+        matchingParticipantLogs.some((log) =>
+          receiptLogMatchesVariant(log, receipt, candidate),
+        ),
+      )
+    ) {
+      return {
+        ok: false,
+        status: 400,
+        error:
+          "This transaction does not contain the expected event for the current OpenEscrow agreement.",
+      };
+    }
+  }
+  if (expectation.expectedAgreementToken) {
+    const tokenResult = await agreementTokenAtReceipt(
+      parsedRpcUrls,
+      expectation.openEscrowAddress,
+      expectation.agreementTopic,
+      cleanText(receipt.blockNumber, 80),
+    );
+    if (!tokenResult.ok) {
+      return {
+        ok: false,
+        status: tokenResult.rpcResponded ? 400 : 503,
+        error: tokenResult.rpcResponded
+          ? "This transaction does not contain the expected event for the current OpenEscrow agreement."
+          : "OpenEscrow could not verify the agreement token at the confirmed Base Sepolia block. Retry saving its receipt shortly.",
+      };
+    }
+    if (tokenResult.tokenAddress !== expectation.expectedAgreementToken) {
+      return {
+        ok: false,
+        status: 400,
+        error:
+          "This transaction does not contain the expected event for the current OpenEscrow agreement.",
+      };
+    }
+  }
+  const actorAddress =
+    matchedVariant.captureActorTopicIndex !== null
+      ? topicAddress(matchingLog.topics[matchedVariant.captureActorTopicIndex])
+      : cleanText(receipt.from, 80).toLowerCase();
   return {
     ok: true,
     blockNumber: cleanText(receipt.blockNumber, 80),
     transactionHash,
+    actorAddress: WALLET_PATTERN.test(actorAddress || "") ? actorAddress : null,
   };
 }
 
@@ -6329,8 +6911,11 @@ async function applyAction(request, env, id) {
   ) {
     const verification = await verifiedBaseSepoliaReceipt(
       env,
+      db,
       body,
       row,
+      role,
+      recordedEvents,
       incomingTransactionHash,
     );
     if (!verification.ok) {
@@ -6350,6 +6935,7 @@ async function applyAction(request, env, id) {
           transactionHash: incomingTransactionHash,
           blockNumber: verification.blockNumber,
           chainId: 84532,
+          actorAddress: verification.actorAddress,
         },
       ),
     );

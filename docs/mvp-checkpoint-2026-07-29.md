@@ -23,10 +23,16 @@ production readiness, or authorization to hold real rental deposits.
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   R2/encrypted-IPFS cleanup after metadata failure, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 81 server tests, 140 client-logic
+- **Verified:** The full repository release check passes with 83 server tests, 140 client-logic
   tests, lint, browser account-switch, funding-recovery, accessibility/mobile, and load-recovery
   smoke checks, and the production build. These rendered checks are part of the required
   `npm run check` path rather than separate, potentially stale results.
+- **Verified:** Base Sepolia receipt verification now rejects a real event when its participant,
+  amount, selected token, record hash, or activity type does not match the validated action.
+  Finalization proves the complete approved tenant/share set, primary tenant, optional arbiter,
+  deposit, deadlines, selected token at the confirmed block, and creating landlord. Aggregate
+  agreement-funded and claim-response events no longer substitute for participant-specific
+  events, and the verified landlord wallet is retained for later receipt checks.
 - **Verified:** Address-routed compliance snapshots now recursively detach and freeze nested
   rules, sources, overlays, and claim checks. Snapshot-level regressions cover conditional Maine
   paths, every fact- and event-gated Florida deadline stage, Arizona business-day and holiday
