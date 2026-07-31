@@ -79,6 +79,9 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Validate the provider-neutral sandbox intent, UI states, and failure handling locally
 - [x] Let a tenant explicitly close an interrupted no-money sandbox preview before retrying while
   keeping production checkouts with unknown outcomes locked for provider reconciliation
+- [x] Make no-money sandbox rehearsals repeatable from every active checkout state: pre-confirmation
+  previews close through cancellation, confirmed or refund-pending previews close through a refund,
+  and production outcomes remain locked to trusted provider or operator reconciliation
 - [x] Bind checkout recovery, opening, closure, and balance-refresh feedback to the tenant access
   session, proposal, wallet, asset, amount, and environment so late completions cannot cross scope
 - [x] Isolate browser checkout recovery by proposal and authorized tenant as well as wallet,

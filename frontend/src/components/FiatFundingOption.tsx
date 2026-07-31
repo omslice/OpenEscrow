@@ -7,13 +7,13 @@ import {
 import type { DepositAssetConfig } from "../../shared/deposit-assets.js";
 import {
   applyFundingCheckoutEvent,
-  canCloseInterruptedSandboxCheckout,
   createFundingCheckoutAttempt,
   createFundingIntent,
   createFundingPlan,
   isFundingCheckoutLifecycle,
   reconcileFundingCheckoutError,
   reconcileFundingCheckoutResult,
+  sandboxCheckoutClosureStatus,
 } from "../../shared/funding-routes.js";
 import type {
   FundingCheckoutLifecycle,
@@ -322,6 +322,7 @@ export function FiatFundingOption({
   }
 
   const isSandbox = FIAT_ONRAMP_CONFIG.environment === "sandbox";
+  const sandboxClosureStatus = sandboxCheckoutClosureStatus(checkout);
   const checkoutLocked = status?.retryAllowed === false;
   const checkoutLabel =
     status?.state === "confirmed"
@@ -341,13 +342,13 @@ export function FiatFundingOption({
                   : isSandbox
                     ? "Preview sandbox checkout"
                     : "Continue to card or bank";
-  const closeInterruptedSandboxPreview = async () => {
-    if (!canCloseInterruptedSandboxCheckout(checkout)) return;
+  const resetSandboxPreview = async () => {
+    if (!checkout || !sandboxClosureStatus) return;
     const operationId = operationScope.start();
     setIsResolving(true);
     setRefreshError(null);
     try {
-      const eventId = `sandbox-close:${checkout.attemptId}`;
+      const eventId = `sandbox-close:${checkout.attemptId}:${sandboxClosureStatus}`;
       let closedCheckout: FundingCheckoutLifecycle;
       if (durableAccess) {
         closedCheckout = (
@@ -356,16 +357,16 @@ export function FiatFundingOption({
             checkout.attemptId,
             {
               eventId,
-              status: "cancelled",
-              providerStatus: "cancelled",
+              status: sandboxClosureStatus,
+              providerStatus: sandboxClosureStatus,
             },
           )
         ).checkout;
       } else {
         closedCheckout = applyFundingCheckoutEvent(checkout, {
           eventId,
-          status: "cancelled",
-          providerStatus: "cancelled",
+          status: sandboxClosureStatus,
+          providerStatus: sandboxClosureStatus,
         });
       }
       if (
@@ -388,12 +389,12 @@ export function FiatFundingOption({
       if (operationScope.isCurrent(operationId)) {
         setStatus({
           state: "unknown",
-          providerStatus: "sandbox_close_failed",
+          providerStatus: "sandbox_reset_failed",
           severity: "error",
           shouldRefreshBalance: false,
           retryAllowed: false,
           message:
-            "The interrupted sandbox preview could not be closed safely. Refresh this agreement before trying again.",
+            "The no-money sandbox preview could not be reset safely. Refresh this agreement before trying again.",
         });
       }
     } finally {
@@ -651,22 +652,24 @@ export function FiatFundingOption({
           {status.message}
         </p>
       )}
-      {isSandbox && canCloseInterruptedSandboxCheckout(checkout) && (
+      {isSandbox && sandboxClosureStatus && (
         <>
           <button
             className="btn btn-secondary"
             type="button"
             disabled={isOpening || isRecovering || isResolving || isRefreshing}
-            onClick={() => void closeInterruptedSandboxPreview()}
+            onClick={() => void resetSandboxPreview()}
           >
             {isResolving
-              ? "Closing interrupted preview..."
-              : "Close interrupted sandbox preview"}
+              ? "Resetting sandbox preview..."
+              : sandboxClosureStatus === "refunded"
+                ? "Reset no-money sandbox preview"
+                : "Close no-money sandbox preview"}
           </button>
           <small>
-            This only closes the no-money sandbox record so you can retry the preview. A
-            production checkout with an unknown result would remain locked for provider
-            reconciliation.
+            No real money moved. This ends only the sandbox rehearsal record so you can
+            retry it. Production results stay locked until the provider or an authorized
+            operator verifies them.
           </small>
         </>
       )}

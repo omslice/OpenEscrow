@@ -154,10 +154,12 @@ try {
     assert.ok(createMatch, `Unexpected funding request: ${url.pathname}`);
     const proposalId = decodeURIComponent(createMatch[1]);
     const key = scopeKey(proposalId, body.token);
+    const existing = attempts.get(key);
     assert.equal(
-      attempts.has(key),
-      false,
-      `The test must create only one checkout for ${key}.`,
+      existing === undefined ||
+        ["cancelled", "failed", "refunded"].includes(existing.status),
+      true,
+      `A new checkout for ${key} requires a terminal prior attempt.`,
     );
     const checkout = createFundingCheckoutAttempt(hydrateIntent(body.intent), {
       attemptId: body.attemptId,
@@ -300,8 +302,37 @@ try {
     "Every rendered scope must perform its own durable recovery lookup.",
   );
 
+  const resetConfirmed = page.getByRole("button", {
+    name: "Reset no-money sandbox preview",
+  });
+  await resetConfirmed.waitFor({ state: "visible" });
+  await resetConfirmed.click();
+  await page.getByText(/sandbox refund completed/i).waitFor({ state: "visible" });
+  assert.equal(attempts.get("proposal-a:access-a-1")?.status, "refunded");
+
+  await page.getByRole("button", { name: "Start a new checkout" }).click();
+  await page.waitForFunction(
+    () => window.__openEscrowFundingRecoveryTest?.snapshot().callCount === 4,
+  );
+  assert.equal(createdScopes.at(-1), "proposal-a:access-a-1");
+
+  await page.evaluate(() => {
+    window.__openEscrowFundingRecoveryTest?.resolveCall(3, "submitted");
+  });
+  await page.getByText(/Sandbox checkout submitted/).waitFor({ state: "visible" });
+  const closeSubmitted = page.getByRole("button", {
+    name: "Close no-money sandbox preview",
+  });
+  await closeSubmitted.waitFor({ state: "visible" });
+  await closeSubmitted.click();
+  await page
+    .getByText(/Checkout was closed before confirmation/)
+    .waitFor({ state: "visible" });
+  assert.equal(attempts.get("proposal-a:access-a-1")?.status, "cancelled");
+  await page.getByRole("button", { name: "Start a new checkout" }).waitFor();
+
   process.stdout.write(
-    "Funding recovery browser check passed: same-wallet agreements and co-tenants retain isolated browser and durable checkout state across out-of-order provider completions.\n",
+    "Funding recovery browser check passed: same-wallet agreements and co-tenants retain isolated state, and no-money confirmed or submitted previews reset through valid refund or cancellation transitions.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

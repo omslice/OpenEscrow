@@ -706,6 +706,22 @@ export function canCloseInterruptedSandboxCheckout(checkout) {
   );
 }
 
+export function sandboxCheckoutClosureStatus(checkout) {
+  if (
+    !isFundingCheckoutLifecycle(checkout) ||
+    checkout.environment !== "sandbox"
+  ) {
+    return null;
+  }
+  if (["opening", "submitted", "unknown"].includes(checkout.status)) {
+    return "cancelled";
+  }
+  if (["confirmed", "refund_pending"].includes(checkout.status)) {
+    return "refunded";
+  }
+  return null;
+}
+
 export function applyFundingCheckoutEvent(
   checkout,
   {

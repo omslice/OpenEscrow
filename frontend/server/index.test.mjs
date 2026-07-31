@@ -2093,6 +2093,143 @@ test("an interrupted sandbox preview can be closed before a new attempt", async 
   assert.equal(reopened.checkout.attemptId, "sandbox-after-interruption");
 });
 
+test("sandbox rehearsal resets follow cancellation before confirmation and refund after it", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const intent = sandboxFundingIntent();
+
+  const submittedAttempt = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "", {
+      token: created.access.tenant,
+      attemptId: "sandbox-submitted-reset",
+      intent,
+    }),
+  );
+  await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${submittedAttempt.checkout.attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "provider:submitted-reset",
+        status: "submitted",
+        providerStatus: "processing",
+      },
+    ),
+  );
+  const cancelled = await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${submittedAttempt.checkout.attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "sandbox:close-submitted",
+        status: "cancelled",
+        providerStatus: "cancelled",
+      },
+    ),
+  );
+  assert.equal(cancelled.checkout.status, "cancelled");
+
+  const confirmedAttempt = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "", {
+      token: created.access.tenant,
+      attemptId: "sandbox-confirmed-reset",
+      intent,
+    }),
+  );
+  const confirmed = await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${confirmedAttempt.checkout.attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "provider:confirmed-reset",
+        status: "confirmed",
+        providerStatus: "completed",
+      },
+    ),
+  );
+  assert.equal(confirmed.checkout.status, "confirmed");
+  const refunded = await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${confirmedAttempt.checkout.attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "sandbox:refund-confirmed",
+        status: "refunded",
+        providerStatus: "refunded",
+      },
+    ),
+  );
+  assert.equal(refunded.checkout.status, "refunded");
+
+  const refundPendingAttempt = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "", {
+      token: created.access.tenant,
+      attemptId: "sandbox-refund-pending-reset",
+      intent,
+    }),
+  );
+  await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${refundPendingAttempt.checkout.attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "provider:confirmed-before-refund",
+        status: "confirmed",
+        providerStatus: "completed",
+      },
+    ),
+  );
+  const refundPending = await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${refundPendingAttempt.checkout.attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "provider:refund-pending-reset",
+        status: "refund_pending",
+        providerStatus: "refunding",
+      },
+    ),
+  );
+  assert.equal(refundPending.checkout.status, "refund_pending");
+  const refundCompleted = await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${refundPendingAttempt.checkout.attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "sandbox:complete-pending-refund",
+        status: "refunded",
+        providerStatus: "refunded",
+      },
+    ),
+  );
+  assert.equal(refundCompleted.checkout.status, "refunded");
+
+  const reopened = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "", {
+      token: created.access.tenant,
+      attemptId: "sandbox-after-lifecycle-resets",
+      intent,
+    }),
+  );
+  assert.equal(reopened.created, true);
+  assert.equal(reopened.checkout.attemptId, "sandbox-after-lifecycle-resets");
+});
+
 async function submitStandardClaim(
   db,
   created,

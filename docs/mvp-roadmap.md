@@ -67,7 +67,10 @@ production custody, or reliance on the compliance research as legal advice.
   needs-review state rather than hiding the affected deadline. No legal rule changed.
 - **Verified:** Provider-neutral funding abstractions cover eligibility, one active attempt,
   cancellation, interruption, refund, failure, reconciliation, and unverified terminal outcomes.
-  Real-money and production provider routes remain disabled.
+  No-money submitted or interrupted previews can close through cancellation; confirmed and
+  refund-pending previews can reset through the valid refunded transition. Rendered and durable
+  regressions prove a new rehearsal can then start. Real-money and production provider routes
+  remain disabled and require trusted provider or authorized-operator reconciliation.
 - **Verified:** Deferred workspace loading, bounded onchain event reads, shared receipt polling,
   one-snapshot wallet discovery, and workspace-only blockchain wallet providers reduce initial and
   repeat network work without weakening account recognition, invitation roles, or receipt checks.
@@ -88,18 +91,19 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** The clean signed-out landing page omits the empty agreement-notification bell.
   Provider-independent rendered coverage proves notification access remains available after
   authentication and on valid role-locked invitation workspaces.
-- **Verified:** The public readiness endpoint returned HTTP 200 on 2026-07-30, but the deployed
-  site is older than the saved candidate and exposes no exact release provenance. It reported
-  eight required pilot actions: release provenance, email, scheduler, evidence keyring, activity
-  registry binding, address attestation, official-source baseline, and monitor freshness.
-- **Verified:** Exact candidate source is release-checked, pushed, and saved as an undeployed
-  Sites version after each completed delivery slice. D1, R2, hosted data, runtime secrets,
-  configuration, and the public deployment remain unchanged.
+- **Verified:** The public site and readiness endpoint returned HTTP 200 on 2026-07-31 and exposed
+  exact release provenance for the approved source. Seven hosted pilot actions remain: email,
+  scheduler health, evidence keyring, activity-registry binding, address attestation,
+  official-source baseline, and monitor freshness.
+- **Verified:** The latest approved public deployment matches its exact release-checked and pushed
+  source. Each subsequent coherent slice is validated and saved separately for explicit review;
+  D1, R2, hosted data, runtime secrets, and configuration remain unchanged.
 
 ## Remaining
 
-- **Planned:** Review and explicitly approve the newest saved candidate, deploy that exact testnet
-  source, then rerun the hosted readiness check so release provenance is verifiable.
+- **Planned:** Review and explicitly approve each newer saved candidate before deployment. The live
+  site currently matches the last approved exact source; every future deployment must rerun the
+  public readiness and release-provenance checks.
 - **Planned:** Complete the hosted pilot gates listed in
   [owner actions](./owner-actions.md): notification delivery and scheduler, evidence encryption
   and retained-key recovery, version-matched activity registry, address attestation, and a clean,

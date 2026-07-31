@@ -206,6 +206,10 @@ export function canCloseInterruptedSandboxCheckout(
   checkout: unknown,
 ): checkout is FundingCheckoutLifecycle;
 
+export function sandboxCheckoutClosureStatus(
+  checkout: unknown,
+): "cancelled" | "refunded" | null;
+
 export function applyFundingCheckoutEvent(
   checkout: FundingCheckoutLifecycle,
   event: {

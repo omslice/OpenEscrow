@@ -12,6 +12,7 @@ import {
   normalizeFundingCheckoutState,
   reconcileFundingCheckoutError,
   reconcileFundingCheckoutResult,
+  sandboxCheckoutClosureStatus,
   validateFiatOnrampConfig,
   listFundingProviders,
 } from "../../shared/funding-routes.js";
@@ -692,6 +693,82 @@ test("only an interrupted no-money sandbox checkout can be closed manually", () 
     ).retryAllowed,
     true,
   );
+});
+
+test("sandbox previews reset through valid cancellation and refund transitions", () => {
+  const intent = createFundingIntent({
+    assetId: "usdc",
+    walletAddress: wallet,
+    amountMicros: 2_000_000n,
+    environment: "sandbox",
+    onrampEnabled: true,
+  });
+  const opened = createFundingCheckoutAttempt(intent, {
+    attemptId: "attempt-sandbox-reset",
+    createdAt: "2026-07-30T03:00:00.000Z",
+  });
+  const submitted = applyFundingCheckoutEvent(opened, {
+    eventId: "provider-event-submitted",
+    status: "submitted",
+    occurredAt: "2026-07-30T03:01:00.000Z",
+  });
+  const interrupted = applyFundingCheckoutEvent(opened, {
+    eventId: "provider-event-unknown",
+    status: "unknown",
+    occurredAt: "2026-07-30T03:01:00.000Z",
+  });
+  const failed = applyFundingCheckoutEvent(opened, {
+    eventId: "provider-event-failed",
+    status: "failed",
+    occurredAt: "2026-07-30T03:01:00.000Z",
+  });
+  const confirmed = applyFundingCheckoutEvent(submitted, {
+    eventId: "provider-event-confirmed",
+    status: "confirmed",
+    occurredAt: "2026-07-30T03:02:00.000Z",
+  });
+  const refundPending = applyFundingCheckoutEvent(confirmed, {
+    eventId: "provider-event-refund-pending",
+    status: "refund_pending",
+    occurredAt: "2026-07-30T03:03:00.000Z",
+  });
+
+  assert.equal(sandboxCheckoutClosureStatus(opened), "cancelled");
+  assert.equal(sandboxCheckoutClosureStatus(submitted), "cancelled");
+  assert.equal(sandboxCheckoutClosureStatus(interrupted), "cancelled");
+  assert.equal(sandboxCheckoutClosureStatus(confirmed), "refunded");
+  assert.equal(sandboxCheckoutClosureStatus(refundPending), "refunded");
+  assert.equal(sandboxCheckoutClosureStatus(failed), null);
+
+  const cancelled = applyFundingCheckoutEvent(submitted, {
+    eventId: "sandbox-close-submitted",
+    status: sandboxCheckoutClosureStatus(submitted),
+    occurredAt: "2026-07-30T03:04:00.000Z",
+  });
+  const refunded = applyFundingCheckoutEvent(refundPending, {
+    eventId: "sandbox-refund-pending",
+    status: sandboxCheckoutClosureStatus(refundPending),
+    occurredAt: "2026-07-30T03:04:00.000Z",
+  });
+  assert.equal(cancelled.status, "cancelled");
+  assert.equal(refunded.status, "refunded");
+  assert.equal(sandboxCheckoutClosureStatus(cancelled), null);
+  assert.equal(sandboxCheckoutClosureStatus(refunded), null);
+  const productionAttempt = createFundingCheckoutAttempt(
+    createFundingIntent({
+      assetId: "usdc",
+      walletAddress: wallet,
+      amountMicros: 2_000_000n,
+      environment: "production",
+      onrampEnabled: true,
+      productionApproved: true,
+    }),
+    {
+      attemptId: "attempt-production-no-manual-reset",
+      createdAt: "2026-07-30T03:00:00.000Z",
+    },
+  );
+  assert.equal(sandboxCheckoutClosureStatus(productionAttempt), null);
 });
 
 test("persisted checkout lifecycle rejects tampering and impossible history", () => {

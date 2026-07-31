@@ -225,6 +225,11 @@ detailed validation ledger.
   explicitly closes its durable attempt. Closing records a terminal cancellation before enabling
   a new preview, while production checkouts with unknown outcomes remain fail-closed for provider
   reconciliation.
+- **Verified:** Every active no-money sandbox rehearsal now has an explicit safe reset. Opening,
+  submitted, and unknown previews use the valid cancellation transition; confirmed and
+  refund-pending previews use the valid refunded transition. Logic, D1 endpoint, and rendered
+  browser regressions prove the terminal record permits a new preview. Production terminal
+  outcomes remain locked unless a trusted provider or authorized operator reconciles them.
 - **Verified:** Checkout recovery, opening, explicit sandbox closure, and wallet-refresh feedback
   are scoped to the tenant access session, proposal, wallet, selected asset, requested amount, and
   environment. A late result may finish saving its original durable attempt, but it cannot replace
@@ -271,12 +276,13 @@ detailed validation ledger.
   expired exceptions, and stale exceptions all fail closed. The current transitive `uuid`
   advisory is documented as one exact testnet-only exception through 2026-08-30; it cannot
   authorize a production release.
-- **Verified:** A fresh 2026-07-30 check of the public readiness endpoint returned HTTP 200 but no
-  exact release provenance and eight required actions. The result is recorded as deployed-state
-  evidence only; it does not describe or block saving the newer undeployed candidate.
-- **Verified:** The exact validated candidate source is pushed to the existing Sites source
-  branch and saved as a newer undeployed Sites version after each coherent slice. The public
-  production deployment remains unchanged.
+- **Verified:** A fresh 2026-07-31 check returned HTTP 200 for both the public site and readiness
+  endpoint and exposed exact release provenance for the approved source. Seven hosted actions
+  remain: email, scheduler health, evidence keyring, version-matched activity registry, address
+  attestation, official-source baseline, and monitor freshness.
+- **Verified:** The approved public deployment matches its exact validated and pushed source.
+  Later coherent slices are release-checked, pushed, and saved as separate undeployed candidates
+  so public promotion remains an explicit owner decision.
 
 - **Verified:** Infrequently used proposal, deposit, funding, invitation, and record tools load
   only when their tab or expanded section needs them. This reduced the main workspace chunk from
@@ -414,8 +420,8 @@ detailed validation ledger.
 
 ## Remaining
 
-- **Planned:** Review the newest exact saved candidate and explicitly approve a production
-  deployment when the testnet release envelope is acceptable.
+- **Planned:** Review each newer exact saved candidate and explicitly approve a public deployment
+  only when its testnet release envelope is acceptable; rerun readiness after every promotion.
 - **Planned:** Configure and validate the seven hosted pilot gates: email delivery, scheduler,
   evidence encryption, version-matched activity registry, address attestation, official-source
   baseline, and source-monitor freshness.

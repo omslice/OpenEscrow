@@ -12,9 +12,9 @@ provider or hosting control that owns the secret.
 ## Actionable now
 
 - [ ] **Review and explicitly approve the newest exact Sites candidate before deployment.** The
-  newest validated Git source is saved as an undeployed Sites version. The public site is older
-  and exposes no exact release provenance. Selecting and promoting that exact saved candidate
-  remains a separate production action.
+  public testnet matches the last approved exact source and exposes its release provenance. Newer
+  validated work is saved as a separate undeployed candidate; selecting and promoting it remains
+  a separate public action, followed by readiness verification.
 - [ ] **Broadcast the version-matched Base Sepolia activity registry.**
   The candidate registry now recognizes every nonzero-share co-tenant as an agreement party; the
   prior deployed/retired registry must not be reused for a multi-tenant pilot.
