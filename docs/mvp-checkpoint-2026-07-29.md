@@ -134,6 +134,10 @@ production readiness, or authorization to hold real rental deposits.
   proposal and agreement. Switching records clears selected encrypted files and verification keys
   and rejects delayed file reads, decryption, transaction receipts, and registry log results
   before they can publish success or error state in the next view.
+- **Verified:** A rendered Record rehearsal downloads the encrypted JSON and its separate
+  verification key, rejects the wrong key, and verifies the exact SHA-256 hash through the real
+  browser UI. Local decryption and integrity verification remain available when the Base Sepolia
+  registry is unavailable, while the onchain result stays explicitly unverified.
 - **Verified:** The authenticated wallet/workspace is loaded behind a lightweight bootstrap, and
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the

@@ -19,6 +19,7 @@ type SnapshotVerification = {
   hash: `0x${string}`;
   anchoredBy: `0x${string}`[];
   agreementId: string | null;
+  onchainStatus: "not_applicable" | "verified" | "not_anchored" | "unavailable";
 };
 
 type ContractReader = (parameters: {
@@ -124,48 +125,51 @@ export function RecordSnapshotVerifier({
       }
 
       let anchoredBy: `0x${string}`[] = [];
-      if (agreementId !== undefined) {
-        if (!registryReady) {
-          throw new Error(
-            "Onchain verification is temporarily unavailable because the record service is not connected to this OpenEscrow release.",
+      let onchainStatus: SnapshotVerification["onchainStatus"] =
+        agreementId === undefined ? "not_applicable" : "unavailable";
+      if (agreementId !== undefined && registryReady && publicClient) {
+        try {
+          const readContract = publicClient.readContract as unknown as ContractReader;
+          const agreement = (await readContract({
+            address: OPEN_ESCROW_ADDRESS,
+            abi: OpenEscrowABI,
+            functionName: "getAgreement",
+            args: [agreementId],
+          })) as Agreement;
+          if (!verificationScope.isCurrent(operationId)) return;
+          const parties = Array.from(
+            new Set(
+              [agreement.landlord, agreement.tenant, agreement.arbiter]
+                .filter((party) => party.toLowerCase() !== ZERO_ADDRESS)
+                .map((party) => party.toLowerCase()),
+            ),
+          ) as `0x${string}`[];
+          const anchorChecks = await Promise.all(
+            parties.map(async (party) => ({
+              party,
+              anchored: (await readContract({
+                address: AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
+                abi: AgreementActivityRegistryABI,
+                functionName: "anchoredBy",
+                args: [agreementId, decrypted.hash, party],
+              })) as boolean,
+            })),
           );
+          if (!verificationScope.isCurrent(operationId)) return;
+          anchoredBy = anchorChecks
+            .filter((check) => check.anchored)
+            .map((check) => check.party);
+          onchainStatus = anchoredBy.length ? "verified" : "not_anchored";
+        } catch {
+          if (!verificationScope.isCurrent(operationId)) return;
+          onchainStatus = "unavailable";
         }
-        if (!publicClient) throw new Error("The Base Sepolia connection is not ready.");
-        const readContract = publicClient.readContract as unknown as ContractReader;
-        const agreement = (await readContract({
-          address: OPEN_ESCROW_ADDRESS,
-          abi: OpenEscrowABI,
-          functionName: "getAgreement",
-          args: [agreementId],
-        })) as Agreement;
-        if (!verificationScope.isCurrent(operationId)) return;
-        const parties = Array.from(
-          new Set(
-            [agreement.landlord, agreement.tenant, agreement.arbiter]
-              .filter((party) => party.toLowerCase() !== ZERO_ADDRESS)
-              .map((party) => party.toLowerCase()),
-          ),
-        ) as `0x${string}`[];
-        const anchorChecks = await Promise.all(
-          parties.map(async (party) => ({
-            party,
-            anchored: (await readContract({
-              address: AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
-              abi: AgreementActivityRegistryABI,
-              functionName: "anchoredBy",
-              args: [agreementId, decrypted.hash, party],
-            })) as boolean,
-          })),
-        );
-        if (!verificationScope.isCurrent(operationId)) return;
-        anchoredBy = anchorChecks
-          .filter((check) => check.anchored)
-          .map((check) => check.party);
       }
       setResult({
         hash: decrypted.hash,
         anchoredBy,
         agreementId: archive.record.agreementId,
+        onchainStatus,
       });
     } catch (cause) {
       if (!verificationScope.isCurrent(operationId)) return;
@@ -180,10 +184,10 @@ export function RecordSnapshotVerifier({
   return (
     <section className="record-snapshot-verifier" aria-labelledby={`verify-record-${proposalId}`}>
       <div>
-        <strong id={`verify-record-${proposalId}`}>Verify an encrypted record onchain</strong>
+        <strong id={`verify-record-${proposalId}`}>Verify an encrypted record</strong>
         <p className="field-help">
           Choose the encrypted JSON and paste its separately saved verification key. Decryption,
-          hashing, and the Base Sepolia check happen in this browser.
+          hashing, and any available Base Sepolia anchor check happen in this browser.
         </p>
       </div>
       <label>
@@ -221,19 +225,23 @@ export function RecordSnapshotVerifier({
         type="button"
         disabled={
           working ||
-          registryChecking ||
-          (agreementId !== undefined && !registryReady) ||
           !file ||
           !verificationKey.trim()
         }
         onClick={() => void verify()}
       >
-        {working ? "Verifying encrypted record..." : "Verify encrypted record onchain"}
+        {working
+          ? "Verifying encrypted record..."
+          : agreementId !== undefined && registryReady
+            ? "Verify record and onchain anchor"
+            : "Verify encrypted record"}
       </button>
-      {!registryChecking && agreementId !== undefined && !registryReady && (
-        <p className="tx-error" role="alert">
-          Onchain verification is temporarily unavailable because the record service is
-          not connected to this OpenEscrow release.
+      {agreementId !== undefined && !registryReady && (
+        <p className="field-help">
+          Local integrity verification is available now.{" "}
+          {registryChecking
+            ? "The Base Sepolia anchor service is still being checked."
+            : "The Base Sepolia anchor check will be skipped until the record service is connected to this OpenEscrow release."}
         </p>
       )}
       {error && (
@@ -244,32 +252,41 @@ export function RecordSnapshotVerifier({
       {result && (
         <div
           className={
-            agreementId === undefined || result.anchoredBy.length
+            result.onchainStatus === "not_applicable" ||
+            result.onchainStatus === "verified"
               ? "proof-verification-success"
               : "proof-verification-warning"
           }
           role="status"
         >
           <strong>
-            {agreementId === undefined
+            {result.onchainStatus === "not_applicable"
               ? "Encrypted record decrypted and integrity verified"
-              : result.anchoredBy.length
+              : result.onchainStatus === "verified"
                 ? "Encrypted record verified onchain"
-                : "Record integrity verified, but no party anchor was found"}
+                : result.onchainStatus === "not_anchored"
+                  ? "Record integrity verified, but no party anchor was found"
+                  : "Record integrity verified; onchain check unavailable"}
           </strong>
           <code title={result.hash}>SHA-256: {result.hash}</code>
-          {result.anchoredBy.length > 0 && (
+          {result.onchainStatus === "verified" && (
             <span>
               Anchored by agreement {result.anchoredBy.length === 1 ? "party" : "parties"}{" "}
               {result.anchoredBy.map(shortAddr).join(", ")}.
             </span>
           )}
-          {agreementId === undefined && (
+          {result.onchainStatus === "not_applicable" && (
             <span>This proposal has not been assigned an onchain agreement ID.</span>
           )}
-          {agreementId !== undefined && result.anchoredBy.length === 0 && (
+          {result.onchainStatus === "not_anchored" && (
             <span>
               The file is intact, but its hash has not been anchored by a current agreement party.
+            </span>
+          )}
+          {result.onchainStatus === "unavailable" && (
+            <span>
+              The encrypted file and SHA-256 hash match. Retry later to check its Base Sepolia
+              anchor.
             </span>
           )}
         </div>

@@ -25,6 +25,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Collapsed agreement list with local archive/restore controls
 - [x] Timestamped report plus encrypted canonical JSON archive and verification key
 - [x] Version-bound onchain record receipts and private proof verification
+- [x] Rendered encrypted-record export and verification rehearsal with separate-key recovery,
+  wrong-key rejection, and local integrity fallback during registry outages
 - [x] Private R2 evidence with file-signature validation and optional encryption/decentralized mode
 - [x] Landlord-controlled tenant invitation reset with old-link and active-session invalidation
 - [x] Short-lived, capped account-discovery sessions per user, role, and agreement
