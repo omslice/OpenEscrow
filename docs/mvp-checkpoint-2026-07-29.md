@@ -23,7 +23,7 @@ production readiness, or authorization to hold real rental deposits.
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   R2/encrypted-IPFS cleanup after metadata failure, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 87 server tests, 140 client-logic
+- **Verified:** The full repository release check passes with 90 server tests, 142 client-logic
   tests, lint, browser account-switch, funding-recovery, accessibility/mobile, and load-recovery
   smoke checks, and the production build. These rendered checks are part of the required
   `npm run check` path rather than separate, potentially stale results.
@@ -219,9 +219,10 @@ production readiness, or authorization to hold real rental deposits.
   names, and late completions do not update the currently visible agreement.
 - **Verified:** Funding events now durably distinguish an unverified browser callback from a
   future signed provider webhook or authorized operator reconciliation. The tenant sandbox API
-  ignores client-supplied provenance and can save only the unverified class. In production-mode
-  reconciliation logic, an unsigned terminal result cannot refresh balances or permit another
-  purchase; it stays locked until a trusted server-side event exists.
+  ignores client-supplied provenance and can save only the unverified class. Production checkout
+  histories now also reject unsigned confirmation, cancellation, failure, and refund outcomes
+  before they can be persisted. The reconciliation result cannot refresh balances or permit
+  another purchase; it stays locked until a trusted server-side event exists.
 - **Verified:** Future trusted checkout events must include both a SHA-256 reconciliation key and
   the exact payload digest. The lifecycle rejects missing, malformed, conflicting, or repeated
   identities, while a partial unique D1 index prevents the same non-null reconciliation key from

@@ -582,6 +582,79 @@ test("checkout lifecycle models cancellation, uncertainty recovery, and refunds"
   );
 });
 
+test("production lifecycle refuses unverified browser outcomes", () => {
+  const intent = createFundingIntent({
+    assetId: "usdc",
+    walletAddress: wallet,
+    amountMicros: 2_000_000n,
+    environment: "production",
+    onrampEnabled: true,
+    productionApproved: true,
+  });
+
+  for (const [index, status] of [
+    "confirmed",
+    "cancelled",
+    "failed",
+    "refund_pending",
+    "refunded",
+  ].entries()) {
+    const opened = createFundingCheckoutAttempt(intent, {
+      attemptId: `production-unverified-${status}`,
+      createdAt: "2026-07-30T01:00:00.000Z",
+    });
+    assert.throws(
+      () =>
+        applyFundingCheckoutEvent(opened, {
+          eventId: `browser-outcome-${status}`,
+          status,
+          occurredAt: `2026-07-30T01:0${index + 1}:00.000Z`,
+        }),
+      /require verified provider or operator reconciliation/i,
+    );
+  }
+
+  const submitted = applyFundingCheckoutEvent(
+    createFundingCheckoutAttempt(intent, {
+      attemptId: "production-unverified-pending",
+      createdAt: "2026-07-30T02:00:00.000Z",
+    }),
+    {
+      eventId: "browser-pending",
+      status: "processing",
+      occurredAt: "2026-07-30T02:01:00.000Z",
+    },
+  );
+  assert.equal(submitted.status, "submitted");
+
+  const confirmed = applyFundingCheckoutEvent(submitted, {
+    eventId: "provider-confirmed",
+    status: "confirmed",
+    ...providerProvenance(12),
+    occurredAt: "2026-07-30T02:02:00.000Z",
+  });
+  assert.equal(confirmed.status, "confirmed");
+  assert.equal(isFundingCheckoutLifecycle(confirmed), true);
+
+  assert.equal(
+    isFundingCheckoutLifecycle({
+      ...confirmed,
+      events: confirmed.events.map((event) =>
+        event.status === "confirmed"
+          ? {
+              ...event,
+              source: "browser_callback",
+              verification: "unverified",
+              reconciliationKey: null,
+              payloadDigest: null,
+            }
+          : event,
+      ),
+    }),
+    false,
+  );
+});
+
 test("only an interrupted no-money sandbox checkout can be closed manually", () => {
   const intent = createFundingIntent({
     assetId: "usdc",

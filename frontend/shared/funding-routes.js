@@ -526,6 +526,26 @@ function validFundingCheckoutEventProvenance(
   );
 }
 
+function validFundingCheckoutEventForEnvironment(
+  environment,
+  status,
+  source,
+  verification,
+  reconciliationKey,
+  payloadDigest,
+) {
+  return (
+    environment !== "production" ||
+    ["opening", "submitted", "unknown"].includes(status) ||
+    trustedFundingEventProvenance(
+      source,
+      verification,
+      reconciliationKey,
+      payloadDigest,
+    )
+  );
+}
+
 function freezeFundingCheckout(checkout) {
   return Object.freeze({
     ...checkout,
@@ -646,6 +666,14 @@ export function isFundingCheckoutLifecycle(value) {
         event.reconciliationKey,
         event.payloadDigest,
       ) ||
+      !validFundingCheckoutEventForEnvironment(
+        value.environment,
+        event.status,
+        event.source,
+        event.verification,
+        event.reconciliationKey,
+        event.payloadDigest,
+      ) ||
       (event.reconciliationKey !== null &&
         reconciliationKeys.has(event.reconciliationKey)) ||
       !validTimestamp(event.occurredAt) ||
@@ -716,6 +744,20 @@ export function applyFundingCheckoutEvent(
     )
   ) {
     throw new Error("A valid checkout event provenance is required.");
+  }
+  if (
+    !validFundingCheckoutEventForEnvironment(
+      checkout.environment,
+      nextStatus,
+      source,
+      verification,
+      reconciliationKey,
+      payloadDigest,
+    )
+  ) {
+    throw new Error(
+      "Production checkout outcomes require verified provider or operator reconciliation provenance.",
+    );
   }
   const duplicate = checkout.events.find((event) => event.id === eventId);
   if (duplicate) {

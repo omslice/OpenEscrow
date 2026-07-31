@@ -59,15 +59,16 @@ It would also incorrectly imply that a DEX is needed to enter or exit Aave.
     verification class. The tenant endpoint ignores any client-supplied provenance and stamps
     checkout-window callbacks as `browser_callback` plus `unverified`; those events never create
     an agreement-funding event and are not evidence that assets reached the wallet or escrow.
-    Future production terminal outcomes may unlock balance refresh or retry only when they come
-    from a `provider_webhook` plus `provider_signed` event or an
-    `operator_reconciliation` plus `operator_verified` event. No current endpoint can mint either
-    trusted class, because provider-specific signature verification and operator authorization
-    have not been implemented. A trusted event must also carry a SHA-256 reconciliation key and
-    exact payload digest. D1 enforces global uniqueness for non-null reconciliation keys so one
-    verified external event cannot be applied to two attempts; browser callbacks carry neither
-    field. Insert and update guards apply the same provenance and lowercase SHA-256 shape rules
-    to already-migrated D1 databases, not only newly created tables.
+    Future production terminal outcomes cannot even enter a valid checkout history—and may not
+    unlock balance refresh or retry—unless they come from a `provider_webhook` plus
+    `provider_signed` event or an `operator_reconciliation` plus `operator_verified` event. No
+    current endpoint can mint either trusted class, because provider-specific signature
+    verification and operator authorization have not been implemented. A trusted event must also
+    carry a SHA-256 reconciliation key and exact payload digest. D1 enforces global uniqueness for
+    non-null reconciliation keys so one verified external event cannot be applied to two
+    attempts; browser callbacks carry neither field. Insert and update guards apply the same
+    provenance and lowercase SHA-256 shape rules to already-migrated D1 databases, not only newly
+    created tables.
 
 ## Why not choose a single onramp vendor now?
 
