@@ -38,6 +38,11 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** Critical flows have rendered accessibility, keyboard/focus, mobile-width, loading,
   error, and retry checks. Remaining usability work requires moderated human sessions rather than
   another code-only claim.
+- **Verified:** Claim requirements now fail closed when their private agreement record cannot be
+  loaded, with a focused retry action before any claim or amendment can proceed. Tenant response
+  remains available for time-sensitive onchain action while its private summary has a separate
+  retry path. Invitation and notice audit-save failures are caught and explained without undoing
+  a successfully opened email, copied link, submitted claim, or submitted response.
 - **Verified:** The Record workspace now leads with plain-language report, private-backup, public-
   proof, and independent-check guidance. Encryption algorithms and raw fingerprints remain
   available in keyboard-accessible collapsed disclosures; the rendered rehearsal still proves

@@ -69,6 +69,9 @@ export function ClaimSection({
   const [items, setItems] = useState<DeductionLineItem[]>([{ ...EMPTY_ITEM }]);
   const [note, setNote] = useState("");
   const [record, setRecord] = useState<NegotiationRecord | null>(null);
+  const [recordLoadAttempt, setRecordLoadAttempt] = useState(0);
+  const [recordLoadError, setRecordLoadError] = useState<string | null>(null);
+  const [isLoadingRecord, setIsLoadingRecord] = useState(false);
   const [claimRecorded, setClaimRecorded] = useState(false);
   const [pendingRecord, setPendingRecord] = useState<NegotiationAction | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
@@ -83,11 +86,43 @@ export function ClaimSection({
     Record<string, boolean>
   >({});
   const restoredClaim = useRef(false);
+  const recordRetryButton = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    if (!negotiationAccess || negotiationAccess.role !== "landlord") return;
-    void loadNegotiation(negotiationAccess).then(setRecord);
-  }, [negotiationAccess]);
+    if (!negotiationAccess || negotiationAccess.role !== "landlord") {
+      setRecord(null);
+      setRecordLoadError(null);
+      setIsLoadingRecord(false);
+      return;
+    }
+    let active = true;
+    setRecord(null);
+    setRecordLoadError(null);
+    setIsLoadingRecord(true);
+    void loadNegotiation(negotiationAccess)
+      .then((loadedRecord) => {
+        if (active) setRecord(loadedRecord);
+      })
+      .catch(() => {
+        if (active) {
+          setRecordLoadError(
+            "OpenEscrow could not load this agreement's private claim requirements. Check your connection and try again before submitting or amending a deduction.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoadingRecord(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [negotiationAccess, recordLoadAttempt]);
+
+  useEffect(() => {
+    if (recordLoadError && !isLoadingRecord) {
+      recordRetryButton.current?.focus();
+    }
+  }, [isLoadingRecord, recordLoadError]);
 
   useEffect(() => {
     if (!record || restoredClaim.current || agreement.phase !== Phase.ClaimOpen) return;
@@ -126,7 +161,8 @@ export function ClaimSection({
     record?.terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
     record.terms.policyVersion === CALIFORNIA_POLICY.version;
   const versionedClaimPolicy = record?.terms.complianceSnapshot?.claimPolicy;
-  const isClaimPolicyLoading = Boolean(negotiationAccess && !record);
+  const isClaimPolicyLoading = Boolean(negotiationAccess && isLoadingRecord);
+  const isClaimPolicyUnavailable = Boolean(negotiationAccess && !record);
   const amount = amountRaw === null ? "" : formatUSDC(amountRaw);
   const evidenceType =
     items.length === 1 ? Number(items[0].category) : Number("13");
@@ -296,6 +332,27 @@ export function ClaimSection({
 
   const itemEditor = (
     <div className="claim-line-items">
+      {recordLoadError && (
+        <div
+          className="receipt-recovery"
+          role="alert"
+          aria-label="Private claim requirements could not be loaded"
+          aria-busy={isLoadingRecord}
+        >
+          <p className="tx-error">{recordLoadError}</p>
+          <button
+            ref={recordRetryButton}
+            className="btn btn-ghost small"
+            type="button"
+            disabled={isLoadingRecord}
+            onClick={() => setRecordLoadAttempt((attempt) => attempt + 1)}
+          >
+            {isLoadingRecord
+              ? "Loading claim requirements..."
+              : "Try loading claim requirements again"}
+          </button>
+        </div>
+      )}
       <div className="claim-line-items-heading">
         <div>
           <strong>Itemized deductions</strong>
@@ -375,7 +432,7 @@ export function ClaimSection({
             Loading the agreement’s address-routed claim requirements…
           </p>
         )}
-        {isClaimPolicyLoading ? null : versionedClaimPolicy ? (
+        {isClaimPolicyUnavailable ? null : versionedClaimPolicy ? (
           <>
             {requiredVersionedAttestations.map((attestation) => (
               <label key={attestation.id}>
@@ -489,23 +546,31 @@ export function ClaimSection({
             )}
           </>
         )}
-        <p className="field-help">
-          {versionedClaimPolicy
-            ? "The exact checklist and source are stored with this agreement's compliance snapshot. Combine the itemization and supporting records into one private PDF or supported image for this pilot."
-            : isCaliforniaPolicy
-            ? "Combine multiple pages and photographs into one PDF for this pilot. Checking these boxes creates a timestamped attestation; it does not prove the deduction is lawful."
-            : "Attach one supporting test file. This non-specific profile records the test lifecycle but does not validate legal compliance."}
-        </p>
+        {!isClaimPolicyUnavailable && (
+          <p className="field-help">
+            {versionedClaimPolicy
+              ? "The exact checklist and source are stored with this agreement's compliance snapshot. Combine the itemization and supporting records into one private PDF or supported image for this pilot."
+              : isCaliforniaPolicy
+              ? "Combine multiple pages and photographs into one PDF for this pilot. Checking these boxes creates a timestamped attestation; it does not prove the deduction is lawful."
+              : "Attach one supporting test file. This non-specific profile records the test lifecycle but does not validate legal compliance."}
+          </p>
+        )}
       </fieldset>
     </div>
   );
 
-  function recordNotice(method: "gmail" | "copy") {
+  async function recordNotice(method: "gmail" | "copy") {
     if (!negotiationAccess) return;
-    void negotiationAction(negotiationAccess, {
-      type: "claim_notification_prepared",
-      method,
-    }).then(setRecord);
+    try {
+      await negotiationAction(negotiationAccess, {
+        type: "claim_notification_prepared",
+        method,
+      });
+    } catch {
+      setNoticeStatus(
+        "The email or copy action worked, but OpenEscrow could not add that preparation step to the private record. The claim receipt and onchain agreement are unchanged.",
+      );
+    }
   }
 
   const notice = tenantNotice();
@@ -515,7 +580,7 @@ export function ClaimSection({
     try {
       await copyTextToClipboard(notice.body);
       setNoticeCopied(true);
-      recordNotice("copy");
+      void recordNotice("copy");
     } catch (error) {
       setNoticeCopied(false);
       setNoticeStatus(
@@ -528,7 +593,7 @@ export function ClaimSection({
     setNoticeStatus(null);
     try {
       openExternalWindow(notice.gmailUrl);
-      recordNotice("gmail");
+      void recordNotice("gmail");
     } catch (error) {
       setNoticeStatus(
         error instanceof Error ? error.message : "The claim notice could not be opened.",
@@ -583,7 +648,7 @@ export function ClaimSection({
           disabled={
             !valid ||
              !itemsValid ||
-             isClaimPolicyLoading ||
+             isClaimPolicyUnavailable ||
              !claimRequirementsConfirmed ||
              amountRaw === null ||
             amountRaw <= 0n ||
@@ -682,7 +747,7 @@ export function ClaimSection({
           disabled={
             !valid ||
             !itemsValid ||
-            isClaimPolicyLoading ||
+            isClaimPolicyUnavailable ||
             !claimRequirementsConfirmed ||
             amountRaw === null ||
             amountRaw > agreement.claimedAmount

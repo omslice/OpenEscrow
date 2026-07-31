@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
 import { agreementReference } from "../lib/displayIds";
@@ -76,10 +76,14 @@ export function ResponseSection({
   const [partialAmount, setPartialAmount] = useState("");
   const [note, setNote] = useState("");
   const [record, setRecord] = useState<NegotiationRecord | null>(null);
+  const [recordLoadAttempt, setRecordLoadAttempt] = useState(0);
+  const [recordLoadError, setRecordLoadError] = useState<string | null>(null);
+  const [isLoadingRecord, setIsLoadingRecord] = useState(false);
   const [submittedResponse, setSubmittedResponse] = useState<ClaimResponseAction | null>(null);
   const [pendingRecord, setPendingRecord] = useState<ClaimResponseAction | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
   const [noticeStatus, setNoticeStatus] = useState<string | null>(null);
+  const recordRetryButton = useRef<HTMLButtonElement>(null);
 
   const { data: tenantShare } = useReadContract({
     address: OPEN_ESCROW_ADDRESS,
@@ -114,9 +118,40 @@ export function ResponseSection({
   });
 
   useEffect(() => {
-    if (!negotiationAccess || negotiationAccess.role !== "tenant") return;
-    void loadNegotiation(negotiationAccess).then(setRecord);
-  }, [negotiationAccess]);
+    if (!negotiationAccess || negotiationAccess.role !== "tenant") {
+      setRecord(null);
+      setRecordLoadError(null);
+      setIsLoadingRecord(false);
+      return;
+    }
+    let active = true;
+    setRecord(null);
+    setRecordLoadError(null);
+    setIsLoadingRecord(true);
+    void loadNegotiation(negotiationAccess)
+      .then((loadedRecord) => {
+        if (active) setRecord(loadedRecord);
+      })
+      .catch(() => {
+        if (active) {
+          setRecordLoadError(
+            "OpenEscrow could not load the private agreement summary used for response details and landlord email. Check your connection and try again.",
+          );
+        }
+      })
+      .finally(() => {
+        if (active) setIsLoadingRecord(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [negotiationAccess, recordLoadAttempt]);
+
+  useEffect(() => {
+    if (recordLoadError && !isLoadingRecord) {
+      recordRetryButton.current?.focus();
+    }
+  }, [isLoadingRecord, recordLoadError]);
 
   const isTenant =
     (typeof tenantShare === "bigint" && tenantShare > 0n) ||
@@ -234,12 +269,18 @@ export function ResponseSection({
     }
   }
 
-  function recordNotice(method: "gmail" | "copy") {
+  async function recordNotice(method: "gmail" | "copy") {
     if (!negotiationAccess || negotiationAccess.role !== "tenant") return;
-    void negotiationAction(negotiationAccess, {
-      type: "claim_response_notification_prepared",
-      method,
-    }).then(setRecord);
+    try {
+      await negotiationAction(negotiationAccess, {
+        type: "claim_response_notification_prepared",
+        method,
+      });
+    } catch {
+      setNoticeStatus(
+        "The email or copy action worked, but OpenEscrow could not add that preparation step to the private record. Your response receipt and onchain decision are unchanged.",
+      );
+    }
   }
 
   async function copyLandlordEmail(body: string) {
@@ -247,7 +288,7 @@ export function ResponseSection({
     try {
       await copyTextToClipboard(body);
       setNoticeStatus("The landlord email was copied.");
-      recordNotice("copy");
+      void recordNotice("copy");
     } catch (error) {
       setNoticeStatus(
         error instanceof Error ? error.message : "The landlord email could not be copied.",
@@ -259,7 +300,7 @@ export function ResponseSection({
     setNoticeStatus(null);
     try {
       openExternalWindow(url);
-      recordNotice("gmail");
+      void recordNotice("gmail");
     } catch (error) {
       setNoticeStatus(
         error instanceof Error ? error.message : "The landlord email could not be opened.",
@@ -286,6 +327,31 @@ export function ResponseSection({
         approve all, approve part, or dispute the deduction. Funds stay locked until the claim is
         settled or the dispute process finishes.
       </p>
+      {recordLoadError && (
+        <div
+          className="receipt-recovery"
+          role="alert"
+          aria-label="Private response details could not be loaded"
+          aria-busy={isLoadingRecord}
+        >
+          <p className="tx-error">{recordLoadError}</p>
+          <p className="field-help">
+            A time-sensitive onchain response remains available below. Retry before relying on
+            the response count or sending the landlord notice.
+          </p>
+          <button
+            ref={recordRetryButton}
+            className="btn btn-ghost small"
+            type="button"
+            disabled={isLoadingRecord}
+            onClick={() => setRecordLoadAttempt((attempt) => attempt + 1)}
+          >
+            {isLoadingRecord
+              ? "Loading response details..."
+              : "Try loading response details again"}
+          </button>
+        </div>
+      )}
       {requiredResponseCount > 1 && (
         <p className="field-help">
           Every tenant records a decision. A deduction is accepted only up to the lowest amount

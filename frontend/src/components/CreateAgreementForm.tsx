@@ -1425,18 +1425,24 @@ function AgreementForm({
     }
   }
 
-  function recordInvitation(
+  async function recordInvitation(
     role: InviteRole,
     method: "gmail" | "copy",
     invitedTenantId?: string,
   ) {
     if (!landlordAccess) return;
-    void negotiationAction(landlordAccess, {
-      type: "invitation_prepared",
-      invitedRole: role,
-      invitedTenantId,
-      method,
-    }).then(setDraft);
+    try {
+      await negotiationAction(landlordAccess, {
+        type: "invitation_prepared",
+        invitedRole: role,
+        invitedTenantId,
+        method,
+      });
+    } catch {
+      setFormError(
+        "The invitation opened or copied, but OpenEscrow could not add that preparation step to the private record. The invitation link and approved proposal are unchanged.",
+      );
+    }
   }
 
   async function copyTenantInvite(tenantId: string) {
@@ -1446,7 +1452,7 @@ function AgreementForm({
     try {
       await copyTextToClipboard(invitation.body);
       setCopiedInvite(tenantId);
-      recordInvitation("tenant", "copy", tenantId);
+      void recordInvitation("tenant", "copy", tenantId);
     } catch (cause) {
       setFormError(
         cause instanceof Error ? cause.message : "The tenant invitation could not be copied.",
@@ -1460,7 +1466,7 @@ function AgreementForm({
     setFormError(null);
     try {
       openExternalWindow(invitation.gmailUrl);
-      recordInvitation("tenant", "gmail", tenantId);
+      void recordInvitation("tenant", "gmail", tenantId);
     } catch (cause) {
       setFormError(
         cause instanceof Error ? cause.message : "The tenant invitation could not be opened.",
@@ -1475,7 +1481,7 @@ function AgreementForm({
     try {
       await copyTextToClipboard(invitation.body);
       setCopiedInvite("arbiter");
-      recordInvitation("arbiter", "copy");
+      void recordInvitation("arbiter", "copy");
     } catch (cause) {
       setFormError(
         cause instanceof Error ? cause.message : "The arbiter invitation could not be copied.",
@@ -1489,7 +1495,7 @@ function AgreementForm({
     setFormError(null);
     try {
       openExternalWindow(invitation.gmailUrl);
-      recordInvitation("arbiter", "gmail");
+      void recordInvitation("arbiter", "gmail");
     } catch (cause) {
       setFormError(
         cause instanceof Error ? cause.message : "The arbiter invitation could not be opened.",

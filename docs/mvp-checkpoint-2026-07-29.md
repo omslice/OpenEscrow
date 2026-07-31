@@ -387,6 +387,13 @@ detailed validation ledger.
   landlord before accepting the new receipt. A mismatched or unavailable original receipt fails
   closed, while successful recovery records the exact landlord wallet once for later checks. The
   credential-free incident rehearsal covers both the recovery and a relabeled landlord denial.
+- **Verified:** Failed private-record loads in the landlord claim flow now hide the unresolved
+  compliance checklist, disable claim and amendment actions, announce the failure, focus an
+  explicit retry, and recover without reloading the page. The tenant response flow keeps its
+  time-sensitive onchain action available while separately retrying the unavailable private
+  summary. Proposal-invitation and claim/response notice audit saves no longer leave unhandled
+  promises: the primary copy, email, or onchain action remains intact and the user receives
+  plain-language recovery guidance.
 
 ## Remaining
 
