@@ -25,7 +25,10 @@ import {
   writeRecoveryJson,
 } from "../lib/browserRecovery";
 import { createAsyncOperationScope } from "../lib/asyncOperationScope";
-import { fundingOperationScopeKey } from "../lib/fundingOperationScope";
+import {
+  fundingCheckoutRecoveryKey,
+  fundingOperationScopeKey,
+} from "../lib/fundingOperationScope";
 import {
   appendDurableFundingCheckoutEvent,
   createDurableFundingCheckout,
@@ -59,12 +62,14 @@ export function FiatFundingOption({
   amount,
   depositAsset,
   negotiationAccess,
+  tenantId,
   onComplete,
 }: {
   walletAddress: string;
   amount: bigint;
   depositAsset?: DepositAssetConfig | null;
   negotiationAccess?: NegotiationAccess | null;
+  tenantId?: string | null;
   onComplete?: () => void | Promise<void>;
 }) {
   const { fund } = useFiatOnramp();
@@ -81,13 +86,15 @@ export function FiatFundingOption({
     productionApproved: FIAT_ONRAMP_CONFIG?.environment === "production",
   });
   const checkoutStorageKey = FIAT_ONRAMP_CONFIG
-    ? [
-        "openescrow:funding-checkout",
-        FIAT_ONRAMP_CONFIG.environment,
-        depositAsset?.id || "usdc",
-        walletAddress.toLowerCase(),
-        amount.toString(),
-      ].join(":")
+    ? fundingCheckoutRecoveryKey({
+        proposalId: negotiationAccess?.proposalId,
+        role: negotiationAccess?.role,
+        tenantId,
+        walletAddress,
+        assetId: depositAsset?.id,
+        amountMicros: amount,
+        environment: FIAT_ONRAMP_CONFIG.environment,
+      })
     : null;
   const durableAccess = useMemo(
     () =>
@@ -100,6 +107,7 @@ export function FiatFundingOption({
   const operationScopeKey = fundingOperationScopeKey({
     proposalId: negotiationAccess?.proposalId,
     role: negotiationAccess?.role,
+    tenantId,
     walletAddress,
     assetId: depositAsset?.id,
     amountMicros: amount,
@@ -131,14 +139,16 @@ export function FiatFundingOption({
     setCheckout(null);
     setRefreshError(null);
     setIsRecovering(true);
-    if (!checkoutStorageKey || !FIAT_ONRAMP_CONFIG) {
+    if (!FIAT_ONRAMP_CONFIG) {
       if (isCurrent()) setIsRecovering(false);
       return;
     }
-    const saved = readRecoveryJson(
-      checkoutStorageKey,
-      isFundingCheckoutLifecycle,
-    );
+    const saved = checkoutStorageKey
+      ? readRecoveryJson(
+          checkoutStorageKey,
+          isFundingCheckoutLifecycle,
+        )
+      : null;
     if (
       saved &&
       (saved.environment !== FIAT_ONRAMP_CONFIG.environment ||
@@ -146,7 +156,7 @@ export function FiatFundingOption({
         saved.walletAddress !== walletAddress.toLowerCase() ||
         saved.amountMicros !== amount.toString())
     ) {
-      clearRecoveryValue(checkoutStorageKey);
+      if (checkoutStorageKey) clearRecoveryValue(checkoutStorageKey);
       if (isCurrent()) setIsRecovering(false);
       return;
     }
@@ -221,7 +231,9 @@ export function FiatFundingOption({
             setStatus(null);
             return;
           }
-          writeRecoveryJson(checkoutStorageKey, recovered);
+          if (checkoutStorageKey) {
+            writeRecoveryJson(checkoutStorageKey, recovered);
+          }
           setCheckout(recovered);
           setStatus(
             reconcileFundingCheckoutResult(
@@ -272,6 +284,7 @@ export function FiatFundingOption({
     depositAsset?.id,
     durableAccess,
     operationScope,
+    tenantId,
     walletAddress,
   ]);
 

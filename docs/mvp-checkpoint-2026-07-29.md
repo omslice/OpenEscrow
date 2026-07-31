@@ -19,7 +19,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   outages, notification recovery, receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 78 server tests, 133 client-logic
+- **Verified:** The full repository release check passes with 78 server tests, 135 client-logic
   tests, lint, browser account-switch, accessibility/mobile, and load-recovery smoke checks, and
   the production build. These rendered checks are part of the required `npm run check` path
   rather than separate, potentially stale results.
@@ -178,6 +178,11 @@ production readiness, or authorization to hold real rental deposits.
   are scoped to the tenant access session, proposal, wallet, selected asset, requested amount, and
   environment. A late result may finish saving its original durable attempt, but it cannot replace
   the visible state or refresh callback after any of those boundaries changes.
+- **Verified:** Browser checkout recovery keys are scoped to the proposal and authorized tenant in
+  addition to wallet, asset, amount, and environment. Two agreements or co-tenants using the same
+  wallet and amount cannot import each other's local provider result, while a rotated invitation
+  or account session can still recover the same tenant's durable sandbox attempt without storing
+  its bearer token in the browser key.
 - **Verified:** Arrow-key workspace navigation moves focus to the selected tab synchronously,
   eliminating an intermittent animation-frame race in the required accessibility smoke check.
 - **Verified:** The exact validated candidate source is pushed to the existing Sites source

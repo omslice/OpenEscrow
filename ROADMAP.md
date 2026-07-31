@@ -71,6 +71,8 @@ the repository; they are not claims of legal approval or production readiness.
   keeping production checkouts with unknown outcomes locked for provider reconciliation
 - [x] Bind checkout recovery, opening, closure, and balance-refresh feedback to the tenant access
   session, proposal, wallet, asset, amount, and environment so late completions cannot cross scope
+- [x] Isolate browser checkout recovery by proposal and authorized tenant as well as wallet,
+  asset, amount, and environment, without storing invitation or account-session bearer tokens
 - [ ] Enable and validate an eligible provider sandbox in the Privy dashboard
 - [ ] Decide whether the pilot needs separate ACH/bank-deposit support
 - [ ] Complete provider approval, KYC/AML, fees, refunds, webhooks, reconciliation, and support
