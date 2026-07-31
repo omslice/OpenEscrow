@@ -133,11 +133,19 @@ export function Layout({
       </div>
       <main className="app-main">{children}</main>
       <footer className="app-footer">
-        <p>
+        <p className="footer-safety-note">
           Evidence stored in the private demo vault is retrievable only through an authorized
           agreement link; its content hash can be independently verified. Any IPFS URI entered
           manually is public and permanent. This remains a testnet demo—do not upload real personal
           information, lease documents, invoices, or photographs.
+        </p>
+        <p className="donation-message">
+          <span>
+            <strong>Support the open-source project.</strong> Optional donations help fund continued
+            OpenEscrow development.
+          </span>
+          <span className="donation-address">omslice.eth</span>
+          <small>Donations are separate from rental deposits and never affect access.</small>
         </p>
       </footer>
     </div>

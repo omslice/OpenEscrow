@@ -236,11 +236,56 @@
 }
 
 .app-footer {
+  display: grid;
+  gap: 16px;
   margin-top: 40px;
   font-size: 12px;
   color: var(--text);
   border-top: 1px solid var(--border);
   padding-top: 16px;
+}
+
+.app-footer p {
+  margin: 0;
+}
+
+.footer-safety-note {
+  line-height: 1.55;
+}
+
+.donation-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 16px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  color: var(--muted);
+  text-align: center;
+}
+
+.donation-message strong {
+  color: var(--text-h);
+}
+
+.donation-address {
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+}
+
+.donation-message small {
+  flex-basis: 100%;
+  color: var(--text);
+  font-size: 11px;
 }
 
 .public-intro {
