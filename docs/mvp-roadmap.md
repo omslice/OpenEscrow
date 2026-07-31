@@ -27,7 +27,9 @@ production custody, or reliance on the compliance research as legal advice.
   recovery, tamper detection, transaction receipt binding, and privacy failure modes have
   dedicated server, client, and operator-command regressions. Invitee bearer recovery is limited
   to the current tab, while verified account sessions and landlord-created access retain their
-  distinct durability boundaries.
+  distinct durability boundaries. Older finalized records must re-prove the exact original
+  agreement creator before another landlord receipt can be recorded; the recovered wallet is
+  retained for later checks.
 - **Verified:** The release dependency audit blocks every high/critical finding and every unknown
   moderate advisory. The former transitive `uuid` advisory is removed from the locked
   wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector

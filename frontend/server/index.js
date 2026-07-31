@@ -1317,14 +1317,66 @@ async function verifiedBaseSepoliaReceipt(
   role,
   recordedEvents,
   transactionHash,
+  { recoverLegacyLandlord = true } = {},
 ) {
-  const context = await receiptParticipantContext(
+  let context = await receiptParticipantContext(
     db,
     row,
     role,
     body.token,
     recordedEvents,
   );
+  let recoveredLegacyLandlord = null;
+  if (
+    recoverLegacyLandlord &&
+    body.type !== "finalize" &&
+    role === "landlord" &&
+    !context.landlordWallet
+  ) {
+    const originalAgreementId = cleanText(row.onchain_agreement_id, 80);
+    const originalTransactionHash = cleanText(row.onchain_tx_hash, 100);
+    if (
+      !originalAgreementId ||
+      !/^0x[a-fA-F0-9]{64}$/.test(originalTransactionHash)
+    ) {
+      return {
+        ok: false,
+        status: 409,
+        error:
+          "OpenEscrow cannot verify the original agreement creator for this older record. Preserve the record and contact support before saving another landlord transaction.",
+      };
+    }
+    const originalVerification = await verifiedBaseSepoliaReceipt(
+      env,
+      db,
+      { type: "finalize", agreementId: originalAgreementId },
+      row,
+      role,
+      recordedEvents,
+      originalTransactionHash,
+      { recoverLegacyLandlord: false },
+    );
+    if (!originalVerification.ok || !originalVerification.actorAddress) {
+      return {
+        ok: false,
+        status: originalVerification.status === 503 ? 503 : 409,
+        error:
+          originalVerification.status === 503
+            ? "OpenEscrow could not recheck the original agreement creator right now. The onchain transaction is unchanged; retry saving this landlord receipt shortly."
+            : "OpenEscrow could not prove the original agreement creator for this older record. Preserve the record and contact support before saving another landlord transaction.",
+      };
+    }
+    recoveredLegacyLandlord = {
+      actorAddress: originalVerification.actorAddress,
+      blockNumber: originalVerification.blockNumber,
+      transactionHash: originalTransactionHash,
+    };
+    context = {
+      ...context,
+      landlordWallet: originalVerification.actorAddress,
+      exactWallet: originalVerification.actorAddress,
+    };
+  }
   const expectation = receiptExpectation(
     body,
     row,
@@ -1492,6 +1544,7 @@ async function verifiedBaseSepoliaReceipt(
     blockNumber: cleanText(receipt.blockNumber, 80),
     transactionHash,
     actorAddress: WALLET_PATTERN.test(actorAddress || "") ? actorAddress : null,
+    recoveredLegacyLandlord,
   };
 }
 
@@ -7509,6 +7562,29 @@ async function applyAction(request, env, id) {
     );
     if (!verification.ok) {
       return json({ error: verification.error }, verification.status);
+    }
+    if (verification.recoveredLegacyLandlord) {
+      statements.push(
+        eventStatement(
+          db,
+          id,
+          now,
+          "system",
+          "transaction_receipt_verified",
+          `Recovered and verified the original agreement creator on Base Sepolia in block ${verification.recoveredLegacyLandlord.blockNumber}.`,
+          revision,
+          {
+            eventType: "posted_onchain",
+            transactionHash:
+              verification.recoveredLegacyLandlord.transactionHash,
+            blockNumber: verification.recoveredLegacyLandlord.blockNumber,
+            chainId: 84532,
+            actorAddress:
+              verification.recoveredLegacyLandlord.actorAddress,
+            recoveredForLegacyRecord: true,
+          },
+        ),
+      );
     }
     statements.push(
       eventStatement(

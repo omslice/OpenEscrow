@@ -267,9 +267,10 @@ not deployed until a new version-matched registry is broadcast and validated.
 - Receipt verification depends on a Base Sepolia RPC endpoint. A temporary provider outage can
   delay saving the readable receipt record, although it does not alter the completed onchain
   transaction and the UI retains a retry path.
-- Older finalized records created before landlord-wallet capture can verify landlord actions only
-  by excluding every approved tenant and the saved arbiter while relying on the escrow contract's
-  role check. Newly verified finalizations preserve the exact landlord wallet in the audit event.
+- Older finalized records created before landlord-wallet capture now re-verify their stored
+  finalization receipt, exact approved terms and participants, selected token, and creating
+  landlord before accepting another landlord receipt. The recovered wallet is preserved in the
+  audit trail for later checks; an unavailable or mismatched original receipt fails closed.
 - Arbiter replacement is now mirrored through verified proposal, confirmation, cancellation, and
   acceptance receipts. A nominee's private-record link remains fail-closed until both agreement
   parties confirm; acceptance atomically changes the saved exact wallet and email, rotates the

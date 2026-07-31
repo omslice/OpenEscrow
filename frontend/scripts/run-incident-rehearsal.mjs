@@ -108,6 +108,16 @@ const expectedScenarios = [
     covers: ["chain receipt", "contract binding", "event validation"],
   },
   {
+    id: "legacy-landlord-receipt-recovery",
+    name: "legacy finalized records re-prove and preserve the landlord wallet before landlord receipts",
+    covers: [
+      "legacy receipt recovery",
+      "original creator verification",
+      "landlord isolation",
+      "fail-closed recovery",
+    ],
+  },
+  {
     id: "rpc-fallback",
     name: "receipt verification falls back when the official public RPC is rate limited",
     covers: ["RPC outage", "bounded fallback", "receipt continuity"],

@@ -382,6 +382,11 @@ detailed validation ledger.
 - **Verified:** Workspace notifications are no longer presented as an empty bell on a clean
   signed-out landing page. The production-build landing regression proves the control is absent
   publicly and still present after a valid role-locked invitation loads the workspace.
+- **Verified:** A landlord action on an older finalized record now re-verifies the stored
+  finalization receipt, exact participants and approved terms, selected token, and creating
+  landlord before accepting the new receipt. A mismatched or unavailable original receipt fails
+  closed, while successful recovery records the exact landlord wallet once for later checks. The
+  credential-free incident rehearsal covers both the recovery and a relabeled landlord denial.
 
 ## Remaining
 

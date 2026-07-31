@@ -10198,6 +10198,195 @@ test("receipt verification binds tenant responses, rulings, and withdrawals to e
   );
 });
 
+test("legacy finalized records re-prove and preserve the landlord wallet before landlord receipts", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "operations_reserve_paid",
+      transactionHash: transactionHash(220),
+    }),
+  );
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "agreement_funded",
+      transactionHash: transactionHash(221),
+    }),
+  );
+  await submitStandardClaim(db, created, {
+    amount: "300",
+    transactionByte: "d",
+  });
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "claim_response",
+      decision: "approve",
+      acceptedAmount: "300",
+      note: "",
+      transactionHash: transactionHash(222),
+    }),
+  );
+
+  const originalTransactionHash = `0x${"a".repeat(64)}`;
+  const otherWallet = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  const withdrawalReceipt = (party) => ({
+    status: "0x1",
+    blockNumber: "0x40",
+    from: party,
+    logs: [
+      {
+        address: RECEIPT_TEST_OPEN_ESCROW,
+        topics: [
+          WITHDRAWN_TOPIC,
+          receiptWord(42),
+          receiptAddressWord(party),
+        ],
+        data: receiptData(receiptWord(300_000_000n)),
+      },
+    ],
+  });
+  const contentHash = transactionHash(223);
+  const activityReceipt = {
+    status: "0x1",
+    blockNumber: "0x41",
+    from: RECEIPT_TEST_LANDLORD,
+    logs: [
+      {
+        address: "0xC004dF4C43146FE55e5761EA1BB3C14f01161951",
+        topics: [
+          ACTIVITY_PUBLISHED_TOPIC,
+          receiptWord(42),
+          receiptWord(3),
+          receiptAddressWord(RECEIPT_TEST_LANDLORD),
+        ],
+        data: receiptData(contentHash, receiptWord(1_785_000_000)),
+      },
+    ],
+  };
+
+  const originalFetch = globalThis.fetch;
+  let originalReceiptMode = "wrong-amount";
+  let currentReceipt = withdrawalReceipt(RECEIPT_TEST_LANDLORD);
+  let originalReceiptReads = 0;
+  globalThis.fetch = async (_url, options) => {
+    const rpcRequest = JSON.parse(options.body);
+    if (rpcRequest.method === "eth_call") {
+      return Response.json({
+        jsonrpc: "2.0",
+        id: rpcRequest.id,
+        result: agreementStateResult(),
+      });
+    }
+    assert.equal(rpcRequest.method, "eth_getTransactionReceipt");
+    if (rpcRequest.params[0] === originalTransactionHash) {
+      originalReceiptReads += 1;
+      return Response.json({
+        jsonrpc: "2.0",
+        id: rpcRequest.id,
+        result: finalizationReceipt(42, originalReceiptMode),
+      });
+    }
+    return Response.json({
+      jsonrpc: "2.0",
+      id: rpcRequest.id,
+      result: currentReceipt,
+    });
+  };
+
+  const action = {
+    type: "withdrawal_completed",
+    amount: "300",
+    transactionHash: transactionHash(224),
+  };
+  const verificationEnv = { VERIFY_TRANSACTION_RECEIPTS: "true" };
+  try {
+    const unprovableCreator = await act(
+      db,
+      created.record.id,
+      created.access.landlord,
+      action,
+      verificationEnv,
+    );
+    assert.equal(unprovableCreator.status, 409);
+    assert.match(
+      (await unprovableCreator.json()).error,
+      /could not prove the original agreement creator/i,
+    );
+
+    originalReceiptMode = "valid";
+    currentReceipt = withdrawalReceipt(otherWallet);
+    const wrongLandlord = await act(
+      db,
+      created.record.id,
+      created.access.landlord,
+      { ...action, transactionHash: transactionHash(225) },
+      verificationEnv,
+    );
+    assert.equal(wrongLandlord.status, 400);
+
+    currentReceipt = withdrawalReceipt(RECEIPT_TEST_LANDLORD);
+    const withdrawn = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.landlord,
+        { ...action, transactionHash: transactionHash(226) },
+        verificationEnv,
+      ),
+    );
+    const recoveredEvents = withdrawn.events.filter(
+      (event) =>
+        event.action === "transaction_receipt_verified" &&
+        event.metadata?.eventType === "posted_onchain" &&
+        event.metadata?.recoveredForLegacyRecord === true,
+    );
+    assert.equal(recoveredEvents.length, 1);
+    assert.equal(
+      recoveredEvents[0].metadata.actorAddress,
+      RECEIPT_TEST_LANDLORD,
+    );
+    assert.equal(
+      recoveredEvents[0].metadata.transactionHash,
+      originalTransactionHash,
+    );
+    assert.equal(originalReceiptReads, 3);
+
+    currentReceipt = activityReceipt;
+    const published = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.landlord,
+        {
+          type: "activity_hash_published",
+          activityType: 3,
+          contentHash,
+          transactionHash: transactionHash(227),
+        },
+        verificationEnv,
+      ),
+    );
+    assert.equal(
+      published.events.filter(
+        (event) => event.action === "activity_hash_published",
+      ).length,
+      1,
+    );
+    assert.equal(originalReceiptReads, 3);
+    assert.equal(
+      published.events.filter(
+        (event) =>
+          event.action === "transaction_receipt_verified" &&
+          event.metadata?.recoveredForLegacyRecord === true,
+      ).length,
+      1,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("receipt verification binds deadline actions to the exact outcome amount", async () => {
   const timeoutReceipt = ({
     agreementId,
