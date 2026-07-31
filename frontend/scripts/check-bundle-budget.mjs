@@ -34,12 +34,16 @@ const largestChunk = largestChunks[0] || { name: "none", size: 0 };
 const appChunk =
   largestChunks.find((chunk) => /^App-[^.]+\.js$/.test(chunk.name)) ||
   { name: "none", size: 0 };
+const agreementCardChunk =
+  largestChunks.find((chunk) => /^AgreementCard-[^.]+\.js$/.test(chunk.name)) ||
+  { name: "none", size: 0 };
 
 const budgets = {
   initialBytes: 350 * 1_024,
   totalJsBytes: 6_500 * 1_024,
   largestChunkBytes: 750 * 1_024,
   appChunkBytes: 250 * 1_024,
+  agreementCardChunkBytes: 40 * 1_024,
 };
 const failures = [];
 if (initialBytes > budgets.initialBytes) {
@@ -62,6 +66,13 @@ if (appChunk.size > budgets.appChunkBytes) {
     `workspace chunk ${appChunk.name} (${appChunk.size} bytes) exceeds ${budgets.appChunkBytes}`,
   );
 }
+if (agreementCardChunk.name === "none") {
+  failures.push("agreement card chunk was not emitted");
+} else if (agreementCardChunk.size > budgets.agreementCardChunkBytes) {
+  failures.push(
+    `agreement card chunk ${agreementCardChunk.name} (${agreementCardChunk.size} bytes) exceeds ${budgets.agreementCardChunkBytes}`,
+  );
+}
 
 console.log(
   [
@@ -69,6 +80,7 @@ console.log(
     `${jsAssetNames.length} total JS file(s), ${totalJsBytes} bytes`,
     `largest ${largestChunk.name}, ${largestChunk.size} bytes`,
     `workspace ${appChunk.name}, ${appChunk.size} bytes`,
+    `agreement card ${agreementCardChunk.name}, ${agreementCardChunk.size} bytes`,
   ].join("; "),
 );
 

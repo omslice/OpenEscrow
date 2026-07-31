@@ -19,7 +19,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   outages, notification recovery, receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 126 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 127 client-logic
   tests, lint, browser account-switch, accessibility/mobile, and load-recovery smoke checks, and
   the production build. These rendered checks are part of the required `npm run check` path
   rather than separate, potentially stale results.
@@ -138,6 +138,11 @@ production readiness, or authorization to hold real rental deposits.
   an automated browser bundle budget guards initial, total, and largest-chunk growth. Direct
   HTML-referenced JavaScript fell from 2,620,477 bytes to 212,630 bytes (about 92%) in the
   production build; the authenticated workspace then loads asynchronously.
+- **Verified:** Agreement summaries no longer load every funding, withdrawal, claim, dispute, and
+  timeout tool up front. Funding and claims groups load on first panel visit, remain mounted after
+  first use so in-progress state survives panel switches, and have panel-local recovery if a
+  deferred chunk fails. The agreement-card JavaScript chunk fell from about 76.7 KB to 22.1 KB
+  (about 71%), with a dedicated regression budget preventing the tools from being folded back in.
 - **Verified:** Onchain activity notifications and expanded agreement records share one registry
   cache per Base Sepolia client. The first caller queries both registry event types in bounded
   block ranges; concurrent callers reuse that scan, and later polls query only new blocks plus a

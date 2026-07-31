@@ -142,6 +142,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Establish an initial browser performance budget and split the bootstrap from the
   authenticated wallet/workspace bundle
 - [x] Split infrequently used proposal, deposit, and record tools into tab-level chunks
+- [x] Load each agreement's funding and claims tools only after that panel is visited, preserve
+  the mounted panel after first use, and contain deferred-load failures within the agreement
 - [x] Prevent bootstrap and deferred workspace failures from blanking the page, with focused,
   privacy-safe reload recovery and automated browser regression coverage
 - [ ] Configure hosted email, Cron, encryption, registry, address, and compliance-source services
