@@ -10,6 +10,7 @@ import {
   type BrowserRecoveryStorage,
   type BrowserRecoveryStorageKind,
 } from "./browserRecovery.ts";
+import { recoverUniqueNegotiationAccessForProposal } from "./negotiationAccessRecovery.ts";
 import type {
   DepositAssetId,
   DepositAssetSnapshot,
@@ -701,6 +702,24 @@ export function captureNegotiationAccessFromUrl(): NegotiationAccess | null {
   const validRole =
     role === "landlord" || role === "tenant" || role === "arbiter";
   const validInvitation = Boolean(proposalId && token && validRole);
+  if (proposalId && !token) {
+    const recovered =
+      recoverUniqueNegotiationAccessForProposal(proposalId);
+    if (recovered) return recovered;
+    const currentPageMatches = (
+      ["landlord", "tenant", "arbiter"] as const
+    )
+      .map((candidateRole) =>
+        readNegotiationAccess(proposalId, candidateRole),
+      )
+      .filter(
+        (access): access is NegotiationAccess =>
+          Boolean(access?.source === "invite"),
+      );
+    return currentPageMatches.length === 1
+      ? currentPageMatches[0]
+      : null;
+  }
   if (token) {
     url.searchParams.delete("token");
     url.searchParams.delete("access");

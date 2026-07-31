@@ -1514,7 +1514,10 @@ function AppView({
   }
 
   return (
-    <Layout notifications={notifications}>
+    <Layout
+      notifications={notifications}
+      notificationStorageScope={address}
+    >
       <PublicIntro onStart={startDemo} />
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {recordArchiveAnnouncement}

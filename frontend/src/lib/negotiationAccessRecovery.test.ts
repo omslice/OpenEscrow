@@ -4,6 +4,7 @@ import {
   negotiationAccessStorageKey,
   preserveNegotiationAccessForReload,
   recoverNegotiationAccessForEntry,
+  recoverUniqueNegotiationAccessForProposal,
 } from "./negotiationAccessRecovery.ts";
 import type { NegotiationAccess } from "./negotiations.ts";
 
@@ -127,6 +128,24 @@ test("a scrubbed invitation can resume in the same tab without becoming an accou
     assert.equal(localStorage.getItem(landlordKey), null);
     assert.equal(
       localStorage.getItem("openescrow.latestLandlordProposal"),
+      null,
+    );
+
+    assert.deepEqual(
+      recoverUniqueNegotiationAccessForProposal(
+        landlordAccess.proposalId,
+      ),
+      landlordAccess,
+    );
+    const ambiguousTenantAccess: NegotiationAccess = {
+      ...landlordAccess,
+      role: "tenant",
+    };
+    preserveNegotiationAccessForReload(ambiguousTenantAccess);
+    assert.equal(
+      recoverUniqueNegotiationAccessForProposal(
+        landlordAccess.proposalId,
+      ),
       null,
     );
   } finally {

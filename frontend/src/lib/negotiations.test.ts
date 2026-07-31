@@ -180,6 +180,11 @@ test("blocked storage cannot blank an invitation or leave its bearer token in th
       readNegotiationAccess("blocked-invite", "tenant"),
       captured,
     );
+    assert.deepEqual(
+      captureNegotiationAccessFromUrl(),
+      captured,
+      "A StrictMode remount should reuse current-page invitation access even when storage is blocked.",
+    );
 
     rememberLandlordBundle({
       record: { id: "blocked-bundle" },

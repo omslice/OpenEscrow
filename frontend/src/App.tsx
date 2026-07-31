@@ -9,16 +9,20 @@ import { replaceRecoveryUrl } from "./lib/browserRecovery";
 import {
   preserveNegotiationAccessForReload,
   recoverNegotiationAccessForEntry,
+  recoverUniqueNegotiationAccessForProposal,
 } from "./lib/negotiationAccessRecovery";
 import type { NegotiationAccess, NegotiationRole } from "./lib/negotiations";
 import "./App.css";
 
 const WorkspaceApp = lazy(() => import("./WorkspaceApp"));
+const WalletProviders = lazy(() => import("./WalletProviders"));
 
 type EntryContext = {
   initialAccess: NegotiationAccess | null;
   roleLocked: boolean;
 };
+
+let currentPageEntryAccess: NegotiationAccess | null = null;
 
 function captureEntryContext(): EntryContext {
   const url = new URL(window.location.href);
@@ -30,9 +34,19 @@ function captureEntryContext(): EntryContext {
   const validRole =
     role === "landlord" || role === "tenant" || role === "arbiter";
   const validNegotiationInvitation = Boolean(proposalId && token && validRole);
+  const currentPageRecovery =
+    proposalId &&
+    currentPageEntryAccess?.proposalId === proposalId &&
+    (!validRole || currentPageEntryAccess.role === role)
+      ? currentPageEntryAccess
+      : null;
   const recoveredAccess =
-    !token && proposalId && validRole
-      ? recoverNegotiationAccessForEntry(proposalId, role)
+    !token && proposalId
+      ? validRole
+        ? recoverNegotiationAccessForEntry(proposalId, role) ||
+          currentPageRecovery
+        : recoverUniqueNegotiationAccessForProposal(proposalId) ||
+          currentPageRecovery
       : null;
   const validNegotiationRecovery = Boolean(recoveredAccess);
   const agreementId = url.searchParams.get("id");
@@ -81,6 +95,7 @@ function captureEntryContext(): EntryContext {
       role: role as NegotiationRole,
       source: "invite",
     };
+    currentPageEntryAccess = initialAccess;
     preserveNegotiationAccessForReload(initialAccess);
     return {
       initialAccess,
@@ -88,6 +103,7 @@ function captureEntryContext(): EntryContext {
     };
   }
   if (recoveredAccess) {
+    currentPageEntryAccess = recoveredAccess;
     return {
       initialAccess: recoveredAccess,
       roleLocked: true,
@@ -171,6 +187,7 @@ function WorkspaceBoundary({
 }: {
   initialAccess?: NegotiationAccess | null;
 }) {
+  const workspace = <WorkspaceApp initialAccess={initialAccess} />;
   return (
     <DeferredLoadBoundary
       area="app"
@@ -180,7 +197,11 @@ function WorkspaceBoundary({
         </div>
       }
     >
-      <WorkspaceApp initialAccess={initialAccess} />
+      {ACCOUNT_AUTH_ENABLED ? (
+        <WalletProviders>{workspace}</WalletProviders>
+      ) : (
+        workspace
+      )}
     </DeferredLoadBoundary>
   );
 }

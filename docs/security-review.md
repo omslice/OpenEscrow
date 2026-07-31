@@ -285,7 +285,9 @@ not deployed until a new version-matched registry is broadcast and validated.
   Invitee bearer recovery is scoped to the current browser tab rather than persistent local
   storage; an older locally stored invitation is moved into session storage and the local copy is
   removed when encountered. Landlord-created proposal access and verified account-discovery
-  sessions retain their separate durability rules.
+  sessions retain their separate durability rules. If URL cleanup removes the role hint before a
+  deferred remount, proposal-only recovery succeeds only when exactly one invitation role matches;
+  multiple matching roles fail closed.
   A verified user can also revoke all of their own derived record sessions without changing other
   participants or invitation links. A complete support recovery flow still needs product design.
   Account-discovery sessions expire after 24 hours and are capped at the five newest sessions per

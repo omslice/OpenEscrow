@@ -1,4 +1,11 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { createAsyncOperationScope } from "../lib/asyncOperationScope";
 import {
   uploadEvidenceDocument,
@@ -13,6 +20,7 @@ export function useEvidenceInputs(access?: NegotiationAccess | null) {
   const errorId = `${generatedId}-supporting-file-error`;
   const warningId = `${generatedId}-supporting-file-warning`;
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const restoreFileFocusAfterRetryRef = useRef(false);
   const uploadScope = useMemo(
     () =>
       createAsyncOperationScope(
@@ -43,6 +51,7 @@ export function useEvidenceInputs(access?: NegotiationAccess | null) {
     setIsRetrying(false);
     setUploadMessage(null);
     setUploadError(null);
+    restoreFileFocusAfterRetryRef.current = false;
     if (fileInputRef.current) fileInputRef.current.value = "";
     return () => uploadScope.close();
   }, [uploadScope]);
@@ -54,6 +63,16 @@ export function useEvidenceInputs(access?: NegotiationAccess | null) {
   const scopedUploadError = scopeIsCurrent ? uploadError : null;
   const scopedIsUploading = scopeIsCurrent && isUploading;
   const scopedIsRetrying = scopeIsCurrent && isRetrying;
+  useLayoutEffect(() => {
+    if (
+      restoreFileFocusAfterRetryRef.current &&
+      !scopedIsUploading &&
+      scopedUploadMessage
+    ) {
+      restoreFileFocusAfterRetryRef.current = false;
+      fileInputRef.current?.focus({ preventScroll: true });
+    }
+  }, [scopedIsUploading, scopedUploadMessage]);
   const contentHash =
     (scopeIsCurrent && uploadedFileHash) ||
     (("0x" + "0".repeat(64)) as `0x${string}`);
@@ -103,7 +122,7 @@ export function useEvidenceInputs(access?: NegotiationAccess | null) {
           : "Supporting file encrypted, stored, and ready to submit.",
       );
       if (retrying) {
-        window.requestAnimationFrame(() => fileInputRef.current?.focus());
+        restoreFileFocusAfterRetryRef.current = true;
       }
     } catch (error) {
       if (!uploadScope.isCurrent(operationId)) return;

@@ -84,3 +84,12 @@ export function recoverNegotiationAccessForEntry(
   }
   return null;
 }
+
+export function recoverUniqueNegotiationAccessForProposal(
+  proposalId: string,
+): NegotiationAccess | null {
+  const recovered = (["landlord", "tenant", "arbiter"] as const)
+    .map((role) => recoverNegotiationAccessForEntry(proposalId, role))
+    .filter((access): access is NegotiationAccess => Boolean(access));
+  return recovered.length === 1 ? recovered[0] : null;
+}

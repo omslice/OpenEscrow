@@ -52,15 +52,16 @@ production custody, or reliance on the compliance research as legal advice.
   cancellation, interruption, refund, failure, reconciliation, and unverified terminal outcomes.
   Real-money and production provider routes remain disabled.
 - **Verified:** Deferred workspace loading, bounded onchain event reads, shared receipt polling,
-  and one-snapshot wallet discovery reduce initial and repeat network work without weakening role
-  or receipt checks.
+  one-snapshot wallet discovery, and workspace-only blockchain wallet providers reduce initial and
+  repeat network work without weakening account recognition, invitation roles, or receipt checks.
 - **Verified:** A clean logged-out visit now shows neutral Google/wallet sign-in instead of loading
   the agreement workspace or asking for a role. Only a valid invitation can preselect a role, and
   its bearer token is scrubbed before the lazy workspace loads. The production browser budget
-  holds the landing path to 54 JavaScript requests and 2.37 MB, keeps the 62 KB U.S. jurisdiction
-  registry deferred, verifies mobile access and focus, and proves linked agreements and valid
-  invitations retain their intended routing. A failed first workspace download can be reloaded
-  in the same tab without restoring the bearer to the URL or losing the exact invitation role.
+  holds the landing path to 48 or fewer JavaScript requests and 2.27 MB or less, keeps the 62 KB
+  U.S. jurisdiction registry and blockchain wallet providers deferred, verifies mobile access and
+  focus, and proves linked agreements and valid invitations retain their intended routing. A
+  failed first workspace download can be reloaded in the same tab without restoring the bearer to
+  the URL or losing the exact invitation role.
 - **Verified:** The public readiness endpoint returned HTTP 200 on 2026-07-30, but the deployed
   site is older than the saved candidate and exposes no exact release provenance. It reported
   eight required pilot actions: release provenance, email, scheduler, evidence keyring, activity

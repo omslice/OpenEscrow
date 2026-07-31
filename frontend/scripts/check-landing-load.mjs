@@ -92,6 +92,9 @@ try {
   const workspaceAsset = [...landingAssets].find((assetName) =>
     assetName.startsWith("WorkspaceApp-"),
   );
+  const walletProvidersAsset = [...landingAssets].find((assetName) =>
+    assetName.startsWith("WalletProviders-"),
+  );
   assert.equal(
     jurisdictionAsset,
     undefined,
@@ -102,14 +105,19 @@ try {
     undefined,
     "A clean logged-out visit must not preload the authenticated workspace.",
   );
+  assert.equal(
+    walletProvidersAsset,
+    undefined,
+    "A clean logged-out visit must not preload blockchain wallet providers.",
+  );
   assert.ok(
-    landingAssets.size <= 54,
-    `The public landing page loaded ${landingAssets.size} JavaScript files; expected at most 54.`,
+    landingAssets.size <= 48,
+    `The public landing page loaded ${landingAssets.size} JavaScript files; expected at most 48.`,
   );
   const landingBytes = await totalAssetBytes(landingAssets);
   assert.ok(
-    landingBytes <= 2_370_000,
-    `The public landing page loaded ${landingBytes} JavaScript bytes; expected at most 2370000.`,
+    landingBytes <= 2_270_000,
+    `The public landing page loaded ${landingBytes} JavaScript bytes; expected at most 2270000.`,
   );
   const googleSignIn = landingPage.getByRole("button", {
     name: "Continue with Google",
@@ -187,6 +195,13 @@ try {
     ),
     true,
     "A specific invitation link must load the role-aware workspace.",
+  );
+  assert.equal(
+    [...invitationAssets].some((assetName) =>
+      assetName.startsWith("WalletProviders-"),
+    ),
+    true,
+    "A specific invitation link must load its blockchain wallet providers with the workspace.",
   );
   assert.equal(
     await invitationPage
@@ -351,7 +366,7 @@ try {
   await agreementInvitationContext.close();
 
   console.log(
-    `Landing-load check passed: ${landingAssets.size} JavaScript file(s), ${landingBytes} bytes, no eager workspace or jurisdiction registry; clean visits show neutral sign-in, agreement hints remain deferred, and invitations retain role-aware entry plus same-tab load recovery.`,
+    `Landing-load check passed: ${landingAssets.size} JavaScript file(s), ${landingBytes} bytes, no eager workspace, jurisdiction registry, or blockchain wallet providers; clean visits show neutral sign-in, agreement hints remain deferred, and invitations retain role-aware entry plus same-tab load recovery.`,
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

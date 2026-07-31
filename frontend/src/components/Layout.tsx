@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { useAccount } from "wagmi";
 import { ConnectWallet } from "./ConnectWallet";
 import { readRecoveryJson, writeRecoveryJson } from "../lib/browserRecovery";
 
@@ -24,12 +23,15 @@ function isNotificationReadState(value: unknown): value is string[] {
 export function Layout({
   children,
   notifications = [],
+  notificationStorageScope = "guest",
 }: {
   children: ReactNode;
   notifications?: AppNotification[];
+  notificationStorageScope?: string | null;
 }) {
-  const { address } = useAccount();
-  const readStateKey = `openescrow:read-notifications:${address?.toLowerCase() || "guest"}`;
+  const readStateKey = `openescrow:read-notifications:${
+    notificationStorageScope?.toLowerCase() || "guest"
+  }`;
   const [readIds, setReadIds] = useState<string[]>([]);
 
   useEffect(() => {
