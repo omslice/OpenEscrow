@@ -379,6 +379,9 @@ detailed validation ledger.
   production-build browser regression verifies the exact copied value, visible success feedback,
   a manual-copy recovery message when clipboard access is blocked, a 44-pixel mobile target, and
   no horizontal overflow.
+- **Verified:** Workspace notifications are no longer presented as an empty bell on a clean
+  signed-out landing page. The production-build landing regression proves the control is absent
+  publicly and still present after a valid role-locked invitation loads the workspace.
 
 ## Remaining
 

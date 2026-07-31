@@ -130,6 +130,11 @@ try {
   await landingPage
     .getByRole("button", { name: "Continue with a wallet" })
     .waitFor({ state: "visible" });
+  assert.equal(
+    await landingPage.locator("details.notification-center").count(),
+    0,
+    "A clean logged-out visit must not show an empty workspace notification control.",
+  );
   const copyDonationAddress = landingPage.getByRole("button", {
     name: "Copy donation address omslice.eth",
   });
@@ -234,6 +239,19 @@ try {
   await invitationPage
     .getByRole("button", { name: "Continue as tenant with Google" })
     .waitFor({ state: "visible" });
+  const invitationNotificationControl = invitationPage.locator(
+    "details.notification-center > summary",
+  );
+  assert.equal(
+    await invitationNotificationControl.count(),
+    1,
+    "A valid invitation workspace must retain its agreement notification control.",
+  );
+  assert.match(
+    (await invitationNotificationControl.getAttribute("aria-label")) || "",
+    /^Notifications(?: \(\d+ unread\))?$/,
+    "The invitation notification disclosure must retain an accessible label.",
+  );
   assert.equal(
     new URL(invitationPage.url()).searchParams.has("token"),
     false,

@@ -65,6 +65,9 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** The shared public/workspace footer explains testnet file safety in plain language
   and offers an accessible, mobile-size control to copy the optional `omslice.eth` donation
   address. Donations are explicitly separate from deposits and product access.
+- **Verified:** The clean signed-out landing page omits the empty agreement-notification bell.
+  Notification access remains available after authentication and on valid role-locked invitation
+  workspaces.
 - **Verified:** The public readiness endpoint returned HTTP 200 on 2026-07-30, but the deployed
   site is older than the saved candidate and exposes no exact release provenance. It reported
   eight required pilot actions: release provenance, email, scheduler, evidence keyring, activity

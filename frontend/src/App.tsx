@@ -159,7 +159,7 @@ function PublicLanding() {
   }
 
   return (
-    <Layout>
+    <Layout showNotifications={false}>
       <PublicIntro onStart={focusSignIn} />
       <section
         className="card public-access-prompt"

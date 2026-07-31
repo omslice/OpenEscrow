@@ -25,10 +25,12 @@ export function Layout({
   children,
   notifications = [],
   notificationStorageScope = "guest",
+  showNotifications = true,
 }: {
   children: ReactNode;
   notifications?: AppNotification[];
   notificationStorageScope?: string | null;
+  showNotifications?: boolean;
 }) {
   const readStateKey = `openescrow:read-notifications:${
     notificationStorageScope?.toLowerCase() || "guest"
@@ -40,10 +42,14 @@ export function Layout({
   } | null>(null);
 
   useEffect(() => {
+    if (!showNotifications) {
+      setReadIds([]);
+      return;
+    }
     setReadIds(
       readRecoveryJson(readStateKey, isNotificationReadState) || [],
     );
-  }, [readStateKey]);
+  }, [readStateKey, showNotifications]);
 
   const unreadCount = useMemo(
     () => notifications.filter((notification) => !readIds.includes(notification.id)).length,
@@ -97,55 +103,57 @@ export function Layout({
           </p>
         </div>
         <div className="header-actions">
-          <details className="notification-center">
-            <summary aria-label={`Notifications${unreadCount ? ` (${unreadCount} unread)` : ""}`}>
-              <span aria-hidden="true">🔔</span>
-              {unreadCount > 0 && <b>{unreadCount}</b>}
-            </summary>
-            <div className="notification-menu">
-              <div className="notification-menu-heading">
-                <h2>Agreement activity</h2>
-                {unreadCount > 0 && (
-                  <button type="button" onClick={markAllRead}>
-                    Mark all read
-                  </button>
+          {showNotifications && (
+            <details className="notification-center">
+              <summary aria-label={`Notifications${unreadCount ? ` (${unreadCount} unread)` : ""}`}>
+                <span aria-hidden="true">🔔</span>
+                {unreadCount > 0 && <b>{unreadCount}</b>}
+              </summary>
+              <div className="notification-menu">
+                <div className="notification-menu-heading">
+                  <h2>Agreement activity</h2>
+                  {unreadCount > 0 && (
+                    <button type="button" onClick={markAllRead}>
+                      Mark all read
+                    </button>
+                  )}
+                </div>
+                {notifications.length === 0 ? (
+                  <p>Find your proposals and deposits to load recent activity.</p>
+                ) : (
+                  <ol>
+                    {notifications.map((notification) => (
+                      <li
+                        className={readIds.includes(notification.id) ? "" : "unread"}
+                        key={notification.id}
+                      >
+                        <button
+                          className="notification-item"
+                          type="button"
+                          onClick={(event) => {
+                            openNotification(notification);
+                            event.currentTarget.closest("details")?.removeAttribute("open");
+                          }}
+                        >
+                          <strong>{notification.actor}</strong>
+                          <span>{notification.summary}</span>
+                          <time dateTime={notification.createdAt}>
+                            {new Date(notification.createdAt).toLocaleString()}
+                          </time>
+                          <small>Open relevant workspace →</small>
+                        </button>
+                        {notification.href && (
+                          <a href={notification.href} target="_blank" rel="noreferrer">
+                            View onchain receipt
+                          </a>
+                        )}
+                      </li>
+                    ))}
+                  </ol>
                 )}
               </div>
-              {notifications.length === 0 ? (
-                <p>Find your proposals and deposits to load recent activity.</p>
-              ) : (
-                <ol>
-                  {notifications.map((notification) => (
-                    <li
-                      className={readIds.includes(notification.id) ? "" : "unread"}
-                      key={notification.id}
-                    >
-                      <button
-                        className="notification-item"
-                        type="button"
-                        onClick={(event) => {
-                          openNotification(notification);
-                          event.currentTarget.closest("details")?.removeAttribute("open");
-                        }}
-                      >
-                        <strong>{notification.actor}</strong>
-                        <span>{notification.summary}</span>
-                        <time dateTime={notification.createdAt}>
-                          {new Date(notification.createdAt).toLocaleString()}
-                        </time>
-                        <small>Open relevant workspace →</small>
-                      </button>
-                      {notification.href && (
-                        <a href={notification.href} target="_blank" rel="noreferrer">
-                          View onchain receipt
-                        </a>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              )}
-            </div>
-          </details>
+            </details>
+          )}
           <ConnectWallet />
         </div>
       </header>
