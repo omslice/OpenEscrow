@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useState } from "react";
 import { useFiatOnramp } from "@privy-io/react-auth";
 import {
   FIAT_ONRAMP_CONFIG,
@@ -24,6 +24,8 @@ import {
   readRecoveryJson,
   writeRecoveryJson,
 } from "../lib/browserRecovery";
+import { createAsyncOperationScope } from "../lib/asyncOperationScope";
+import { fundingOperationScopeKey } from "../lib/fundingOperationScope";
 import {
   appendDurableFundingCheckoutEvent,
   createDurableFundingCheckout,
@@ -95,15 +97,42 @@ export function FiatFundingOption({
         : null,
     [negotiationAccess],
   );
+  const operationScopeKey = fundingOperationScopeKey({
+    proposalId: negotiationAccess?.proposalId,
+    role: negotiationAccess?.role,
+    walletAddress,
+    assetId: depositAsset?.id,
+    amountMicros: amount,
+    environment: FIAT_ONRAMP_CONFIG?.environment,
+  });
+  const accessSessionToken = negotiationAccess?.token;
+  const operationScope = useMemo(
+    () =>
+      createAsyncOperationScope(
+        `${operationScopeKey}:${accessSessionToken ? "tenant-access" : "no-access"}`,
+      ),
+    [accessSessionToken, operationScopeKey],
+  );
+
+  useLayoutEffect(() => {
+    operationScope.open();
+    setIsOpening(false);
+    setIsResolving(false);
+    setIsRefreshing(false);
+    return () => operationScope.close();
+  }, [operationScope]);
 
   useEffect(() => {
     let cancelled = false;
+    const operationId = operationScope.start();
+    const isCurrent = () =>
+      !cancelled && operationScope.isCurrent(operationId);
     setStatus(null);
     setCheckout(null);
     setRefreshError(null);
     setIsRecovering(true);
     if (!checkoutStorageKey || !FIAT_ONRAMP_CONFIG) {
-      setIsRecovering(false);
+      if (isCurrent()) setIsRecovering(false);
       return;
     }
     const saved = readRecoveryJson(
@@ -118,7 +147,7 @@ export function FiatFundingOption({
         saved.amountMicros !== amount.toString())
     ) {
       clearRecoveryValue(checkoutStorageKey);
-      setIsRecovering(false);
+      if (isCurrent()) setIsRecovering(false);
       return;
     }
 
@@ -186,7 +215,7 @@ export function FiatFundingOption({
               )
             ).checkout;
           }
-          if (cancelled) return;
+          if (!isCurrent()) return;
           if (!recovered) {
             setCheckout(null);
             setStatus(null);
@@ -201,7 +230,7 @@ export function FiatFundingOption({
             ),
           );
         } catch {
-          if (!cancelled) setStatus(durableRecoveryUnavailable());
+          if (isCurrent()) setStatus(durableRecoveryUnavailable());
         }
         return;
       }
@@ -217,11 +246,11 @@ export function FiatFundingOption({
           });
           writeRecoveryJson(checkoutStorageKey, recovered);
         } catch {
-          if (!cancelled) setStatus(reconcileFundingCheckoutError());
+          if (isCurrent()) setStatus(reconcileFundingCheckoutError());
           return;
         }
       }
-      if (!cancelled) {
+      if (isCurrent()) {
         setCheckout(recovered);
         setStatus(
           reconcileFundingCheckoutResult(
@@ -232,7 +261,7 @@ export function FiatFundingOption({
       }
     };
     void recover().finally(() => {
-      if (!cancelled) setIsRecovering(false);
+      if (isCurrent()) setIsRecovering(false);
     });
     return () => {
       cancelled = true;
@@ -242,6 +271,7 @@ export function FiatFundingOption({
     checkoutStorageKey,
     depositAsset?.id,
     durableAccess,
+    operationScope,
     walletAddress,
   ]);
 
@@ -285,6 +315,7 @@ export function FiatFundingOption({
                     : "Continue to card or bank";
   const closeInterruptedSandboxPreview = async () => {
     if (!canCloseInterruptedSandboxCheckout(checkout)) return;
+    const operationId = operationScope.start();
     setIsResolving(true);
     setRefreshError(null);
     try {
@@ -316,25 +347,29 @@ export function FiatFundingOption({
       ) {
         throw new Error("The closed sandbox preview could not be saved.");
       }
-      setCheckout(closedCheckout);
-      setStatus(
-        reconcileFundingCheckoutResult(
-          { status: closedCheckout.status },
-          FIAT_ONRAMP_CONFIG.environment,
-        ),
-      );
+      if (operationScope.isCurrent(operationId)) {
+        setCheckout(closedCheckout);
+        setStatus(
+          reconcileFundingCheckoutResult(
+            { status: closedCheckout.status },
+            FIAT_ONRAMP_CONFIG.environment,
+          ),
+        );
+      }
     } catch {
-      setStatus({
-        state: "unknown",
-        providerStatus: "sandbox_close_failed",
-        severity: "error",
-        shouldRefreshBalance: false,
-        retryAllowed: false,
-        message:
-          "The interrupted sandbox preview could not be closed safely. Refresh this agreement before trying again.",
-      });
+      if (operationScope.isCurrent(operationId)) {
+        setStatus({
+          state: "unknown",
+          providerStatus: "sandbox_close_failed",
+          severity: "error",
+          shouldRefreshBalance: false,
+          retryAllowed: false,
+          message:
+            "The interrupted sandbox preview could not be closed safely. Refresh this agreement before trying again.",
+        });
+      }
     } finally {
-      setIsResolving(false);
+      if (operationScope.isCurrent(operationId)) setIsResolving(false);
     }
   };
 
@@ -351,8 +386,15 @@ export function FiatFundingOption({
       <button
         className="btn btn-secondary"
         type="button"
-        disabled={isRecovering || isOpening || isResolving || checkoutLocked}
+        disabled={
+          isRecovering ||
+          isOpening ||
+          isResolving ||
+          isRefreshing ||
+          checkoutLocked
+        }
         onClick={async () => {
+          const operationId = operationScope.start();
           setIsOpening(true);
           setRefreshError(null);
           let attempt: FundingCheckoutLifecycle | null = null;
@@ -374,16 +416,18 @@ export function FiatFundingOption({
                 attemptId,
               );
               attempt = durableAttempt.checkout;
-              setCheckout(attempt);
               if (checkoutStorageKey) {
                 writeRecoveryJson(checkoutStorageKey, attempt);
               }
-              setStatus(
-                reconcileFundingCheckoutResult(
-                  { status: attempt.providerStatus },
-                  FIAT_ONRAMP_CONFIG.environment,
-                ),
-              );
+              if (operationScope.isCurrent(operationId)) {
+                setCheckout(attempt);
+                setStatus(
+                  reconcileFundingCheckoutResult(
+                    { status: attempt.providerStatus },
+                    FIAT_ONRAMP_CONFIG.environment,
+                  ),
+                );
+              }
               if (!durableAttempt.created) return;
             } else {
               attempt = createFundingCheckoutAttempt(intent, { attemptId });
@@ -391,25 +435,29 @@ export function FiatFundingOption({
                 !checkoutStorageKey ||
                 !writeRecoveryJson(checkoutStorageKey, attempt)
               ) {
-                setStatus({
-                  state: "failed",
-                  providerStatus: "recovery_unavailable",
-                  severity: "error",
-                  shouldRefreshBalance: false,
-                  retryAllowed: true,
-                  message:
-                    "Secure checkout recovery is unavailable in this browser. No checkout was opened. Restore browser storage access before trying again.",
-                });
+                if (operationScope.isCurrent(operationId)) {
+                  setStatus({
+                    state: "failed",
+                    providerStatus: "recovery_unavailable",
+                    severity: "error",
+                    shouldRefreshBalance: false,
+                    retryAllowed: true,
+                    message:
+                      "Secure checkout recovery is unavailable in this browser. No checkout was opened. Restore browser storage access before trying again.",
+                  });
+                }
                 return;
               }
-              setCheckout(attempt);
+              if (operationScope.isCurrent(operationId)) setCheckout(attempt);
             }
-            setStatus(
-              reconcileFundingCheckoutResult(
-                { status: "opening" },
-                FIAT_ONRAMP_CONFIG.environment,
-              ),
-            );
+            if (operationScope.isCurrent(operationId)) {
+              setStatus(
+                reconcileFundingCheckoutResult(
+                  { status: "opening" },
+                  FIAT_ONRAMP_CONFIG.environment,
+                ),
+              );
+            }
             providerOpened = true;
             const result = await fund({
               source: {
@@ -436,7 +484,7 @@ export function FiatFundingOption({
             if (checkoutStorageKey) {
               writeRecoveryJson(checkoutStorageKey, attempt);
             }
-            setCheckout(attempt);
+            if (operationScope.isCurrent(operationId)) setCheckout(attempt);
             if (durableAccess) {
               try {
                 attempt = (
@@ -453,17 +501,19 @@ export function FiatFundingOption({
                 if (checkoutStorageKey) {
                   writeRecoveryJson(checkoutStorageKey, attempt);
                 }
-                setCheckout(attempt);
+                if (operationScope.isCurrent(operationId)) setCheckout(attempt);
               } catch {
-                setStatus({
-                  state: "unknown",
-                  providerStatus: "durable_result_save_failed",
-                  severity: "error",
-                  shouldRefreshBalance: false,
-                  retryAllowed: false,
-                  message:
-                    "The provider returned a result, but OpenEscrow could not durably save it. No agreement funding was recorded. Reconnect and refresh this page before any retry.",
-                });
+                if (operationScope.isCurrent(operationId)) {
+                  setStatus({
+                    state: "unknown",
+                    providerStatus: "durable_result_save_failed",
+                    severity: "error",
+                    shouldRefreshBalance: false,
+                    retryAllowed: false,
+                    message:
+                      "The provider returned a result, but OpenEscrow could not durably save it. No agreement funding was recorded. Reconnect and refresh this page before any retry.",
+                  });
+                }
                 return;
               }
             }
@@ -471,14 +521,19 @@ export function FiatFundingOption({
               { status: attempt.providerStatus },
               FIAT_ONRAMP_CONFIG.environment,
             );
-            setStatus(outcome);
-            if (outcome.shouldRefreshBalance) {
+            if (operationScope.isCurrent(operationId)) setStatus(outcome);
+            if (
+              outcome.shouldRefreshBalance &&
+              operationScope.isCurrent(operationId)
+            ) {
               try {
                 await onComplete?.();
               } catch {
-                setRefreshError(
-                  "The provider result was saved, but the wallet balance could not be refreshed. Check your connection and try the refresh again.",
-                );
+                if (operationScope.isCurrent(operationId)) {
+                  setRefreshError(
+                    "The provider result was saved, but the wallet balance could not be refreshed. Check your connection and try the refresh again.",
+                  );
+                }
               }
             }
           } catch {
@@ -510,7 +565,7 @@ export function FiatFundingOption({
                 if (checkoutStorageKey) {
                   writeRecoveryJson(checkoutStorageKey, attempt);
                 }
-                setCheckout(attempt);
+                if (operationScope.isCurrent(operationId)) setCheckout(attempt);
               } catch {
                 try {
                   attempt = applyFundingCheckoutEvent(attempt, {
@@ -521,29 +576,31 @@ export function FiatFundingOption({
                   if (checkoutStorageKey) {
                     writeRecoveryJson(checkoutStorageKey, attempt);
                   }
-                  setCheckout(attempt);
+                  if (operationScope.isCurrent(operationId)) setCheckout(attempt);
                 } catch {
                   // Keep the existing locked attempt if recovery state cannot advance safely.
                 }
               }
             }
-            setStatus(
-              providerOpened
-                ? reconcileFundingCheckoutError()
-                : durableAccess
-                  ? durableRecoveryUnavailable()
-                  : {
-                      state: "failed",
-                      providerStatus: "recovery_unavailable",
-                      severity: "error",
-                      shouldRefreshBalance: false,
-                      retryAllowed: true,
-                      message:
-                        "Secure checkout recovery could not be prepared. No checkout was opened. Try again after reconnecting this page.",
-                    },
-            );
+            if (operationScope.isCurrent(operationId)) {
+              setStatus(
+                providerOpened
+                  ? reconcileFundingCheckoutError()
+                  : durableAccess
+                    ? durableRecoveryUnavailable()
+                    : {
+                        state: "failed",
+                        providerStatus: "recovery_unavailable",
+                        severity: "error",
+                        shouldRefreshBalance: false,
+                        retryAllowed: true,
+                        message:
+                          "Secure checkout recovery could not be prepared. No checkout was opened. Try again after reconnecting this page.",
+                      },
+              );
+            }
           } finally {
-            setIsOpening(false);
+            if (operationScope.isCurrent(operationId)) setIsOpening(false);
           }
         }}
       >
@@ -571,7 +628,7 @@ export function FiatFundingOption({
           <button
             className="btn btn-secondary"
             type="button"
-            disabled={isOpening || isRecovering || isResolving}
+            disabled={isOpening || isRecovering || isResolving || isRefreshing}
             onClick={() => void closeInterruptedSandboxPreview()}
           >
             {isResolving
@@ -594,16 +651,21 @@ export function FiatFundingOption({
           type="button"
           disabled={isRefreshing}
           onClick={async () => {
+            const operationId = operationScope.start();
             setIsRefreshing(true);
             setRefreshError(null);
             try {
               await onComplete();
             } catch {
-              setRefreshError(
-                "The wallet balance could not be refreshed. Check your connection and try the refresh again; do not start another purchase yet.",
-              );
+              if (operationScope.isCurrent(operationId)) {
+                setRefreshError(
+                  "The wallet balance could not be refreshed. Check your connection and try the refresh again; do not start another purchase yet.",
+                );
+              }
             } finally {
-              setIsRefreshing(false);
+              if (operationScope.isCurrent(operationId)) {
+                setIsRefreshing(false);
+              }
             }
           }}
         >

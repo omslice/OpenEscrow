@@ -69,6 +69,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Validate the provider-neutral sandbox intent, UI states, and failure handling locally
 - [x] Let a tenant explicitly close an interrupted no-money sandbox preview before retrying while
   keeping production checkouts with unknown outcomes locked for provider reconciliation
+- [x] Bind checkout recovery, opening, closure, and balance-refresh feedback to the tenant access
+  session, proposal, wallet, asset, amount, and environment so late completions cannot cross scope
 - [ ] Enable and validate an eligible provider sandbox in the Privy dashboard
 - [ ] Decide whether the pilot needs separate ACH/bank-deposit support
 - [ ] Complete provider approval, KYC/AML, fees, refunds, webhooks, reconciliation, and support

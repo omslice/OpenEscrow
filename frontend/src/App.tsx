@@ -307,8 +307,8 @@ function AppView({
     }
     event.preventDefault();
     const nextTab = WORKSPACE_TABS[nextIndex];
+    workspaceTabRefs.current[nextTab]?.focus();
     setTab(nextTab);
-    window.requestAnimationFrame(() => workspaceTabRefs.current[nextTab]?.focus());
   }
 
   // A landlord's shared link (?id=X) should land directly on that agreement.
