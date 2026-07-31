@@ -55,10 +55,11 @@ The current source includes:
 - [`docs/pilot-readiness-brief.md`](docs/pilot-readiness-brief.md) — legal, partner, privacy, and audit handoff
 - [`docs/pilot-services-setup.md`](docs/pilot-services-setup.md) — email, fiat sandbox, and encrypted evidence setup
 - [`docs/owner-actions.md`](docs/owner-actions.md) — running list of owner-only credentials, signatures, decisions, and external reviews
+- [`docs/mvp-roadmap.md`](docs/mvp-roadmap.md) — canonical high-level testnet MVP status, remaining work, and material unknowns
 
 ### Verification snapshot
 
-- 159 Foundry tests
+- 221 Foundry tests across 20 suites
 - 512 runs per fuzz test
 - 256 stateful invariant runs at depth 128
 - Frontend lint, TypeScript compilation, and production build

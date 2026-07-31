@@ -12,8 +12,9 @@ provider or hosting control that owns the secret.
 ## Actionable now
 
 - [ ] **Review and explicitly approve the newest saved Sites candidate before deployment.** The
-  public site remains on production version 56. The validated branch has been pushed and saved as
-  a newer undeployed version; deployment remains a separate production action.
+  public site is older than the validated branch and currently exposes no exact release
+  provenance. A newer candidate is saved but undeployed; selecting and promoting that exact
+  candidate remains a separate production action.
 - [ ] **Broadcast the version-matched Base Sepolia activity registry.**
   The candidate registry now recognizes every nonzero-share co-tenant as an agreement party; the
   prior deployed/retired registry must not be reused for a multi-tenant pilot.

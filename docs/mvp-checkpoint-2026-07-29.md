@@ -2,6 +2,8 @@
 
 This checkpoint records repository and delivery evidence without claiming legal approval,
 production readiness, or authorization to hold real rental deposits.
+For the concise current roadmap, use [`mvp-roadmap.md`](./mvp-roadmap.md); this file is the
+detailed validation ledger.
 
 ## In progress
 
@@ -23,7 +25,7 @@ production readiness, or authorization to hold real rental deposits.
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   R2/encrypted-IPFS cleanup after metadata failure, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 90 server tests, 145 client-logic
+- **Verified:** The full repository release check passes with 90 server tests, 148 client-logic
   tests, lint, browser account-switch, funding-recovery, accessibility/mobile, and load-recovery
   smoke checks, and the production build. These rendered checks are part of the required
   `npm run check` path rather than separate, potentially stale results.
@@ -244,32 +246,17 @@ production readiness, or authorization to hold real rental deposits.
   badges, with a rendered 80%-zoom regression. Technical hashes and receipt text in the Record
   activity feed now sit behind **Details for verification**, while the main feed uses
   consumer-readable descriptions.
+- **Verified:** The canonical high-level roadmap now separates verified candidate evidence,
+  planned work, material unknowns, and owner-only actions. The required release check rejects
+  misplaced status labels, stale hard-coded production-version claims, and obsolete handoffs that
+  still look authoritative.
+- **Verified:** A fresh 2026-07-30 check of the public readiness endpoint returned HTTP 200 but no
+  exact release provenance and eight required actions. The result is recorded as deployed-state
+  evidence only; it does not describe or block saving the newer undeployed candidate.
 - **Verified:** The exact validated candidate source is pushed to the existing Sites source
   branch and saved as a newer undeployed Sites version after each coherent slice. The public
   production deployment remains unchanged.
 
-## Remaining
-
-- **Planned:** Review the newest saved candidate and explicitly approve a production deployment
-  when the testnet release envelope is acceptable.
-- **Planned:** Configure and validate the seven hosted pilot gates: email delivery, scheduler,
-  evidence encryption, version-matched activity registry, address attestation, official-source
-  baseline, and source-monitor freshness.
-- **Planned:** Run the separate-account landlord/tenant pilot plus moderated accessibility and
-  usability sessions, then conduct the owner-led incident/privacy drill.
-- **Planned:** Enable an eligible Privy provider sandbox only for sandbox evaluation; production
-  fiat, mainnet contracts, FRNT, and USDY remain disabled.
-- **Planned:** Complete external legal, smart-contract, application-security, privacy, provider,
-  and operating-policy reviews before any real-money release.
-- **Planned:** International compliance is now a lower-priority staged roadmap track behind the
-  U.S. testnet pilot: generalize country/region/local routing first, then build versioned
-  official-source profiles and regressions market by market. No foreign profile is implemented or
-  approved yet.
-- **Planned:** Sustainable monetization is a parallel discovery track behind MVP safety:
-  preserve the free, self-hostable open-source core; validate demand for an optional managed
-  service, professional workflows, support, and integrations before building billing. Provider
-  economics require disclosure and legal/provider review, and essential records or user data
-  must never become leverage for payment.
 - **Verified:** Infrequently used proposal, deposit, funding, invitation, and record tools load
   only when their tab or expanded section needs them. This reduced the main workspace chunk from
   about 345.9 KB to 74.2 KB (about 79%) while preserving keyboard focus behavior.
@@ -337,6 +324,29 @@ production readiness, or authorization to hold real rental deposits.
   conflicts with its validated address. The official-source gate also treats a future-dated
   verification as stale instead of trusting it indefinitely. These are integrity checks only;
   no legal rule, source, period, or jurisdiction profile changed.
+
+## Remaining
+
+- **Planned:** Review the newest saved candidate and explicitly approve a production deployment
+  when the testnet release envelope is acceptable.
+- **Planned:** Configure and validate the seven hosted pilot gates: email delivery, scheduler,
+  evidence encryption, version-matched activity registry, address attestation, official-source
+  baseline, and source-monitor freshness.
+- **Planned:** Run the separate-account landlord/tenant pilot plus moderated accessibility and
+  usability sessions, then conduct the owner-led incident/privacy drill.
+- **Planned:** Enable an eligible Privy provider sandbox only for sandbox evaluation; production
+  fiat, mainnet contracts, FRNT, and USDY remain disabled.
+- **Planned:** Complete external legal, smart-contract, application-security, privacy, provider,
+  and operating-policy reviews before any real-money release.
+- **Planned:** International compliance is now a lower-priority staged roadmap track behind the
+  U.S. testnet pilot: generalize country/region/local routing first, then build versioned
+  official-source profiles and regressions market by market. No foreign profile is implemented or
+  approved yet.
+- **Planned:** Sustainable monetization is a parallel discovery track behind MVP safety:
+  preserve the free, self-hostable open-source core; validate demand for an optional managed
+  service, professional workflows, support, and integrations before building billing. Provider
+  economics require disclosure and legal/provider review, and essential records or user data
+  must never become leverage for payment.
 
 ## Material unknowns
 
