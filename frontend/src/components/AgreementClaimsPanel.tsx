@@ -1,6 +1,6 @@
 import { ZERO_ADDRESS } from "../contracts/config";
 import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
-import type { NegotiationAccess } from "../lib/negotiations";
+import type { NegotiationAccess, NegotiationRecord } from "../lib/negotiations";
 import type { Agreement } from "../lib/useAgreement";
 import { ArbiterReplacementSection } from "./ArbiterReplacementSection";
 import { ClaimSection } from "./ClaimSection";
@@ -12,11 +12,13 @@ export function AgreementClaimsPanel({
   id,
   agreement,
   negotiationAccess,
+  participantRecord,
   onRefetch,
 }: {
   id: bigint;
   agreement: Agreement;
   negotiationAccess?: NegotiationAccess | null;
+  participantRecord?: NegotiationRecord | null;
   onRefetch: () => void;
 }) {
   return (
@@ -48,6 +50,8 @@ export function AgreementClaimsPanel({
         <ArbiterReplacementSection
           id={id}
           agreement={agreement}
+          negotiationAccess={negotiationAccess}
+          participantRecord={participantRecord}
           onRefetch={onRefetch}
         />
       )}

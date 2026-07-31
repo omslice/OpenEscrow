@@ -306,6 +306,18 @@ production readiness, or authorization to hold real rental deposits.
   **Earn yield?** control instead of its hidden tooltip link. The deterministic browser check
   guards this focus return along with workspace tabs, proposal focus recovery, keyboard address
   selection, and mobile-width overflow.
+- **Verified:** Hosted arbiter replacement now follows the contract's full mutual-consent
+  handshake. Exact proposal, confirmation, cancellation, and acceptance receipts are required;
+  the nominee cannot open the private record before both parties confirm; accepting rotates the
+  saved arbiter wallet/email and invalidates the former arbiter's direct and signed-in sessions.
+  Nominee sessions are separately tagged so a lost invite or cancellation can revoke only the
+  nominee without prematurely removing the current arbiter; a verified agreement-closing action
+  also expires an unaccepted nominee. If a successful acceptance or cancellation reaches the
+  chain but its hosted save is interrupted, the agreement UI accepts the original transaction
+  hash and finishes the exact receipt-verified access update. The server suite covers wrong
+  nominees, parties, senders, old/new arbiter fields, lost-link rotation, cancellation, signed-in
+  discovery, terminal expiry, recovery by an authorized participant, and post-acceptance access
+  isolation.
 
 ## Material unknowns
 

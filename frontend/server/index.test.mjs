@@ -62,6 +62,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0012_funding_event_provenance.sql",
     "0013_funding_reconciliation_identity.sql",
     "0014_funding_event_provenance_guards.sql",
+    "0015_arbiter_replacement_access.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -82,6 +83,8 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.ok(tables.includes("account_record_archives"));
   assert.ok(tables.includes("funding_checkout_attempts"));
   assert.ok(tables.includes("funding_checkout_events"));
+  assert.ok(tables.includes("arbiter_replacement_access"));
+  assert.ok(tables.includes("arbiter_replacement_account_access"));
   const fundingEventColumns = database
     .prepare("PRAGMA table_info(funding_checkout_events)")
     .all()
@@ -1217,6 +1220,14 @@ const RESPONSE_TIMED_OUT_TOPIC =
   "0xfad75d47bd1a89b1c3f46dd58d38a0b9fe3c1b992a6077875a9ebb5432ba513a";
 const ARBITER_TIMED_OUT_TOPIC =
   "0xab22e8614f3457bfcf1e3c2852a4c49aceafbd8c37e6a3181f13c8472f916e3d";
+const ARBITER_REPLACEMENT_PROPOSED_TOPIC =
+  "0xeeb50d0c2e09bed6f700dae5147fb9dc20cbf64a51ae5598ff4bf3fef65bd899";
+const ARBITER_REPLACEMENT_CONFIRMED_TOPIC =
+  "0x24561e96f9483b651114378fd5f5303482cb09292d94295bf12e8b08b570783e";
+const ARBITER_REPLACEMENT_CANCELLED_TOPIC =
+  "0xea55ed64aa907da9463ef6eb21d16b92c8672b37f1305df22c0555cd0cc175cf";
+const ARBITER_REPLACED_TOPIC =
+  "0x61fd94062542edfecb31f240c9ef0bab60274ed951f163e40614c3d4d02146d1";
 const RECORD_SNAPSHOT_ANCHORED_TOPIC =
   "0x4012b6d2c58584f354b2ad24151a4b24d5e18ea9aff9ced4667a2ffe01305ab6";
 const ACTIVITY_PUBLISHED_TOPIC =
@@ -8776,6 +8787,639 @@ test("configured receipt verification accepts only the expected Base Sepolia agr
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("arbiter replacement mirrors mutual consent, gates nominee access, and revokes the former arbiter", async () => {
+  const db = new TestD1();
+  const created = await create(db, "arbiter@example.com");
+  await finalizeWithVerifiedReceipt(db, created, {
+    arbiterWallet: RECEIPT_TEST_ARBITER,
+  });
+  const replacementWallet = "0x4444444444444444444444444444444444444444";
+  const replacementEmail = "replacement@example.com";
+  const agreementTopic = receiptWord(42);
+  const proposedReceipt = {
+    status: "0x1",
+    blockNumber: "0x31",
+    from: RECEIPT_TEST_LANDLORD,
+    logs: [
+      {
+        address: RECEIPT_TEST_OPEN_ESCROW,
+        topics: [
+          ARBITER_REPLACEMENT_PROPOSED_TOPIC,
+          agreementTopic,
+          receiptAddressWord(RECEIPT_TEST_LANDLORD),
+          receiptAddressWord(replacementWallet),
+        ],
+        data: "0x",
+      },
+    ],
+  };
+  const proposed = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.landlord,
+      {
+        type: "arbiter_replacement_proposed",
+        newArbiterEmail: replacementEmail,
+        newArbiterWallet: replacementWallet,
+        transactionHash: transactionHash(201),
+      },
+      proposedReceipt,
+    ),
+  );
+  assert.equal(proposed.record.arbiterReplacement.status, "proposed");
+  assert.equal(proposed.record.arbiterReplacement.wallet, replacementWallet);
+  assert.equal(proposed.invite.email, replacementEmail);
+  const firstNomineeToken = proposed.invite.token;
+
+  const nomineeBeforeConfirmation = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${encodeURIComponent(firstNomineeToken)}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(nomineeBeforeConfirmation.status, 403);
+
+  const proposerCannotConfirm = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.landlord,
+    {
+      type: "arbiter_replacement_confirmed",
+      transactionHash: transactionHash(202),
+    },
+    {
+      status: "0x1",
+      blockNumber: "0x32",
+      from: RECEIPT_TEST_LANDLORD,
+      logs: [
+        {
+          address: RECEIPT_TEST_OPEN_ESCROW,
+          topics: [
+            ARBITER_REPLACEMENT_CONFIRMED_TOPIC,
+            agreementTopic,
+            receiptAddressWord(RECEIPT_TEST_LANDLORD),
+          ],
+          data: "0x",
+        },
+      ],
+    },
+  );
+  assert.equal(proposerCannotConfirm.status, 409);
+
+  const wrongConfirmationReceipt = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.tenant,
+    {
+      type: "arbiter_replacement_confirmed",
+      transactionHash: transactionHash(212),
+    },
+    {
+      status: "0x1",
+      blockNumber: "0x32",
+      from: RECEIPT_TEST_TENANT,
+      logs: [
+        {
+          address: RECEIPT_TEST_OPEN_ESCROW,
+          topics: [
+            ARBITER_REPLACEMENT_CONFIRMED_TOPIC,
+            agreementTopic,
+            receiptAddressWord(RECEIPT_TEST_LANDLORD),
+          ],
+          data: "0x",
+        },
+      ],
+    },
+  );
+  assert.equal(wrongConfirmationReceipt.status, 400);
+
+  const confirmed = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.tenant,
+      {
+        type: "arbiter_replacement_confirmed",
+        transactionHash: transactionHash(203),
+      },
+      {
+        status: "0x1",
+        blockNumber: "0x33",
+        from: RECEIPT_TEST_TENANT,
+        logs: [
+          {
+            address: RECEIPT_TEST_OPEN_ESCROW,
+            topics: [
+              ARBITER_REPLACEMENT_CONFIRMED_TOPIC,
+              agreementTopic,
+              receiptAddressWord(RECEIPT_TEST_TENANT),
+            ],
+            data: "0x",
+          },
+        ],
+      },
+    ),
+  );
+  assert.equal(confirmed.arbiterReplacement.status, "confirmed");
+
+  const nomineeAfterConfirmation = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${encodeURIComponent(firstNomineeToken)}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(nomineeAfterConfirmation.status, 200);
+  const appId = "test-privy-replacement-arbiter-app";
+  const kid = "test-replacement-arbiter-key";
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  const nomineeIdentityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    replacementEmail,
+    { sub: "did:privy:replacement-arbiter" },
+  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input) => {
+    assert.equal(
+      String(input),
+      `https://auth.privy.io/api/v1/apps/${appId}/jwks.json`,
+    );
+    return Response.json({ keys: [{ ...publicJwk, kid, alg: "ES256", use: "sig" }] });
+  };
+  let nomineeAccountToken;
+  try {
+    const discovery = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/negotiations/discover", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": nomineeIdentityToken,
+          },
+          body: JSON.stringify({ role: "arbiter" }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(discovery.accesses.length, 1);
+    nomineeAccountToken = discovery.accesses[0].token;
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.ok(nomineeAccountToken);
+  const nomineeAccountSession = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${encodeURIComponent(nomineeAccountToken)}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(nomineeAccountSession.status, 200);
+  const formerArbiterBeforeAcceptance = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${encodeURIComponent(created.access.arbiter)}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(formerArbiterBeforeAcceptance.status, 200);
+
+  const reset = await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "arbiter_replacement_invite_reset",
+    }),
+  );
+  assert.equal(reset.record.arbiterReplacement.status, "confirmed");
+  const replacementToken = reset.invite.token;
+  assert.notEqual(replacementToken, firstNomineeToken);
+  const revokedNomineeLink = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${encodeURIComponent(firstNomineeToken)}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(revokedNomineeLink.status, 403);
+  const revokedNomineeAccountSession = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${encodeURIComponent(nomineeAccountToken)}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(revokedNomineeAccountSession.status, 403);
+
+  const acceptedReceipt = ({
+    oldArbiter = RECEIPT_TEST_ARBITER,
+    newArbiter = replacementWallet,
+    from = replacementWallet,
+  } = {}) => ({
+    status: "0x1",
+    blockNumber: "0x34",
+    from,
+    logs: [
+      {
+        address: RECEIPT_TEST_OPEN_ESCROW,
+        topics: [
+          ARBITER_REPLACED_TOPIC,
+          agreementTopic,
+          receiptAddressWord(oldArbiter),
+          receiptAddressWord(newArbiter),
+        ],
+        data: "0x",
+      },
+    ],
+  });
+  for (const [receipt, hashIndex, label] of [
+    [
+      acceptedReceipt({
+        oldArbiter: "0x5555555555555555555555555555555555555555",
+      }),
+      204,
+      "wrong former arbiter",
+    ],
+    [
+      acceptedReceipt({
+        newArbiter: "0x5555555555555555555555555555555555555555",
+      }),
+      205,
+      "wrong nominee",
+    ],
+    [
+      acceptedReceipt({
+        from: RECEIPT_TEST_ARBITER,
+      }),
+      206,
+      "wrong sender",
+    ],
+  ]) {
+    const rejected = await actWithVerifiedReceipt(
+      db,
+      created,
+      replacementToken,
+      {
+        type: "arbiter_replacement_accepted",
+        transactionHash: transactionHash(hashIndex),
+      },
+      receipt,
+    );
+    assert.equal(rejected.status, 400, label);
+  }
+
+  const accepted = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.landlord,
+      {
+        type: "arbiter_replacement_accepted",
+        transactionHash: transactionHash(207),
+      },
+      acceptedReceipt(),
+    ),
+  );
+  assert.equal(accepted.arbiterEmail, replacementEmail);
+  assert.equal(accepted.arbiterWallet, replacementWallet);
+  assert.equal(accepted.arbiterReplacement, null);
+  assert.ok(
+    accepted.events.some(
+      (event) =>
+        event.action === "transaction_receipt_verified" &&
+        event.metadata.eventType === "arbiter_replacement_accepted" &&
+        event.metadata.actorAddress === replacementWallet,
+    ),
+  );
+
+  const formerArbiterAfterAcceptance = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${encodeURIComponent(created.access.arbiter)}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(formerArbiterAfterAcceptance.status, 403);
+  const replacementArbiterAfterAcceptance = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${encodeURIComponent(replacementToken)}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(replacementArbiterAfterAcceptance.status, 200);
+});
+
+test("arbiter replacement cancellation revokes the nominee and cannot bypass receipt verification", async () => {
+  const db = new TestD1();
+  const created = await create(db, "arbiter@example.com");
+  await finalizeWithVerifiedReceipt(db, created, {
+    arbiterWallet: RECEIPT_TEST_ARBITER,
+  });
+  const replacementWallet = "0x4444444444444444444444444444444444444444";
+  const disabled = await act(db, created.record.id, created.access.landlord, {
+    type: "arbiter_replacement_proposed",
+    newArbiterEmail: "replacement@example.com",
+    newArbiterWallet: replacementWallet,
+    transactionHash: transactionHash(208),
+  });
+  assert.equal(disabled.status, 503);
+
+  const wrongNomineeReceipt = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.landlord,
+    {
+      type: "arbiter_replacement_proposed",
+      newArbiterEmail: "replacement@example.com",
+      newArbiterWallet: replacementWallet,
+      transactionHash: transactionHash(213),
+    },
+    {
+      status: "0x1",
+      blockNumber: "0x35",
+      from: RECEIPT_TEST_LANDLORD,
+      logs: [
+        {
+          address: RECEIPT_TEST_OPEN_ESCROW,
+          topics: [
+            ARBITER_REPLACEMENT_PROPOSED_TOPIC,
+            receiptWord(42),
+            receiptAddressWord(RECEIPT_TEST_LANDLORD),
+            receiptAddressWord("0x5555555555555555555555555555555555555555"),
+          ],
+          data: "0x",
+        },
+      ],
+    },
+  );
+  assert.equal(wrongNomineeReceipt.status, 400);
+
+  const proposed = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.landlord,
+      {
+        type: "arbiter_replacement_proposed",
+        newArbiterEmail: "replacement@example.com",
+        newArbiterWallet: replacementWallet,
+        transactionHash: transactionHash(209),
+      },
+      {
+        status: "0x1",
+        blockNumber: "0x35",
+        from: RECEIPT_TEST_LANDLORD,
+        logs: [
+          {
+            address: RECEIPT_TEST_OPEN_ESCROW,
+            topics: [
+              ARBITER_REPLACEMENT_PROPOSED_TOPIC,
+              receiptWord(42),
+              receiptAddressWord(RECEIPT_TEST_LANDLORD),
+              receiptAddressWord(replacementWallet),
+            ],
+            data: "0x",
+          },
+        ],
+      },
+    ),
+  );
+  const nomineeToken = proposed.invite.token;
+  await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.tenant,
+      {
+        type: "arbiter_replacement_confirmed",
+        transactionHash: transactionHash(215),
+      },
+      {
+        status: "0x1",
+        blockNumber: "0x36",
+        from: RECEIPT_TEST_TENANT,
+        logs: [
+          {
+            address: RECEIPT_TEST_OPEN_ESCROW,
+            topics: [
+              ARBITER_REPLACEMENT_CONFIRMED_TOPIC,
+              receiptWord(42),
+              receiptAddressWord(RECEIPT_TEST_TENANT),
+            ],
+            data: "0x",
+          },
+        ],
+      },
+    ),
+  );
+  const nomineeBeforeCancellation = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${encodeURIComponent(nomineeToken)}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(nomineeBeforeCancellation.status, 200);
+  const wrongParty = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.tenant,
+    {
+      type: "arbiter_replacement_cancelled",
+      transactionHash: transactionHash(210),
+    },
+    {
+      status: "0x1",
+      blockNumber: "0x36",
+      from: RECEIPT_TEST_TENANT,
+      logs: [
+        {
+          address: RECEIPT_TEST_OPEN_ESCROW,
+          topics: [ARBITER_REPLACEMENT_CANCELLED_TOPIC, receiptWord(42)],
+          data: "0x",
+        },
+      ],
+    },
+  );
+  assert.equal(wrongParty.status, 403);
+
+  const wrongCancellationSender = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.landlord,
+    {
+      type: "arbiter_replacement_cancelled",
+      transactionHash: transactionHash(214),
+    },
+    {
+      status: "0x1",
+      blockNumber: "0x36",
+      from: RECEIPT_TEST_TENANT,
+      logs: [
+        {
+          address: RECEIPT_TEST_OPEN_ESCROW,
+          topics: [ARBITER_REPLACEMENT_CANCELLED_TOPIC, receiptWord(42)],
+          data: "0x",
+        },
+      ],
+    },
+  );
+  assert.equal(wrongCancellationSender.status, 400);
+
+  const cancelled = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.landlord,
+      {
+        type: "arbiter_replacement_cancelled",
+        transactionHash: transactionHash(211),
+      },
+      {
+        status: "0x1",
+        blockNumber: "0x37",
+        from: RECEIPT_TEST_LANDLORD,
+        logs: [
+          {
+            address: RECEIPT_TEST_OPEN_ESCROW,
+            topics: [ARBITER_REPLACEMENT_CANCELLED_TOPIC, receiptWord(42)],
+            data: "0x",
+          },
+        ],
+      },
+    ),
+  );
+  assert.equal(cancelled.arbiterReplacement, null);
+  const nomineeAfterCancellation = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${encodeURIComponent(nomineeToken)}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(nomineeAfterCancellation.status, 403);
+});
+
+test("a verified terminal lifecycle action revokes an unaccepted replacement arbiter", async () => {
+  const db = new TestD1();
+  const created = await create(db, "arbiter@example.com");
+  await finalizeWithVerifiedReceipt(db, created, {
+    arbiterWallet: RECEIPT_TEST_ARBITER,
+  });
+  const replacementWallet = "0x4444444444444444444444444444444444444444";
+  const agreementTopic = receiptWord(42);
+  const proposed = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.landlord,
+      {
+        type: "arbiter_replacement_proposed",
+        newArbiterEmail: "replacement@example.com",
+        newArbiterWallet: replacementWallet,
+        transactionHash: transactionHash(216),
+      },
+      {
+        status: "0x1",
+        blockNumber: "0x38",
+        from: RECEIPT_TEST_LANDLORD,
+        logs: [
+          {
+            address: RECEIPT_TEST_OPEN_ESCROW,
+            topics: [
+              ARBITER_REPLACEMENT_PROPOSED_TOPIC,
+              agreementTopic,
+              receiptAddressWord(RECEIPT_TEST_LANDLORD),
+              receiptAddressWord(replacementWallet),
+            ],
+            data: "0x",
+          },
+        ],
+      },
+    ),
+  );
+  await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.tenant,
+      {
+        type: "arbiter_replacement_confirmed",
+        transactionHash: transactionHash(217),
+      },
+      {
+        status: "0x1",
+        blockNumber: "0x39",
+        from: RECEIPT_TEST_TENANT,
+        logs: [
+          {
+            address: RECEIPT_TEST_OPEN_ESCROW,
+            topics: [
+              ARBITER_REPLACEMENT_CONFIRMED_TOPIC,
+              agreementTopic,
+              receiptAddressWord(RECEIPT_TEST_TENANT),
+            ],
+            data: "0x",
+          },
+        ],
+      },
+    ),
+  );
+  const nomineeToken = proposed.invite.token;
+  const nomineeBeforeClose = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${encodeURIComponent(nomineeToken)}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(nomineeBeforeClose.status, 200);
+
+  const refunded = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.tenant,
+      {
+        type: "timeout_executed",
+        timeout: "no_claim_refund",
+        transactionHash: transactionHash(218),
+      },
+      {
+        status: "0x1",
+        blockNumber: "0x3a",
+        from: RECEIPT_TEST_TENANT,
+        logs: [
+          {
+            address: RECEIPT_TEST_OPEN_ESCROW,
+            topics: [NO_CLAIM_WITHDRAWAL_TOPIC, agreementTopic],
+            data: receiptData(receiptWord(1_200_000_000n)),
+          },
+        ],
+      },
+    ),
+  );
+  assert.equal(refunded.arbiterReplacement, null);
+  assert.ok(
+    refunded.events.some(
+      (event) =>
+        event.action === "arbiter_replacement_expired" &&
+        event.metadata.closedByAction === "timeout_executed",
+    ),
+  );
+  const nomineeAfterClose = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${encodeURIComponent(nomineeToken)}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(nomineeAfterClose.status, 403);
+  const currentArbiterAfterClose = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}?token=${encodeURIComponent(created.access.arbiter)}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(currentArbiterAfterClose.status, 200);
 });
 
 test("receipt verification binds the operations reserve to its escrow, tenant, token, and exact share", async () => {

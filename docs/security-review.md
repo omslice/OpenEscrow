@@ -270,8 +270,15 @@ not deployed until a new version-matched registry is broadcast and validated.
 - Older finalized records created before landlord-wallet capture can verify landlord actions only
   by excluding every approved tenant and the saved arbiter while relying on the escrow contract's
   role check. Newly verified finalizations preserve the exact landlord wallet in the audit event.
-  Arbiter replacement must be mirrored into the hosted record before a replaced arbiter can pass
-  exact-wallet receipt verification.
+- Arbiter replacement is now mirrored through verified proposal, confirmation, cancellation, and
+  acceptance receipts. A nominee's private-record link remains fail-closed until both agreement
+  parties confirm; acceptance atomically changes the saved exact wallet and email, rotates the
+  bearer, and revokes former-arbiter sessions. Nominee-session provenance also lets invitation
+  reset or cancellation revoke only nominee sessions without removing the current arbiter early.
+  A verified terminal agreement action also expires an unaccepted nominee and its sessions. An
+  authorized participant can recover an interrupted hosted save by resubmitting the original
+  acceptance or cancellation transaction hash; the same exact receipt checks still apply.
+  This hosted safeguard depends on receipt verification remaining enabled.
 - Invitation URLs are bearer credentials. A landlord can reset a tenant or optional-arbiter link
   without changing approved terms; the reset invalidates the prior direct link and the affected
   account-discovery sessions, while the matching verified email can discover a fresh session.

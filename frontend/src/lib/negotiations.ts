@@ -218,6 +218,14 @@ export interface NegotiationRecord {
   arbiterApproved: boolean;
   tenantWallet: string | null;
   arbiterWallet: string | null;
+  arbiterReplacement?: {
+    email: string;
+    wallet: string;
+    status: "proposed" | "confirmed";
+    proposedByRole: "landlord" | "tenant";
+    proposedAt: string;
+    confirmedAt: string | null;
+  } | null;
   onchainAgreementId: string | null;
   onchainTxHash: string | null;
   viewerTenantId?: string;
@@ -1100,6 +1108,53 @@ export async function negotiationAction(
       body: JSON.stringify({ token: access.token, ...action }),
     },
   );
+}
+
+export type ArbiterReplacementAction =
+  | {
+      type: "arbiter_replacement_proposed";
+      newArbiterEmail: string;
+      newArbiterWallet: string;
+      transactionHash: string;
+    }
+  | {
+      type:
+        | "arbiter_replacement_confirmed"
+        | "arbiter_replacement_cancelled"
+        | "arbiter_replacement_accepted";
+      transactionHash: string;
+    }
+  | { type: "arbiter_replacement_invite_reset" };
+
+export interface ArbiterReplacementActionResult {
+  record: NegotiationRecord;
+  invite: {
+    email: string;
+    wallet: string;
+    token: string;
+    availableAfterConfirmation: true;
+  } | null;
+}
+
+export async function arbiterReplacementAction(
+  access: NegotiationAccess,
+  action: ArbiterReplacementAction,
+): Promise<ArbiterReplacementActionResult> {
+  const result = await request<
+    NegotiationRecord | {
+      record: NegotiationRecord;
+      invite: NonNullable<ArbiterReplacementActionResult["invite"]>;
+    }
+  >(
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}/actions`,
+    {
+      method: "POST",
+      body: JSON.stringify({ token: access.token, ...action }),
+    },
+  );
+  return "record" in result
+    ? result
+    : { record: result, invite: null };
 }
 
 export function negotiationReportUrl(access: NegotiationAccess) {

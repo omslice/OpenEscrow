@@ -192,6 +192,42 @@ CREATE TABLE IF NOT EXISTS negotiation_account_access_context (
   FOREIGN KEY (tenant_id) REFERENCES negotiation_tenants(id) ON DELETE CASCADE
 )`;
 
+const ARBITER_REPLACEMENT_ACCESS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS arbiter_replacement_access (
+  negotiation_id TEXT PRIMARY KEY,
+  email TEXT NOT NULL,
+  wallet TEXT NOT NULL,
+  token_hash TEXT NOT NULL UNIQUE,
+  proposed_by_role TEXT NOT NULL
+    CHECK (proposed_by_role IN ('landlord', 'tenant')),
+  status TEXT NOT NULL
+    CHECK (status IN ('proposed', 'confirmed')),
+  proposed_tx_hash TEXT NOT NULL UNIQUE,
+  confirmed_tx_hash TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (negotiation_id)
+    REFERENCES agreement_negotiations(id) ON DELETE CASCADE
+)`;
+
+const ARBITER_REPLACEMENT_ACCESS_INDEX = `
+CREATE INDEX IF NOT EXISTS arbiter_replacement_access_status_idx
+ON arbiter_replacement_access (status, updated_at)`;
+
+const ARBITER_REPLACEMENT_ACCOUNT_ACCESS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS arbiter_replacement_account_access (
+  token_hash TEXT PRIMARY KEY,
+  negotiation_id TEXT NOT NULL,
+  FOREIGN KEY (token_hash)
+    REFERENCES negotiation_account_access(token_hash) ON DELETE CASCADE,
+  FOREIGN KEY (negotiation_id)
+    REFERENCES agreement_negotiations(id) ON DELETE CASCADE
+)`;
+
+const ARBITER_REPLACEMENT_ACCOUNT_ACCESS_INDEX = `
+CREATE INDEX IF NOT EXISTS arbiter_replacement_account_access_negotiation_idx
+ON arbiter_replacement_account_access (negotiation_id)`;
+
 const FUNDING_CHECKOUT_ATTEMPTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS funding_checkout_attempts (
   attempt_id TEXT PRIMARY KEY,
@@ -440,6 +476,14 @@ const RECEIPT_EVENT_TOPICS = Object.freeze({
     "0xfad75d47bd1a89b1c3f46dd58d38a0b9fe3c1b992a6077875a9ebb5432ba513a",
   arbiterTimedOut:
     "0xab22e8614f3457bfcf1e3c2852a4c49aceafbd8c37e6a3181f13c8472f916e3d",
+  arbiterReplacementProposed:
+    "0xeeb50d0c2e09bed6f700dae5147fb9dc20cbf64a51ae5598ff4bf3fef65bd899",
+  arbiterReplacementConfirmed:
+    "0x24561e96f9483b651114378fd5f5303482cb09292d94295bf12e8b08b570783e",
+  arbiterReplacementCancelled:
+    "0xea55ed64aa907da9463ef6eb21d16b92c8672b37f1305df22c0555cd0cc175cf",
+  arbiterReplaced:
+    "0x61fd94062542edfecb31f240c9ef0bab60274ed951f163e40614c3d4d02146d1",
   recordSnapshotAnchored:
     "0x4012b6d2c58584f354b2ad24151a4b24d5e18ea9aff9ced4667a2ffe01305ab6",
   activityPublished:
@@ -657,6 +701,7 @@ function latestVerifiedLandlordWallet(recordedEvents) {
 async function receiptParticipantContext(db, row, role, token, recordedEvents) {
   const tenantRows = await tenantsFor(db, row.id);
   const tenant = role === "tenant" ? await tenantForToken(db, row.id, token) : null;
+  const arbiterReplacement = await arbiterReplacementFor(db, row.id);
   const tenantWallets = tenantRows
     .map((candidate) => cleanText(candidate.wallet, 80).toLowerCase())
     .filter((wallet) => WALLET_PATTERN.test(wallet));
@@ -687,6 +732,7 @@ async function receiptParticipantContext(db, row, role, token, recordedEvents) {
     arbiterWallet,
     landlordWallet,
     exactWallet,
+    arbiterReplacement,
     forbiddenLandlordWallets: [
       ...new Set([...tenantWallets, arbiterWallet].filter(Boolean)),
     ],
@@ -1036,6 +1082,86 @@ function receiptExpectation(body, row, env, context, recordedEvents) {
         dataWordCount: 1,
         exactSender:
           body.timeout === "no_claim_refund" ? context.exactWallet : null,
+      }),
+    ];
+  } else if (body.type === "arbiter_replacement_proposed") {
+    const missingActor = requireKnownActor(context.role);
+    if (missingActor) return missingActor;
+    variants = [
+      variant({
+        address: openEscrowAddress,
+        topic0: RECEIPT_EVENT_TOPICS.arbiterReplacementProposed,
+        agreementTopic,
+        topicWords: {
+          2: actorTopic,
+          3: addressTopic(body.newArbiterWallet),
+        },
+        topicCount: 4,
+        dataWordCount: 0,
+        exactSender,
+        senderTopicIndex: 2,
+        captureActorTopicIndex: 2,
+      }),
+    ];
+  } else if (body.type === "arbiter_replacement_confirmed") {
+    const missingActor = requireKnownActor(context.role);
+    if (missingActor) return missingActor;
+    variants = [
+      variant({
+        address: openEscrowAddress,
+        topic0: RECEIPT_EVENT_TOPICS.arbiterReplacementConfirmed,
+        agreementTopic,
+        topicWords: { 2: actorTopic },
+        topicCount: 3,
+        dataWordCount: 0,
+        exactSender,
+        senderTopicIndex: 2,
+        captureActorTopicIndex: 2,
+      }),
+    ];
+  } else if (body.type === "arbiter_replacement_cancelled") {
+    const missingActor = requireKnownActor(context.role);
+    if (missingActor) return missingActor;
+    variants = [
+      variant({
+        address: openEscrowAddress,
+        topic0: RECEIPT_EVENT_TOPICS.arbiterReplacementCancelled,
+        agreementTopic,
+        topicCount: 2,
+        dataWordCount: 0,
+        exactSender,
+      }),
+    ];
+  } else if (body.type === "arbiter_replacement_accepted") {
+    const replacement = context.arbiterReplacement;
+    const replacementWallet = cleanText(replacement?.wallet, 80).toLowerCase();
+    const oldArbiterWallet = WALLET_PATTERN.test(row.arbiter_wallet || "")
+      ? row.arbiter_wallet.toLowerCase()
+      : "0x0000000000000000000000000000000000000000";
+    if (
+      !replacement ||
+      replacement.status !== "confirmed" ||
+      !WALLET_PATTERN.test(replacementWallet)
+    ) {
+      return {
+        error: "The mutually confirmed replacement-arbiter invitation is unavailable.",
+        status: 409,
+      };
+    }
+    variants = [
+      variant({
+        address: openEscrowAddress,
+        topic0: RECEIPT_EVENT_TOPICS.arbiterReplaced,
+        agreementTopic,
+        topicWords: {
+          2: addressTopic(oldArbiterWallet),
+          3: addressTopic(replacementWallet),
+        },
+        topicCount: 4,
+        dataWordCount: 0,
+        exactSender: replacementWallet,
+        senderTopicIndex: 3,
+        captureActorTopicIndex: 3,
       }),
     ];
   } else if (body.type === "record_snapshot_anchored") {
@@ -2289,6 +2415,10 @@ async function initialize(db) {
     db.prepare(NEGOTIATION_TENANTS_SCHEMA),
     db.prepare(NEGOTIATION_TENANTS_INDEX),
     db.prepare(ACCOUNT_ACCESS_CONTEXT_SCHEMA),
+    db.prepare(ARBITER_REPLACEMENT_ACCESS_SCHEMA),
+    db.prepare(ARBITER_REPLACEMENT_ACCESS_INDEX),
+    db.prepare(ARBITER_REPLACEMENT_ACCOUNT_ACCESS_SCHEMA),
+    db.prepare(ARBITER_REPLACEMENT_ACCOUNT_ACCESS_INDEX),
     db.prepare(FUNDING_CHECKOUT_ATTEMPTS_SCHEMA),
     db.prepare(FUNDING_CHECKOUT_ATTEMPTS_HISTORY_INDEX),
     db.prepare(FUNDING_CHECKOUT_ATTEMPTS_ACTIVE_INDEX),
@@ -2764,24 +2894,31 @@ async function discoverNegotiations(request, env) {
       )
       .bind(...identity.emails)
       .all();
-  } else {
-    const emailColumn =
-      role === "landlord"
-        ? "landlord_email"
-        : role === "arbiter"
-          ? "arbiter_email"
-          : null;
-    if (!emailColumn) {
-      return json({ error: "Choose a valid account role before searching." }, 400);
-    }
+  } else if (role === "landlord") {
     result = await env.DB
       .prepare(
         `SELECT * FROM agreement_negotiations
-         WHERE lower(${emailColumn}) IN (${placeholders})
+         WHERE lower(landlord_email) IN (${placeholders})
          ORDER BY updated_at DESC`,
       )
       .bind(...identity.emails)
       .all();
+  } else if (role === "arbiter") {
+    result = await env.DB
+      .prepare(
+        `SELECT negotiation.*, replacement.email AS replacement_email
+         FROM agreement_negotiations negotiation
+         LEFT JOIN arbiter_replacement_access replacement
+           ON replacement.negotiation_id = negotiation.id
+          AND replacement.status = 'confirmed'
+         WHERE lower(negotiation.arbiter_email) IN (${placeholders})
+            OR lower(replacement.email) IN (${placeholders})
+         ORDER BY negotiation.updated_at DESC`,
+      )
+      .bind(...identity.emails, ...identity.emails)
+      .all();
+  } else {
+    return json({ error: "Choose a valid account role before searching." }, 400);
   }
   const rows = result.results || [];
   const now = new Date();
@@ -2820,6 +2957,19 @@ async function discoverNegotiations(request, env) {
             "INSERT INTO negotiation_account_access_context (token_hash, tenant_id) VALUES (?, ?)",
           )
           .bind(tokenHash, row.participant_id),
+      );
+    }
+    if (
+      role === "arbiter" &&
+      identity.emails.includes(normalizeEmail(row.replacement_email))
+    ) {
+      statements.push(
+        env.DB
+          .prepare(
+            `INSERT INTO arbiter_replacement_account_access
+             (token_hash, negotiation_id) VALUES (?, ?)`,
+          )
+          .bind(tokenHash, row.id),
       );
     }
     if (role === "tenant" && row.participant_id) {
@@ -2881,7 +3031,14 @@ async function identityCanAccessRecord(db, identity, row, role) {
     return identity.emails.includes(normalizeEmail(row.landlord_email));
   }
   if (role === "arbiter") {
-    return identity.emails.includes(normalizeEmail(row.arbiter_email));
+    if (identity.emails.includes(normalizeEmail(row.arbiter_email))) {
+      return true;
+    }
+    const replacement = await arbiterReplacementFor(db, row.id);
+    return Boolean(
+      replacement?.status === "confirmed" &&
+        identity.emails.includes(normalizeEmail(replacement.email)),
+    );
   }
   if (role !== "tenant") return false;
   const placeholders = identity.emails.map(() => "?").join(", ");
@@ -3013,6 +3170,13 @@ async function accountDataInventory(request, env) {
          FROM agreement_negotiations
          WHERE lower(arbiter_email) IN (${placeholders})
          UNION
+         SELECT negotiation.id, negotiation.status, negotiation.updated_at, 'arbiter' AS role
+         FROM agreement_negotiations AS negotiation
+         JOIN arbiter_replacement_access AS replacement
+           ON replacement.negotiation_id = negotiation.id
+          AND replacement.status = 'confirmed'
+         WHERE lower(replacement.email) IN (${placeholders})
+         UNION
          SELECT negotiation.id, negotiation.status, negotiation.updated_at, 'tenant' AS role
          FROM agreement_negotiations AS negotiation
          JOIN negotiation_tenants AS tenant ON tenant.negotiation_id = negotiation.id
@@ -3020,7 +3184,12 @@ async function accountDataInventory(request, env) {
        )
        ORDER BY updated_at DESC, id, role`,
     )
-    .bind(...identity.emails, ...identity.emails, ...identity.emails)
+    .bind(
+      ...identity.emails,
+      ...identity.emails,
+      ...identity.emails,
+      ...identity.emails,
+    )
     .all();
   const archiveResult = await env.DB
     .prepare(
@@ -3094,12 +3263,33 @@ async function rowFor(db, id) {
     .first();
 }
 
+async function arbiterReplacementFor(db, negotiationId) {
+  return db
+    .prepare(
+      `SELECT negotiation_id, email, wallet, token_hash, proposed_by_role,
+              status, proposed_tx_hash, confirmed_tx_hash, created_at, updated_at
+       FROM arbiter_replacement_access
+       WHERE negotiation_id = ?`,
+    )
+    .bind(negotiationId)
+    .first();
+}
+
 async function authorize(db, row, token) {
   if (!row || !token) return null;
   const hash = await hashToken(token);
   if (hash === row.landlord_token_hash) return "landlord";
   if (hash === row.tenant_token_hash) return "tenant";
   if (row.arbiter_token_hash && hash === row.arbiter_token_hash) return "arbiter";
+  const pendingArbiter = await db
+    .prepare(
+      `SELECT 1 AS allowed
+       FROM arbiter_replacement_access
+       WHERE negotiation_id = ? AND token_hash = ? AND status = 'confirmed'`,
+    )
+    .bind(row.id, hash)
+    .first();
+  if (pendingArbiter?.allowed === 1) return "arbiter";
   const invitedTenant = await db
     .prepare(
       "SELECT id FROM negotiation_tenants WHERE negotiation_id = ? AND token_hash = ?",
@@ -3726,6 +3916,7 @@ async function serialize(db, row) {
   const arbiterRequired = Boolean(row.arbiter_email);
   const events = await eventsFor(db, row.id);
   const tenantRows = await tenantsFor(db, row.id);
+  const arbiterReplacement = await arbiterReplacementFor(db, row.id);
   const storedShareTotal = tenantRows.reduce(
     (total, tenant) => total + Number(tenant.deposit_share_bps || 0),
     0,
@@ -3777,6 +3968,13 @@ async function serialize(db, row) {
       }
     }
   }
+  const latestAcceptedArbiterReplacement = [...events]
+    .reverse()
+    .find((event) => event.action === "arbiter_replacement_accepted");
+  if (latestAcceptedArbiterReplacement) {
+    participantNames.arbiterName =
+      cleanText(latestAcceptedArbiterReplacement.metadata?.name, 120) || null;
+  }
   return {
     id: row.id,
     status: row.status,
@@ -3796,6 +3994,19 @@ async function serialize(db, row) {
     arbiterApproved: !arbiterRequired || row.arbiter_approved_revision === row.revision,
     tenantWallet: fundingTenant?.wallet || row.tenant_wallet,
     arbiterWallet: row.arbiter_wallet,
+    arbiterReplacement: arbiterReplacement
+      ? {
+          email: arbiterReplacement.email,
+          wallet: arbiterReplacement.wallet,
+          status: arbiterReplacement.status,
+          proposedByRole: arbiterReplacement.proposed_by_role,
+          proposedAt: arbiterReplacement.created_at,
+          confirmedAt:
+            arbiterReplacement.status === "confirmed"
+              ? arbiterReplacement.updated_at
+              : null,
+        }
+      : null,
     onchainAgreementId: row.onchain_agreement_id,
     onchainTxHash: row.onchain_tx_hash,
     events,
@@ -4317,6 +4528,11 @@ async function rotateArbiterInvite(request, env, id) {
       .prepare(
         `DELETE FROM negotiation_account_access
          WHERE negotiation_id = ? AND role = 'arbiter'`,
+      )
+      .bind(id),
+    env.DB
+      .prepare(
+        "DELETE FROM arbiter_replacement_account_access WHERE negotiation_id = ?",
       )
       .bind(id),
     env.DB
@@ -5453,6 +5669,24 @@ async function applyAction(request, env, id) {
   const row = await rowFor(db, id);
   const role = await authorize(db, row, body.token);
   if (!role) return json({ error: "This proposal link is invalid or no longer available." }, 403);
+  const arbiterReplacementReceiptActions = new Set([
+    "arbiter_replacement_proposed",
+    "arbiter_replacement_confirmed",
+    "arbiter_replacement_cancelled",
+    "arbiter_replacement_accepted",
+  ]);
+  if (
+    arbiterReplacementReceiptActions.has(body.type) &&
+    !receiptVerificationEnabled(env)
+  ) {
+    return json(
+      {
+        error:
+          "Arbiter access changes require Base Sepolia receipt verification and cannot be recorded while it is disabled.",
+      },
+      503,
+    );
+  }
   if (
     (row.status === "cancelled" || row.status === "superseded") &&
     body.type !== "cancel_proposal"
@@ -5473,6 +5707,10 @@ async function applyAction(request, env, id) {
     arbiter_ruling: "arbiter_ruling_submitted",
     withdrawal_completed: "withdrawal_completed",
     timeout_executed: "timeout_executed",
+    arbiter_replacement_proposed: "arbiter_replacement_proposed",
+    arbiter_replacement_confirmed: "arbiter_replacement_confirmed",
+    arbiter_replacement_cancelled: "arbiter_replacement_cancelled",
+    arbiter_replacement_accepted: "arbiter_replacement_accepted",
   };
   const expectedEvent = transactionEventByAction[body.type];
   const incomingTransactionHash = cleanText(body.transactionHash, 100);
@@ -5492,6 +5730,8 @@ async function applyAction(request, env, id) {
   const now = new Date().toISOString();
   const revision = Number(row.revision);
   const statements = [];
+  let replacementInvite = null;
+  let clearsPendingArbiterOnchain = false;
 
   if (body.type === "preflight_finalize") {
     if (role !== "landlord") {
@@ -6246,6 +6486,290 @@ async function applyAction(request, env, id) {
         },
       ),
     );
+  } else if (body.type === "arbiter_replacement_proposed") {
+    if (role !== "landlord" && role !== "tenant") {
+      return json({ error: "Only a landlord or tenant may propose a replacement arbiter." }, 403);
+    }
+    if (row.status !== "finalized" || !row.onchain_agreement_id) {
+      return json({ error: "The agreement must be finalized before replacing its arbiter." }, 409);
+    }
+    if (await arbiterReplacementFor(db, id)) {
+      return json({ error: "An arbiter replacement is already pending for this agreement." }, 409);
+    }
+    const email = normalizeEmail(body.newArbiterEmail);
+    const wallet = cleanText(body.newArbiterWallet, 80).toLowerCase();
+    const transactionHash = cleanText(body.transactionHash, 100);
+    const tenantRows = await tenantsFor(db, id);
+    const reservedEmails = new Set(
+      [row.landlord_email, ...tenantRows.map((tenant) => tenant.email), row.arbiter_email]
+        .filter(Boolean)
+        .map(normalizeEmail),
+    );
+    const reservedWallets = new Set(
+      [
+        latestVerifiedLandlordWallet(recordedEvents),
+        ...tenantRows.map((tenant) => cleanText(tenant.wallet, 80).toLowerCase()),
+        cleanText(row.arbiter_wallet, 80).toLowerCase(),
+      ].filter((walletValue) => WALLET_PATTERN.test(walletValue)),
+    );
+    if (!EMAIL_PATTERN.test(email)) {
+      return json({ error: "Enter the replacement arbiter's valid email address." }, 400);
+    }
+    if (!WALLET_PATTERN.test(wallet)) {
+      return json({ error: "Enter the replacement arbiter's valid EVM wallet." }, 400);
+    }
+    if (reservedEmails.has(email) || reservedWallets.has(wallet)) {
+      return json(
+        { error: "The replacement arbiter must use an email and wallet distinct from every current party." },
+        400,
+      );
+    }
+    if (!/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+      return json({ error: "The replacement proposal transaction is invalid." }, 400);
+    }
+    const replacementToken = randomToken();
+    const replacementHash = await hashToken(replacementToken);
+    statements.push(
+      db
+        .prepare(
+          `INSERT INTO arbiter_replacement_access
+           (negotiation_id, email, wallet, token_hash, proposed_by_role, status,
+            proposed_tx_hash, confirmed_tx_hash, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, 'proposed', ?, NULL, ?, ?)`,
+        )
+        .bind(
+          id,
+          email,
+          wallet,
+          replacementHash,
+          role,
+          transactionHash,
+          now,
+          now,
+        ),
+      db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "arbiter_replacement_proposed",
+        `Proposed ${email} (${wallet}) as the replacement arbiter. The other agreement party must confirm before the invitation can open the private record.`,
+        revision,
+        {
+          email,
+          wallet,
+          proposedByRole: role,
+          transactionHash,
+        },
+      ),
+    );
+    replacementInvite = {
+      email,
+      wallet,
+      token: replacementToken,
+      availableAfterConfirmation: true,
+    };
+  } else if (body.type === "arbiter_replacement_confirmed") {
+    if (role !== "landlord" && role !== "tenant") {
+      return json({ error: "Only a landlord or tenant may confirm a replacement arbiter." }, 403);
+    }
+    const replacement = await arbiterReplacementFor(db, id);
+    if (!replacement || replacement.status !== "proposed") {
+      return json({ error: "There is no unconfirmed replacement-arbiter proposal." }, 409);
+    }
+    if (replacement.proposed_by_role === role) {
+      return json({ error: "The other agreement party must confirm the replacement." }, 409);
+    }
+    const transactionHash = cleanText(body.transactionHash, 100);
+    if (!/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+      return json({ error: "The replacement confirmation transaction is invalid." }, 400);
+    }
+    statements.push(
+      db
+        .prepare(
+          `UPDATE arbiter_replacement_access
+           SET status = 'confirmed', confirmed_tx_hash = ?, updated_at = ?
+           WHERE negotiation_id = ? AND status = 'proposed'`,
+        )
+        .bind(transactionHash, now, id),
+      db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "arbiter_replacement_confirmed",
+        `Confirmed ${replacement.email} (${replacement.wallet}) as the replacement arbiter. Their private-record invitation is now active.`,
+        revision,
+        {
+          email: replacement.email,
+          wallet: replacement.wallet,
+          proposedByRole: replacement.proposed_by_role,
+          confirmedByRole: role,
+          transactionHash,
+        },
+      ),
+    );
+  } else if (body.type === "arbiter_replacement_cancelled") {
+    const replacement = await arbiterReplacementFor(db, id);
+    if (!replacement) {
+      return json({ error: "There is no pending replacement-arbiter proposal." }, 409);
+    }
+    if (replacement.proposed_by_role !== role) {
+      return json({ error: "Only the party who proposed this replacement may cancel it." }, 403);
+    }
+    const transactionHash = cleanText(body.transactionHash, 100);
+    if (!/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+      return json({ error: "The replacement cancellation transaction is invalid." }, 400);
+    }
+    statements.push(
+      db
+        .prepare(
+          `DELETE FROM negotiation_account_access
+           WHERE token_hash IN (
+             SELECT token_hash
+             FROM arbiter_replacement_account_access
+             WHERE negotiation_id = ?
+           )`,
+        )
+        .bind(id),
+      db
+        .prepare(
+          "DELETE FROM arbiter_replacement_account_access WHERE negotiation_id = ?",
+        )
+        .bind(id),
+      db.prepare("DELETE FROM arbiter_replacement_access WHERE negotiation_id = ?").bind(id),
+      db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "arbiter_replacement_cancelled",
+        `Cancelled the pending replacement of the arbiter. The nominee's private-record invitation was revoked.`,
+        revision,
+        {
+          email: replacement.email,
+          wallet: replacement.wallet,
+          transactionHash,
+        },
+      ),
+    );
+  } else if (body.type === "arbiter_replacement_accepted") {
+    const replacement = await arbiterReplacementFor(db, id);
+    if (
+      !replacement ||
+      replacement.status !== "confirmed" ||
+      (role !== "arbiter" && role !== "landlord" && role !== "tenant")
+    ) {
+      return json(
+        { error: "Only an authorized agreement participant may save the verified acceptance." },
+        403,
+      );
+    }
+    const transactionHash = cleanText(body.transactionHash, 100);
+    if (!/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+      return json({ error: "The replacement acceptance transaction is invalid." }, 400);
+    }
+    statements.push(
+      db
+        .prepare(
+          "DELETE FROM negotiation_account_access WHERE negotiation_id = ? AND role = 'arbiter'",
+        )
+        .bind(id),
+      db
+        .prepare(
+          "DELETE FROM arbiter_replacement_account_access WHERE negotiation_id = ?",
+        )
+        .bind(id),
+      db
+        .prepare(
+          `UPDATE agreement_negotiations
+           SET arbiter_email = ?, arbiter_wallet = ?, arbiter_token_hash = ?,
+               arbiter_approved_revision = revision, updated_at = ?
+           WHERE id = ?`,
+        )
+        .bind(
+          replacement.email,
+          replacement.wallet,
+          replacement.token_hash,
+          now,
+          id,
+        ),
+      db.prepare("DELETE FROM arbiter_replacement_access WHERE negotiation_id = ?").bind(id),
+      eventStatement(
+        db,
+        id,
+        now,
+        "arbiter",
+        "arbiter_replacement_accepted",
+        `Activated ${replacement.email} (${replacement.wallet}) as the current arbiter and revoked the former arbiter's private-record access.`,
+        revision,
+        {
+          email: replacement.email,
+          wallet: replacement.wallet,
+          previousEmail: row.arbiter_email || null,
+          previousWallet: row.arbiter_wallet || null,
+          transactionHash,
+        },
+      ),
+    );
+  } else if (body.type === "arbiter_replacement_invite_reset") {
+    if (role !== "landlord" && role !== "tenant") {
+      return json({ error: "Only a landlord or tenant may reset the nominee's invitation." }, 403);
+    }
+    const replacement = await arbiterReplacementFor(db, id);
+    if (!replacement) {
+      return json({ error: "There is no pending replacement-arbiter invitation." }, 409);
+    }
+    const replacementToken = randomToken();
+    const replacementHash = await hashToken(replacementToken);
+    statements.push(
+      db
+        .prepare(
+          `DELETE FROM negotiation_account_access
+           WHERE token_hash IN (
+             SELECT token_hash
+             FROM arbiter_replacement_account_access
+             WHERE negotiation_id = ?
+           )`,
+        )
+        .bind(id),
+      db
+        .prepare(
+          "DELETE FROM arbiter_replacement_account_access WHERE negotiation_id = ?",
+        )
+        .bind(id),
+      db
+        .prepare(
+          `UPDATE arbiter_replacement_access
+           SET token_hash = ?, updated_at = ?
+           WHERE negotiation_id = ?`,
+        )
+        .bind(replacementHash, now, id),
+      db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "arbiter_replacement_invite_reset",
+        `Reset the replacement-arbiter invitation for ${replacement.email}. Any prior nominee link was invalidated.`,
+        revision,
+        {
+          email: replacement.email,
+          wallet: replacement.wallet,
+          status: replacement.status,
+        },
+      ),
+    );
+    replacementInvite = {
+      email: replacement.email,
+      wallet: replacement.wallet,
+      token: replacementToken,
+      availableAfterConfirmation: true,
+    };
   } else if (body.type === "operations_reserve_paid") {
     if (role !== "tenant") {
       return json({ error: "Only the tenant may record the operations reserve payment." }, 403);
@@ -6578,6 +7102,7 @@ async function applyAction(request, env, id) {
     ) {
       return json({ error: "The recorded claim amendment is incomplete." }, 400);
     }
+    clearsPendingArbiterOnchain = amendedMicros === 0n;
     statements.push(
       db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
       eventStatement(
@@ -6661,6 +7186,23 @@ async function applyAction(request, env, id) {
         : body.decision === "dispute"
           ? "disputed the deduction in full"
           : `accepted ${acceptedAmount} shares and disputed the remainder`;
+    const stateAfterResponse = claimDisputeState(
+      [
+        ...recordedEvents,
+        {
+          actorRole: "tenant",
+          action: "claim_response_submitted",
+          metadata: {
+            tenantId: tenant.id,
+            acceptedAmount,
+          },
+        },
+      ],
+      tenantRows,
+    );
+    clearsPendingArbiterOnchain =
+      stateAfterResponse.responses.allResponded &&
+      stateAfterResponse.disputedMicros === 0n;
     statements.push(
       db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
       eventStatement(
@@ -6751,6 +7293,7 @@ async function applyAction(request, env, id) {
     ) {
       return json({ error: "The arbiter ruling record is incomplete." }, 400);
     }
+    clearsPendingArbiterOnchain = true;
     statements.push(
       db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
       eventStatement(
@@ -6887,6 +7430,8 @@ async function applyAction(request, env, id) {
         );
       }
     }
+    clearsPendingArbiterOnchain =
+      timeout === "no_claim_refund" || timeout === "arbiter_timeout_refund";
     statements.push(
       db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
       eventStatement(
@@ -6902,6 +7447,45 @@ async function applyAction(request, env, id) {
     );
   } else {
     return json({ error: "Unsupported agreement action." }, 400);
+  }
+
+  if (clearsPendingArbiterOnchain) {
+    const expiringReplacement = await arbiterReplacementFor(db, id);
+    if (expiringReplacement) {
+      statements.push(
+        db
+          .prepare(
+            `DELETE FROM negotiation_account_access
+             WHERE token_hash IN (
+               SELECT token_hash
+               FROM arbiter_replacement_account_access
+               WHERE negotiation_id = ?
+             )`,
+          )
+          .bind(id),
+        db
+          .prepare(
+            "DELETE FROM arbiter_replacement_account_access WHERE negotiation_id = ?",
+          )
+          .bind(id),
+        db.prepare("DELETE FROM arbiter_replacement_access WHERE negotiation_id = ?").bind(id),
+        eventStatement(
+          db,
+          id,
+          now,
+          "system",
+          "arbiter_replacement_expired",
+          "Revoked the unaccepted replacement-arbiter invitation because the verified onchain lifecycle action closed the agreement.",
+          revision,
+          {
+            email: expiringReplacement.email,
+            wallet: expiringReplacement.wallet,
+            closedByAction: body.type,
+            transactionHash: incomingTransactionHash,
+          },
+        ),
+      );
+    }
   }
 
   if (
@@ -7040,7 +7624,10 @@ async function applyAction(request, env, id) {
       // The recorded agreement action must not fail if optional email delivery is unavailable.
     }
   }
-  return json(await serialize(db, updated));
+  const serialized = await serialize(db, updated);
+  return replacementInvite
+    ? json({ record: serialized, invite: replacementInvite })
+    : json(serialized);
 }
 
 async function uploadEvidence(request, env) {

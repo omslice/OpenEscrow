@@ -300,6 +300,7 @@ export function AgreementCard({
                 id={id}
                 agreement={agreement}
                 negotiationAccess={negotiationAccess}
+                participantRecord={participantRecord}
                 onRefetch={onRefetch}
               />
             </DeferredLoadBoundary>
