@@ -355,6 +355,11 @@ detailed validation ledger.
   reports zero vulnerabilities, and a required candidate check imports the affected connector
   modules, verifies UUID generation/validation, and proves an undersized output buffer fails
   closed.
+- **Verified:** The logged-out production landing path now defers the 62 KB U.S. jurisdiction
+  registry until an address or agreement link needs it. A required Playwright budget measures the
+  built site at 62 JavaScript requests and 2,424,736 bytes, rejects an eager jurisdiction chunk,
+  and separately proves a linked agreement loads the chunk and persists its validated
+  jurisdiction hint before tracking the agreement.
 
 ## Remaining
 

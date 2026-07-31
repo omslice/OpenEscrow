@@ -17,7 +17,6 @@ import { useDiscoverAgreements } from "./lib/useDiscoverAgreements";
 import { PublicIntro } from "./components/PublicIntro";
 import { AccountCenter } from "./components/AccountCenter";
 import { DeferredLoadBoundary } from "./components/DeferredLoadBoundary";
-import { isJurisdictionCode, rememberJurisdiction } from "./lib/jurisdictions";
 import {
   roleLabel,
   selectWorkspaceRole,
@@ -317,19 +316,39 @@ function AppView({
 
   // A landlord's shared link (?id=X) should land directly on that agreement.
   useEffect(() => {
-    const idParam = new URLSearchParams(window.location.search).get("id");
+    const params = new URLSearchParams(window.location.search);
+    const idParam = params.get("id");
     if (idParam === null) return;
-    try {
-      const id = BigInt(idParam);
-      addId(id);
-      const jurisdictionParam = new URLSearchParams(window.location.search).get("jurisdiction");
-      if (jurisdictionParam && isJurisdictionCode(jurisdictionParam)) {
-        rememberJurisdiction(id, jurisdictionParam);
+    let active = true;
+
+    async function openLinkedAgreement() {
+      try {
+        const id = BigInt(idParam as string);
+        const jurisdictionParam = params.get("jurisdiction");
+        if (jurisdictionParam) {
+          try {
+            const { isJurisdictionCode, rememberJurisdiction } = await import(
+              "./lib/jurisdictions"
+            );
+            if (active && isJurisdictionCode(jurisdictionParam)) {
+              rememberJurisdiction(id, jurisdictionParam);
+            }
+          } catch {
+            // The agreement remains recoverable even if its optional jurisdiction hint cannot load.
+          }
+        }
+        if (!active) return;
+        addId(id);
+        setTab("agreements");
+      } catch {
+        // ignore malformed id in the URL
       }
-      setTab("agreements");
-    } catch {
-      // ignore malformed id in the URL
     }
+
+    void openLinkedAgreement();
+    return () => {
+      active = false;
+    };
     // Intentionally runs once on mount only - this is a one-time "arrived via link" check.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

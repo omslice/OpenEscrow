@@ -50,6 +50,10 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** Deferred workspace loading, bounded onchain event reads, shared receipt polling,
   and one-snapshot wallet discovery reduce initial and repeat network work without weakening role
   or receipt checks.
+- **Verified:** The public landing path no longer downloads the 62 KB U.S. jurisdiction registry
+  before an address or linked agreement needs it. A production-build browser budget now holds the
+  logged-out landing path to 62 JavaScript requests and 2.45 MB while proving an agreement link
+  loads and applies its jurisdiction hint on demand.
 - **Verified:** The public readiness endpoint returned HTTP 200 on 2026-07-30, but the deployed
   site is older than the saved candidate and exposes no exact release provenance. It reported
   eight required pilot actions: release provenance, email, scheduler, evidence keyring, activity
