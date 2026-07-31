@@ -7,6 +7,7 @@ import {
   complianceSnapshotMatchesProfile,
   evaluateComplianceSnapshot,
   isVersionedComplianceSnapshot,
+  normalizeComplianceEventInstant,
   normalizeAddressResolution,
 } from "../shared/us-compliance-engine.js";
 import { COMPLIANCE_SOURCE_REGISTRY } from "../shared/compliance-sources.js";
@@ -6224,7 +6225,10 @@ async function applyAction(request, env, id) {
     }
     const eventName = cleanText(body.eventName, 80);
     const occurredAt = cleanText(body.occurredAt, 40);
-    const occurredTime = new Date(occurredAt).getTime();
+    const normalizedOccurredAt = normalizeComplianceEventInstant(occurredAt);
+    const occurredTime = normalizedOccurredAt
+      ? new Date(normalizedOccurredAt).getTime()
+      : Number.NaN;
     const note = cleanText(body.note, 500);
     let agreementTerms;
     try {
@@ -6239,9 +6243,16 @@ async function applyAction(request, env, id) {
     ) {
       return json({ error: "That lifecycle event is not used by this compliance profile." }, 400);
     }
+    if (!normalizedOccurredAt) {
+      return json(
+        {
+          error:
+            "Enter a complete, possible event date and time with its timezone.",
+        },
+        400,
+      );
+    }
     if (
-      !occurredAt ||
-      Number.isNaN(occurredTime) ||
       occurredTime > Date.now() + 5 * 60 * 1000 ||
       occurredTime < new Date(row.created_at).getTime()
     ) {
@@ -6258,11 +6269,11 @@ async function applyAction(request, env, id) {
         now,
         role,
         "compliance_event_proposed",
-        `Proposed ${eventName} at ${new Date(occurredTime).toISOString()} for confirmation by the other party.`,
+        `Proposed ${eventName} at ${normalizedOccurredAt} for confirmation by the other party.`,
         revision,
         {
           eventName,
-          occurredAt: new Date(occurredTime).toISOString(),
+          occurredAt: normalizedOccurredAt,
           note: note || null,
         },
       ),

@@ -50,10 +50,15 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Deadline events that require party confirmation when based on off-chain facts
 - [x] Regression coverage for registry completeness, holiday-aware business days, conditional
   deadline branches, and address-applied local-overlay source gates
+- [x] Strict event and holiday date validation rejects impossible dates, timezone-ambiguous
+  event times, malformed holiday calendars, and inherited event fields without silently
+  scheduling a deadline
 - [x] Address-routed proposals show the profile research date and official state source, with a
   version-pinned source recheck that detects possible changes but cannot rewrite reviewed rules
   or finalized agreement snapshots
 - [ ] Select initial cities/counties and implement approved local overlays
+- [ ] Select and attest a property-timezone source and qualified local-time/DST policy for the
+  pilot; the current engine is deterministic only for explicit instants
 - [ ] Complete official-source baselines and resolve every change/unreachable-source alert
 - [ ] Obtain qualified counsel review for each launched jurisdiction and tenancy segment
 

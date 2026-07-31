@@ -60,6 +60,11 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** Validated U.S. addresses route to immutable, versioned state snapshots with
   conditional/business-day deadline regression coverage and fail-closed official-source gates.
   This is a best-effort research aid, not an assertion that every legal rule is complete.
+- **Verified:** Compliance event inputs now reject impossible dates and timestamps without an
+  explicit timezone before they can be stored. Business-day rules reject a malformed holiday
+  calendar instead of silently dropping bad dates, inherited event fields are ignored, combined
+  deadlines preserve calculation failures, and the participant timeline shows a plain-language
+  needs-review state rather than hiding the affected deadline. No legal rule changed.
 - **Verified:** Provider-neutral funding abstractions cover eligibility, one active attempt,
   cancellation, interruption, refund, failure, reconciliation, and unverified terminal outcomes.
   Real-money and production provider routes remain disabled.
@@ -114,6 +119,9 @@ production custody, or reliance on the compliance research as legal advice.
 ## Material unknowns
 
 - First pilot cities/counties and tenancy segment.
+- The authoritative property-timezone source and qualified local civil-time/DST interpretation
+  for each pilot market. The candidate stores explicit instants deterministically but does not
+  yet attest that a participant device timezone matches the property.
 - Provider sandbox eligibility, cancellation behavior, fees, support, and whether ACH is needed.
 - Timing and exact scope of qualified counsel and independent security reviews.
 - Results of separate-account and moderated human pilot sessions.

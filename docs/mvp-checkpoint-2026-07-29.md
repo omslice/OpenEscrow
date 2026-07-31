@@ -347,6 +347,13 @@ detailed validation ledger.
   conflicts with its validated address. The official-source gate also treats a future-dated
   verification as stale instead of trusting it indefinitely. These are integrity checks only;
   no legal rule, source, period, or jurisdiction profile changed.
+- **Verified:** Event timestamps now require a possible calendar date and an explicit UTC or
+  numeric offset at both the API and evaluator boundaries. Date-only deadline anchors remain
+  deterministic UTC dates; timezone-less event times, impossible dates, malformed holiday
+  calendars, and inherited event properties fail closed. Participant-facing timeline copy keeps
+  the affected requirement visible as needing review, and the entry form states that the testnet
+  uses the participant device timezone without yet attesting the property's timezone. Server and
+  client regressions cover the failure states. No jurisdiction rule or deadline period changed.
 - **Verified:** The critical Record workspace now introduces the complete report, encrypted
   backup, optional public proof, and independent verification in plain language. AES-256-GCM,
   SHA-256, and the exact fingerprint remain available in collapsed technical disclosures. The
@@ -431,6 +438,10 @@ detailed validation ledger.
 ## Material unknowns
 
 - Which cities/counties should receive the next local compliance overlays.
+- Which authoritative service should attest the property's IANA timezone, and how qualified
+  reviewers want local civil time and daylight-saving transitions applied in each pilot market.
+  The current candidate stores explicit instants deterministically but cannot prove that the
+  participant device timezone matches the property.
 - Whether the pilot needs a separate ACH/bank-deposit path.
 - Provider sandbox eligibility, cancellation semantics, fees, and support requirements until an
   actual provider sandbox is configured and exercised.

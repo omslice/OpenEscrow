@@ -23,6 +23,11 @@ import {
   reduceNegotiationFeedback,
 } from "../lib/negotiationFeedback";
 import { useVisiblePolling } from "../lib/visiblePolling";
+import {
+  complianceDeadlineFallbackText,
+  complianceDeadlineNeedsReview,
+  shouldShowComplianceDeadline,
+} from "../lib/complianceDeadlineDisplay";
 import { getDepositAssetForTerms } from "../../shared/deposit-assets.js";
 import {
   dynamicComplianceFactsForProfile,
@@ -202,6 +207,8 @@ function AgreementNegotiationView({
   const refreshGuard = useRef(createNegotiationRefreshGuard());
   const refreshInFlight = useRef<Promise<void> | null>(null);
   const [assetConsent, setAssetConsent] = useState(false);
+  const deviceTimeZone =
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "your device timezone";
 
   const refresh = useCallback(() => {
     if (refreshInFlight.current) return refreshInFlight.current;
@@ -665,6 +672,11 @@ function AgreementNegotiationView({
                 onChange={(event) => setComplianceEventOccurredAt(event.target.value)}
               />
             </label>
+            <p className="field-help">
+              OpenEscrow saves this using your device timezone ({deviceTimeZone}). Enter the time
+              as it occurred at the property and ask the other party to verify it. This testnet
+              does not yet verify the property&apos;s timezone automatically.
+            </p>
             <label>
               Non-sensitive note
               <textarea
@@ -843,8 +855,7 @@ function AgreementNegotiationView({
                 ]
                   .filter(
                     (deadline: { status: string }) =>
-                      deadline.status === "scheduled" ||
-                      deadline.status === "waiting-for-event",
+                      shouldShowComplianceDeadline(deadline.status),
                   )
                   .map(
                     (deadline: {
@@ -853,11 +864,18 @@ function AgreementNegotiationView({
                       status: string;
                       dueAt: string | null;
                     }) => (
-                      <li key={deadline.id}>
+                      <li
+                        className={
+                          complianceDeadlineNeedsReview(deadline.status)
+                            ? "compliance-deadline-needs-review"
+                            : undefined
+                        }
+                        key={deadline.id}
+                      >
                         {deadline.label}:{" "}
                         {deadline.dueAt
                           ? new Date(deadline.dueAt).toLocaleString()
-                          : "waiting for a confirmed event"}
+                          : complianceDeadlineFallbackText(deadline.status)}
                       </li>
                     ),
                   )}

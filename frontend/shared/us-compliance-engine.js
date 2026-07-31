@@ -3,7 +3,8 @@ import {
   resolveComplianceOverlays,
 } from "./us-compliance-overlays.js";
 
-const ISO_DATE = /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:\d{2})?)?$/;
+const ISO_DATE = /^(\d{4})-(\d{2})-(\d{2})(?:T(\d{2}):(\d{2})(?::(\d{2})(?:\.(\d{1,3}))?)?(Z|[+-](\d{2}):(\d{2})))?$/;
+const ISO_DATE_ONLY = /^\d{4}-\d{2}-\d{2}$/;
 const VERSIONED_COMPLIANCE_SNAPSHOT_SCHEMAS = new Set([
   "openescrow.us-compliance-profile.v3",
   "openescrow.us-compliance-profile.v4",
@@ -241,6 +242,7 @@ function validDeadlineRule(rule) {
 }
 
 function evaluateDeadlineRules(rules, facts, events, holidayDates) {
+  const holidayCalendarValid = normalizeHolidayDates(holidayDates) !== null;
   return rules.map((rule) => {
     if (!validDeadlineRule(rule)) {
       return Object.freeze({
@@ -251,9 +253,22 @@ function evaluateDeadlineRules(rules, facts, events, holidayDates) {
       });
     }
     const applicability = conditionStatus(rule.condition, facts);
-    const start = dateFrom(events[rule.trigger]);
+    const hasEvent = Object.prototype.hasOwnProperty.call(events, rule.trigger);
+    const eventValue = hasEvent ? events[rule.trigger] : null;
+    const eventProvided =
+      hasEvent &&
+      eventValue !== null &&
+      eventValue !== undefined &&
+      (typeof eventValue !== "string" || eventValue.trim().length > 0);
+    const start = eventProvided ? dateFrom(eventValue) : null;
+    const invalidEvent = eventProvided && !start;
+    const invalidHolidayCalendar =
+      rule.dayType === "business" && !holidayCalendarValid;
     const dueAt =
-      applicability === "applies" && start
+      applicability === "applies" &&
+      start &&
+      !invalidEvent &&
+      !invalidHolidayCalendar
         ? calculateDeadline(start, rule.days, rule.dayType, holidayDates)
         : null;
     return Object.freeze({
@@ -262,11 +277,15 @@ function evaluateDeadlineRules(rules, facts, events, holidayDates) {
       status:
         applicability !== "applies"
           ? applicability
-          : start
-            ? dueAt
-              ? "scheduled"
-              : "invalid-rule"
-            : "waiting-for-event",
+          : invalidEvent
+            ? "invalid-event"
+            : !start
+              ? "waiting-for-event"
+              : invalidHolidayCalendar
+                ? "invalid-holiday-calendar"
+                : dueAt
+                  ? "scheduled"
+                  : "invalid-rule",
       dueAt,
     });
   });
@@ -279,8 +298,8 @@ function combinedDeadlineEvaluations(deadlines) {
         (deadline) => deadline.comparison === comparison,
       );
       if (members.length < 2) return null;
-      const hasInvalidRule = members.some(
-        (deadline) => deadline.status === "invalid-rule",
+      const invalidMember = members.find(
+        (deadline) => deadline.status.startsWith("invalid-"),
       );
       const scheduled = members.filter(
         (deadline) => deadline.status === "scheduled" && deadline.dueAt,
@@ -288,7 +307,7 @@ function combinedDeadlineEvaluations(deadlines) {
       const dueTimes = scheduled.map((deadline) =>
         new Date(deadline.dueAt).getTime(),
       );
-      const fullyScheduled = !hasInvalidRule && scheduled.length === members.length;
+      const fullyScheduled = !invalidMember && scheduled.length === members.length;
       const dueTime =
         fullyScheduled && comparison === "earlier-of"
           ? Math.min(...dueTimes)
@@ -300,8 +319,8 @@ function combinedDeadlineEvaluations(deadlines) {
         label: `Controlling ${comparison.replace("-", " ")} deadline`,
         comparison,
         memberIds: Object.freeze(members.map((deadline) => deadline.id)),
-        status: hasInvalidRule
-          ? "invalid-rule"
+        status: invalidMember
+          ? invalidMember.status
           : fullyScheduled
             ? "scheduled"
             : "waiting-for-event",
@@ -311,14 +330,87 @@ function combinedDeadlineEvaluations(deadlines) {
     .filter(Boolean);
 }
 
+function isLeapYear(year) {
+  return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+}
+
+function validCalendarDate(year, month, day) {
+  const daysInMonth = [
+    31,
+    isLeapYear(year) ? 29 : 28,
+    31,
+    30,
+    31,
+    30,
+    31,
+    31,
+    30,
+    31,
+    30,
+    31,
+  ];
+  return month >= 1 && month <= 12 && day >= 1 && day <= daysInMonth[month - 1];
+}
+
 function dateFrom(value) {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return new Date(value.getTime());
   }
   const text = cleanString(value, 40);
-  if (!text || !ISO_DATE.test(text)) return null;
+  const match = text ? ISO_DATE.exec(text) : null;
+  if (!match) return null;
+  const [
+    ,
+    yearText,
+    monthText,
+    dayText,
+    hourText,
+    minuteText,
+    secondText,
+    ,
+    zone,
+    offsetHourText,
+    offsetMinuteText,
+  ] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  if (!validCalendarDate(year, month, day)) return null;
+  if (hourText === undefined) {
+    return new Date(`${yearText}-${monthText}-${dayText}T00:00:00.000Z`);
+  }
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = secondText === undefined ? 0 : Number(secondText);
+  if (hour > 23 || minute > 59 || second > 59) return null;
+  if (
+    zone !== "Z" &&
+    (Number(offsetHourText) > 23 || Number(offsetMinuteText) > 59)
+  ) {
+    return null;
+  }
   const parsed = new Date(text);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+export function normalizeComplianceEventInstant(value) {
+  const text = cleanString(value, 40);
+  if (!text || ISO_DATE_ONLY.test(text)) return null;
+  return dateFrom(text)?.toISOString() || null;
+}
+
+function holidayDateFrom(value) {
+  if (value instanceof Date) return dateFrom(value);
+  const text = cleanString(value, 40);
+  return ISO_DATE_ONLY.test(text) ? dateFrom(text) : null;
+}
+
+function normalizeHolidayDates(holidayDates) {
+  if (!Array.isArray(holidayDates)) return null;
+  const dates = holidayDates.map(holidayDateFrom);
+  return dates.some((date) => !date)
+    ? null
+    : new Set(dates.map(utcDateKey));
 }
 
 function utcDateKey(date) {
@@ -356,12 +448,9 @@ export function calculateDeadline(startValue, days, dayType = "calendar", holida
   ) {
     return null;
   }
-  const holidays = new Set(
-    holidayDates
-      .map((value) => dateFrom(value))
-      .filter(Boolean)
-      .map(utcDateKey),
-  );
+  const holidays =
+    dayType === "business" ? normalizeHolidayDates(holidayDates) : new Set();
+  if (!holidays) return null;
   const due =
     dayType === "business"
       ? addBusinessDays(start, count, holidays)
@@ -409,7 +498,12 @@ export function evaluateCompliance(profile, input = {}) {
     ...normalizeComplianceFacts(rawFacts),
   });
   const events = input.events && typeof input.events === "object" ? input.events : {};
-  const holidayDates = Array.isArray(input.holidayDates) ? input.holidayDates : [];
+  const holidayDates = Object.prototype.hasOwnProperty.call(
+    input,
+    "holidayDates",
+  )
+    ? input.holidayDates
+    : [];
   const deadlines = evaluateDeadlineRules(
     profile.deadlines,
     facts,
@@ -502,7 +596,10 @@ export function evaluateComplianceSnapshot(snapshot, input = {}) {
   });
   const events =
     input.events && typeof input.events === "object" ? input.events : {};
-  const holidayDates = Array.isArray(input.holidayDates)
+  const holidayDates = Object.prototype.hasOwnProperty.call(
+    input,
+    "holidayDates",
+  )
     ? input.holidayDates
     : [];
   const deadlines = evaluateDeadlineRules(

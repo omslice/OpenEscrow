@@ -9,6 +9,7 @@ import {
   calculateDeadline,
   evaluateCompliance,
   evaluateComplianceSnapshot,
+  normalizeComplianceEventInstant,
   normalizeAddressResolution,
 } from "../shared/us-compliance-engine.js";
 import {
@@ -960,6 +961,96 @@ test("versioned business-day deadlines fail closed on unsupported rule metadata"
   assert.equal(rejectedCombined.deadlines[0].status, "invalid-rule");
   assert.equal(rejectedCombined.combinedDeadlines[0].status, "invalid-rule");
   assert.equal(rejectedCombined.combinedDeadlines[0].dueAt, null);
+});
+
+test("deadline dates reject impossible, timezone-ambiguous, and malformed holiday input", () => {
+  assert.equal(normalizeComplianceEventInstant("2027-01-01T12:00:00"), null);
+  assert.equal(normalizeComplianceEventInstant("2027-01-01"), null);
+  assert.equal(
+    normalizeComplianceEventInstant("2027-01-01T12:00:00-08:00"),
+    "2027-01-01T20:00:00.000Z",
+  );
+  assert.equal(calculateDeadline("2027-02-29", 1), null);
+  assert.equal(calculateDeadline("2027-13-01", 1), null);
+  assert.equal(calculateDeadline("2027-01-01T24:00:00Z", 1), null);
+  assert.equal(calculateDeadline("2027-01-01T12:00:00", 1), null);
+  assert.equal(calculateDeadline("2027-01-01T12:00", 1), null);
+  assert.equal(
+    calculateDeadline("2028-02-29", 1),
+    "2028-03-01T00:00:00.000Z",
+  );
+  assert.equal(
+    calculateDeadline("2027-01-01T12:00:00-08:00", 1),
+    "2027-01-02T20:00:00.000Z",
+  );
+  assert.equal(
+    calculateDeadline("2027-01-08T12:00:00Z", 1, "business", [
+      "2027-02-29",
+    ]),
+    null,
+  );
+  assert.equal(
+    calculateDeadline("2027-01-08T12:00:00Z", 1, "business", [
+      "2027-01-11T00:00:00Z",
+    ]),
+    null,
+  );
+  assert.equal(
+    calculateDeadline("2027-01-08T12:00:00Z", 1, "calendar", [
+      "not-used-by-calendar-rules",
+    ]),
+    "2027-01-09T12:00:00.000Z",
+  );
+
+  const arizonaProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "AZ",
+  );
+  const snapshot = buildComplianceSnapshot(arizonaProfile, {
+    provider: "photon-openstreetmap",
+    providerFeatureId: "R:arizona:strict-deadline-input",
+    label: "1 Main Street, Phoenix, AZ 85001",
+    countryCode: "US",
+    stateCode: "AZ",
+    city: "Phoenix",
+    county: "Maricopa County",
+    postalCode: "85001",
+    latitude: 33.4484,
+    longitude: -112.074,
+  });
+
+  for (const invalidEvent of [
+    "2027-02-29",
+    "2027-01-01T12:00:00",
+    "2027-01-01T24:00:00Z",
+  ]) {
+    const evaluated = evaluateComplianceSnapshot(snapshot, {
+      events: { statutoryClockStartedAt: invalidEvent },
+    });
+    assert.equal(evaluated.deadlines[0].status, "invalid-event");
+    assert.equal(evaluated.deadlines[0].dueAt, null);
+  }
+
+  const invalidHolidayCalendar = evaluateComplianceSnapshot(snapshot, {
+    events: { statutoryClockStartedAt: "2027-01-08T12:00:00Z" },
+    holidayDates: ["2027-02-29"],
+  });
+  assert.equal(
+    invalidHolidayCalendar.deadlines[0].status,
+    "invalid-holiday-calendar",
+  );
+  assert.equal(invalidHolidayCalendar.deadlines[0].dueAt, null);
+
+  const inheritedEvents = Object.create({
+    statutoryClockStartedAt: "2027-01-08T12:00:00Z",
+  });
+  const inheritedEventEvaluation = evaluateComplianceSnapshot(snapshot, {
+    events: inheritedEvents,
+  });
+  assert.equal(
+    inheritedEventEvaluation.deadlines[0].status,
+    "waiting-for-event",
+  );
+  assert.equal(inheritedEventEvaluation.deadlines[0].dueAt, null);
 });
 
 test("Florida conditional deadline stages remain fact-gated and event-gated", () => {
@@ -2755,6 +2846,28 @@ test("actual compliance events require confirmation by the other agreement side"
     },
   );
   assert.equal(unrelatedEvent.status, 400);
+
+  for (const invalidOccurredAt of [
+    occurredAt.slice(0, 19),
+    "2026-02-29T12:00:00Z",
+    "2026-07-31T24:00:00Z",
+  ]) {
+    const invalidEvent = await act(
+      db,
+      created.record.id,
+      created.access.landlord,
+      {
+        type: "propose_compliance_event",
+        eventName: "possessionReturnedAt",
+        occurredAt: invalidOccurredAt,
+      },
+    );
+    assert.equal(invalidEvent.status, 400);
+    assert.equal(
+      (await invalidEvent.json()).error,
+      "Enter a complete, possible event date and time with its timezone.",
+    );
+  }
 
   const proposed = await jsonResponse(
     await act(db, created.record.id, created.access.landlord, {

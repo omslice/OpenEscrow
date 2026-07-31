@@ -1475,6 +1475,12 @@
   font-size: 12px;
 }
 
+.compliance-deadline-needs-review {
+  margin-top: 6px;
+  color: var(--warning);
+  font-weight: 700;
+}
+
 .amount-tile {
   padding: 12px;
   border-radius: 8px;

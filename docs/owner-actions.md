@@ -28,6 +28,11 @@ provider or hosting control that owns the secret.
   State law is routed nationwide, but only Chicago, Seattle, and Portland have
   reviewed city overlays. Name the cities/counties most likely to be used in
   the first pilot so Codex can prioritize official-source local profiles.
+- [ ] **Approve a property-timezone source and local-time policy for the pilot.** The candidate
+  rejects ambiguous stored timestamps and shows the participant's device timezone, but it cannot
+  yet attest that the device and property share the same IANA timezone or decide how a legal
+  deadline should treat daylight-saving transitions. Select this with the address provider and
+  qualified reviewer before relying on calculated deadlines in a supervised pilot.
 - [ ] **Verify a notification sending domain and create a sending-only Resend
   key.** Prefer a dedicated subdomain such as `notify.openescrow.org`.
 - [ ] **Create and safely store hosted runtime secrets.** Generate an
