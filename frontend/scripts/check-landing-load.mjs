@@ -43,6 +43,17 @@ function observeLocalScripts(page) {
   return assetNames;
 }
 
+async function isolateFromExternalProviders(context) {
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin === baseUrl) {
+      await route.continue();
+      return;
+    }
+    await route.abort("failed");
+  });
+}
+
 async function totalAssetBytes(assetNames) {
   const sizes = await Promise.all(
     [...assetNames].map(async (assetName) => (await stat(path.join(assetsRoot, assetName))).size),
@@ -78,6 +89,7 @@ try {
   browser = await chromium.launch({ headless: true });
 
   const landingContext = await browser.newContext();
+  await isolateFromExternalProviders(landingContext);
   await landingContext.grantPermissions(
     ["clipboard-read", "clipboard-write"],
     { origin: baseUrl },
@@ -123,13 +135,21 @@ try {
     landingBytes <= 2_270_000,
     `The public landing page loaded ${landingBytes} JavaScript bytes; expected at most 2270000.`,
   );
-  const googleSignIn = landingPage.getByRole("button", {
-    name: "Continue with Google",
+  const retrySecureSignIn = landingPage.getByRole("button", {
+    name: "Retry secure sign-in",
   });
-  await googleSignIn.waitFor({ state: "visible" });
+  await retrySecureSignIn.waitFor({ state: "visible" });
   await landingPage
-    .getByRole("button", { name: "Continue with a wallet" })
+    .getByRole("alert")
+    .filter({ hasText: "Sign-in is taking longer than expected" })
     .waitFor({ state: "visible" });
+  assert.equal(
+    await landingPage
+      .getByRole("heading", { name: "A better way to handle rental deposits." })
+      .count(),
+    1,
+    "An account-provider outage must not hide the public landing page.",
+  );
   assert.equal(
     await landingPage.locator("details.notification-center").count(),
     0,
@@ -185,7 +205,7 @@ try {
     .getByRole("button", { name: "Try the testnet demo" })
     .click();
   await landingPage.waitForFunction(
-    () => document.activeElement?.textContent?.trim() === "Continue with Google",
+    () => document.activeElement?.textContent?.trim() === "Retry secure sign-in",
   );
   await landingPage.setViewportSize({ width: 390, height: 844 });
   await landingPage
@@ -198,6 +218,11 @@ try {
   assert.ok(
     mobilePromptButtonBox && mobilePromptButtonBox.height >= 44,
     "The public sign-in recovery action must remain a full-size mobile touch target.",
+  );
+  const mobileSignInRetryBox = await retrySecureSignIn.boundingBox();
+  assert.ok(
+    mobileSignInRetryBox && mobileSignInRetryBox.height >= 44,
+    "The account-provider retry must remain a full-size mobile touch target.",
   );
   const mobileDonationButtonBox = await copyDonationAddress.boundingBox();
   assert.ok(
@@ -214,6 +239,7 @@ try {
   await landingContext.close();
 
   const linkedContext = await browser.newContext();
+  await isolateFromExternalProviders(linkedContext);
   const linkedPage = await linkedContext.newPage();
   const linkedAssets = observeLocalScripts(linkedPage);
   await linkedPage.goto(`${baseUrl}/?id=43&jurisdiction=us-ca`, {
@@ -229,7 +255,10 @@ try {
   );
   await linkedContext.close();
 
-  const invitationContext = await browser.newContext();
+  const invitationContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+  });
+  await isolateFromExternalProviders(invitationContext);
   const invitationPage = await invitationContext.newPage();
   const invitationAssets = observeLocalScripts(invitationPage);
   await invitationPage.goto(
@@ -237,20 +266,29 @@ try {
     { waitUntil: "domcontentloaded" },
   );
   await invitationPage
-    .getByRole("button", { name: "Continue as tenant with Google" })
+    .getByRole("heading", { name: "Secure sign-in is unavailable" })
     .waitFor({ state: "visible" });
-  const invitationNotificationControl = invitationPage.locator(
-    "details.notification-center > summary",
+  await invitationPage
+    .getByRole("button", { name: "Retry secure sign-in" })
+    .waitFor({ state: "visible" });
+  const invitationRetryBox = await invitationPage
+    .getByRole("button", { name: "Retry secure sign-in" })
+    .boundingBox();
+  assert.ok(
+    invitationRetryBox && invitationRetryBox.height >= 44,
+    "Invitation sign-in recovery must remain a full-size mobile touch target.",
   );
   assert.equal(
-    await invitationNotificationControl.count(),
-    1,
-    "A valid invitation workspace must retain its agreement notification control.",
+    await invitationPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "Invitation sign-in recovery must not create horizontal overflow at mobile width.",
   );
-  assert.match(
-    (await invitationNotificationControl.getAttribute("aria-label")) || "",
-    /^Notifications(?: \(\d+ unread\))?$/,
-    "The invitation notification disclosure must retain an accessible label.",
+  assert.equal(
+    await invitationPage.locator("details.notification-center").count(),
+    0,
+    "A provider outage must not expose invitation workspace controls before authentication.",
   );
   assert.equal(
     new URL(invitationPage.url()).searchParams.has("token"),
@@ -258,18 +296,25 @@ try {
     "A role-restricted invitation must scrub its bearer token from the URL.",
   );
   assert.equal(
-    [...invitationAssets].some((assetName) =>
-      assetName.startsWith("WorkspaceApp-"),
+    await invitationPage.evaluate(
+      () =>
+        JSON.parse(
+          window.sessionStorage.getItem(
+            "openescrow.negotiationAccess.pilot-proposal.tenant",
+          ) || "{}",
+        ).token,
     ),
-    true,
-    "A specific invitation link must load the role-aware workspace.",
+    "pilot-secret",
+    "A provider outage must retain the scrubbed invitation only in the current tab.",
   );
   assert.equal(
-    [...invitationAssets].some((assetName) =>
-      assetName.startsWith("WalletProviders-"),
+    [...invitationAssets].some(
+      (assetName) =>
+        assetName.startsWith("WorkspaceApp-") ||
+        assetName.startsWith("WalletProviders-"),
     ),
-    true,
-    "A specific invitation link must load its blockchain wallet providers with the workspace.",
+    false,
+    "A provider outage must fail closed before loading invitation workspace or wallet code.",
   );
   assert.equal(
     await invitationPage
@@ -280,75 +325,8 @@ try {
   );
   await invitationContext.close();
 
-  const recoverableInvitationContext = await browser.newContext();
-  const recoverableInvitationPage =
-    await recoverableInvitationContext.newPage();
-  const workspaceAssetPattern = "**/assets/WorkspaceApp-*.js";
-  await recoverableInvitationPage.route(
-    workspaceAssetPattern,
-    async (route) => {
-      await route.abort("failed");
-    },
-  );
-  await recoverableInvitationPage.goto(
-    `${baseUrl}/?proposal=recoverable-proposal&token=recoverable-secret&invite=tenant`,
-    { waitUntil: "domcontentloaded" },
-  );
-  await recoverableInvitationPage
-    .getByRole("heading", { name: "OpenEscrow couldn't finish loading" })
-    .waitFor({ state: "visible" });
-  assert.equal(
-    new URL(recoverableInvitationPage.url()).searchParams.has("token"),
-    false,
-    "A failed workspace download must not put the invitation token back in the URL.",
-  );
-  assert.equal(
-    await recoverableInvitationPage.evaluate(
-      () =>
-        JSON.parse(
-          window.sessionStorage.getItem(
-            "openescrow.negotiationAccess.recoverable-proposal.tenant",
-          ) || "{}",
-        ).token,
-    ),
-    "recoverable-secret",
-    "A scrubbed invitation must retain same-tab recovery before the workspace downloads.",
-  );
-  assert.equal(
-    await recoverableInvitationPage.evaluate(
-      () =>
-        window.localStorage.getItem(
-          "openescrow.negotiationAccess.recoverable-proposal.tenant",
-        ),
-    ),
-    null,
-    "A bearer invitation must not be promoted into persistent local storage.",
-  );
-  await recoverableInvitationPage.unroute(workspaceAssetPattern);
-  await recoverableInvitationPage
-    .getByRole("button", { name: "Reload OpenEscrow" })
-    .click();
-  await recoverableInvitationPage
-    .getByRole("button", { name: "Continue as tenant with Google" })
-    .waitFor({ state: "visible" });
-  assert.equal(
-    new URL(recoverableInvitationPage.url()).searchParams.has("token"),
-    false,
-    "Reload recovery must keep the bearer token out of browser history.",
-  );
-  assert.equal(
-    await recoverableInvitationPage.evaluate(
-      () =>
-        window.localStorage.getItem(
-          "openescrow.negotiationAccess.recoverable-proposal.tenant",
-        ),
-    ),
-    null,
-    "Workspace startup must keep invitation recovery scoped to the current tab.",
-  );
-  await recoverableInvitationContext.close();
-
   const invalidInvitationContext = await browser.newContext();
+  await isolateFromExternalProviders(invalidInvitationContext);
   const invalidInvitationPage = await invalidInvitationContext.newPage();
   const invalidInvitationAssets = observeLocalScripts(invalidInvitationPage);
   await invalidInvitationPage.goto(
@@ -356,7 +334,7 @@ try {
     { waitUntil: "domcontentloaded" },
   );
   await invalidInvitationPage
-    .getByRole("button", { name: "Continue with Google" })
+    .getByRole("heading", { name: "A better way to handle rental deposits." })
     .waitFor({ state: "visible" });
   assert.equal(
     new URL(invalidInvitationPage.url()).searchParams.has("token"),
@@ -385,13 +363,14 @@ try {
   await invalidInvitationContext.close();
 
   const roleHintContext = await browser.newContext();
+  await isolateFromExternalProviders(roleHintContext);
   const roleHintPage = await roleHintContext.newPage();
   const roleHintAssets = observeLocalScripts(roleHintPage);
   await roleHintPage.goto(`${baseUrl}/?invite=tenant`, {
     waitUntil: "domcontentloaded",
   });
   await roleHintPage
-    .getByRole("button", { name: "Continue with Google" })
+    .getByRole("heading", { name: "A better way to handle rental deposits." })
     .waitFor({ state: "visible" });
   assert.equal(
     new URL(roleHintPage.url()).searchParams.has("invite"),
@@ -408,6 +387,7 @@ try {
   await roleHintContext.close();
 
   const agreementInvitationContext = await browser.newContext();
+  await isolateFromExternalProviders(agreementInvitationContext);
   const agreementInvitationPage = await agreementInvitationContext.newPage();
   const agreementInvitationAssets = observeLocalScripts(
     agreementInvitationPage,
@@ -417,14 +397,14 @@ try {
     { waitUntil: "domcontentloaded" },
   );
   await agreementInvitationPage
-    .getByRole("button", { name: "Continue as tenant with Google" })
+    .getByRole("heading", { name: "Secure sign-in is unavailable" })
     .waitFor({ state: "visible" });
   assert.equal(
     [...agreementInvitationAssets].some((assetName) =>
       assetName.startsWith("WorkspaceApp-"),
     ),
-    true,
-    "A specific agreement invitation must load the role-aware workspace.",
+    false,
+    "An agreement invitation must fail closed before workspace code during a provider outage.",
   );
   assert.equal(
     new URL(agreementInvitationPage.url()).searchParams.get("invite"),
@@ -434,7 +414,7 @@ try {
   await agreementInvitationContext.close();
 
   console.log(
-    `Landing-load check passed: ${landingAssets.size} JavaScript file(s), ${landingBytes} bytes, no eager workspace, jurisdiction registry, or blockchain wallet providers; clean visits show neutral sign-in, agreement hints remain deferred, and invitations retain role-aware entry plus same-tab load recovery.`,
+    `Landing-load check passed: ${landingAssets.size} JavaScript file(s), ${landingBytes} bytes, no eager workspace, jurisdiction registry, or blockchain wallet providers; the public explanation remains available during an account-provider outage, invitations retain same-tab recovery, and restricted entry fails closed before workspace code.`,
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

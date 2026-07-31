@@ -1091,6 +1091,34 @@
   flex-wrap: wrap;
 }
 
+.account-connection-controls {
+  max-width: 360px;
+  align-items: center;
+}
+
+.account-connection-note,
+.account-connection-error {
+  flex-basis: 100%;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.account-connection-error {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.account-connection-page:not(.delayed) {
+  border-color: var(--border);
+  background: var(--surface);
+}
+
+.account-connection-page .load-failure-action:disabled {
+  cursor: wait;
+}
+
 .account-summary {
   justify-content: flex-end;
   flex-wrap: wrap;
@@ -4010,6 +4038,19 @@ a.btn.disabled {
   .account-entry,
   .account-summary {
     justify-content: flex-start;
+  }
+
+  .account-connection-controls {
+    max-width: none;
+  }
+
+  .account-connection-controls .btn {
+    min-height: 44px;
+  }
+
+  .account-connection-note,
+  .account-connection-error {
+    text-align: left;
   }
 
   .account-grid {

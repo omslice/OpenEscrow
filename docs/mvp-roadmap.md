@@ -68,18 +68,21 @@ production custody, or reliance on the compliance research as legal advice.
   repeat network work without weakening account recognition, invitation roles, or receipt checks.
 - **Verified:** A clean logged-out visit now shows neutral Google/wallet sign-in instead of loading
   the agreement workspace or asking for a role. Only a valid invitation can preselect a role, and
-  its bearer token is scrubbed before the lazy workspace loads. The production browser budget
-  holds the landing path to 48 or fewer JavaScript requests and 2.27 MB or less, keeps the 62 KB
-  U.S. jurisdiction registry and blockchain wallet providers deferred, verifies mobile access and
-  focus, and proves linked agreements and valid invitations retain their intended routing. A
-  failed first workspace download can be reloaded in the same tab without restoring the bearer to
-  the URL or losing the exact invitation role.
+  its bearer token is scrubbed before the lazy workspace loads. If the account provider is
+  unreachable, the public explanation renders immediately with a focused retry instead of an
+  indefinite loading screen; restricted invitations retain their token only in the current tab
+  and fail closed before workspace or wallet code loads. The production browser budget holds the
+  landing path to 48 or fewer JavaScript requests and 2.27 MB or less, keeps the 62 KB U.S.
+  jurisdiction registry and blockchain wallet providers deferred, and verifies mobile access and
+  focus. A provider-independent rendered regression separately proves normal Google/wallet entry,
+  exact invitation roles, and same-tab recovery from a failed first workspace download without
+  restoring the bearer to the URL.
 - **Verified:** The shared public/workspace footer explains testnet file safety in plain language
   and offers an accessible, mobile-size control to copy the optional `omslice.eth` donation
   address. Donations are explicitly separate from deposits and product access.
 - **Verified:** The clean signed-out landing page omits the empty agreement-notification bell.
-  Notification access remains available after authentication and on valid role-locked invitation
-  workspaces.
+  Provider-independent rendered coverage proves notification access remains available after
+  authentication and on valid role-locked invitation workspaces.
 - **Verified:** The public readiness endpoint returned HTTP 200 on 2026-07-30, but the deployed
   site is older than the saved candidate and exposes no exact release provenance. It reported
   eight required pilot actions: release provenance, email, scheduler, evidence keyring, activity

@@ -375,6 +375,103 @@ try {
     });
   });
 
+  const invitationContext = await browser.newContext();
+  const invitationPage = await invitationContext.newPage();
+  await invitationPage.goto(
+    `${baseUrl}/?proposal=pilot-proposal&token=pilot-secret&invite=tenant&public-access-test=1`,
+    { waitUntil: "domcontentloaded" },
+  );
+  await invitationPage
+    .getByRole("button", { name: "Continue as tenant with Google" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    new URL(invitationPage.url()).searchParams.has("token"),
+    false,
+    "A role-aware invitation must scrub its bearer token before sign-in.",
+  );
+  assert.equal(
+    await invitationPage.locator("details.notification-center > summary").count(),
+    1,
+    "A loaded invitation workspace must retain its agreement notification control.",
+  );
+  assert.equal(
+    await invitationPage.getByRole("button", { name: /I am a landlord/ }).count(),
+    0,
+    "A specific invitation must not expose an unrestricted role selector.",
+  );
+  await invitationContext.close();
+
+  const recoverableInvitationContext = await browser.newContext();
+  const recoverableInvitationPage = await recoverableInvitationContext.newPage();
+  const workspaceModulePattern = "**/src/WorkspaceApp.tsx*";
+  await recoverableInvitationPage.route(
+    workspaceModulePattern,
+    async (route) => route.abort("failed"),
+  );
+  await recoverableInvitationPage.goto(
+    `${baseUrl}/?proposal=recoverable-proposal&token=recoverable-secret&invite=tenant&public-access-test=1`,
+    { waitUntil: "domcontentloaded" },
+  );
+  await recoverableInvitationPage
+    .getByRole("heading", { name: "OpenEscrow couldn't finish loading" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    new URL(recoverableInvitationPage.url()).searchParams.has("token"),
+    false,
+    "A failed workspace download must not put the invitation token back in the URL.",
+  );
+  assert.equal(
+    await recoverableInvitationPage.evaluate(
+      () =>
+        JSON.parse(
+          window.sessionStorage.getItem(
+            "openescrow.negotiationAccess.recoverable-proposal.tenant",
+          ) || "{}",
+        ).token,
+    ),
+    "recoverable-secret",
+    "A scrubbed invitation must retain same-tab recovery before the workspace downloads.",
+  );
+  assert.equal(
+    await recoverableInvitationPage.evaluate(
+      () =>
+        window.localStorage.getItem(
+          "openescrow.negotiationAccess.recoverable-proposal.tenant",
+        ),
+    ),
+    null,
+    "A bearer invitation must not be promoted into persistent local storage.",
+  );
+  await recoverableInvitationPage.unroute(workspaceModulePattern);
+  await recoverableInvitationPage
+    .getByRole("button", { name: "Reload OpenEscrow" })
+    .click();
+  await recoverableInvitationPage
+    .getByRole("button", { name: "Continue as tenant with Google" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    new URL(recoverableInvitationPage.url()).searchParams.has("token"),
+    false,
+    "Reload recovery must keep the bearer token out of browser history.",
+  );
+  await recoverableInvitationContext.close();
+
+  const agreementInvitationContext = await browser.newContext();
+  const agreementInvitationPage = await agreementInvitationContext.newPage();
+  await agreementInvitationPage.goto(
+    `${baseUrl}/?id=43&jurisdiction=us-ca&invite=tenant&public-access-test=1`,
+    { waitUntil: "domcontentloaded" },
+  );
+  await agreementInvitationPage
+    .getByRole("button", { name: "Continue as tenant with Google" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    new URL(agreementInvitationPage.url()).searchParams.get("invite"),
+    "tenant",
+    "A valid agreement invitation must retain its role restriction.",
+  );
+  await agreementInvitationContext.close();
+
   await page.goto(`${baseUrl}/?public-access-test=1`, {
     waitUntil: "networkidle",
   });
@@ -572,7 +669,7 @@ try {
   );
 
   process.stdout.write(
-    "Account-switch browser check passed: neutral sign-in transitions into the workspace, while proposals, archives, wallet setup, inventory delivery, session containment, notification preferences, and test-email feedback remain isolated across live identity changes.\n",
+    "Account-switch browser check passed: neutral and role-aware invitation sign-in recover safely, while proposals, archives, wallet setup, inventory delivery, session containment, notification preferences, and test-email feedback remain isolated across live identity changes.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

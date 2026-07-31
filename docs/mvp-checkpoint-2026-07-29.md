@@ -368,20 +368,22 @@ detailed validation ledger.
   the full agreement workspace and offers neutral Google/wallet sign-in without a role selector.
   Only a structurally valid invitation can load role-aware entry; its bearer token is scrubbed
   before the lazy workspace request, while invalid roles fail back to neutral sign-in. The required
-  Playwright budget measures 48 JavaScript requests and about 2.25 MB, rejects eager workspace,
-  jurisdiction, and blockchain-wallet-provider chunks, verifies sign-in focus and mobile-width
-  usability, proves agreement links persist validated jurisdiction hints on demand, and proves
-  valid invitations load the wallet boundary with their locked role and recover after an
-  intentionally failed first workspace download without leaving their bearer in persistent local
-  storage.
+  production Playwright budget measures 48 JavaScript requests and about 2.25 MB, rejects eager
+  workspace, jurisdiction, and blockchain-wallet-provider chunks, verifies sign-in focus and
+  mobile-width usability, and proves the public explanation remains usable when external account
+  requests are unavailable. In that outage, invitations retain access only in the current tab and
+  fail closed before workspace code. A provider-independent rendered regression separately proves
+  normal role-aware invitation entry and recovery after an intentionally failed first workspace
+  download without leaving the bearer in persistent local storage.
 - **Verified:** The shared landing/workspace footer now pairs plain-language testnet file-safety
   guidance with an accessible copy control for the optional `omslice.eth` donation address. A
   production-build browser regression verifies the exact copied value, visible success feedback,
   a manual-copy recovery message when clipboard access is blocked, a 44-pixel mobile target, and
   no horizontal overflow.
 - **Verified:** Workspace notifications are no longer presented as an empty bell on a clean
-  signed-out landing page. The production-build landing regression proves the control is absent
-  publicly and still present after a valid role-locked invitation loads the workspace.
+  signed-out landing page. Production outage coverage proves the control is absent publicly, and
+  the provider-independent invitation regression proves it remains present once a valid
+  role-locked workspace loads.
 - **Verified:** A landlord action on an older finalized record now re-verifies the stored
   finalization receipt, exact participants and approved terms, selected token, and creating
   landlord before accepting the new receipt. A mismatched or unavailable original receipt fails
