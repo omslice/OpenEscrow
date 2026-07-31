@@ -239,6 +239,11 @@ production readiness, or authorization to hold real rental deposits.
   U.S. testnet pilot: generalize country/region/local routing first, then build versioned
   official-source profiles and regressions market by market. No foreign profile is implemented or
   approved yet.
+- **Planned:** Sustainable monetization is a parallel discovery track behind MVP safety:
+  preserve the free, self-hostable open-source core; validate demand for an optional managed
+  service, professional workflows, support, and integrations before building billing. Provider
+  economics require disclosure and legal/provider review, and essential records or user data
+  must never become leverage for payment.
 - **Verified:** Infrequently used proposal, deposit, funding, invitation, and record tools load
   only when their tab or expanded section needs them. This reduced the main workspace chunk from
   about 345.9 KB to 74.2 KB (about 79%) while preserving keyboard focus behavior.
@@ -289,3 +294,6 @@ production readiness, or authorization to hold real rental deposits.
 - Provider sandbox eligibility, cancellation semantics, fees, and support requirements until an
   actual provider sandbox is configured and exercised.
 - The exact timing and scope of qualified counsel and independent security reviews.
+- Which customer segment will pay first, which managed-service outcome they value, and the
+  actual cost to deliver that outcome without weakening the open-source or consumer-protection
+  commitments.

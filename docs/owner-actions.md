@@ -99,6 +99,18 @@ provider or hosting control that owns the secret.
   landlord confirmation and official-source links are safeguards, not a
   substitute for accurate product guidance and local review.
 
+## Needed when monetization discovery begins
+
+- [ ] **Recruit a small set of pilot interviewees across customer types.** Include at least
+  individual landlords, property managers, and tenant advocates so pricing is based on a useful
+  managed outcome rather than limiting access to the open-source core.
+- [ ] **Choose the first commercial hypothesis only after those interviews.** Likely candidates
+  are managed hosting, professional multi-property workflows, integrations, and support; defer
+  billing implementation until willingness to pay and cost to serve are documented.
+- [ ] **Approve the business-model guardrails.** No sale of personal data, essential-record
+  paywalls, undisclosed provider incentives, pay-to-route behavior, or production custody/yield
+  monetization without the required legal and provider review.
+
 ## Completed owner actions
 
 Move an item here with its completion date and public verification reference.

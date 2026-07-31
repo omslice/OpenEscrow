@@ -208,6 +208,37 @@ five-market cohort with dedicated research/engineering capacity, 9â€“18 mon
 20â€“25 major countries, and 2â€“3 years for broad 50+ country coverage. Every estimate assumes
 security-deposit requirements only and an ongoing maintenance program.
 
+## 7. Sustainable open-source monetization
+
+**Status: discovery track; reliability, pilot safety, and legal readiness remain higher priority**
+
+The self-hostable agreement, custody, record, and verification core should remain free and open
+source. Revenue should come from optional convenience, assurance, and scale—not from withholding a
+tenant's or landlord's essential records, selling their data, or steering them toward a financial
+product because it pays OpenEscrow more.
+
+- [ ] Validate the first paid customer and buyer: individual landlords, property managers,
+  operators, service providers, or institutions may value different features and support levels
+- [ ] Model a managed OpenEscrow service with hosted setup, maintenance, backups, monitored
+  notifications, compliance-source monitoring, and guided recovery
+- [ ] Define professional tiers for multi-property workflows, team permissions, integrations,
+  reporting, audit support, configurable retention, and response-time commitments
+- [ ] Evaluate implementation, support, training, and carefully scoped white-label services that
+  fund the open-source core without fragmenting its security model
+- [ ] Evaluate disclosed provider revenue or negotiated processing economics only after legal and
+  provider review; never pay-to-route, hide fees, or activate production custody/yield solely for
+  monetization
+- [ ] Establish cost-to-serve and willingness-to-pay evidence through pilot interviews before
+  choosing pricing, free limits, or per-agreement versus subscription billing
+- [ ] Define open-source governance, trademark, hosted-service terms, and a contribution model
+  that keeps verification portable and avoids locking users out of their own records
+- [ ] Add privacy and consumer-protection guardrails: no sale of personal data, no dark patterns,
+  no essential-record paywall, and no undisclosed financial incentive
+
+Near-term sequence: document hypotheses during MVP work, collect structured pilot feedback after
+the core flows are reliable, test a managed-service offer before building billing, and add payment
+infrastructure only after the product, operating, and legal boundaries are approved.
+
 ## Production boundary
 
 OpenEscrow remains a Base Sepolia demonstration until legal, provider, security, privacy,
