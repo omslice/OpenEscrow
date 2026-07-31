@@ -2573,6 +2573,27 @@ a.btn.disabled {
   word-break: break-all;
 }
 
+.evidence-document-form {
+  display: inline;
+}
+
+.evidence-document-link {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.evidence-document-link:hover,
+.evidence-document-link:focus-visible {
+  color: color-mix(in srgb, var(--accent) 75%, var(--text-h));
+}
+
 .agreement-card {
   border-width: 2px;
 }

@@ -232,6 +232,10 @@ production readiness, or authorization to hold real rental deposits.
 - **Verified:** Private-evidence upload/download and notification-provider outages fail closed
   with retry guidance. Failed attempts create no phantom evidence or sent-delivery events, and
   automated recovery tests verify one successful retry remains idempotent.
+- **Verified:** New private-evidence actions expose only token-free document paths. The UI
+  control sends agreement access in a same-origin POST body rather than an `href`, so the bearer
+  does not enter copied document links, browser history, or referrers. Server regressions preserve
+  party isolation, reject cross-site form submissions, and retain legacy GET compatibility.
 - **Verified:** The hosted pilot checker requires both an active evidence-encryption key and every
   retained key referenced by stored ciphertext. Each new encrypted row records a non-secret
   master-key fingerprint, so a missing key, omitted keyring status, or wrong backup bytes under

@@ -106,6 +106,9 @@ the repository; they are not claims of legal approval or production readiness.
   successful decryption and plaintext-digest verification
 - [x] Fail-closed, retryable private-evidence and notification-provider outage handling without
   phantom evidence or delivery events
+- [x] Private evidence opens through a same-origin form submission with token-free paths, keeping
+  agreement access bearers out of new links, copied URLs, browser history, and referrers while
+  retaining legacy read compatibility
 - [x] Landlord-authorized optional-arbiter invitation rotation with old-link and account-session
   invalidation, verified-email rediscovery, and cross-account isolation, retained behind the
   disabled-by-default arbiter UI

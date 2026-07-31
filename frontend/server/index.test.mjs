@@ -1019,6 +1019,16 @@ function request(path, method = "GET", body) {
   });
 }
 
+function evidenceDownloadRequest(path, token, headers) {
+  const form = new FormData();
+  form.set("token", token);
+  return new Request(`https://openescrow.example${path}`, {
+    method: "POST",
+    headers,
+    body: form,
+  });
+}
+
 async function jsonResponse(response) {
   const body = await response.json();
   assert.ok(response.ok, JSON.stringify(body));
@@ -3990,7 +4000,10 @@ test("pilot rehearsal: account data inventory is role-isolated and contains no a
     );
     assert.equal(invitationUnaffected.status, 200);
     const evidenceUnaffected = await worker.fetch(
-      new Request(`https://openescrow.example${uploadedEvidence.gatewayUrl}`),
+      evidenceDownloadRequest(
+        uploadedEvidence.gatewayUrl,
+        created.access.landlord,
+      ),
       {
         DB: db,
         EVIDENCE: evidence,
@@ -4803,9 +4816,12 @@ test("private evidence is stored in R2 and only an agreement party can retrieve 
   assert.equal(uploaded.storageKind, "private");
   assert.match(uploaded.uri, /^openescrow:\/\/evidence\//);
   assert.match(uploaded.sha256, /^0x[a-f0-9]{64}$/);
+  assert.match(uploaded.gatewayUrl, /^\/api\/evidence\/[a-fA-F0-9-]+$/);
+  assert.equal(uploaded.gatewayUrl.includes(created.access.landlord), false);
+  assert.equal(uploaded.gatewayUrl.includes("?"), false);
 
   const authorized = await worker.fetch(
-    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    evidenceDownloadRequest(uploaded.gatewayUrl, created.access.landlord),
     { DB: db, EVIDENCE: evidence },
   );
   assert.equal(authorized.status, 200);
@@ -4815,37 +4831,38 @@ test("private evidence is stored in R2 and only an agreement party can retrieve 
   assert.equal(authorized.headers.get("referrer-policy"), "no-referrer");
   assert.equal(authorized.headers.get("x-content-type-options"), "nosniff");
   assert.equal(authorized.headers.get("x-frame-options"), "DENY");
+  assert.equal(
+    authorized.headers.get("cross-origin-opener-policy"),
+    "same-origin",
+  );
+  assert.equal(
+    authorized.headers.get("cross-origin-resource-policy"),
+    "same-origin",
+  );
+  const legacyAuthorized = await worker.fetch(
+    new Request(
+      `https://openescrow.example${uploaded.gatewayUrl}?token=${encodeURIComponent(created.access.landlord)}`,
+    ),
+    { DB: db, EVIDENCE: evidence },
+  );
+  assert.equal(legacyAuthorized.status, 200);
+  assert.equal(await legacyAuthorized.text(), "%PDF-1.7\ntest invoice");
 
   const tenantAuthorized = await worker.fetch(
-    new Request(
-      `https://openescrow.example${uploaded.gatewayUrl.replace(
-        encodeURIComponent(created.access.landlord),
-        encodeURIComponent(created.access.tenant),
-      )}`,
-    ),
+    evidenceDownloadRequest(uploaded.gatewayUrl, created.access.tenant),
     { DB: db, EVIDENCE: evidence },
   );
   assert.equal(tenantAuthorized.status, 200);
   assert.equal(await tenantAuthorized.text(), "%PDF-1.7\ntest invoice");
 
   const unrelatedParty = await worker.fetch(
-    new Request(
-      `https://openescrow.example${uploaded.gatewayUrl.replace(
-        encodeURIComponent(created.access.landlord),
-        encodeURIComponent(unrelated.access.landlord),
-      )}`,
-    ),
+    evidenceDownloadRequest(uploaded.gatewayUrl, unrelated.access.landlord),
     { DB: db, EVIDENCE: evidence },
   );
   assert.equal(unrelatedParty.status, 403);
 
   const denied = await worker.fetch(
-    new Request(
-      `https://openescrow.example${uploaded.gatewayUrl.replace(
-        encodeURIComponent(created.access.landlord),
-        "invalid",
-      )}`,
-    ),
+    evidenceDownloadRequest(uploaded.gatewayUrl, "invalid"),
     { DB: db, EVIDENCE: evidence },
   );
   assert.equal(denied.status, 403);
@@ -4901,9 +4918,19 @@ test("sensitive authorized reads reject cross-site browser requests without an O
     { DB: db },
   );
   assert.equal(sameOriginRecord.status, 200);
+  const crossSiteEvidencePost = await worker.fetch(
+    evidenceDownloadRequest(uploaded.gatewayUrl, created.access.landlord, {
+      "sec-fetch-site": "cross-site",
+    }),
+    { DB: db, EVIDENCE: evidence },
+  );
+  assert.equal(crossSiteEvidencePost.status, 403);
+  assert.deepEqual(await crossSiteEvidencePost.json(), {
+    error: "Cross-origin writes are not allowed.",
+  });
   const sameOriginEvidence = await worker.fetch(
-    new Request(`https://openescrow.example${uploaded.gatewayUrl}`, {
-      headers: { "sec-fetch-site": "same-origin" },
+    evidenceDownloadRequest(uploaded.gatewayUrl, created.access.landlord, {
+      "sec-fetch-site": "same-origin",
     }),
     { DB: db, EVIDENCE: evidence },
   );
@@ -5002,7 +5029,7 @@ test("pilot rehearsal: an evidence download outage fails closed without storage 
   );
 
   const unavailable = await worker.fetch(
-    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    evidenceDownloadRequest(uploaded.gatewayUrl, created.access.landlord),
     {
       DB: db,
       EVIDENCE: {
@@ -5076,7 +5103,7 @@ test("configured evidence encryption stores only ciphertext and decrypts for an 
   assert.equal(new TextDecoder().decode(stored.bytes).includes("private encrypted invoice"), false);
 
   const authorized = await worker.fetch(
-    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    evidenceDownloadRequest(uploaded.gatewayUrl, created.access.landlord),
     {
       DB: db,
       EVIDENCE: evidence,
@@ -5126,7 +5153,7 @@ test("encrypted evidence fails closed when ciphertext, key material, or digest m
 
   storedObject.bytes[0] ^= 0xff;
   const alteredCiphertext = await worker.fetch(
-    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    evidenceDownloadRequest(uploaded.gatewayUrl, created.access.landlord),
     encryptionEnvironment,
   );
   assert.equal(alteredCiphertext.status, 422);
@@ -5134,7 +5161,7 @@ test("encrypted evidence fails closed when ciphertext, key material, or digest m
   storedObject.bytes = originalCiphertext;
 
   const wrongKey = await worker.fetch(
-    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    evidenceDownloadRequest(uploaded.gatewayUrl, created.access.landlord),
     {
       ...encryptionEnvironment,
       EVIDENCE_ENCRYPTION_KEY: Buffer.alloc(32, 32).toString("base64"),
@@ -5148,7 +5175,7 @@ test("encrypted evidence fails closed when ciphertext, key material, or digest m
     .bind(`0x${"0".repeat(64)}`, uploaded.cid)
     .run();
   const alteredDigest = await worker.fetch(
-    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    evidenceDownloadRequest(uploaded.gatewayUrl, created.access.landlord),
     encryptionEnvironment,
   );
   assert.equal(alteredDigest.status, 422);
@@ -5205,7 +5232,7 @@ test("pilot rehearsal: isolated evidence backup restoration rejects missing and 
     EVIDENCE_DECRYPTION_KEYS: JSON.stringify({ primary: originalKey }),
   };
   const authorized = await worker.fetch(
-    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    evidenceDownloadRequest(uploaded.gatewayUrl, created.access.landlord),
     rotatedEnvironment,
   );
   assert.equal(authorized.status, 200);
@@ -5246,7 +5273,10 @@ test("pilot rehearsal: isolated evidence backup restoration rejects missing and 
     storedMetadata.encryption_key_fingerprint,
   );
   const rotatedDownload = await worker.fetch(
-    new Request(`https://openescrow.example${rotatedUpload.gatewayUrl}`),
+    evidenceDownloadRequest(
+      rotatedUpload.gatewayUrl,
+      created.access.landlord,
+    ),
     rotatedEnvironment,
   );
   assert.equal(rotatedDownload.status, 200);
@@ -5275,7 +5305,7 @@ test("pilot rehearsal: isolated evidence backup restoration rejects missing and 
     EVIDENCE_ENCRYPTION_KEY_ID: "2026-q3",
   };
   const missingRetainedKey = await worker.fetch(
-    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    evidenceDownloadRequest(uploaded.gatewayUrl, created.access.landlord),
     recoveryEnvironment,
   );
   assert.equal(missingRetainedKey.status, 503);
@@ -5314,7 +5344,7 @@ test("pilot rehearsal: isolated evidence backup restoration rejects missing and 
   assert.equal(wrongBackupReadiness.evidence.mismatchedDecryptionKeyCount, 1);
   assert.equal(wrongBackupReadiness.evidence.keyringReady, false);
   const wrongBackupDownload = await worker.fetch(
-    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    evidenceDownloadRequest(uploaded.gatewayUrl, created.access.landlord),
     wrongBackupEnvironment,
   );
   assert.equal(wrongBackupDownload.status, 422);
@@ -5346,7 +5376,7 @@ test("pilot rehearsal: isolated evidence backup restoration rejects missing and 
   assert.equal(legacyReadiness.evidence.mismatchedDecryptionKeyCount, 0);
   assert.equal(legacyReadiness.evidence.keyringReady, false);
   const legacyWrongBackupDownload = await worker.fetch(
-    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    evidenceDownloadRequest(uploaded.gatewayUrl, created.access.landlord),
     wrongBackupEnvironment,
   );
   assert.equal(legacyWrongBackupDownload.status, 422);
@@ -5363,7 +5393,7 @@ test("pilot rehearsal: isolated evidence backup restoration rejects missing and 
     null,
   );
   const restoredDownload = await worker.fetch(
-    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    evidenceDownloadRequest(uploaded.gatewayUrl, created.access.landlord),
     restoredEnvironment,
   );
   assert.equal(restoredDownload.status, 200);
@@ -5381,7 +5411,10 @@ test("pilot rehearsal: isolated evidence backup restoration rejects missing and 
     storedMetadata.encryption_key_fingerprint,
   );
   const restoredRotatedDownload = await worker.fetch(
-    new Request(`https://openescrow.example${rotatedUpload.gatewayUrl}`),
+    evidenceDownloadRequest(
+      rotatedUpload.gatewayUrl,
+      created.access.landlord,
+    ),
     restoredEnvironment,
   );
   assert.equal(restoredRotatedDownload.status, 200);
@@ -5481,7 +5514,7 @@ test("decentralized evidence mode uploads only encrypted IPFS ciphertext", async
     assert.match(uploaded.uri, /^openescrow\+ipfs:\/\/bafy-encrypted-test\//);
 
     const authorized = await worker.fetch(
-      new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+      evidenceDownloadRequest(uploaded.gatewayUrl, created.access.landlord),
       {
         DB: db,
         EVIDENCE_STORAGE_MODE: "encrypted-ipfs",

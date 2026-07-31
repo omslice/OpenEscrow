@@ -1,5 +1,9 @@
 import { useReadContract } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS } from "../contracts/config";
+import {
+  privateEvidencePath,
+  publicEvidenceUrl,
+} from "../lib/evidenceAccess";
 import { formatTimestamp, shortAddr } from "../lib/format";
 import type { NegotiationAccess } from "../lib/negotiations";
 
@@ -21,28 +25,6 @@ const TYPE_LABEL: Record<number, string> = {
   13: "Claim—utilities or unpaid charges",
   14: "Claim—other",
 };
-
-function evidenceUrl(uri: string, access?: NegotiationAccess | null) {
-  const match = uri.match(/^openescrow:\/\/evidence\/([a-fA-F0-9-]+)$/);
-  if (match && access) {
-    return `/api/evidence/${encodeURIComponent(match[1])}?token=${encodeURIComponent(access.token)}`;
-  }
-  const encryptedIpfs = uri.match(
-    /^openescrow\+ipfs:\/\/[a-zA-Z0-9._~-]+\/([a-fA-F0-9-]+)$/,
-  );
-  if (encryptedIpfs && access) {
-    return `/api/evidence/${encodeURIComponent(encryptedIpfs[1])}?token=${encodeURIComponent(access.token)}`;
-  }
-  if (/^https:\/\//i.test(uri)) return uri;
-  const ipfsPath = uri.match(/^ipfs:\/\/([a-zA-Z0-9._~/-]+)$/)?.[1];
-  if (ipfsPath) {
-    return `https://ipfs.io/ipfs/${ipfsPath
-      .split("/")
-      .map((segment) => encodeURIComponent(segment))
-      .join("/")}`;
-  }
-  return null;
-}
 
 export function EvidenceList({
   id,
@@ -71,14 +53,37 @@ export function EvidenceList({
       </p>
       <ul>
         {entries.map((e, i) => {
-          const documentUrl = evidenceUrl(e.uri, negotiationAccess);
+          const privatePath = negotiationAccess
+            ? privateEvidencePath(e.uri)
+            : null;
+          const documentUrl = publicEvidenceUrl(e.uri);
           return (
           <li key={i}>
             <strong>{TYPE_LABEL[e.evidenceType] ?? `Type ${e.evidenceType}`}</strong> by{" "}
             {shortAddr(e.submittedBy)} at {formatTimestamp(e.timestamp)}
             <br />
             hash: <code>{e.contentHash}</code>
-            {documentUrl ? (
+            {privatePath && negotiationAccess ? (
+              <>
+                <br />
+                <form
+                  className="evidence-document-form"
+                  action={privatePath}
+                  method="post"
+                  target="_blank"
+                >
+                  <input
+                    type="hidden"
+                    name="token"
+                    value={negotiationAccess.token}
+                    readOnly
+                  />
+                  <button className="evidence-document-link" type="submit">
+                    Open supporting document
+                  </button>
+                </form>
+              </>
+            ) : documentUrl ? (
               <>
                 <br />
                 <a href={documentUrl} target="_blank" rel="noreferrer">

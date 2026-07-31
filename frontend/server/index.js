@@ -6558,7 +6558,7 @@ async function uploadEvidence(request, env) {
       uri,
       sha256,
       storageKind: encryptionVersion ? "encrypted-private" : "private",
-      gatewayUrl: `/api/evidence/${encodeURIComponent(evidenceId)}?token=${encodeURIComponent(token)}`,
+      gatewayUrl: `/api/evidence/${encodeURIComponent(evidenceId)}`,
     });
   }
 
@@ -6649,7 +6649,7 @@ async function uploadEvidence(request, env) {
     uri,
     sha256,
     storageKind: "encrypted-decentralized",
-    gatewayUrl: `/api/evidence/${encodeURIComponent(evidenceId)}?token=${encodeURIComponent(token)}`,
+    gatewayUrl: `/api/evidence/${encodeURIComponent(evidenceId)}`,
   });
 }
 
@@ -6665,7 +6665,17 @@ async function downloadEvidence(request, env, evidenceId) {
     return json({ error: "This private evidence file was not found." }, 404);
   }
   const row = await rowFor(env.DB, metadata.negotiation_id);
-  const token = new URL(request.url).searchParams.get("token");
+  let token;
+  if (request.method === "POST") {
+    try {
+      const form = await request.formData();
+      token = cleanText(form.get("token"), 200);
+    } catch {
+      return json({ error: "The evidence access request is invalid." }, 400);
+    }
+  } else {
+    token = cleanText(new URL(request.url).searchParams.get("token"), 200);
+  }
   const role = await authorize(env.DB, row, token);
   if (!role) return json({ error: "This evidence link is invalid or no longer available." }, 403);
 
@@ -6773,6 +6783,8 @@ async function downloadEvidence(request, env, evidenceId) {
   headers.set("referrer-policy", "no-referrer");
   headers.set("content-security-policy", "sandbox");
   headers.set("x-frame-options", "DENY");
+  headers.set("cross-origin-opener-policy", "same-origin");
+  headers.set("cross-origin-resource-policy", "same-origin");
   headers.set("x-openescrow-sha256", metadata.sha256);
   headers.set(
     "x-openescrow-storage",
@@ -7657,9 +7669,24 @@ const worker = {
       return uploadEvidence(request, env);
     }
     const evidenceMatch = url.pathname.match(/^\/api\/evidence\/([a-fA-F0-9-]+)$/);
-    if (evidenceMatch && request.method === "GET") {
-      if (!sameOriginGet(request)) {
-        return json({ error: "Cross-origin reads are not allowed." }, 403);
+    if (
+      evidenceMatch &&
+      (request.method === "GET" || request.method === "POST")
+    ) {
+      const sameOrigin =
+        request.method === "POST"
+          ? sameOriginPost(request)
+          : sameOriginGet(request);
+      if (!sameOrigin) {
+        return json(
+          {
+            error:
+              request.method === "POST"
+                ? "Cross-origin writes are not allowed."
+                : "Cross-origin reads are not allowed.",
+          },
+          403,
+        );
       }
       if (env.DB) await initialize(env.DB);
       return downloadEvidence(request, env, evidenceMatch[1]);

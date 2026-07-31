@@ -43,7 +43,7 @@ completeness, legality, or authorship of the underlying content.
 | Browser blocks the privacy-inventory download | The already-authorized JSON remains only in current-page memory and exposes an explicit copy fallback; identity-token changes discard the fallback and ignore a stale response | Client regressions preserve exact prepared bytes after a blocked download, use a timestamp-safe filename, and guard the described status and mobile recovery controls |
 | Stolen tenant invitation after reset | Random token rotation, old-link invalidation, and tenant-context session invalidation | Reset test checks the old link and active account session fail |
 | Invitation opened with blocked browser storage | The bearer token is removed from the URL before persistence is attempted; authorized access continues in session or memory without weakening Worker authorization | Client regression blocks both storage APIs, captures the invitation without throwing, verifies the URL is scrubbed, and retains only the current-page access |
-| Unauthorized evidence download | Agreement-token authorization before R2/IPFS access | Invalid and unrelated-agreement tokens receive an access error |
+| Unauthorized evidence download or bearer copied from a document link | Agreement-token authorization before R2/IPFS access; new private-document controls use a token-free action path and send the bearer only in a same-origin POST body | Invalid and unrelated-agreement tokens receive an access error; cross-site form posts fail; generated paths contain no token; legacy GET access remains covered during migration |
 | Spoofed upload type | File-signature inspection for PDF/JPEG/PNG/WebP | MIME-spoof test rejects before storage |
 | R2 plaintext disclosure | Optional AES-256-GCM with per-file HKDF derivation | Stored bytes do not contain plaintext |
 | Altered ciphertext or wrong encryption key | AES-GCM authentication fails closed | Tamper regression returns an alteration error and no file |
@@ -55,7 +55,7 @@ completeness, legality, or authorship of the underlying content.
 | Notification provider outage | Provider network failures return a retryable delivery error and do not record a sent event | Failed claim notice can be retried once and remains idempotent after recovery |
 | Misleading lifecycle record | Role/state guards, idempotency, and version-matched receipt verification | Credential-free lifecycle rehearsals and receipt-verification tests |
 | Sensitive email content | Notifications omit addresses, amounts, evidence, and notes | Notification-copy and idempotency tests |
-| Browser embedding or referral leakage | No-store, no-referrer, no-sniff, anti-framing, and report CSP headers | Evidence/report/static-response header tests |
+| Browser embedding or referral leakage | No-store, no-referrer, no-sniff, anti-framing, same-origin opener/resource isolation, token-free evidence action paths, and report CSP headers | Evidence path, party authorization, cross-site POST, evidence/report/static-response header, and legacy-compatibility tests |
 
 ## Recovery boundaries
 
