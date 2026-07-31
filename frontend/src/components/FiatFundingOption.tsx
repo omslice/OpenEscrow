@@ -7,6 +7,7 @@ import {
 import type { DepositAssetConfig } from "../../shared/deposit-assets.js";
 import {
   applyFundingCheckoutEvent,
+  canCloseInterruptedSandboxCheckout,
   createFundingCheckoutAttempt,
   createFundingIntent,
   createFundingPlan,
@@ -66,8 +67,10 @@ export function FiatFundingOption({
 }) {
   const { fund } = useFiatOnramp();
   const [status, setStatus] = useState<FundingCheckoutOutcome | null>(null);
+  const [checkout, setCheckout] = useState<FundingCheckoutLifecycle | null>(null);
   const [isRecovering, setIsRecovering] = useState(true);
   const [isOpening, setIsOpening] = useState(false);
+  const [isResolving, setIsResolving] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState<string | null>(null);
   const fundingPlan = createFundingPlan(depositAsset?.id, {
@@ -96,6 +99,7 @@ export function FiatFundingOption({
   useEffect(() => {
     let cancelled = false;
     setStatus(null);
+    setCheckout(null);
     setRefreshError(null);
     setIsRecovering(true);
     if (!checkoutStorageKey || !FIAT_ONRAMP_CONFIG) {
@@ -184,10 +188,12 @@ export function FiatFundingOption({
           }
           if (cancelled) return;
           if (!recovered) {
+            setCheckout(null);
             setStatus(null);
             return;
           }
           writeRecoveryJson(checkoutStorageKey, recovered);
+          setCheckout(recovered);
           setStatus(
             reconcileFundingCheckoutResult(
               { status: recovered.providerStatus },
@@ -216,6 +222,7 @@ export function FiatFundingOption({
         }
       }
       if (!cancelled) {
+        setCheckout(recovered);
         setStatus(
           reconcileFundingCheckoutResult(
             { status: recovered.providerStatus },
@@ -276,6 +283,60 @@ export function FiatFundingOption({
                   : isSandbox
                     ? "Preview sandbox checkout"
                     : "Continue to card or bank";
+  const closeInterruptedSandboxPreview = async () => {
+    if (!canCloseInterruptedSandboxCheckout(checkout)) return;
+    setIsResolving(true);
+    setRefreshError(null);
+    try {
+      const eventId = `sandbox-close:${checkout.attemptId}`;
+      let closedCheckout: FundingCheckoutLifecycle;
+      if (durableAccess) {
+        closedCheckout = (
+          await appendDurableFundingCheckoutEvent(
+            durableAccess,
+            checkout.attemptId,
+            {
+              eventId,
+              status: "cancelled",
+              providerStatus: "cancelled",
+            },
+          )
+        ).checkout;
+      } else {
+        closedCheckout = applyFundingCheckoutEvent(checkout, {
+          eventId,
+          status: "cancelled",
+          providerStatus: "cancelled",
+        });
+      }
+      if (
+        checkoutStorageKey &&
+        !writeRecoveryJson(checkoutStorageKey, closedCheckout) &&
+        !durableAccess
+      ) {
+        throw new Error("The closed sandbox preview could not be saved.");
+      }
+      setCheckout(closedCheckout);
+      setStatus(
+        reconcileFundingCheckoutResult(
+          { status: closedCheckout.status },
+          FIAT_ONRAMP_CONFIG.environment,
+        ),
+      );
+    } catch {
+      setStatus({
+        state: "unknown",
+        providerStatus: "sandbox_close_failed",
+        severity: "error",
+        shouldRefreshBalance: false,
+        retryAllowed: false,
+        message:
+          "The interrupted sandbox preview could not be closed safely. Refresh this agreement before trying again.",
+      });
+    } finally {
+      setIsResolving(false);
+    }
+  };
 
   return (
     <div className="fiat-funding-option enabled">
@@ -290,7 +351,7 @@ export function FiatFundingOption({
       <button
         className="btn btn-secondary"
         type="button"
-        disabled={isRecovering || isOpening || checkoutLocked}
+        disabled={isRecovering || isOpening || isResolving || checkoutLocked}
         onClick={async () => {
           setIsOpening(true);
           setRefreshError(null);
@@ -313,6 +374,7 @@ export function FiatFundingOption({
                 attemptId,
               );
               attempt = durableAttempt.checkout;
+              setCheckout(attempt);
               if (checkoutStorageKey) {
                 writeRecoveryJson(checkoutStorageKey, attempt);
               }
@@ -340,6 +402,7 @@ export function FiatFundingOption({
                 });
                 return;
               }
+              setCheckout(attempt);
             }
             setStatus(
               reconcileFundingCheckoutResult(
@@ -373,6 +436,7 @@ export function FiatFundingOption({
             if (checkoutStorageKey) {
               writeRecoveryJson(checkoutStorageKey, attempt);
             }
+            setCheckout(attempt);
             if (durableAccess) {
               try {
                 attempt = (
@@ -389,6 +453,7 @@ export function FiatFundingOption({
                 if (checkoutStorageKey) {
                   writeRecoveryJson(checkoutStorageKey, attempt);
                 }
+                setCheckout(attempt);
               } catch {
                 setStatus({
                   state: "unknown",
@@ -445,6 +510,7 @@ export function FiatFundingOption({
                 if (checkoutStorageKey) {
                   writeRecoveryJson(checkoutStorageKey, attempt);
                 }
+                setCheckout(attempt);
               } catch {
                 try {
                   attempt = applyFundingCheckoutEvent(attempt, {
@@ -455,6 +521,7 @@ export function FiatFundingOption({
                   if (checkoutStorageKey) {
                     writeRecoveryJson(checkoutStorageKey, attempt);
                   }
+                  setCheckout(attempt);
                 } catch {
                   // Keep the existing locked attempt if recovery state cannot advance safely.
                 }
@@ -498,6 +565,25 @@ export function FiatFundingOption({
         >
           {status.message}
         </p>
+      )}
+      {isSandbox && canCloseInterruptedSandboxCheckout(checkout) && (
+        <>
+          <button
+            className="btn btn-secondary"
+            type="button"
+            disabled={isOpening || isRecovering || isResolving}
+            onClick={() => void closeInterruptedSandboxPreview()}
+          >
+            {isResolving
+              ? "Closing interrupted preview..."
+              : "Close interrupted sandbox preview"}
+          </button>
+          <small>
+            This only closes the no-money sandbox record so you can retry the preview. A
+            production checkout with an unknown result would remain locked for provider
+            reconciliation.
+          </small>
+        </>
       )}
       {status &&
         (status.shouldRefreshBalance || !status.retryAllowed) &&

@@ -594,6 +594,14 @@ export function isFundingCheckoutLifecycle(value) {
   );
 }
 
+export function canCloseInterruptedSandboxCheckout(checkout) {
+  return (
+    isFundingCheckoutLifecycle(checkout) &&
+    checkout.environment === "sandbox" &&
+    checkout.status === "unknown"
+  );
+}
+
 export function applyFundingCheckoutEvent(
   checkout,
   {

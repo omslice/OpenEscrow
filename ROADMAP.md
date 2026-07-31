@@ -67,6 +67,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Direct Aave supply/withdrawal route modeled without a DEX swap
 - [x] FRNT and USDY routes fail closed pending official availability and eligibility
 - [x] Validate the provider-neutral sandbox intent, UI states, and failure handling locally
+- [x] Let a tenant explicitly close an interrupted no-money sandbox preview before retrying while
+  keeping production checkouts with unknown outcomes locked for provider reconciliation
 - [ ] Enable and validate an eligible provider sandbox in the Privy dashboard
 - [ ] Decide whether the pilot needs separate ACH/bank-deposit support
 - [ ] Complete provider approval, KYC/AML, fees, refunds, webhooks, reconciliation, and support

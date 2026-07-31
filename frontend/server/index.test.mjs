@@ -1488,6 +1488,70 @@ test("simultaneous sandbox provider results cannot fork a checkout lifecycle", a
   assert.equal(recovered.checkout.events.length, 1);
 });
 
+test("an interrupted sandbox preview can be closed before a new attempt", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const intent = sandboxFundingIntent();
+  const opened = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "", {
+      token: created.access.tenant,
+      attemptId: "sandbox-interrupted-attempt",
+      intent,
+    }),
+  );
+
+  const interrupted = await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${opened.checkout.attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "provider:interrupted",
+        status: "unknown",
+        providerStatus: "interrupted",
+      },
+    ),
+  );
+  assert.equal(interrupted.checkout.status, "unknown");
+
+  const lockedRetry = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "", {
+      token: created.access.tenant,
+      attemptId: "sandbox-locked-retry",
+      intent,
+    }),
+  );
+  assert.equal(lockedRetry.created, false);
+  assert.equal(lockedRetry.checkout.attemptId, opened.checkout.attemptId);
+
+  const closed = await jsonResponse(
+    await fundingCheckoutRequest(
+      db,
+      created.record.id,
+      `/${opened.checkout.attemptId}/events`,
+      {
+        token: created.access.tenant,
+        eventId: "sandbox:close-interrupted",
+        status: "cancelled",
+        providerStatus: "cancelled",
+      },
+    ),
+  );
+  assert.equal(closed.checkout.status, "cancelled");
+
+  const reopened = await jsonResponse(
+    await fundingCheckoutRequest(db, created.record.id, "", {
+      token: created.access.tenant,
+      attemptId: "sandbox-after-interruption",
+      intent,
+    }),
+  );
+  assert.equal(reopened.created, true);
+  assert.equal(reopened.checkout.attemptId, "sandbox-after-interruption");
+});
+
 async function submitStandardClaim(
   db,
   created,

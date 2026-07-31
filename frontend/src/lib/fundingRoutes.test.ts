@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   applyFundingCheckoutEvent,
+  canCloseInterruptedSandboxCheckout,
   createFundingCheckoutAttempt,
   createFundingIntent,
   createFundingPlan,
@@ -402,6 +403,7 @@ test("checkout lifecycle models cancellation, uncertainty recovery, and refunds"
     occurredAt: "2026-07-30T01:01:00.000Z",
   });
   assert.equal(uncertain.status, "unknown");
+  assert.equal(canCloseInterruptedSandboxCheckout(uncertain), false);
   assert.equal(
     reconcileFundingCheckoutResult(
       { status: uncertain.providerStatus },
@@ -461,6 +463,45 @@ test("checkout lifecycle models cancellation, uncertainty recovery, and refunds"
     reconcileFundingCheckoutResult(
       { status: cancelled.providerStatus },
       "production",
+    ).retryAllowed,
+    true,
+  );
+});
+
+test("only an interrupted no-money sandbox checkout can be closed manually", () => {
+  const intent = createFundingIntent({
+    assetId: "usdc",
+    walletAddress: wallet,
+    amountMicros: 2_000_000n,
+    environment: "sandbox",
+    onrampEnabled: true,
+  });
+  const opened = createFundingCheckoutAttempt(intent, {
+    attemptId: "attempt-sandbox-interrupted",
+    createdAt: "2026-07-30T02:00:00.000Z",
+  });
+  const interrupted = applyFundingCheckoutEvent(opened, {
+    eventId: "provider-event-interrupted",
+    status: "unknown",
+    providerStatus: "interrupted",
+    occurredAt: "2026-07-30T02:01:00.000Z",
+  });
+
+  assert.equal(canCloseInterruptedSandboxCheckout(opened), false);
+  assert.equal(canCloseInterruptedSandboxCheckout(interrupted), true);
+
+  const closed = applyFundingCheckoutEvent(interrupted, {
+    eventId: "sandbox-close-interrupted",
+    status: "cancelled",
+    providerStatus: "cancelled",
+    occurredAt: "2026-07-30T02:02:00.000Z",
+  });
+  assert.equal(closed.status, "cancelled");
+  assert.equal(canCloseInterruptedSandboxCheckout(closed), false);
+  assert.equal(
+    reconcileFundingCheckoutResult(
+      { status: closed.status },
+      closed.environment,
     ).retryAllowed,
     true,
   );

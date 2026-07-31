@@ -188,6 +188,10 @@ export function isFundingCheckoutLifecycle(
   value: unknown,
 ): value is FundingCheckoutLifecycle;
 
+export function canCloseInterruptedSandboxCheckout(
+  checkout: unknown,
+): checkout is FundingCheckoutLifecycle;
+
 export function applyFundingCheckoutEvent(
   checkout: FundingCheckoutLifecycle,
   event: {
