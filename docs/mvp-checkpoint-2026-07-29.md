@@ -348,10 +348,8 @@ detailed validation ledger.
 
 ## Remaining
 
-- **Planned:** Save the newest exact candidate after the Sites source handoff recovers, then review
-  that saved version and explicitly approve a production deployment when the testnet release
-  envelope is acceptable. The latest validated Git source is newer than the currently saved Sites
-  source because the handoff is returning HTTP 500.
+- **Planned:** Review the newest exact saved candidate and explicitly approve a production
+  deployment when the testnet release envelope is acceptable.
 - **Planned:** Configure and validate the seven hosted pilot gates: email delivery, scheduler,
   evidence encryption, version-matched activity registry, address attestation, official-source
   baseline, and source-monitor freshness.

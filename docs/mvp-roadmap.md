@@ -49,16 +49,14 @@ production custody, or reliance on the compliance research as legal advice.
   site is older than the saved candidate and exposes no exact release provenance. It reported
   eight required pilot actions: release provenance, email, scheduler, evidence keyring, activity
   registry binding, address attestation, official-source baseline, and monitor freshness.
-- **Verified:** Exact candidate source is pushed after each coherent slice. The newest source is
-  release-checked locally, while the Sites source branch remains on the prior saved candidate
-  because the source handoff is returning HTTP 500. D1, R2, hosted data, runtime secrets,
+- **Verified:** Exact candidate source is release-checked, pushed, and saved as an undeployed
+  Sites version after each completed delivery slice. D1, R2, hosted data, runtime secrets,
   configuration, and the public deployment remain unchanged.
 
 ## Remaining
 
-- **Planned:** Save the newest exact candidate when the Sites source service accepts it, review and
-  explicitly approve that version, deploy that exact testnet source, then rerun the hosted
-  readiness check so release provenance is verifiable.
+- **Planned:** Review and explicitly approve the newest saved candidate, deploy that exact testnet
+  source, then rerun the hosted readiness check so release provenance is verifiable.
 - **Planned:** Complete the hosted pilot gates listed in
   [owner actions](./owner-actions.md): notification delivery and scheduler, evidence encryption
   and retained-key recovery, version-matched activity registry, address attestation, and a clean,
