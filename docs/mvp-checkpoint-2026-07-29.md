@@ -374,6 +374,11 @@ detailed validation ledger.
   valid invitations load the wallet boundary with their locked role and recover after an
   intentionally failed first workspace download without leaving their bearer in persistent local
   storage.
+- **Verified:** The shared landing/workspace footer now pairs plain-language testnet file-safety
+  guidance with an accessible copy control for the optional `omslice.eth` donation address. A
+  production-build browser regression verifies the exact copied value, visible success feedback,
+  a manual-copy recovery message when clipboard access is blocked, a 44-pixel mobile target, and
+  no horizontal overflow.
 
 ## Remaining
 

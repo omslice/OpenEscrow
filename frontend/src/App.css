@@ -271,7 +271,15 @@
   color: var(--text-h);
 }
 
+.donation-address-control {
+  display: inline-flex;
+  align-items: stretch;
+  gap: 8px;
+}
+
 .donation-address {
+  display: inline-flex;
+  align-items: center;
   padding: 5px 10px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 16%, var(--surface));
@@ -282,10 +290,49 @@
   letter-spacing: 0.02em;
 }
 
+.donation-copy-button {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 52%, var(--border));
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-h);
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.donation-copy-button:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.donation-copy-button:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
 .donation-message small {
   flex-basis: 100%;
   color: var(--text);
   font-size: 11px;
+}
+
+.donation-copy-status {
+  flex-basis: 100%;
+  color: var(--success);
+  font-weight: 750;
+}
+
+.donation-copy-status.error {
+  color: var(--danger);
+}
+
+@media (max-width: 520px) {
+  .donation-address-control {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 .public-intro {

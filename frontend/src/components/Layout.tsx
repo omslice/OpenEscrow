@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { ConnectWallet } from "./ConnectWallet";
+import { copyTextToClipboard } from "../lib/browserActions";
 import { readRecoveryJson, writeRecoveryJson } from "../lib/browserRecovery";
 
 export type AppNotification = {
@@ -33,6 +34,10 @@ export function Layout({
     notificationStorageScope?.toLowerCase() || "guest"
   }`;
   const [readIds, setReadIds] = useState<string[]>([]);
+  const [donationCopyStatus, setDonationCopyStatus] = useState<{
+    message: string;
+    error: boolean;
+  } | null>(null);
 
   useEffect(() => {
     setReadIds(
@@ -58,6 +63,21 @@ export function Layout({
     setReadIds(next);
     writeRecoveryJson(readStateKey, next);
     notification.onOpen?.();
+  }
+
+  async function copyDonationAddress() {
+    try {
+      await copyTextToClipboard("omslice.eth");
+      setDonationCopyStatus({
+        message: "Donation address copied.",
+        error: false,
+      });
+    } catch {
+      setDonationCopyStatus({
+        message: "We could not copy the address. Select omslice.eth and copy it manually.",
+        error: true,
+      });
+    }
   }
 
   return (
@@ -136,19 +156,38 @@ export function Layout({
       <main className="app-main">{children}</main>
       <footer className="app-footer">
         <p className="footer-safety-note">
-          Evidence stored in the private demo vault is retrievable only through an authorized
-          agreement link; its content hash can be independently verified. Any IPFS URI entered
-          manually is public and permanent. This remains a testnet demo—do not upload real personal
-          information, lease documents, invoices, or photographs.
+          OpenEscrow is a testnet demo. Use only invented information and test files—never upload
+          real leases, identity documents, invoices, or photographs. Private demo files require an
+          authorized agreement link. A file added with a public IPFS link is public and permanent,
+          while its digital fingerprint can help confirm whether it changed.
         </p>
-        <p className="donation-message">
+        <div className="donation-message">
           <span>
             <strong>Support the open-source project.</strong> Optional donations help fund continued
             OpenEscrow development.
           </span>
-          <span className="donation-address">omslice.eth</span>
+          <span className="donation-address-control">
+            <span className="donation-address">omslice.eth</span>
+            <button
+              className="donation-copy-button"
+              type="button"
+              aria-label="Copy donation address omslice.eth"
+              onClick={() => void copyDonationAddress()}
+            >
+              Copy address
+            </button>
+          </span>
           <small>Donations are separate from rental deposits and never affect access.</small>
-        </p>
+          {donationCopyStatus && (
+            <span
+              className={`donation-copy-status${donationCopyStatus.error ? " error" : ""}`}
+              role={donationCopyStatus.error ? "alert" : "status"}
+              aria-live={donationCopyStatus.error ? "assertive" : "polite"}
+            >
+              {donationCopyStatus.message}
+            </span>
+          )}
+        </div>
       </footer>
     </div>
   );

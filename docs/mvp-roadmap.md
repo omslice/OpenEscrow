@@ -62,6 +62,9 @@ production custody, or reliance on the compliance research as legal advice.
   focus, and proves linked agreements and valid invitations retain their intended routing. A
   failed first workspace download can be reloaded in the same tab without restoring the bearer to
   the URL or losing the exact invitation role.
+- **Verified:** The shared public/workspace footer explains testnet file safety in plain language
+  and offers an accessible, mobile-size control to copy the optional `omslice.eth` donation
+  address. Donations are explicitly separate from deposits and product access.
 - **Verified:** The public readiness endpoint returned HTTP 200 on 2026-07-30, but the deployed
   site is older than the saved candidate and exposes no exact release provenance. It reported
   eight required pilot actions: release provenance, email, scheduler, evidence keyring, activity

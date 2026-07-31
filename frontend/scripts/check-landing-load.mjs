@@ -78,6 +78,10 @@ try {
   browser = await chromium.launch({ headless: true });
 
   const landingContext = await browser.newContext();
+  await landingContext.grantPermissions(
+    ["clipboard-read", "clipboard-write"],
+    { origin: baseUrl },
+  );
   const landingPage = await landingContext.newPage();
   const landingAssets = observeLocalScripts(landingPage);
   await landingPage.goto(baseUrl, { waitUntil: "domcontentloaded" });
@@ -126,6 +130,47 @@ try {
   await landingPage
     .getByRole("button", { name: "Continue with a wallet" })
     .waitFor({ state: "visible" });
+  const copyDonationAddress = landingPage.getByRole("button", {
+    name: "Copy donation address omslice.eth",
+  });
+  await copyDonationAddress.waitFor({ state: "visible" });
+  await copyDonationAddress.click();
+  const donationCopyStatus = landingPage.locator(".donation-copy-status");
+  await donationCopyStatus.waitFor({ state: "visible" });
+  assert.equal(
+    (await donationCopyStatus.textContent())?.trim(),
+    "Donation address copied.",
+    "The donation copy action must show a clear success message.",
+  );
+  assert.equal(
+    await donationCopyStatus.getAttribute("role"),
+    "status",
+    "Successful donation copy feedback must use a polite status live region.",
+  );
+  assert.equal(
+    await landingPage.evaluate(() => navigator.clipboard.readText()),
+    "omslice.eth",
+    "The public donation control must copy the exact ENS address.",
+  );
+  await landingPage.evaluate(() => {
+    Object.defineProperty(navigator, "clipboard", {
+      configurable: true,
+      value: {
+        writeText: async () => {
+          throw new Error("clipboard blocked");
+        },
+      },
+    });
+    Object.defineProperty(document, "execCommand", {
+      configurable: true,
+      value: () => false,
+    });
+  });
+  await copyDonationAddress.click();
+  await landingPage
+    .getByRole("alert")
+    .filter({ hasText: "Select omslice.eth and copy it manually." })
+    .waitFor({ state: "visible" });
   assert.equal(
     await landingPage.getByRole("button", { name: /I am a landlord/ }).count(),
     0,
@@ -148,6 +193,11 @@ try {
   assert.ok(
     mobilePromptButtonBox && mobilePromptButtonBox.height >= 44,
     "The public sign-in recovery action must remain a full-size mobile touch target.",
+  );
+  const mobileDonationButtonBox = await copyDonationAddress.boundingBox();
+  assert.ok(
+    mobileDonationButtonBox && mobileDonationButtonBox.height >= 44,
+    "The donation copy action must remain a full-size mobile touch target.",
   );
   assert.equal(
     await landingPage.evaluate(
