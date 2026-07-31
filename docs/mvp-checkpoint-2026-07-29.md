@@ -208,6 +208,9 @@ production readiness, or authorization to hold real rental deposits.
   closed even if they bypass the application lifecycle validator.
 - **Verified:** Arrow-key workspace navigation moves focus to the selected tab synchronously,
   eliminating an intermittent animation-frame race in the required accessibility smoke check.
+- **Verified:** Supporting-evidence uploads now expose an explicit same-file retry, announce busy,
+  success, and error states, restore keyboard focus after recovery, and reject a delayed completion
+  after the agreement or access token changes. A rendered mobile regression covers this flow.
 - **Verified:** The exact validated candidate source is pushed to the existing Sites source
   branch and saved as a newer undeployed Sites version after each coherent slice. The public
   production deployment remains unchanged.

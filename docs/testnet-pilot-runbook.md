@@ -52,7 +52,9 @@ npm.cmd run check
 ```
 
 For focused troubleshooting, run `npm.cmd run test:account-switch` or
-`npm.cmd run test:accessibility`. The account-switch check holds archive, inventory, wallet setup,
+`npm.cmd run test:accessibility`. Run `npm.cmd run test:evidence-recovery` for the supporting-file
+same-file retry, status announcements, scope isolation, and mobile-width regression. The
+account-switch check holds archive, inventory, wallet setup,
 record-session revocation, preference-save, and test-email operations open across two deterministic
 identities and proves the old account cannot update, download into, announce inside, or sign out
 the new account. The accessibility check covers the public yield dialog and focus return,

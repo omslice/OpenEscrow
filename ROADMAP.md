@@ -136,6 +136,8 @@ the repository; they are not claims of legal approval or production readiness.
   proposal focus-recovery, async announcement, reduced-motion, mobile-overflow fixes, and an
   accessible in-memory copy fallback for blocked account-inventory downloads; notification
   outcomes use explicit atomic status/error semantics rather than message-text inference
+- [x] Supporting-evidence upload recovery with an explicit same-file retry, announced busy/error
+  states, focus restoration, agreement/access-scope isolation, and rendered mobile regression
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a
   shared deadline clock
 - [x] Proposal-review polling is isolated from user actions: stale refreshes cannot replace a
