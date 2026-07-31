@@ -231,6 +231,16 @@ try {
     "recoverable-secret",
     "A scrubbed invitation must retain same-tab recovery before the workspace downloads.",
   );
+  assert.equal(
+    await recoverableInvitationPage.evaluate(
+      () =>
+        window.localStorage.getItem(
+          "openescrow.negotiationAccess.recoverable-proposal.tenant",
+        ),
+    ),
+    null,
+    "A bearer invitation must not be promoted into persistent local storage.",
+  );
   await recoverableInvitationPage.unroute(workspaceAssetPattern);
   await recoverableInvitationPage
     .getByRole("button", { name: "Reload OpenEscrow" })
@@ -242,6 +252,16 @@ try {
     new URL(recoverableInvitationPage.url()).searchParams.has("token"),
     false,
     "Reload recovery must keep the bearer token out of browser history.",
+  );
+  assert.equal(
+    await recoverableInvitationPage.evaluate(
+      () =>
+        window.localStorage.getItem(
+          "openescrow.negotiationAccess.recoverable-proposal.tenant",
+        ),
+    ),
+    null,
+    "Workspace startup must keep invitation recovery scoped to the current tab.",
   );
   await recoverableInvitationContext.close();
 

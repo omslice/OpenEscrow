@@ -100,6 +100,24 @@ test("ending account sessions clears only account-discovery access from browser 
   try {
     storeNegotiationAccess(accountLandlord, true);
     storeNegotiationAccess(invitationTenant, true);
+    assert.notEqual(
+      localStorage.getItem(
+        "openescrow.negotiationAccess.account-proposal.landlord",
+      ),
+      null,
+    );
+    assert.equal(
+      localStorage.getItem(
+        "openescrow.negotiationAccess.invited-proposal.tenant",
+      ),
+      null,
+    );
+    assert.notEqual(
+      sessionStorage.getItem(
+        "openescrow.negotiationAccess.invited-proposal.tenant",
+      ),
+      null,
+    );
     localStorage.setItem(
       "openescrow.negotiationAccess.account-proposal",
       JSON.stringify(accountLandlord),
@@ -189,6 +207,61 @@ test("blocked storage cannot blank an invitation or leave its bearer token in th
     assert.equal(captureNegotiationAccessFromUrl(), null);
     assert.equal(currentUrl.searchParams.get("token"), null);
     assert.equal(currentUrl.searchParams.get("invite"), null);
+  } finally {
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: originalWindow,
+    });
+  }
+});
+
+test("captured invitation access remains session-scoped and clears a legacy local copy", () => {
+  const originalWindow = globalThis.window;
+  const localStorage = new MemoryStorage();
+  const sessionStorage = new MemoryStorage();
+  let currentUrl = new URL(
+    "https://openescrow.example/?invite=tenant&proposal=session-invite&token=session-secret",
+  );
+  const key = "openescrow.negotiationAccess.session-invite.tenant";
+  localStorage.setItem(
+    key,
+    JSON.stringify({
+      proposalId: "session-invite",
+      role: "tenant",
+      token: "legacy-local-secret",
+      source: "invite",
+    }),
+  );
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: {
+      localStorage,
+      sessionStorage,
+      location: {
+        get href() {
+          return currentUrl.toString();
+        },
+      },
+      history: {
+        replaceState(_state: unknown, _title: string, nextUrl: string) {
+          currentUrl = new URL(nextUrl);
+        },
+      },
+    },
+  });
+
+  try {
+    const captured = captureNegotiationAccessFromUrl();
+    assert.equal(currentUrl.searchParams.get("token"), null);
+    assert.equal(localStorage.getItem(key), null);
+    assert.deepEqual(
+      JSON.parse(sessionStorage.getItem(key) || "{}"),
+      captured,
+    );
+    assert.equal(
+      localStorage.getItem("openescrow.negotiationAccessIndex"),
+      null,
+    );
   } finally {
     Object.defineProperty(globalThis, "window", {
       configurable: true,

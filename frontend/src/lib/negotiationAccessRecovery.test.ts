@@ -83,6 +83,52 @@ test("a scrubbed invitation can resume in the same tab without becoming an accou
       null,
     );
     assert.equal(sessionStorage.getItem(key), null);
+
+    localStorage.setItem(key, JSON.stringify(access));
+    assert.deepEqual(
+      recoverNegotiationAccessForEntry(access.proposalId, access.role),
+      access,
+    );
+    assert.equal(localStorage.getItem(key), null);
+    assert.deepEqual(
+      JSON.parse(sessionStorage.getItem(key) || "{}"),
+      access,
+    );
+
+    sessionStorage.removeItem(key);
+    localStorage.setItem(
+      key,
+      JSON.stringify({ ...access, source: "account" }),
+    );
+    assert.equal(
+      recoverNegotiationAccessForEntry(access.proposalId, access.role),
+      null,
+    );
+    assert.notEqual(localStorage.getItem(key), null);
+
+    const landlordAccess: NegotiationAccess = {
+      ...access,
+      proposalId: "landlord-invitation",
+      role: "landlord",
+    };
+    const landlordKey = negotiationAccessStorageKey(
+      landlordAccess.proposalId,
+      landlordAccess.role,
+    );
+    localStorage.setItem(landlordKey, JSON.stringify(landlordAccess));
+    localStorage.setItem(
+      "openescrow.latestLandlordProposal",
+      JSON.stringify(landlordAccess),
+    );
+    assert.equal(
+      preserveNegotiationAccessForReload(landlordAccess),
+      true,
+    );
+    assert.equal(localStorage.getItem(landlordKey), null);
+    assert.equal(
+      localStorage.getItem("openescrow.latestLandlordProposal"),
+      null,
+    );
   } finally {
     Object.defineProperty(globalThis, "window", {
       configurable: true,

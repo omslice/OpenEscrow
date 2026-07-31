@@ -195,7 +195,12 @@ function AppView({
     if (initialAccess === undefined) {
       return captureNegotiationAccessFromUrl();
     }
-    if (initialAccess) storeNegotiationAccess(initialAccess, true);
+    if (initialAccess) {
+      storeNegotiationAccess(
+        initialAccess,
+        initialAccess.source !== "invite",
+      );
+    }
     return initialAccess;
   });
   const [tab, setTab] = useState<WorkspaceTab>("overview");

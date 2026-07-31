@@ -25,7 +25,9 @@ production custody, or reliance on the compliance research as legal advice.
   only on a separate release check.
 - **Verified:** Authorization, invitation, cross-account isolation, evidence encryption/keyring
   recovery, tamper detection, transaction receipt binding, and privacy failure modes have
-  dedicated server, client, and operator-command regressions.
+  dedicated server, client, and operator-command regressions. Invitee bearer recovery is limited
+  to the current tab, while verified account sessions and landlord-created access retain their
+  distinct durability boundaries.
 - **Verified:** The release dependency audit blocks every high/critical finding and every unknown
   moderate advisory. The former transitive `uuid` advisory is removed from the locked
   wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector

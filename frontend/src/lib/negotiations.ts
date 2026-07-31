@@ -1,6 +1,7 @@
 import type { InviteRole } from "./inviteContext";
 import type { ComplianceFacts, ComplianceSnapshot } from "./jurisdictions";
 import {
+  clearRecoveryJsonIf,
   clearRecoveryValue,
   getBrowserRecoveryStorage,
   readRecoveryValue,
@@ -406,12 +407,13 @@ export function storeNegotiationAccess(access: NegotiationAccess, persistent = f
   const key = accessKey(access.proposalId, access.role);
   const saved = { ...access };
   memoryAccesses.set(key, saved);
+  const durable = persistent && access.source !== "invite";
   const stored = writeAvailable(
     key,
     JSON.stringify(saved),
-    persistent ? ["local", "session"] : ["session"],
+    durable ? ["local", "session"] : ["session"],
   );
-  if (persistent && access.role === "landlord") {
+  if (durable && access.role === "landlord") {
     memoryLatestLandlordAccess = saved;
     writeAvailable(
       LATEST_LANDLORD_ACCESS,
@@ -419,8 +421,33 @@ export function storeNegotiationAccess(access: NegotiationAccess, persistent = f
       ["local", "session"],
     );
   }
-  if (persistent) rememberAccessReference(access);
-  return stored ? (persistent ? "persistent" : "session") : "memory";
+  if (durable) rememberAccessReference(access);
+  if (access.source === "invite") {
+    if (
+      access.role === "landlord" &&
+      memoryLatestLandlordAccess?.source === "invite" &&
+      memoryLatestLandlordAccess?.proposalId === access.proposalId &&
+      memoryLatestLandlordAccess.token === access.token
+    ) {
+      memoryLatestLandlordAccess = null;
+    }
+    const localStorage = getBrowserRecoveryStorage("local");
+    if (localStorage) {
+      clearRecoveryValue(key, localStorage);
+      if (access.role === "landlord") {
+        clearRecoveryJsonIf(
+          LATEST_LANDLORD_ACCESS,
+          (value) =>
+            isNegotiationAccess(value) &&
+            value.source === "invite" &&
+            value.proposalId === access.proposalId &&
+            value.token === access.token,
+          localStorage,
+        );
+      }
+    }
+  }
+  return stored ? (durable ? "persistent" : "session") : "memory";
 }
 
 export function readNegotiationAccess(
@@ -695,7 +722,7 @@ export function captureNegotiationAccessFromUrl(): NegotiationAccess | null {
   }
 
   const access: NegotiationAccess = { proposalId, token, role, source: "invite" };
-  storeNegotiationAccess(access, true);
+  storeNegotiationAccess(access);
   return access;
 }
 

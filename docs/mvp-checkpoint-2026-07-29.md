@@ -90,6 +90,9 @@ detailed validation ledger.
   attempted. A valid role-restricted invitation preserves a same-tab recovery copy before the
   deferred workspace request, so an interrupted bundle download can reload without restoring the
   bearer to browser history or accepting a different proposal, role, or account-discovery token.
+  Invitee recovery remains session-scoped; a legacy persistent invitation is migrated into the
+  current tab and removed from local storage, without changing durable landlord-created access or
+  verified account-discovery sessions.
   If local and session storage are blocked, the invitation, proposal bundle, jurisdiction,
   tracked-agreement, preference, and notification caches degrade to current-page state instead
   of blanking the page or making a completed action look failed. Worker authorization remains
@@ -366,7 +369,8 @@ detailed validation ledger.
   Playwright budget measures 54 JavaScript requests and about 2.35 MB, rejects eager workspace
   and jurisdiction chunks, verifies sign-in focus and mobile-width usability, proves agreement
   links persist validated jurisdiction hints on demand, and proves valid invitations retain their
-  locked role and recover after an intentionally failed first workspace download.
+  locked role and recover after an intentionally failed first workspace download without leaving
+  their bearer in persistent local storage.
 
 ## Remaining
 

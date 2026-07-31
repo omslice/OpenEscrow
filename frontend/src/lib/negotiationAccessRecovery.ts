@@ -1,4 +1,6 @@
 import {
+  clearRecoveryJsonIf,
+  clearRecoveryValue,
   getBrowserRecoveryStorage,
   readRecoveryJson,
   writeRecoveryJson,
@@ -7,6 +9,8 @@ import type {
   NegotiationAccess,
   NegotiationRole,
 } from "./negotiations.ts";
+
+const LATEST_LANDLORD_ACCESS = "openescrow.latestLandlordProposal";
 
 export function negotiationAccessStorageKey(
   proposalId: string,
@@ -34,13 +38,27 @@ export function isNegotiationAccess(
 export function preserveNegotiationAccessForReload(
   access: NegotiationAccess,
 ) {
+  const key = negotiationAccessStorageKey(access.proposalId, access.role);
   const sessionStorage = getBrowserRecoveryStorage("session");
-  if (!sessionStorage) return false;
-  return writeRecoveryJson(
-    negotiationAccessStorageKey(access.proposalId, access.role),
-    access,
-    sessionStorage,
-  );
+  const stored = sessionStorage
+    ? writeRecoveryJson(key, access, sessionStorage)
+    : false;
+  const localStorage = getBrowserRecoveryStorage("local");
+  if (localStorage) {
+    clearRecoveryValue(key, localStorage);
+    if (access.role === "landlord") {
+      clearRecoveryJsonIf(
+        LATEST_LANDLORD_ACCESS,
+        (value) =>
+          isNegotiationAccess(value) &&
+          value.source === "invite" &&
+          value.proposalId === access.proposalId &&
+          value.token === access.token,
+        localStorage,
+      );
+    }
+  }
+  return stored;
 }
 
 export function recoverNegotiationAccessForEntry(
@@ -57,6 +75,10 @@ export function recoverNegotiationAccessForEntry(
       access.role === role &&
       access.source === "invite"
     ) {
+      if (kind === "local") {
+        preserveNegotiationAccessForReload(access);
+        clearRecoveryValue(key, storage);
+      }
       return access;
     }
   }
