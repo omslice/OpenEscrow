@@ -19,7 +19,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   outages, notification recovery, receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 127 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 129 client-logic
   tests, lint, browser account-switch, accessibility/mobile, and load-recovery smoke checks, and
   the production build. These rendered checks are part of the required `npm run check` path
   rather than separate, potentially stale results.
@@ -165,6 +165,11 @@ production readiness, or authorization to hold real rental deposits.
 - **Verified:** Private-activity D1 receipt recovery conditionally removes browser JSON only when
   the stored activity type, content hash, and transaction hash match the successful save. An older
   completion therefore cannot clear a newer proof's recovery control or feedback.
+- **Verified:** Standard contract-write controls now treat wallet-write errors, synchronous
+  submission failures, and mined-receipt failures as terminal failures. Each path unlocks the
+  control, discards the submitted success callback, and announces the error instead of leaving a
+  disabled button waiting forever. Tenant token approval uses the same shared boundary, and
+  proposal finalization now surfaces a mined-receipt error for a safe retry.
 - **Verified:** The exact validated candidate source is pushed to the existing Sites source
   branch and saved as a newer undeployed Sites version after each coherent slice. The public
   production deployment remains unchanged.

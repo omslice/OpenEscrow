@@ -14,3 +14,14 @@ test("a transaction completion uses its submitted callback exactly once", () => 
 
   assert.deepEqual(calls, ["submitted:receipt"]);
 });
+
+test("a failed transaction discards its submitted callback", () => {
+  const callbacks = createSubmittedCallbackSlot<string>();
+  const calls: string[] = [];
+  callbacks.capture((value) => calls.push(value));
+
+  callbacks.clear();
+  callbacks.take()?.("late receipt");
+
+  assert.deepEqual(calls, []);
+});

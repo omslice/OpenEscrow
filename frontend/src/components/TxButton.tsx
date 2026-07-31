@@ -3,6 +3,7 @@ import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagm
 import type { Abi } from "viem";
 import { chain } from "../contracts/config";
 import { createSubmittedCallbackSlot } from "../lib/submittedCallback";
+import { transactionTerminalState } from "../lib/transactionTerminalState";
 
 interface TxButtonProps {
   address: `0x${string}`;
@@ -32,8 +33,13 @@ export function TxButton({
 }: TxButtonProps) {
   const { address: account } = useAccount();
   const { writeContract, data: hash, isPending, error, reset } = useWriteContract();
-  const { isLoading: isMining, isSuccess } = useWaitForTransactionReceipt({ hash });
+  const {
+    isLoading: isMining,
+    isSuccess,
+    error: receiptError,
+  } = useWaitForTransactionReceipt({ hash });
   const [submitted, setSubmitted] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
   const notifiedHash = useRef<`0x${string}` | undefined>(undefined);
   const submittedSuccessCallback = useMemo(
     () => createSubmittedCallbackSlot<`0x${string}`>(),
@@ -41,10 +47,20 @@ export function TxButton({
   );
 
   const busy = submitted || isPending || isMining;
+  const transactionError =
+    submissionError || error?.message.split("\n")[0] ||
+    receiptError?.message.split("\n")[0] || null;
+  const terminalState = transactionTerminalState(
+    error,
+    receiptError,
+    isSuccess,
+  );
 
   useEffect(() => {
-    if (error || isSuccess) setSubmitted(false);
-  }, [error, isSuccess]);
+    if (terminalState === "pending") return;
+    setSubmitted(false);
+    if (terminalState === "failed") submittedSuccessCallback.clear();
+  }, [submittedSuccessCallback, terminalState]);
 
   useEffect(() => {
     onBusyChange?.(busy);
@@ -68,19 +84,30 @@ export function TxButton({
         disabled={disabled || busy || !account}
         onClick={() => {
           if (!account) return;
+          setSubmissionError(null);
           notifiedHash.current = undefined;
           submittedSuccessCallback.capture(onSuccess);
-          onSubmit?.();
-          setSubmitted(true);
-          reset();
-          writeContract({ address, abi, functionName, args, account, chain });
+          try {
+            onSubmit?.();
+            setSubmitted(true);
+            reset();
+            writeContract({ address, abi, functionName, args, account, chain });
+          } catch (cause) {
+            submittedSuccessCallback.clear();
+            setSubmitted(false);
+            setSubmissionError(
+              cause instanceof Error
+                ? cause.message.split("\n")[0]
+                : "The transaction could not be submitted. Check your wallet and try again.",
+            );
+          }
         }}
       >
         {isPending ? "Confirm in wallet..." : isMining ? "Mining..." : label}
       </button>
-      {error && (
+      {transactionError && (
         <p className="tx-error" role="alert">
-          {error.message.split("\n")[0]}
+          {transactionError}
         </p>
       )}
       {isSuccess && (

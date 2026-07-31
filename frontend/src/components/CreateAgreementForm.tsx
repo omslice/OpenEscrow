@@ -398,7 +398,11 @@ function AgreementForm({
   }
 
   const { writeContract, data: hash, isPending, error } = useWriteContract();
-  const { data: receipt, isLoading: isMining } = useWaitForTransactionReceipt({ hash });
+  const {
+    data: receipt,
+    isLoading: isMining,
+    error: receiptError,
+  } = useWaitForTransactionReceipt({ hash });
   const claimWindowHasPassed =
     Boolean(claimWindowStart) && new Date(claimWindowStart).getTime() <= Date.now();
   const approvedTermsLocked =
@@ -3096,7 +3100,11 @@ function AgreementForm({
           . Open the Deposits tab to manage it.
         </p>
       )}
-      {error && <p className="tx-error" role="alert">{error.message.split("\n")[0]}</p>}
+      {(error || receiptError) && (
+        <p className="tx-error" role="alert">
+          {(error || receiptError)?.message.split("\n")[0]}
+        </p>
+      )}
       {pendingFinalization && finalizationRecordError && (
         <div className="receipt-recovery">
           <p className="tx-error" role="alert">{finalizationRecordError}</p>

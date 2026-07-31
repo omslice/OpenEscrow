@@ -1,5 +1,4 @@
 import {
-  useEffect,
   useLayoutEffect,
   useMemo,
   useState,
@@ -10,8 +9,6 @@ import {
   useAccount,
   usePublicClient,
   useReadContract,
-  useWaitForTransactionReceipt,
-  useWriteContract,
 } from "wagmi";
 import {
   MockUSDCABI,
@@ -308,15 +305,6 @@ function StandardTenantFundAction({
       refetchInterval: 4000,
     },
   });
-  const { writeContract: approve, data: approveHash, isPending: approving } =
-    useWriteContract();
-  const { isLoading: approveMining, isSuccess: approveConfirmed } =
-    useWaitForTransactionReceipt({ hash: approveHash });
-
-  useEffect(() => {
-    if (approveConfirmed) void refetchAllowance();
-  }, [approveConfirmed, refetchAllowance]);
-
   if (agreement.phase !== Phase.ReadyToFund || !isTenant) return null;
   const currentBalance = typeof balance === "bigint" ? balance : 0n;
   const reserveIsPaid = !reserveRequired || reservePaid === true;
@@ -347,26 +335,14 @@ function StandardTenantFundAction({
           onSuccess={() => void refetchBalance()}
         />
       ) : !hasAllowance ? (
-        <button
-          className="btn btn-primary"
-          disabled={approving || approveMining}
-          onClick={() =>
-            approve({
-              address: agreement.token,
-              abi: MockUSDCABI,
-              functionName: "approve",
-              account: address,
-              chain,
-              args: [OPEN_ESCROW_ADDRESS, tokenBalanceNeeded],
-            })
-          }
-        >
-          {approving
-            ? "Confirm in wallet..."
-            : approveMining
-              ? "Mining..."
-              : `Approve total ${formatUSDC(tokenBalanceNeeded)} ${tokenLabel}`}
-        </button>
+        <TxButton
+          address={agreement.token}
+          abi={MockUSDCABI}
+          functionName="approve"
+          args={[OPEN_ESCROW_ADDRESS, tokenBalanceNeeded]}
+          label={`Approve total ${formatUSDC(tokenBalanceNeeded)} ${tokenLabel}`}
+          onSuccess={() => void refetchAllowance()}
+        />
       ) : !reserveIsPaid ? (
         <TxButton
           address={OPEN_ESCROW_ADDRESS}

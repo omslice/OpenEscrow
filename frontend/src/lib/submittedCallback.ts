@@ -1,5 +1,6 @@
 export type SubmittedCallbackSlot<Value> = {
   capture(callback?: (value: Value) => void): void;
+  clear(): void;
   take(): ((value: Value) => void) | undefined;
 };
 
@@ -9,6 +10,9 @@ export function createSubmittedCallbackSlot<Value>(): SubmittedCallbackSlot<Valu
   return {
     capture(callback) {
       submittedCallback = callback;
+    },
+    clear() {
+      submittedCallback = undefined;
     },
     take() {
       const callback = submittedCallback;

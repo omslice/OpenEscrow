@@ -139,6 +139,9 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Privacy-safe activity publication is exact-payload bound: shared transaction controls retain
   the callback captured at submission, proof inputs lock while the receipt is pending, scope
   changes reject late completions, and D1 recovery clears only matching structured receipt data
+- [x] Standard transaction controls recover from wallet-write, synchronous submission, and mined
+  receipt failures: busy state unlocks, stale success callbacks are discarded, and approval and
+  finalization failures remain visible for a safe retry
 - [x] Establish an initial browser performance budget and split the bootstrap from the
   authenticated wallet/workspace bundle
 - [x] Split infrequently used proposal, deposit, and record tools into tab-level chunks
