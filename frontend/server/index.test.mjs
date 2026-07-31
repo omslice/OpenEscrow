@@ -1185,10 +1185,14 @@ const RECEIPT_TEST_USDC = "0xe129b23bd89904d363ba226ee52dec74185d7789";
 const RECEIPT_TEST_YIELD_USDC = "0x2746034ff16371a65c133016470f85535992dabc";
 const RECEIPT_TEST_OPEN_ESCROW =
   "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99";
+const RECEIPT_TEST_OPERATIONS_RESERVE =
+  "0x5d2E9c429F9d117c7b028c8f0f67d37252aDceC0";
 const AGREEMENT_PROPOSED_TOPIC =
   "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6";
 const TENANT_PARTICIPANT_ADDED_TOPIC =
   "0x30ab399feb0ae9b4c920d576e81a8e47863afdae2efa0fc6d97a13114f5440ad";
+const OPERATIONS_RESERVE_PAID_TOPIC =
+  "0x8817d9a1dd298236cd746a97680a13cf2e5d0a9d970b20e26b8fa0ee32cd855b";
 const TENANT_SHARE_FUNDED_TOPIC =
   "0xa59b69e1d871c72525782e2de73d8b4a83a1bf00840689625923330b4464544d";
 const AGREEMENT_FUNDED_TOPIC =
@@ -1228,39 +1232,81 @@ function finalizationReceipt(
     mutation === "wrong-tenant"
       ? RECEIPT_TEST_OTHER_TENANT
       : RECEIPT_TEST_TENANT;
+  const landlord =
+    mutation === "tenant-as-landlord"
+      ? RECEIPT_TEST_TENANT
+      : RECEIPT_TEST_LANDLORD;
   const deposit = mutation === "wrong-amount" ? 1_199_000_000n : 1_200_000_000n;
+  const claimWindowStart =
+    Math.floor(new Date(terms.claimWindowStart).getTime() / 1_000) +
+    (mutation === "wrong-claim-start" ? 1 : 0);
+  const responsePeriod =
+    Number(terms.responseDays) * 86_400 +
+    (mutation === "wrong-response-period" ? 1 : 0);
+  const agreementLog = {
+    address: RECEIPT_TEST_OPEN_ESCROW,
+    topics: [
+      AGREEMENT_PROPOSED_TOPIC,
+      agreementTopic,
+      receiptAddressWord(landlord),
+      receiptAddressWord(tenant),
+    ],
+    data: receiptData(
+      receiptAddressWord(
+        mutation === "wrong-arbiter" ? RECEIPT_TEST_ARBITER : arbiter,
+      ),
+      receiptWord(deposit),
+      receiptWord(claimWindowStart),
+      receiptWord(Number(terms.claimDays) * 86_400),
+      receiptWord(responsePeriod),
+      receiptWord(Number(terms.arbiterDays) * 86_400),
+    ),
+  };
+  const participantLog = {
+    address: RECEIPT_TEST_OPEN_ESCROW,
+    topics: [
+      TENANT_PARTICIPANT_ADDED_TOPIC,
+      agreementTopic,
+      receiptAddressWord(tenant),
+    ],
+    data: receiptData(
+      receiptWord(mutation === "wrong-participant-share" ? 9_999 : 10_000),
+    ),
+  };
+  const logs =
+    mutation === "split-match"
+      ? [
+          {
+            ...agreementLog,
+            data: receiptData(
+              receiptAddressWord(arbiter),
+              receiptWord(1_199_000_000n),
+              receiptWord(claimWindowStart),
+              receiptWord(Number(terms.claimDays) * 86_400),
+              receiptWord(responsePeriod),
+              receiptWord(Number(terms.arbiterDays) * 86_400),
+            ),
+          },
+          {
+            ...agreementLog,
+            topics: [
+              AGREEMENT_PROPOSED_TOPIC,
+              agreementTopic,
+              receiptAddressWord(landlord),
+              receiptAddressWord(RECEIPT_TEST_OTHER_TENANT),
+            ],
+          },
+          participantLog,
+        ]
+      : [
+          agreementLog,
+          ...(mutation === "missing-participant" ? [] : [participantLog]),
+        ];
   return {
     status: "0x1",
     blockNumber: "0x2a",
-    from: RECEIPT_TEST_LANDLORD,
-    logs: [
-      {
-        address: RECEIPT_TEST_OPEN_ESCROW,
-        topics: [
-          AGREEMENT_PROPOSED_TOPIC,
-          agreementTopic,
-          receiptAddressWord(RECEIPT_TEST_LANDLORD),
-          receiptAddressWord(tenant),
-        ],
-        data: receiptData(
-          receiptAddressWord(arbiter),
-          receiptWord(deposit),
-          receiptWord(Math.floor(new Date(terms.claimWindowStart).getTime() / 1_000)),
-          receiptWord(Number(terms.claimDays) * 86_400),
-          receiptWord(Number(terms.responseDays) * 86_400),
-          receiptWord(Number(terms.arbiterDays) * 86_400),
-        ),
-      },
-      {
-        address: RECEIPT_TEST_OPEN_ESCROW,
-        topics: [
-          TENANT_PARTICIPANT_ADDED_TOPIC,
-          agreementTopic,
-          receiptAddressWord(tenant),
-        ],
-        data: receiptData(receiptWord(10_000)),
-      },
-    ],
+    from: landlord,
+    logs,
   };
 }
 
@@ -8662,6 +8708,30 @@ test("configured receipt verification accepts only the expected Base Sepolia agr
     );
     assert.equal(wrongAmount.status, 400);
 
+    for (const [mutation, hashIndex] of [
+      ["tenant-as-landlord", 114],
+      ["wrong-arbiter", 115],
+      ["wrong-claim-start", 116],
+      ["wrong-response-period", 117],
+      ["wrong-participant-share", 118],
+      ["missing-participant", 119],
+      ["split-match", 120],
+    ]) {
+      receiptMutation = mutation;
+      const rejected = await act(
+        db,
+        created.record.id,
+        created.access.landlord,
+        {
+          type: "finalize",
+          agreementId: "42",
+          transactionHash: transactionHash(hashIndex),
+        },
+        env,
+      );
+      assert.equal(rejected.status, 400, mutation);
+    }
+
     receiptMutation = "valid";
     stateToken = RECEIPT_TEST_YIELD_USDC;
     const wrongToken = await act(
@@ -8706,6 +8776,118 @@ test("configured receipt verification accepts only the expected Base Sepolia agr
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("receipt verification binds the operations reserve to its escrow, tenant, token, and exact share", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const reserveReceipt = ({
+    reserve = RECEIPT_TEST_OPERATIONS_RESERVE,
+    escrow = RECEIPT_TEST_OPEN_ESCROW,
+    agreementId = 42,
+    payer = RECEIPT_TEST_TENANT,
+    token = RECEIPT_TEST_USDC,
+    amount = 5_000_000n,
+    from = RECEIPT_TEST_TENANT,
+  } = {}) => ({
+    status: "0x1",
+    blockNumber: "0x2b",
+    from,
+    logs: [
+      {
+        address: reserve,
+        topics: [
+          OPERATIONS_RESERVE_PAID_TOPIC,
+          receiptAddressWord(escrow),
+          receiptWord(agreementId),
+          receiptAddressWord(payer),
+        ],
+        data: receiptData(receiptAddressWord(token), receiptWord(amount)),
+      },
+    ],
+  });
+  const action = {
+    type: "operations_reserve_paid",
+    amount: "5",
+    transactionHash: transactionHash(121),
+  };
+  for (const [receipt, hashIndex, label] of [
+    [
+      reserveReceipt({
+        reserve: RECEIPT_TEST_OPEN_ESCROW,
+      }),
+      122,
+      "wrong reserve",
+    ],
+    [
+      reserveReceipt({
+        escrow: RECEIPT_TEST_OPERATIONS_RESERVE,
+      }),
+      123,
+      "wrong escrow",
+    ],
+    [
+      reserveReceipt({
+        agreementId: 43,
+      }),
+      124,
+      "wrong agreement",
+    ],
+    [
+      reserveReceipt({
+        payer: RECEIPT_TEST_OTHER_TENANT,
+      }),
+      125,
+      "wrong tenant",
+    ],
+    [
+      reserveReceipt({
+        token: RECEIPT_TEST_YIELD_USDC,
+      }),
+      126,
+      "wrong token",
+    ],
+    [
+      reserveReceipt({
+        amount: 4_999_999n,
+      }),
+      127,
+      "wrong amount",
+    ],
+    [
+      reserveReceipt({
+        from: RECEIPT_TEST_OTHER_TENANT,
+      }),
+      128,
+      "wrong sender",
+    ],
+  ]) {
+    const rejected = await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.tenant,
+      { ...action, transactionHash: transactionHash(hashIndex) },
+      receipt,
+    );
+    assert.equal(rejected.status, 400, label);
+  }
+
+  const paid = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.tenant,
+      { ...action, transactionHash: transactionHash(129) },
+      reserveReceipt(),
+    ),
+  );
+  assert.equal(
+    paid.events.filter(
+      (event) => event.action === "operations_reserve_paid",
+    ).length,
+    1,
+  );
 });
 
 test("receipt verification falls back when the official public RPC is rate limited", async () => {

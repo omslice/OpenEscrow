@@ -23,7 +23,7 @@ production readiness, or authorization to hold real rental deposits.
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   R2/encrypted-IPFS cleanup after metadata failure, outages, notification recovery, receipt
   spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 86 server tests, 140 client-logic
+- **Verified:** The full repository release check passes with 87 server tests, 140 client-logic
   tests, lint, browser account-switch, funding-recovery, accessibility/mobile, and load-recovery
   smoke checks, and the production build. These rendered checks are part of the required
   `npm run check` path rather than separate, potentially stale results.
@@ -36,7 +36,9 @@ production readiness, or authorization to hold real rental deposits.
   lifecycle regressions now also reject a mismatched claim or amendment amount, a relabeled
   landlord, tenant, or arbiter, an altered tenant-response count, a wrong ruling allocation, a
   wrong withdrawal party or amount, and a wrong no-claim, response-timeout, or arbiter-timeout
-  amount.
+  amount. Finalization regressions independently reject a tenant relabeled as creator, altered
+  arbiter/deadline/share fields, missing participant logs, and split-match logs; operations-reserve
+  regressions reject the wrong reserve, escrow, agreement, tenant, token, sender, or share.
 - **Verified:** Address-routed compliance snapshots now recursively detach and freeze nested
   rules, sources, overlays, and claim checks. Snapshot-level regressions cover conditional Maine
   paths, every fact- and event-gated Florida deadline stage, Arizona business-day and holiday

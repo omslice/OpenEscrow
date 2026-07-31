@@ -246,13 +246,16 @@ restrictive content-security headers. Static app responses also receive no-refer
 headers.
 
 Automated coverage at this addendum is 173 passing Solidity tests across 15 suites, including the
-three 32,768-call stateful invariants and 512-run fuzz cases, plus 86 passing hosted workflow tests.
+three 32,768-call stateful invariants and 512-run fuzz cases, plus 87 passing hosted workflow tests.
 The workflow suite contains a complete two-tenant/optional-arbiter negotiation, funding, claim,
 response, dispute, ruling, refund, and withdrawal scenario. Receipt regressions independently
 reject wrong finalization participants, amounts, and tokens; another tenant's funding event;
 aggregate-event substitution; altered claim/amendment values; a relabeled landlord, tenant, or
 arbiter; altered tenant-response counts; wrong ruling allocations; wrong withdrawal parties or
 amounts; wrong timeout outcomes; and altered private-record hashes, activity types, or actors.
+Finalization coverage also rejects altered arbiter/deadline/share fields, missing participant
+logs, and two partial logs that only match when improperly combined. Operations-reserve coverage
+rejects the wrong contract, escrow, agreement, tenant, token, transaction sender, or exact share.
 
 ### Residual hosted-workflow risks
 
