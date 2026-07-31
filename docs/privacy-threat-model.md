@@ -52,6 +52,7 @@ completeness, legality, or authorship of the underlying content.
 | Wrong backup bytes are labeled with an expected key ID | Each new encrypted row records a SHA-256 master-key fingerprint; readiness compares stored fingerprints with configured key bytes without exposing those bytes | The isolated recovery rehearsal rejects missing and mismatched backups, restores copied D1/R2 state, and proves exact plaintext recovery only with the approved key bytes |
 | Legacy encrypted evidence has no key fingerprint | An authorized download may backfill the fingerprint only after AES-GCM decryption and the stored plaintext SHA-256 receipt both verify | The rehearsal proves a wrong backup cannot decrypt or write metadata, while the approved backup verifies the exact bytes and makes readiness pass |
 | Private evidence storage outage | R2 upload/download failures return privacy-safe retry guidance before metadata or success events are recorded | Upload outage leaves no phantom evidence row/event; retry succeeds; download outage fails closed |
+| Evidence storage succeeds but its D1 record fails | The metadata and event use one atomic D1 batch; failure triggers a best-effort compensating R2 delete or encrypted-IPFS unpin before the request returns retry guidance | Separate R2 and encrypted-IPFS rehearsals prove cleanup, zero phantom metadata/events, token-safe errors, and a successful retry; cleanup is not claimed if the storage provider also rejects the delete/unpin |
 | Notification provider outage | Provider network failures return a retryable delivery error and do not record a sent event | Failed claim notice can be retried once and remains idempotent after recovery |
 | Misleading lifecycle record | Role/state guards, idempotency, and version-matched receipt verification | Credential-free lifecycle rehearsals and receipt-verification tests |
 | Sensitive email content | Notifications omit addresses, amounts, evidence, and notes | Notification-copy and idempotency tests |
@@ -119,13 +120,14 @@ retention and key-destruction consequences are explicitly approved.
 
 ## Incident exercises still required
 
-The exact-source credential-free incident rehearsal packages thirteen controls covering invalid
+The exact-source credential-free incident rehearsal packages fifteen controls covering invalid
 identity tokens, cross-account access, cross-site read isolation, participant-scoped session
 containment, targeted lost-tenant-invitation rotation with co-tenant continuity, a realistic
 multi-agreement privacy inventory with encrypted-evidence exclusion and clean rediscovery,
 corrupted ciphertext/key/digest data, isolated D1/R2 restoration with missing and mislabeled
-backup rejection, R2 upload/download outages, notification-provider recovery, spoofed receipts,
-and RPC fallback. It produces local JSON and JUnit evidence without touching hosted systems.
+backup rejection, R2 upload/download outages, compensating R2 deletion and encrypted-IPFS
+unpinning after D1 metadata failure, notification-provider recovery, spoofed receipts, and RPC
+fallback. It produces local JSON and JUnit evidence without touching hosted systems.
 
 A supervised pilot must still additionally exercise:
 

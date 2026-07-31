@@ -6505,54 +6505,70 @@ async function uploadEvidence(request, env) {
     }
     const uri = `openescrow://evidence/${evidenceId}`;
     const storageKind = encryptionVersion ? "encrypted-r2" : "private-r2";
-    await env.DB.batch([
-      env.DB
-        .prepare(
-          `INSERT INTO evidence_files
-           (id, negotiation_id, uploader_role, storage_kind, object_key, cid,
-             original_name, content_type, size_bytes, sha256, encryption_version,
-             encryption_iv, encryption_key_id, encryption_key_fingerprint, created_at)
-            VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        )
-        .bind(
-          evidenceId,
+    try {
+      await env.DB.batch([
+        env.DB
+          .prepare(
+            `INSERT INTO evidence_files
+             (id, negotiation_id, uploader_role, storage_kind, object_key, cid,
+               original_name, content_type, size_bytes, sha256, encryption_version,
+               encryption_iv, encryption_key_id, encryption_key_fingerprint, created_at)
+              VALUES (?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          )
+          .bind(
+            evidenceId,
+            proposalId,
+            role,
+            storageKind,
+            objectKey,
+            cleanText(file.name, 240) || "evidence",
+            contentType,
+            file.size,
+            sha256,
+            encryptionVersion,
+            encryptionIv,
+            encryptionKeyId,
+            encryptionKeyFingerprint,
+            now,
+          ),
+        env.DB
+          .prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?")
+          .bind(now, proposalId),
+        eventStatement(
+          env.DB,
           proposalId,
-          role,
-          storageKind,
-          objectKey,
-          cleanText(file.name, 240) || "evidence",
-          contentType,
-          file.size,
-          sha256,
-          encryptionVersion,
-          encryptionIv,
-          encryptionKeyId,
-          encryptionKeyFingerprint,
           now,
+          role,
+          "evidence_uploaded",
+          `Uploaded a private ${contentType} supporting file${encryptionVersion ? " encrypted at rest" : ""}. OpenEscrow verified its integrity.`,
+          row.revision,
+          {
+            evidenceId,
+            uri,
+            sha256,
+            size: file.size,
+            type: contentType,
+            storageKind,
+            encrypted: Boolean(encryptionVersion),
+            encryptionKeyId,
+          },
         ),
-      env.DB
-        .prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?")
-        .bind(now, proposalId),
-      eventStatement(
-        env.DB,
-        proposalId,
-        now,
-        role,
-        "evidence_uploaded",
-        `Uploaded a private ${contentType} supporting file${encryptionVersion ? " encrypted at rest" : ""}. OpenEscrow verified its integrity.`,
-        row.revision,
+      ]);
+    } catch {
+      try {
+        await env.EVIDENCE.delete(objectKey);
+      } catch {
+        // The request still fails closed. Operators can reconcile an
+        // incomplete object from the negotiation and evidence identifiers.
+      }
+      return json(
         {
-          evidenceId,
-          uri,
-          sha256,
-          size: file.size,
-          type: contentType,
-          storageKind,
-          encrypted: Boolean(encryptionVersion),
-          encryptionKeyId,
+          error:
+            "OpenEscrow could not finish recording this supporting file. Do not submit the claim; try the upload again.",
         },
-      ),
-    ]);
+        503,
+      );
+    }
     return json({
       cid: evidenceId,
       uri,
@@ -6585,67 +6601,97 @@ async function uploadEvidence(request, env) {
       },
     }),
   );
-  const upload = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
-    method: "POST",
-    headers: { authorization: `Bearer ${env.PINATA_JWT}` },
-    body: pinataForm,
-  });
-  const result = await upload.json();
-  if (!upload.ok || !result.IpfsHash) {
+  let upload;
+  let result;
+  try {
+    upload = await fetch("https://api.pinata.cloud/pinning/pinFileToIPFS", {
+      method: "POST",
+      headers: { authorization: `Bearer ${env.PINATA_JWT}` },
+      body: pinataForm,
+    });
+    result = await upload.json();
+  } catch {
+    return json({ error: "The IPFS pinning service is temporarily unavailable." }, 502);
+  }
+  const cid = cleanText(result?.IpfsHash, 200);
+  if (!upload.ok || !cid) {
     return json({ error: "The IPFS pinning service rejected the upload." }, 502);
   }
 
-  const uri = `openescrow+ipfs://${result.IpfsHash}/${evidenceId}`;
-  await env.DB.batch([
-    env.DB
-      .prepare(
-        `INSERT INTO evidence_files
-         (id, negotiation_id, uploader_role, storage_kind, object_key, cid,
-           original_name, content_type, size_bytes, sha256, encryption_version,
-           encryption_iv, encryption_key_id, encryption_key_fingerprint, created_at)
-          VALUES (?, ?, ?, 'encrypted-ipfs', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(
-        evidenceId,
+  const uri = `openescrow+ipfs://${cid}/${evidenceId}`;
+  try {
+    await env.DB.batch([
+      env.DB
+        .prepare(
+          `INSERT INTO evidence_files
+           (id, negotiation_id, uploader_role, storage_kind, object_key, cid,
+             original_name, content_type, size_bytes, sha256, encryption_version,
+             encryption_iv, encryption_key_id, encryption_key_fingerprint, created_at)
+            VALUES (?, ?, ?, 'encrypted-ipfs', NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .bind(
+          evidenceId,
+          proposalId,
+          role,
+          cid,
+          cleanText(file.name, 240) || "evidence",
+          contentType,
+          file.size,
+          sha256,
+          encryptionVersion,
+          encryptionIv,
+          encryptionKeyId,
+          encryptionKeyFingerprint,
+          now,
+        ),
+      env.DB
+        .prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?")
+        .bind(now, proposalId),
+      eventStatement(
+        env.DB,
         proposalId,
-        role,
-        result.IpfsHash,
-        cleanText(file.name, 240) || "evidence",
-        contentType,
-        file.size,
-        sha256,
-        encryptionVersion,
-        encryptionIv,
-        encryptionKeyId,
-        encryptionKeyFingerprint,
         now,
+        role,
+        "evidence_uploaded",
+        `Encrypted a ${contentType} supporting file and stored it in decentralized evidence storage. OpenEscrow verified its integrity.`,
+        row.revision,
+        {
+          evidenceId,
+          cid,
+          uri,
+          sha256,
+          size: file.size,
+          type: contentType,
+          storageKind: "encrypted-ipfs",
+          encrypted: true,
+          encryptionKeyId,
+        },
       ),
-    env.DB
-      .prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?")
-      .bind(now, proposalId),
-    eventStatement(
-      env.DB,
-      proposalId,
-      now,
-      role,
-      "evidence_uploaded",
-      `Encrypted a ${contentType} supporting file and stored it in decentralized evidence storage. OpenEscrow verified its integrity.`,
-      row.revision,
+    ]);
+  } catch {
+    try {
+      const unpin = await fetch(
+        `https://api.pinata.cloud/pinning/unpin/${encodeURIComponent(cid)}`,
+        {
+          method: "DELETE",
+          headers: { authorization: `Bearer ${env.PINATA_JWT}` },
+        },
+      );
+      if (!unpin.ok) throw new Error("The IPFS pinning service rejected the cleanup.");
+    } catch {
+      // The encrypted bytes remain confidential. Operators can reconcile an
+      // incomplete pin from the negotiation and evidence identifiers.
+    }
+    return json(
       {
-        evidenceId,
-        cid: result.IpfsHash,
-        uri,
-        sha256,
-        size: file.size,
-        type: contentType,
-        storageKind: "encrypted-ipfs",
-        encrypted: true,
-        encryptionKeyId,
+        error:
+          "OpenEscrow could not finish recording this supporting file. Do not submit the claim; try the upload again.",
       },
-    ),
-  ]);
+      503,
+    );
+  }
   return json({
-    cid: result.IpfsHash,
+    cid,
     uri,
     sha256,
     storageKind: "encrypted-decentralized",

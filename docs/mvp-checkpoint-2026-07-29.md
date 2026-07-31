@@ -7,19 +7,21 @@ production readiness, or authorization to hold real rental deposits.
 
 - **Verified:** A locally packaged Sites candidate includes the latest pilot rehearsal, security,
   accessibility, compliance-regression, funding-failure, and hidden-tab performance work.
-- **Verified:** Fifteen credential-free rehearsals pass: five lifecycle scenarios covering
-  archive/restore, record proof, disputed claim, accepted claim, and no-claim refund, plus three
-  private-evidence and notification outage/recovery scenarios, one isolated evidence-key backup
-  restoration scenario, one arbiter-link/session reset, one targeted lost-tenant-link recovery
-  with co-tenant continuity, one verified-arbiter identity recovery/isolation scenario, one
-  verified-account session containment scenario, one realistic multi-agreement account
-  data-inventory scenario with encrypted-evidence exclusion and clean post-containment
-  rediscovery, and one durable sandbox funding recovery/refund scenario.
-- **Verified:** A separate 13-scenario incident-response rehearsal passes for identity forgery,
+- **Verified:** Seventeen credential-free rehearsals pass: five lifecycle scenarios covering
+  archive/restore, record proof, disputed claim, accepted claim, and no-claim refund, plus five
+  private-evidence and notification outage/recovery scenarios—including cleanup when storage
+  succeeds before its D1 record—one isolated evidence-key backup restoration scenario, one
+  arbiter-link/session reset, one targeted lost-tenant-link recovery with co-tenant continuity,
+  one verified-arbiter identity recovery/isolation scenario, one verified-account session
+  containment scenario, one realistic multi-agreement account data-inventory scenario with
+  encrypted-evidence exclusion and clean post-containment rediscovery, and one durable sandbox
+  funding recovery/refund scenario.
+- **Verified:** A separate 15-scenario incident-response rehearsal passes for identity forgery,
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
-  outages, notification recovery, receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 78 server tests, 135 client-logic
+  R2/encrypted-IPFS cleanup after metadata failure, outages, notification recovery, receipt
+  spoofing, and RPC fallback.
+- **Verified:** The full repository release check passes with 80 server tests, 137 client-logic
   tests, lint, browser account-switch, funding-recovery, accessibility/mobile, and load-recovery
   smoke checks, and the production build. These rendered checks are part of the required
   `npm run check` path rather than separate, potentially stale results.
@@ -231,7 +233,11 @@ production readiness, or authorization to hold real rental deposits.
   load paths and verifies that workspace navigation remains available after a section failure.
 - **Verified:** Private-evidence upload/download and notification-provider outages fail closed
   with retry guidance. Failed attempts create no phantom evidence or sent-delivery events, and
-  automated recovery tests verify one successful retry remains idempotent.
+  automated recovery tests verify one successful retry remains idempotent. If private R2 or
+  encrypted-IPFS storage succeeds before the atomic D1 metadata/event batch fails, OpenEscrow
+  makes a compensating delete or unpin attempt before returning retry guidance; dedicated
+  rehearsals prove successful cleanup, no phantom D1 record/event, and one safe retry. Provider
+  cleanup remains best-effort if that provider is also unavailable.
 - **Verified:** New private-evidence actions expose only token-free document paths. The UI
   control sends agreement access in a same-origin POST body rather than an `href`, so the bearer
   does not enter copied document links, browser history, or referrers. Server regressions preserve

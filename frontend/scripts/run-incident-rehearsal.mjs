@@ -78,6 +78,21 @@ const expectedScenarios = [
     covers: ["R2 outage", "no phantom evidence", "safe retry"],
   },
   {
+    id: "evidence-r2-metadata-outage",
+    name: "pilot rehearsal: an evidence metadata outage deletes the incomplete R2 upload before retry",
+    covers: ["R2 cleanup", "D1 outage", "no orphaned object", "safe retry"],
+  },
+  {
+    id: "evidence-ipfs-metadata-outage",
+    name: "pilot rehearsal: an evidence metadata outage unpins incomplete encrypted IPFS before retry",
+    covers: [
+      "encrypted IPFS cleanup",
+      "D1 outage",
+      "no incomplete pin",
+      "safe retry",
+    ],
+  },
+  {
     id: "evidence-download-outage",
     name: "pilot rehearsal: an evidence download outage fails closed without storage details",
     covers: ["R2 outage", "fail-closed read", "privacy-safe error"],

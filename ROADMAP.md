@@ -105,7 +105,8 @@ the repository; they are not claims of legal approval or production readiness.
   exact-byte recovery, while authorized legacy downloads backfill fingerprints only after
   successful decryption and plaintext-digest verification
 - [x] Fail-closed, retryable private-evidence and notification-provider outage handling without
-  phantom evidence or delivery events
+  phantom evidence or delivery events; if storage succeeds before the atomic D1 record fails,
+  private R2 is deleted or encrypted IPFS is unpinned on a best-effort basis before retry
 - [x] Private evidence opens through a same-origin form submission with token-free paths, keeping
   agreement access bearers out of new links, copied URLs, browser history, and referrers while
   retaining legacy read compatibility

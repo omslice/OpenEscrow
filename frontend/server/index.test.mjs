@@ -238,6 +238,22 @@ class TestD1 {
   }
 }
 
+function failEvidenceMetadataBatch(db) {
+  let batchCalls = 0;
+  return {
+    prepare(sql) {
+      return db.prepare(sql);
+    },
+    async batch(statements) {
+      batchCalls += 1;
+      if (batchCalls === 2) {
+        throw new Error("simulated evidence metadata outage");
+      }
+      return db.batch(statements);
+    },
+  };
+}
+
 class TestR2 {
   constructor() {
     this.objects = new Map();
@@ -265,6 +281,10 @@ class TestR2 {
         headers.set("content-type", object.contentType);
       },
     };
+  }
+
+  async delete(key) {
+    this.objects.delete(key);
   }
 }
 
@@ -5003,6 +5023,55 @@ test("pilot rehearsal: an evidence upload outage is retryable without a phantom 
   assert.equal(recoveredEvidence.objects.size, 1);
 });
 
+test("pilot rehearsal: an evidence metadata outage deletes the incomplete R2 upload before retry", async () => {
+  const db = new TestD1();
+  const evidence = new TestR2();
+  const created = await create(db);
+  const evidenceRequest = () => {
+    const form = new FormData();
+    form.set("proposalId", created.record.id);
+    form.set("token", created.access.landlord);
+    form.set(
+      "file",
+      new File(
+        [new TextEncoder().encode("%PDF-1.7\nincomplete R2 evidence")],
+        "incomplete-r2.pdf",
+        { type: "application/pdf" },
+      ),
+    );
+    return new Request("https://openescrow.example/api/evidence", {
+      method: "POST",
+      body: form,
+    });
+  };
+
+  const incomplete = await worker.fetch(evidenceRequest(), {
+    DB: failEvidenceMetadataBatch(db),
+    EVIDENCE: evidence,
+  });
+  assert.equal(incomplete.status, 503);
+  const incompleteBody = await incomplete.json();
+  assert.match(incompleteBody.error, /could not finish recording/);
+  assert.match(incompleteBody.error, /try the upload again/);
+  assert.doesNotMatch(incompleteBody.error, /simulated|metadata outage/);
+  assert.equal(evidence.objects.size, 0);
+
+  const evidenceCount = await db
+    .prepare("SELECT COUNT(*) AS count FROM evidence_files")
+    .first();
+  const eventCount = await db
+    .prepare("SELECT COUNT(*) AS count FROM negotiation_events WHERE action = 'evidence_uploaded'")
+    .first();
+  assert.equal(Number(evidenceCount.count), 0);
+  assert.equal(Number(eventCount.count), 0);
+
+  const recovered = await jsonResponse(
+    await worker.fetch(evidenceRequest(), { DB: db, EVIDENCE: evidence }),
+  );
+  assert.equal(recovered.storageKind, "private");
+  assert.equal(evidence.objects.size, 1);
+});
+
 test("pilot rehearsal: an evidence download outage fails closed without storage details", async () => {
   const db = new TestD1();
   const evidence = new TestR2();
@@ -5524,6 +5593,101 @@ test("decentralized evidence mode uploads only encrypted IPFS ciphertext", async
     assert.equal(authorized.status, 200);
     assert.equal(await authorized.text(), "%PDF-1.7\ndecentralized invoice");
     assert.equal(authorized.headers.get("x-openescrow-storage"), "encrypted-ipfs");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("pilot rehearsal: an evidence metadata outage unpins incomplete encrypted IPFS before retry", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const encryptionKey = Buffer.alloc(32, 13).toString("base64");
+  const originalFetch = globalThis.fetch;
+  const operations = [];
+  let pinCount = 0;
+  globalThis.fetch = async (input, options = {}) => {
+    const url = String(input);
+    const method = options.method || "GET";
+    const authorization = new Headers(options.headers).get("authorization");
+    operations.push({ url, method, authorization });
+    if (url === "https://api.pinata.cloud/pinning/pinFileToIPFS") {
+      pinCount += 1;
+      return Response.json({ IpfsHash: `bafy-incomplete-${pinCount}` });
+    }
+    if (
+      url ===
+      "https://api.pinata.cloud/pinning/unpin/bafy-incomplete-1"
+    ) {
+      return new Response(null, { status: 204 });
+    }
+    throw new Error(`Unexpected fetch: ${url}`);
+  };
+  const evidenceRequest = () => {
+    const form = new FormData();
+    form.set("proposalId", created.record.id);
+    form.set("token", created.access.landlord);
+    form.set(
+      "file",
+      new File(
+        [new TextEncoder().encode("%PDF-1.7\nincomplete IPFS evidence")],
+        "incomplete-ipfs.pdf",
+        { type: "application/pdf" },
+      ),
+    );
+    return new Request("https://openescrow.example/api/evidence", {
+      method: "POST",
+      body: form,
+    });
+  };
+  const evidenceEnvironment = {
+    PINATA_JWT: "test-pinata-jwt",
+    EVIDENCE_STORAGE_MODE: "encrypted-ipfs",
+    EVIDENCE_ENCRYPTION_KEY: encryptionKey,
+  };
+
+  try {
+    const incomplete = await worker.fetch(evidenceRequest(), {
+      DB: failEvidenceMetadataBatch(db),
+      ...evidenceEnvironment,
+    });
+    assert.equal(incomplete.status, 503);
+    const incompleteBody = await incomplete.json();
+    assert.match(incompleteBody.error, /could not finish recording/);
+    assert.match(incompleteBody.error, /try the upload again/);
+    assert.doesNotMatch(incompleteBody.error, /simulated|metadata outage/);
+    assert.deepEqual(operations, [
+      {
+        url: "https://api.pinata.cloud/pinning/pinFileToIPFS",
+        method: "POST",
+        authorization: "Bearer test-pinata-jwt",
+      },
+      {
+        url: "https://api.pinata.cloud/pinning/unpin/bafy-incomplete-1",
+        method: "DELETE",
+        authorization: "Bearer test-pinata-jwt",
+      },
+    ]);
+
+    const evidenceCount = await db
+      .prepare("SELECT COUNT(*) AS count FROM evidence_files")
+      .first();
+    const eventCount = await db
+      .prepare(
+        "SELECT COUNT(*) AS count FROM negotiation_events WHERE action = 'evidence_uploaded'",
+      )
+      .first();
+    assert.equal(Number(evidenceCount.count), 0);
+    assert.equal(Number(eventCount.count), 0);
+
+    const recovered = await jsonResponse(
+      await worker.fetch(evidenceRequest(), {
+        DB: db,
+        ...evidenceEnvironment,
+      }),
+    );
+    assert.equal(recovered.storageKind, "encrypted-decentralized");
+    assert.equal(recovered.cid, "bafy-incomplete-2");
+    assert.equal(operations.length, 3);
   } finally {
     globalThis.fetch = originalFetch;
   }
