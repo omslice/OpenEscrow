@@ -1180,8 +1180,11 @@ function receiptData(...words) {
 const RECEIPT_TEST_LANDLORD = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const RECEIPT_TEST_TENANT = "0x1111111111111111111111111111111111111111";
 const RECEIPT_TEST_OTHER_TENANT = "0x2222222222222222222222222222222222222222";
+const RECEIPT_TEST_ARBITER = "0x3333333333333333333333333333333333333333";
 const RECEIPT_TEST_USDC = "0xe129b23bd89904d363ba226ee52dec74185d7789";
 const RECEIPT_TEST_YIELD_USDC = "0x2746034ff16371a65c133016470f85535992dabc";
+const RECEIPT_TEST_OPEN_ESCROW =
+  "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99";
 const AGREEMENT_PROPOSED_TOPIC =
   "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6";
 const TENANT_PARTICIPANT_ADDED_TOPIC =
@@ -1190,12 +1193,36 @@ const TENANT_SHARE_FUNDED_TOPIC =
   "0xa59b69e1d871c72525782e2de73d8b4a83a1bf00840689625923330b4464544d";
 const AGREEMENT_FUNDED_TOPIC =
   "0xce24c0ae1d73d57cf2e6d1d90b94b11b288e5cfb1c0aa6e7f8ed3391f0c0f021";
+const CLAIM_SUBMITTED_TOPIC =
+  "0xcf394f7701f2b1dae6f328cbc70c1f155122b124431f95bbf4a483bba6854555";
+const CLAIM_AMENDED_TOPIC =
+  "0x478de1b8c18ffc9b16915e850b17f80fc5fe83405310df3db31765a38a3365ff";
+const CLAIM_RETRACTED_TOPIC =
+  "0x78ed2810f3e800697035ce152a2c6e2d92fe189711545693db5d97ac0b9f7eb9";
+const TENANT_CLAIM_RESPONSE_TOPIC =
+  "0x270cfb5d0a1ef7453b09614e7321e2bc1c39e82a0642070b4247c08452dca245";
+const LEGACY_CLAIM_RESPONSE_TOPIC =
+  "0x0e3cd88697129d255d76bfa437dbf12aaeaef7601cf1c8d5f75ad2ba18e0cd4b";
+const DISPUTE_RESOLVED_TOPIC =
+  "0x959dc01840aa516bf9407cffa45326c7b6821c48feff7b91eb0c743c8f460fd6";
+const WITHDRAWN_TOPIC =
+  "0xcf7d23a3cbe4e8b36ff82fd1b05b1b17373dc7804b4ebbd6e2356716ef202372";
+const NO_CLAIM_WITHDRAWAL_TOPIC =
+  "0x845bd4e89218507974962580a9461fcb8f451ebd83d8c3b843d2c9032217d179";
+const RESPONSE_TIMED_OUT_TOPIC =
+  "0xfad75d47bd1a89b1c3f46dd58d38a0b9fe3c1b992a6077875a9ebb5432ba513a";
+const ARBITER_TIMED_OUT_TOPIC =
+  "0xab22e8614f3457bfcf1e3c2852a4c49aceafbd8c37e6a3181f13c8472f916e3d";
 const RECORD_SNAPSHOT_ANCHORED_TOPIC =
   "0x4012b6d2c58584f354b2ad24151a4b24d5e18ea9aff9ced4667a2ffe01305ab6";
 const ACTIVITY_PUBLISHED_TOPIC =
   "0x2aca0841f18e301ab87df30a3dd50b022d848e0b1ee373dcbe9f914886b2eea7";
 
-function finalizationReceipt(agreementId, mutation = "valid") {
+function finalizationReceipt(
+  agreementId,
+  mutation = "valid",
+  arbiter = "0x0000000000000000000000000000000000000000",
+) {
   const agreementTopic = receiptWord(agreementId);
   const tenant =
     mutation === "wrong-tenant"
@@ -1208,7 +1235,7 @@ function finalizationReceipt(agreementId, mutation = "valid") {
     from: RECEIPT_TEST_LANDLORD,
     logs: [
       {
-        address: "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99",
+        address: RECEIPT_TEST_OPEN_ESCROW,
         topics: [
           AGREEMENT_PROPOSED_TOPIC,
           agreementTopic,
@@ -1216,7 +1243,7 @@ function finalizationReceipt(agreementId, mutation = "valid") {
           receiptAddressWord(tenant),
         ],
         data: receiptData(
-          receiptAddressWord("0x0000000000000000000000000000000000000000"),
+          receiptAddressWord(arbiter),
           receiptWord(deposit),
           receiptWord(Math.floor(new Date(terms.claimWindowStart).getTime() / 1_000)),
           receiptWord(Number(terms.claimDays) * 86_400),
@@ -1225,7 +1252,7 @@ function finalizationReceipt(agreementId, mutation = "valid") {
         ),
       },
       {
-        address: "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99",
+        address: RECEIPT_TEST_OPEN_ESCROW,
         topics: [
           TENANT_PARTICIPANT_ADDED_TOPIC,
           agreementTopic,
@@ -1257,6 +1284,81 @@ async function finalizeWithoutArbiter(db, created) {
       transactionHash: `0x${"a".repeat(64)}`,
     }),
   );
+}
+
+async function finalizeWithVerifiedReceipt(
+  db,
+  created,
+  { agreementId = 42, arbiterWallet = null } = {},
+) {
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "approve",
+      wallet: RECEIPT_TEST_TENANT,
+    }),
+  );
+  if (arbiterWallet) {
+    await jsonResponse(
+      await act(db, created.record.id, created.access.arbiter, {
+        type: "approve",
+        wallet: arbiterWallet,
+      }),
+    );
+  }
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    const rpcRequest = JSON.parse(options.body);
+    return Response.json({
+      jsonrpc: "2.0",
+      id: rpcRequest.id,
+      result:
+        rpcRequest.method === "eth_call"
+          ? agreementStateResult()
+          : finalizationReceipt(
+              agreementId,
+              "valid",
+              arbiterWallet ||
+                "0x0000000000000000000000000000000000000000",
+            ),
+    });
+  };
+  try {
+    return await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.landlord,
+        {
+          type: "finalize",
+          agreementId: String(agreementId),
+          transactionHash: transactionHash(agreementId),
+        },
+        { VERIFY_TRANSACTION_RECEIPTS: "true" },
+      ),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+}
+
+async function actWithVerifiedReceipt(db, created, token, action, receipt) {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, options) => {
+    const rpcRequest = JSON.parse(options.body);
+    assert.equal(rpcRequest.method, "eth_getTransactionReceipt");
+    return Response.json({
+      jsonrpc: "2.0",
+      id: rpcRequest.id,
+      result: receipt,
+    });
+  };
+  try {
+    return await act(db, created.record.id, token, action, {
+      VERIFY_TRANSACTION_RECEIPTS: "true",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 }
 
 function serializeFundingIntent(intent) {
@@ -8766,6 +8868,616 @@ test("receipt verification binds tenant funding to the exact participant and amo
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("receipt verification binds deduction claims and amendments to exact values and the verified landlord", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithVerifiedReceipt(db, created);
+  const claimAction = {
+    type: "claim_submitted",
+    amount: "300",
+    category: "Damage beyond ordinary wear",
+    items: [
+      {
+        category: "11",
+        description: "Documented repair",
+        amount: "300",
+      },
+    ],
+    note: "",
+    evidenceUri: "openescrow://evidence/receipt-claim",
+    evidenceHash: transactionHash(81),
+    californiaConfirmations: {
+      itemizedStatement: true,
+      supportingDocuments: true,
+    },
+    transactionHash: transactionHash(82),
+  };
+  const claimReceipt = ({
+    from = RECEIPT_TEST_LANDLORD,
+    amount = 300_000_000n,
+    unclaimed = 900_000_000n,
+  } = {}) => ({
+    status: "0x1",
+    blockNumber: "0x2e",
+    from,
+    logs: [
+      {
+        address: RECEIPT_TEST_OPEN_ESCROW,
+        topics: [CLAIM_SUBMITTED_TOPIC, receiptWord(42)],
+        data: receiptData(receiptWord(amount), receiptWord(unclaimed)),
+      },
+    ],
+  });
+
+  const wrongLandlord = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.landlord,
+    claimAction,
+    claimReceipt({ from: RECEIPT_TEST_TENANT }),
+  );
+  assert.equal(wrongLandlord.status, 400);
+
+  const wrongClaimAmount = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.landlord,
+    { ...claimAction, transactionHash: transactionHash(83) },
+    claimReceipt({ amount: 299_000_000n, unclaimed: 901_000_000n }),
+  );
+  assert.equal(wrongClaimAmount.status, 400);
+
+  const claimed = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.landlord,
+      { ...claimAction, transactionHash: transactionHash(84) },
+      claimReceipt(),
+    ),
+  );
+  assert.equal(
+    claimed.events.filter(
+      (event) => event.action === "deduction_claim_submitted",
+    ).length,
+    1,
+  );
+
+  const amendmentAction = {
+    type: "claim_amended",
+    amount: "200",
+    items: [
+      {
+        category: "11",
+        description: "Updated documented repair",
+        amount: "200",
+      },
+    ],
+    note: "Reduced after reviewing the final invoice.",
+    evidenceUri: "openescrow://evidence/receipt-amendment",
+    evidenceHash: transactionHash(85),
+    californiaConfirmations: {
+      itemizedStatement: true,
+      supportingDocuments: true,
+    },
+    transactionHash: transactionHash(86),
+  };
+  const amendmentReceipt = (reduction = 100_000_000n) => ({
+    status: "0x1",
+    blockNumber: "0x2f",
+    from: RECEIPT_TEST_LANDLORD,
+    logs: [
+      {
+        address: RECEIPT_TEST_OPEN_ESCROW,
+        topics: [CLAIM_AMENDED_TOPIC, receiptWord(42)],
+        data: receiptData(receiptWord(200_000_000n), receiptWord(reduction)),
+      },
+    ],
+  });
+  const wrongReduction = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.landlord,
+    amendmentAction,
+    amendmentReceipt(99_000_000n),
+  );
+  assert.equal(wrongReduction.status, 400);
+
+  const amended = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.landlord,
+      { ...amendmentAction, transactionHash: transactionHash(87) },
+      amendmentReceipt(),
+    ),
+  );
+  assert.equal(
+    amended.events.filter(
+      (event) => event.action === "deduction_claim_amended",
+    ).length,
+    1,
+  );
+
+  const retractionDb = new TestD1();
+  const retractionCreated = await create(retractionDb);
+  await finalizeWithVerifiedReceipt(retractionDb, retractionCreated, {
+    agreementId: 43,
+  });
+  await submitStandardClaim(retractionDb, retractionCreated, {
+    amount: "100",
+    transactionByte: "8",
+  });
+  const retractionAction = {
+    type: "claim_amended",
+    amount: "0",
+    items: [
+      {
+        category: "11",
+        description: "The landlord withdrew the pending deduction claim.",
+        amount: "0",
+      },
+    ],
+    note: "Claim withdrawn after reviewing the invoice.",
+    evidenceUri: "openescrow://evidence/receipt-retraction",
+    evidenceHash: transactionHash(88),
+    californiaConfirmations: {
+      itemizedStatement: true,
+      supportingDocuments: true,
+    },
+    transactionHash: transactionHash(89),
+  };
+  const retractionReceipt = (data = "0x") => ({
+    status: "0x1",
+    blockNumber: "0x30",
+    from: RECEIPT_TEST_LANDLORD,
+    logs: [
+      {
+        address: RECEIPT_TEST_OPEN_ESCROW,
+        topics: [CLAIM_RETRACTED_TOPIC, receiptWord(43)],
+        data,
+      },
+    ],
+  });
+  const retractionWithUnexpectedData = await actWithVerifiedReceipt(
+    retractionDb,
+    retractionCreated,
+    retractionCreated.access.landlord,
+    retractionAction,
+    retractionReceipt(receiptData(receiptWord(0))),
+  );
+  assert.equal(retractionWithUnexpectedData.status, 400);
+
+  const retracted = await jsonResponse(
+    await actWithVerifiedReceipt(
+      retractionDb,
+      retractionCreated,
+      retractionCreated.access.landlord,
+      { ...retractionAction, transactionHash: transactionHash(90) },
+      retractionReceipt(),
+    ),
+  );
+  assert.equal(
+    retracted.events.filter(
+      (event) => event.action === "deduction_claim_amended",
+    ).length,
+    1,
+  );
+});
+
+test("receipt verification binds tenant responses, rulings, and withdrawals to exact parties and values", async () => {
+  const db = new TestD1();
+  const created = await create(db, "arbiter@example.com");
+  await finalizeWithVerifiedReceipt(db, created, {
+    arbiterWallet: RECEIPT_TEST_ARBITER,
+  });
+  await submitStandardClaim(db, created, {
+    amount: "300",
+    transactionByte: "9",
+  });
+
+  const responseAction = {
+    type: "claim_response",
+    decision: "dispute",
+    acceptedAmount: "0",
+    note: "The documentation does not support this deduction.",
+    transactionHash: transactionHash(91),
+  };
+  const responseReceipt = ({
+    topic = TENANT_CLAIM_RESPONSE_TOPIC,
+    tenant = RECEIPT_TEST_TENANT,
+    from = RECEIPT_TEST_TENANT,
+    accepted = 0n,
+    responseCount = 1n,
+    requiredCount = 1n,
+  } = {}) => ({
+    status: "0x1",
+    blockNumber: "0x31",
+    from,
+    logs: [
+      {
+        address: RECEIPT_TEST_OPEN_ESCROW,
+        topics:
+          topic === TENANT_CLAIM_RESPONSE_TOPIC
+            ? [topic, receiptWord(42), receiptAddressWord(tenant)]
+            : [topic, receiptWord(42)],
+        data:
+          topic === TENANT_CLAIM_RESPONSE_TOPIC
+            ? receiptData(
+                receiptWord(accepted),
+                receiptWord(responseCount),
+                receiptWord(requiredCount),
+              )
+            : receiptData(receiptWord(accepted), receiptWord(requiredCount)),
+      },
+    ],
+  });
+  for (const [receipt, hashIndex] of [
+    [
+      responseReceipt({ topic: LEGACY_CLAIM_RESPONSE_TOPIC }),
+      92,
+    ],
+    [
+      responseReceipt({ tenant: RECEIPT_TEST_OTHER_TENANT }),
+      93,
+    ],
+    [
+      responseReceipt({ accepted: 1n }),
+      94,
+    ],
+    [
+      responseReceipt({ responseCount: 2n }),
+      95,
+    ],
+    [
+      responseReceipt({ requiredCount: 2n }),
+      111,
+    ],
+    [
+      responseReceipt({ from: RECEIPT_TEST_OTHER_TENANT }),
+      112,
+    ],
+  ]) {
+    const rejected = await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.tenant,
+      { ...responseAction, transactionHash: transactionHash(hashIndex) },
+      receipt,
+    );
+    assert.equal(rejected.status, 400);
+  }
+
+  const responded = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.tenant,
+      { ...responseAction, transactionHash: transactionHash(96) },
+      responseReceipt(),
+    ),
+  );
+  assert.equal(
+    responded.events.filter(
+      (event) => event.action === "claim_response_submitted",
+    ).length,
+    1,
+  );
+
+  const rulingAction = {
+    type: "arbiter_ruling",
+    awardToLandlord: "75",
+    note: "The documentation supports part of the requested amount.",
+    transactionHash: transactionHash(97),
+  };
+  const rulingReceipt = ({
+    from = RECEIPT_TEST_ARBITER,
+    landlordAward = 75_000_000n,
+    tenantRefund = 225_000_000n,
+  } = {}) => ({
+    status: "0x1",
+    blockNumber: "0x32",
+    from,
+    logs: [
+      {
+        address: RECEIPT_TEST_OPEN_ESCROW,
+        topics: [DISPUTE_RESOLVED_TOPIC, receiptWord(42)],
+        data: receiptData(
+          receiptWord(landlordAward),
+          receiptWord(tenantRefund),
+        ),
+      },
+    ],
+  });
+  const wrongArbiter = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.arbiter,
+    rulingAction,
+    rulingReceipt({ from: RECEIPT_TEST_LANDLORD }),
+  );
+  assert.equal(wrongArbiter.status, 400);
+  const wrongAward = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.arbiter,
+    { ...rulingAction, transactionHash: transactionHash(98) },
+    rulingReceipt({ landlordAward: 74_000_000n, tenantRefund: 226_000_000n }),
+  );
+  assert.equal(wrongAward.status, 400);
+
+  const ruled = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.arbiter,
+      { ...rulingAction, transactionHash: transactionHash(99) },
+      rulingReceipt(),
+    ),
+  );
+  assert.equal(
+    ruled.events.filter(
+      (event) => event.action === "arbiter_ruling_submitted",
+    ).length,
+    1,
+  );
+
+  const withdrawalReceipt = (party, amount, from = party) => ({
+    status: "0x1",
+    blockNumber: "0x33",
+    from,
+    logs: [
+      {
+        address: RECEIPT_TEST_OPEN_ESCROW,
+        topics: [
+          WITHDRAWN_TOPIC,
+          receiptWord(42),
+          receiptAddressWord(party),
+        ],
+        data: receiptData(receiptWord(amount)),
+      },
+    ],
+  });
+  const landlordWithdrawal = {
+    type: "withdrawal_completed",
+    amount: "75",
+    transactionHash: transactionHash(100),
+  };
+  const wrongLandlordParty = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.landlord,
+    landlordWithdrawal,
+    withdrawalReceipt(RECEIPT_TEST_TENANT, 75_000_000n),
+  );
+  assert.equal(wrongLandlordParty.status, 400);
+  await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.landlord,
+      { ...landlordWithdrawal, transactionHash: transactionHash(101) },
+      withdrawalReceipt(RECEIPT_TEST_LANDLORD, 75_000_000n),
+    ),
+  );
+
+  const tenantWithdrawal = {
+    type: "withdrawal_completed",
+    amount: "1125",
+    transactionHash: transactionHash(102),
+  };
+  const wrongTenantAmount = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.tenant,
+    tenantWithdrawal,
+    withdrawalReceipt(RECEIPT_TEST_TENANT, 1_124_000_000n),
+  );
+  assert.equal(wrongTenantAmount.status, 400);
+  const withdrawn = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.tenant,
+      { ...tenantWithdrawal, transactionHash: transactionHash(103) },
+      withdrawalReceipt(RECEIPT_TEST_TENANT, 1_125_000_000n),
+    ),
+  );
+  assert.equal(
+    withdrawn.events.filter(
+      (event) => event.action === "withdrawal_completed",
+    ).length,
+    2,
+  );
+});
+
+test("receipt verification binds deadline actions to the exact outcome amount", async () => {
+  const timeoutReceipt = ({
+    agreementId,
+    topic,
+    amount,
+    from = RECEIPT_TEST_LANDLORD,
+  }) => ({
+    status: "0x1",
+    blockNumber: "0x34",
+    from,
+    logs: [
+      {
+        address: RECEIPT_TEST_OPEN_ESCROW,
+        topics: [topic, receiptWord(agreementId)],
+        data: receiptData(receiptWord(amount)),
+      },
+    ],
+  });
+
+  const noClaimDb = new TestD1();
+  const noClaimCreated = await create(noClaimDb);
+  await finalizeWithVerifiedReceipt(noClaimDb, noClaimCreated, {
+    agreementId: 44,
+  });
+  const noClaimAction = {
+    type: "timeout_executed",
+    timeout: "no_claim_refund",
+    transactionHash: transactionHash(104),
+  };
+  const wrongNoClaimSender = await actWithVerifiedReceipt(
+    noClaimDb,
+    noClaimCreated,
+    noClaimCreated.access.tenant,
+    noClaimAction,
+    timeoutReceipt({
+      agreementId: 44,
+      topic: NO_CLAIM_WITHDRAWAL_TOPIC,
+      amount: 1_200_000_000n,
+      from: RECEIPT_TEST_LANDLORD,
+    }),
+  );
+  assert.equal(wrongNoClaimSender.status, 400);
+  const wrongNoClaimAmount = await actWithVerifiedReceipt(
+    noClaimDb,
+    noClaimCreated,
+    noClaimCreated.access.tenant,
+    { ...noClaimAction, transactionHash: transactionHash(113) },
+    timeoutReceipt({
+      agreementId: 44,
+      topic: NO_CLAIM_WITHDRAWAL_TOPIC,
+      amount: 1_199_000_000n,
+      from: RECEIPT_TEST_TENANT,
+    }),
+  );
+  assert.equal(wrongNoClaimAmount.status, 400);
+  const noClaimRefunded = await jsonResponse(
+    await actWithVerifiedReceipt(
+      noClaimDb,
+      noClaimCreated,
+      noClaimCreated.access.tenant,
+      { ...noClaimAction, transactionHash: transactionHash(105) },
+      timeoutReceipt({
+        agreementId: 44,
+        topic: NO_CLAIM_WITHDRAWAL_TOPIC,
+        amount: 1_200_000_000n,
+        from: RECEIPT_TEST_TENANT,
+      }),
+    ),
+  );
+  assert.equal(
+    noClaimRefunded.events.filter(
+      (event) =>
+        event.action === "timeout_executed" &&
+        event.metadata.timeout === "no_claim_refund",
+    ).length,
+    1,
+  );
+
+  const noResponseDb = new TestD1();
+  const noResponseCreated = await create(noResponseDb);
+  await finalizeWithVerifiedReceipt(noResponseDb, noResponseCreated, {
+    agreementId: 45,
+  });
+  await submitStandardClaim(noResponseDb, noResponseCreated, {
+    amount: "300",
+    transactionByte: "a",
+  });
+  const noResponseAction = {
+    type: "timeout_executed",
+    timeout: "no_response_dispute",
+    transactionHash: transactionHash(106),
+  };
+  const wrongNoResponseAmount = await actWithVerifiedReceipt(
+    noResponseDb,
+    noResponseCreated,
+    noResponseCreated.access.landlord,
+    noResponseAction,
+    timeoutReceipt({
+      agreementId: 45,
+      topic: RESPONSE_TIMED_OUT_TOPIC,
+      amount: 299_000_000n,
+    }),
+  );
+  assert.equal(wrongNoResponseAmount.status, 400);
+  await jsonResponse(
+    await actWithVerifiedReceipt(
+      noResponseDb,
+      noResponseCreated,
+      noResponseCreated.access.landlord,
+      { ...noResponseAction, transactionHash: transactionHash(107) },
+      timeoutReceipt({
+        agreementId: 45,
+        topic: RESPONSE_TIMED_OUT_TOPIC,
+        amount: 300_000_000n,
+      }),
+    ),
+  );
+
+  const arbiterTimeoutDb = new TestD1();
+  const arbiterTimeoutCreated = await create(
+    arbiterTimeoutDb,
+    "arbiter@example.com",
+  );
+  await finalizeWithVerifiedReceipt(arbiterTimeoutDb, arbiterTimeoutCreated, {
+    agreementId: 46,
+    arbiterWallet: RECEIPT_TEST_ARBITER,
+  });
+  await submitStandardClaim(arbiterTimeoutDb, arbiterTimeoutCreated, {
+    amount: "300",
+    transactionByte: "b",
+  });
+  await jsonResponse(
+    await act(
+      arbiterTimeoutDb,
+      arbiterTimeoutCreated.record.id,
+      arbiterTimeoutCreated.access.tenant,
+      {
+        type: "claim_response",
+        decision: "dispute",
+        acceptedAmount: "0",
+        note: "The full amount remains disputed.",
+        transactionHash: transactionHash(108),
+      },
+    ),
+  );
+  const arbiterTimeoutAction = {
+    type: "timeout_executed",
+    timeout: "arbiter_timeout_refund",
+    transactionHash: transactionHash(109),
+  };
+  const wrongArbiterTimeoutAmount = await actWithVerifiedReceipt(
+    arbiterTimeoutDb,
+    arbiterTimeoutCreated,
+    arbiterTimeoutCreated.access.tenant,
+    arbiterTimeoutAction,
+    timeoutReceipt({
+      agreementId: 46,
+      topic: ARBITER_TIMED_OUT_TOPIC,
+      amount: 299_000_000n,
+      from: RECEIPT_TEST_TENANT,
+    }),
+  );
+  assert.equal(wrongArbiterTimeoutAmount.status, 400);
+  const arbiterTimedOut = await jsonResponse(
+    await actWithVerifiedReceipt(
+      arbiterTimeoutDb,
+      arbiterTimeoutCreated,
+      arbiterTimeoutCreated.access.tenant,
+      { ...arbiterTimeoutAction, transactionHash: transactionHash(110) },
+      timeoutReceipt({
+        agreementId: 46,
+        topic: ARBITER_TIMED_OUT_TOPIC,
+        amount: 300_000_000n,
+        from: RECEIPT_TEST_TENANT,
+      }),
+    ),
+  );
+  assert.equal(
+    arbiterTimedOut.events.filter(
+      (event) =>
+        event.action === "timeout_executed" &&
+        event.metadata.timeout === "arbiter_timeout_refund",
+    ).length,
+    1,
+  );
 });
 
 test("receipt verification binds private record anchors to the submitted hash, type, and participant", async () => {
