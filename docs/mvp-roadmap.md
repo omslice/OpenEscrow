@@ -85,7 +85,12 @@ production custody, or reliance on the compliance research as legal advice.
 - `npm run check` is the required repository release check.
 - `npm run pilot:rehearse` and `npm run incident:rehearse` exercise credential-free pilot and
   incident scenarios.
+- `npm run deploy:pilot-candidate` runs the credential-free release, rehearsal, incident, and
+  exact-source packaging gates in dependency order and saves machine-readable evidence without
+  querying or changing the live site.
 - `npm run pilot:check` evaluates the currently deployed readiness endpoint and intentionally
   exits unsuccessfully while required hosted gates remain.
 - `npm run build:sites` builds the candidate and verifies exact Git provenance before packaging.
+- `npm run deploy:pilot-live` publishes only when an explicit publish command and verification URL
+  are configured, then evaluates readiness against the newly published site.
 - Saving a Sites version does not deploy it; public promotion is a separate owner-approved action.

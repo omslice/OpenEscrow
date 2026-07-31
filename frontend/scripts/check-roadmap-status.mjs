@@ -92,6 +92,7 @@ function runCli() {
       "docs/overnight-readiness-handoff.md": read(
         "docs/overnight-readiness-handoff.md",
       ),
+      "docs/overnight-handoff.md": read("docs/overnight-handoff.md"),
     },
   });
 

@@ -26,7 +26,7 @@
     "pilot:check:json": "node scripts/check-pilot-readiness.mjs --json",
     "pilot:rehearse": "node scripts/run-pilot-rehearsal.mjs",
     "incident:rehearse": "node scripts/run-incident-rehearsal.mjs",
-    "deploy:pilot-candidate": "cmd /c npm run check && npm run pilot:rehearse && npm run incident:rehearse && npm run build:sites && npm run pilot:check:artifact",
+    "deploy:pilot-candidate": "node scripts/verify-pilot-candidate.mjs",
     "deploy:pilot-live": "node scripts/deploy-live.mjs",
     "test:server": "node --test server/index.test.mjs",
     "e2e:live": "node e2e-full-flow.mjs",
