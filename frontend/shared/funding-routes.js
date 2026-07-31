@@ -6,7 +6,7 @@ import {
 export const FUNDING_ROUTE_CATALOG_VERSION = "2026-07-30.1";
 export const ONRAMP_PROVIDER_CATALOG_VERSION = FUNDING_ROUTE_CATALOG_VERSION;
 export const CONVERSION_ADAPTER_CATALOG_VERSION = FUNDING_ROUTE_CATALOG_VERSION;
-export const FUNDING_CHECKOUT_SCHEMA = "openescrow.funding-checkout.v2";
+export const FUNDING_CHECKOUT_SCHEMA = "openescrow.funding-checkout.v3";
 export const FUNDING_CHECKOUT_EVENT_SOURCES = Object.freeze({
   BROWSER_CALLBACK: "browser_callback",
   PROVIDER_WEBHOOK: "provider_webhook",
@@ -391,12 +391,23 @@ function rawFundingEventSource(result) {
     : FUNDING_CHECKOUT_EVENT_SOURCES.BROWSER_CALLBACK;
 }
 
-function trustedFundingEventProvenance(source, verification) {
+function validSha256Digest(value) {
+  return typeof value === "string" && /^sha256:[a-f0-9]{64}$/.test(value);
+}
+
+function trustedFundingEventProvenance(
+  source,
+  verification,
+  reconciliationKey,
+  payloadDigest,
+) {
   return (
-    (source === FUNDING_CHECKOUT_EVENT_SOURCES.PROVIDER_WEBHOOK &&
+    validSha256Digest(reconciliationKey) &&
+    validSha256Digest(payloadDigest) &&
+    ((source === FUNDING_CHECKOUT_EVENT_SOURCES.PROVIDER_WEBHOOK &&
       verification === FUNDING_CHECKOUT_EVENT_VERIFICATIONS.PROVIDER_SIGNED) ||
-    (source === FUNDING_CHECKOUT_EVENT_SOURCES.OPERATOR_RECONCILIATION &&
-      verification === FUNDING_CHECKOUT_EVENT_VERIFICATIONS.OPERATOR_VERIFIED)
+      (source === FUNDING_CHECKOUT_EVENT_SOURCES.OPERATOR_RECONCILIATION &&
+        verification === FUNDING_CHECKOUT_EVENT_VERIFICATIONS.OPERATOR_VERIFIED))
   );
 }
 
@@ -495,14 +506,23 @@ function validProviderStatus(value) {
   );
 }
 
-function validFundingCheckoutEventProvenance(source, verification) {
+function validFundingCheckoutEventProvenance(
+  source,
+  verification,
+  reconciliationKey,
+  payloadDigest,
+) {
   return (
     (source === FUNDING_CHECKOUT_EVENT_SOURCES.BROWSER_CALLBACK &&
-      verification === FUNDING_CHECKOUT_EVENT_VERIFICATIONS.UNVERIFIED) ||
-    (source === FUNDING_CHECKOUT_EVENT_SOURCES.PROVIDER_WEBHOOK &&
-      verification === FUNDING_CHECKOUT_EVENT_VERIFICATIONS.PROVIDER_SIGNED) ||
-    (source === FUNDING_CHECKOUT_EVENT_SOURCES.OPERATOR_RECONCILIATION &&
-      verification === FUNDING_CHECKOUT_EVENT_VERIFICATIONS.OPERATOR_VERIFIED)
+      verification === FUNDING_CHECKOUT_EVENT_VERIFICATIONS.UNVERIFIED &&
+      reconciliationKey === null &&
+      payloadDigest === null) ||
+    trustedFundingEventProvenance(
+      source,
+      verification,
+      reconciliationKey,
+      payloadDigest,
+    )
   );
 }
 
@@ -611,6 +631,7 @@ export function isFundingCheckoutLifecycle(value) {
   let updatedAt = value.createdAt;
   let previousTime = Date.parse(value.createdAt);
   const eventIds = new Set();
+  const reconciliationKeys = new Set();
   for (const event of value.events) {
     if (
       !event ||
@@ -619,7 +640,14 @@ export function isFundingCheckoutLifecycle(value) {
       eventIds.has(event.id) ||
       !Object.hasOwn(CHECKOUT_TRANSITIONS, event.status) ||
       !validProviderStatus(event.providerStatus) ||
-      !validFundingCheckoutEventProvenance(event.source, event.verification) ||
+      !validFundingCheckoutEventProvenance(
+        event.source,
+        event.verification,
+        event.reconciliationKey,
+        event.payloadDigest,
+      ) ||
+      (event.reconciliationKey !== null &&
+        reconciliationKeys.has(event.reconciliationKey)) ||
       !validTimestamp(event.occurredAt) ||
       Date.parse(event.occurredAt) < previousTime ||
       !CHECKOUT_TRANSITIONS[status].includes(event.status)
@@ -627,6 +655,9 @@ export function isFundingCheckoutLifecycle(value) {
       return false;
     }
     eventIds.add(event.id);
+    if (event.reconciliationKey !== null) {
+      reconciliationKeys.add(event.reconciliationKey);
+    }
     status = event.status;
     providerStatus = event.providerStatus;
     updatedAt = event.occurredAt;
@@ -655,6 +686,8 @@ export function applyFundingCheckoutEvent(
     providerStatus = status,
     source = FUNDING_CHECKOUT_EVENT_SOURCES.BROWSER_CALLBACK,
     verification = FUNDING_CHECKOUT_EVENT_VERIFICATIONS.UNVERIFIED,
+    reconciliationKey = null,
+    payloadDigest = null,
     occurredAt = new Date().toISOString(),
   } = {},
 ) {
@@ -674,7 +707,14 @@ export function applyFundingCheckoutEvent(
   if (!validProviderStatus(normalizedProviderStatus)) {
     throw new Error("A valid provider status is required.");
   }
-  if (!validFundingCheckoutEventProvenance(source, verification)) {
+  if (
+    !validFundingCheckoutEventProvenance(
+      source,
+      verification,
+      reconciliationKey,
+      payloadDigest,
+    )
+  ) {
     throw new Error("A valid checkout event provenance is required.");
   }
   const duplicate = checkout.events.find((event) => event.id === eventId);
@@ -683,11 +723,19 @@ export function applyFundingCheckoutEvent(
       duplicate.status !== nextStatus ||
       duplicate.providerStatus !== normalizedProviderStatus ||
       duplicate.source !== source ||
-      duplicate.verification !== verification
+      duplicate.verification !== verification ||
+      duplicate.reconciliationKey !== reconciliationKey ||
+      duplicate.payloadDigest !== payloadDigest
     ) {
       throw new Error("A duplicate provider event conflicts with the saved checkout state.");
     }
     return checkout;
+  }
+  if (
+    reconciliationKey !== null &&
+    checkout.events.some((event) => event.reconciliationKey === reconciliationKey)
+  ) {
+    throw new Error("That reconciliation event was already applied.");
   }
   if (Date.parse(occurredAt) < Date.parse(checkout.updatedAt)) {
     throw new Error("A provider event cannot predate the saved checkout state.");
@@ -706,6 +754,8 @@ export function applyFundingCheckoutEvent(
     providerStatus: normalizedProviderStatus,
     source,
     verification,
+    reconciliationKey,
+    payloadDigest,
     occurredAt,
   };
   return freezeFundingCheckout({
@@ -726,11 +776,20 @@ export function reconcileFundingCheckoutResult(
   const state = normalizeFundingCheckoutState(providerStatus);
   const source = rawFundingEventSource(result);
   const verification = rawFundingEventVerification(result);
+  const reconciliationKey =
+    result && typeof result === "object" ? result.reconciliationKey : null;
+  const payloadDigest =
+    result && typeof result === "object" ? result.payloadDigest : null;
 
   if (
     normalizedEnvironment === "production" &&
     !["opening", "submitted", "unknown"].includes(state) &&
-    !trustedFundingEventProvenance(source, verification)
+    !trustedFundingEventProvenance(
+      source,
+      verification,
+      reconciliationKey,
+      payloadDigest,
+    )
   ) {
     return Object.freeze({
       state: "unknown",

@@ -231,7 +231,19 @@ CREATE TABLE IF NOT EXISTS funding_checkout_events (
     CHECK (source IN ('browser_callback', 'provider_webhook', 'operator_reconciliation')),
   verification TEXT NOT NULL DEFAULT 'unverified'
     CHECK (verification IN ('unverified', 'provider_signed', 'operator_verified')),
+  reconciliation_key TEXT,
+  payload_digest TEXT,
   occurred_at TEXT NOT NULL,
+  CHECK (
+    (source = 'browser_callback' AND verification = 'unverified'
+      AND reconciliation_key IS NULL AND payload_digest IS NULL)
+    OR
+    (source = 'provider_webhook' AND verification = 'provider_signed'
+      AND reconciliation_key IS NOT NULL AND payload_digest IS NOT NULL)
+    OR
+    (source = 'operator_reconciliation' AND verification = 'operator_verified'
+      AND reconciliation_key IS NOT NULL AND payload_digest IS NOT NULL)
+  ),
   UNIQUE (attempt_id, event_id),
   FOREIGN KEY (attempt_id) REFERENCES funding_checkout_attempts(attempt_id) ON DELETE CASCADE
 )`;
@@ -239,6 +251,11 @@ CREATE TABLE IF NOT EXISTS funding_checkout_events (
 const FUNDING_CHECKOUT_EVENTS_INDEX = `
 CREATE INDEX IF NOT EXISTS funding_checkout_events_attempt_idx
 ON funding_checkout_events (attempt_id, sequence)`;
+
+const FUNDING_CHECKOUT_EVENTS_RECONCILIATION_INDEX = `
+CREATE UNIQUE INDEX IF NOT EXISTS funding_checkout_events_reconciliation_idx
+ON funding_checkout_events (reconciliation_key)
+WHERE reconciliation_key IS NOT NULL`;
 
 const BACKFILL_PRIMARY_TENANTS = `
 INSERT OR IGNORE INTO negotiation_tenants
@@ -1547,6 +1564,7 @@ async function initialize(db) {
     db.prepare(FUNDING_CHECKOUT_ATTEMPTS_ACTIVE_INDEX),
     db.prepare(FUNDING_CHECKOUT_EVENTS_SCHEMA),
     db.prepare(FUNDING_CHECKOUT_EVENTS_INDEX),
+    db.prepare(FUNDING_CHECKOUT_EVENTS_RECONCILIATION_INDEX),
     db.prepare(BACKFILL_PRIMARY_TENANTS),
     db.prepare(SCHEDULED_JOB_RUNS_SCHEMA),
     db.prepare(COMPLIANCE_SOURCE_CHECKS_SCHEMA),
@@ -2421,7 +2439,8 @@ async function fundingCheckoutForAttempt(db, attemptId) {
   if (!attempt) return null;
   const eventResult = await db
     .prepare(
-      `SELECT event_id, status, provider_status, source, verification, occurred_at
+      `SELECT event_id, status, provider_status, source, verification,
+              reconciliation_key, payload_digest, occurred_at
        FROM funding_checkout_events
        WHERE attempt_id = ?
        ORDER BY sequence ASC`,
@@ -2447,6 +2466,8 @@ async function fundingCheckoutForAttempt(db, attemptId) {
       providerStatus: event.provider_status,
       source: event.source,
       verification: event.verification,
+      reconciliationKey: event.reconciliation_key,
+      payloadDigest: event.payload_digest,
       occurredAt: event.occurred_at,
     })),
   };
@@ -2801,6 +2822,8 @@ async function appendSandboxFundingCheckoutEvent(request, env, id, attemptId) {
       providerStatus: body.providerStatus,
       source: FUNDING_CHECKOUT_EVENT_SOURCES.BROWSER_CALLBACK,
       verification: FUNDING_CHECKOUT_EVENT_VERIFICATIONS.UNVERIFIED,
+      reconciliationKey: null,
+      payloadDigest: null,
       occurredAt: new Date().toISOString(),
     });
   } catch (error) {
@@ -2829,8 +2852,9 @@ async function appendSandboxFundingCheckoutEvent(request, env, id, attemptId) {
       env.DB
         .prepare(
           `INSERT INTO funding_checkout_events
-           (attempt_id, event_id, status, provider_status, source, verification, occurred_at)
-           SELECT ?, ?, ?, ?, ?, ?, ?
+           (attempt_id, event_id, status, provider_status, source, verification,
+            reconciliation_key, payload_digest, occurred_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?
            WHERE EXISTS (
              SELECT 1
              FROM funding_checkout_attempts
@@ -2847,6 +2871,8 @@ async function appendSandboxFundingCheckoutEvent(request, env, id, attemptId) {
           event.providerStatus,
           event.source,
           event.verification,
+          event.reconciliationKey,
+          event.payloadDigest,
           event.occurredAt,
           saved.checkout.attemptId,
           saved.checkout.status,
@@ -2870,6 +2896,8 @@ async function appendSandboxFundingCheckoutEvent(request, env, id, attemptId) {
                  AND provider_status = ?
                  AND source = ?
                  AND verification = ?
+                 AND reconciliation_key IS ?
+                 AND payload_digest IS ?
                  AND occurred_at = ?
              )`,
         )
@@ -2887,6 +2915,8 @@ async function appendSandboxFundingCheckoutEvent(request, env, id, attemptId) {
           event.providerStatus,
           event.source,
           event.verification,
+          event.reconciliationKey,
+          event.payloadDigest,
           event.occurredAt,
         ),
     ]);
@@ -2899,7 +2929,9 @@ async function appendSandboxFundingCheckoutEvent(request, env, id, attemptId) {
           candidate.status === event.status &&
           candidate.providerStatus === event.providerStatus &&
           candidate.source === event.source &&
-          candidate.verification === event.verification,
+          candidate.verification === event.verification &&
+          candidate.reconciliationKey === event.reconciliationKey &&
+          candidate.payloadDigest === event.payloadDigest,
       )
     ) {
       return json({
@@ -2919,7 +2951,9 @@ async function appendSandboxFundingCheckoutEvent(request, env, id, attemptId) {
         candidate.status === event.status &&
         candidate.providerStatus === event.providerStatus &&
         candidate.source === event.source &&
-        candidate.verification === event.verification,
+        candidate.verification === event.verification &&
+        candidate.reconciliationKey === event.reconciliationKey &&
+        candidate.payloadDigest === event.payloadDigest,
     )
   ) {
     return json(

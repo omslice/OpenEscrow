@@ -193,6 +193,10 @@ production readiness, or authorization to hold real rental deposits.
   ignores client-supplied provenance and can save only the unverified class. In production-mode
   reconciliation logic, an unsigned terminal result cannot refresh balances or permit another
   purchase; it stays locked until a trusted server-side event exists.
+- **Verified:** Future trusted checkout events must include both a SHA-256 reconciliation key and
+  the exact payload digest. The lifecycle rejects missing, malformed, conflicting, or repeated
+  identities, while a partial unique D1 index prevents the same non-null reconciliation key from
+  being applied across attempts. Browser callbacks are required to keep both fields null.
 - **Verified:** Arrow-key workspace navigation moves focus to the selected tab synchronously,
   eliminating an intermittent animation-frame race in the required accessibility smoke check.
 - **Verified:** The exact validated candidate source is pushed to the existing Sites source

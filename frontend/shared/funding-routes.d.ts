@@ -58,7 +58,7 @@ export interface FundingPlan {
 export const FUNDING_ROUTE_CATALOG_VERSION: string;
 export const ONRAMP_PROVIDER_CATALOG_VERSION: string;
 export const CONVERSION_ADAPTER_CATALOG_VERSION: string;
-export const FUNDING_CHECKOUT_SCHEMA: "openescrow.funding-checkout.v2";
+export const FUNDING_CHECKOUT_SCHEMA: "openescrow.funding-checkout.v3";
 export const FUNDING_CHECKOUT_EVENT_SOURCES: Readonly<{
   BROWSER_CALLBACK: "browser_callback";
   PROVIDER_WEBHOOK: "provider_webhook";
@@ -151,11 +151,13 @@ export interface FundingCheckoutEvent {
   providerStatus: string;
   source: "browser_callback" | "provider_webhook" | "operator_reconciliation";
   verification: "unverified" | "provider_signed" | "operator_verified";
+  reconciliationKey: `sha256:${string}` | null;
+  payloadDigest: `sha256:${string}` | null;
   occurredAt: string;
 }
 
 export interface FundingCheckoutLifecycle {
-  schema: "openescrow.funding-checkout.v2";
+  schema: "openescrow.funding-checkout.v3";
   intentKey: string;
   attemptId: string;
   environment: FundingEnvironment;
@@ -212,6 +214,8 @@ export function applyFundingCheckoutEvent(
     providerStatus?: unknown;
     source?: FundingCheckoutEvent["source"];
     verification?: FundingCheckoutEvent["verification"];
+    reconciliationKey?: FundingCheckoutEvent["reconciliationKey"];
+    payloadDigest?: FundingCheckoutEvent["payloadDigest"];
     occurredAt?: string;
   },
 ): Readonly<FundingCheckoutLifecycle>;

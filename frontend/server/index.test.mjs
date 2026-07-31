@@ -60,6 +60,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0010_sandbox_funding_checkouts.sql",
     "0011_evidence_key_fingerprints.sql",
     "0012_funding_event_provenance.sql",
+    "0013_funding_reconciliation_identity.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -86,6 +87,43 @@ test("the packaged D1 migration applies cleanly", () => {
     .map((row) => row.name);
   assert.equal(fundingEventColumns.includes("source"), true);
   assert.equal(fundingEventColumns.includes("verification"), true);
+  assert.equal(fundingEventColumns.includes("reconciliation_key"), true);
+  assert.equal(fundingEventColumns.includes("payload_digest"), true);
+  const reconciliationIndexes = database
+    .prepare("PRAGMA index_list(funding_checkout_events)")
+    .all()
+    .map((row) => row.name);
+  assert.equal(
+    reconciliationIndexes.includes("funding_checkout_events_reconciliation_idx"),
+    true,
+  );
+  const reconciliationKey = `sha256:${"a".repeat(64)}`;
+  const payloadDigest = `sha256:${"b".repeat(64)}`;
+  database.exec("PRAGMA foreign_keys = OFF");
+  const insertReconciliationEvent = database.prepare(
+    `INSERT INTO funding_checkout_events
+     (attempt_id, event_id, status, provider_status, source, verification,
+      reconciliation_key, payload_digest, occurred_at)
+     VALUES (?, ?, 'confirmed', 'completed', 'provider_webhook', 'provider_signed',
+             ?, ?, '2026-07-30T00:00:00.000Z')`,
+  );
+  insertReconciliationEvent.run(
+    "migration-attempt-1",
+    "migration-event-1",
+    reconciliationKey,
+    payloadDigest,
+  );
+  assert.throws(
+    () =>
+      insertReconciliationEvent.run(
+        "migration-attempt-2",
+        "migration-event-2",
+        reconciliationKey,
+        payloadDigest,
+    ),
+    /unique/i,
+  );
+  database.exec("PRAGMA foreign_keys = ON");
 });
 
 class Statement {
@@ -1159,6 +1197,8 @@ test("pilot rehearsal: sandbox checkout recovery is durable and separate from ag
         providerStatus: "processing",
         source: "provider_webhook",
         verification: "provider_signed",
+        reconciliationKey: `sha256:${"c".repeat(64)}`,
+        payloadDigest: `sha256:${"d".repeat(64)}`,
       },
     ),
   );
@@ -1166,6 +1206,8 @@ test("pilot rehearsal: sandbox checkout recovery is durable and separate from ag
   assert.equal(submitted.checkout.status, "submitted");
   assert.equal(submitted.checkout.events[0].source, "browser_callback");
   assert.equal(submitted.checkout.events[0].verification, "unverified");
+  assert.equal(submitted.checkout.events[0].reconciliationKey, null);
+  assert.equal(submitted.checkout.events[0].payloadDigest, null);
 
   const duplicateEvent = await jsonResponse(
     await fundingCheckoutRequest(

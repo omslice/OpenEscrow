@@ -248,6 +248,8 @@ The current recovery ledger is deliberately provider-neutral and persists sandbo
 with browser storage used only as a best-effort local cache. Every event records whether it came
 from an unverified browser callback, a future signed provider webhook, or a future authorized
 operator reconciliation. The tenant sandbox endpoint can create only the unverified class.
+Future trusted events also require a globally unique SHA-256 reconciliation key and an exact
+payload digest; the durable ledger rejects a replayed key even across different checkout attempts.
 Production still requires provider-specific signature verification, authorized operator controls,
 webhook monitoring, and reviewed cancellation/refund semantics before trusted event classes can
 be accepted.

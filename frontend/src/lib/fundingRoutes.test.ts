@@ -17,6 +17,20 @@ import {
 } from "../../shared/funding-routes.js";
 
 const wallet = "0x1111111111111111111111111111111111111111";
+const sha256Value = (value: number) =>
+  `sha256:${value.toString(16).padStart(64, "0")}` as const;
+const providerProvenance = (value: number) => ({
+  source: "provider_webhook" as const,
+  verification: "provider_signed" as const,
+  reconciliationKey: sha256Value(value),
+  payloadDigest: sha256Value(value + 10_000),
+});
+const operatorProvenance = (value: number) => ({
+  source: "operator_reconciliation" as const,
+  verification: "operator_verified" as const,
+  reconciliationKey: sha256Value(value),
+  payloadDigest: sha256Value(value + 20_000),
+});
 
 test("fiat config accepts only Base USDC and separately gates production", () => {
   assert.equal(
@@ -256,8 +270,7 @@ test("checkout reconciliation refreshes only after production confirmation", () 
   const productionConfirmed = reconcileFundingCheckoutResult(
     {
       status: "confirmed",
-      source: "provider_webhook",
-      verification: "provider_signed",
+      ...providerProvenance(1),
     },
     "production",
   );
@@ -293,8 +306,7 @@ test("checkout reconciliation fails closed for cancellation, failure, and unknow
   const cancelled = reconcileFundingCheckoutResult(
     {
       status: "cancelled",
-      source: "provider_webhook",
-      verification: "provider_signed",
+      ...providerProvenance(2),
     },
     "production",
   );
@@ -310,8 +322,7 @@ test("checkout reconciliation fails closed for cancellation, failure, and unknow
     const outcome = reconcileFundingCheckoutResult(
       {
         status,
-        source: "operator_reconciliation",
-        verification: "operator_verified",
+        ...operatorProvenance(status === "failed" ? 3 : 4),
       },
       "production",
     );
@@ -364,8 +375,7 @@ test("provider status aliases normalize without weakening retry gates", () => {
   const verifiedExpired = reconcileFundingCheckoutResult(
     {
       status: "expired",
-      source: "provider_webhook",
-      verification: "provider_signed",
+      ...providerProvenance(5),
     },
     "production",
   );
@@ -399,6 +409,8 @@ test("checkout lifecycle reconciles delayed confirmation idempotently", () => {
   assert.equal(submitted.events.length, 1);
   assert.equal(submitted.events[0].source, "browser_callback");
   assert.equal(submitted.events[0].verification, "unverified");
+  assert.equal(submitted.events[0].reconciliationKey, null);
+  assert.equal(submitted.events[0].payloadDigest, null);
 
   const duplicate = applyFundingCheckoutEvent(submitted, {
     eventId: "provider-event-001",
@@ -423,8 +435,7 @@ test("checkout lifecycle reconciles delayed confirmation idempotently", () => {
         eventId: "provider-event-001",
         status: "processing",
         providerStatus: "processing",
-        source: "provider_webhook",
-        verification: "provider_signed",
+        ...providerProvenance(6),
         occurredAt: "2026-07-30T00:01:00.000Z",
       }),
     /conflicts with the saved checkout state/i,
@@ -438,6 +449,22 @@ test("checkout lifecycle reconciles delayed confirmation idempotently", () => {
   });
   assert.equal(confirmed.status, "confirmed");
   assert.equal(isFundingCheckoutLifecycle(confirmed), true);
+  const trustedConfirmation = applyFundingCheckoutEvent(submitted, {
+    eventId: "provider-event-trusted-002",
+    status: "completed",
+    ...providerProvenance(11),
+    occurredAt: "2026-07-30T00:03:00.000Z",
+  });
+  assert.throws(
+    () =>
+      applyFundingCheckoutEvent(trustedConfirmation, {
+        eventId: "provider-event-replayed-002",
+        status: "refunding",
+        ...providerProvenance(11),
+        occurredAt: "2026-07-30T00:04:00.000Z",
+      }),
+    /reconciliation event was already applied/i,
+  );
   assert.throws(
     () =>
       applyFundingCheckoutEvent(confirmed, {
@@ -480,15 +507,13 @@ test("checkout lifecycle models cancellation, uncertainty recovery, and refunds"
   const confirmed = applyFundingCheckoutEvent(uncertain, {
     eventId: "provider-event-102",
     status: "success",
-    source: "provider_webhook",
-    verification: "provider_signed",
+    ...providerProvenance(7),
     occurredAt: "2026-07-30T01:02:00.000Z",
   });
   const refundPending = applyFundingCheckoutEvent(confirmed, {
     eventId: "provider-event-103",
     status: "refunding",
-    source: "provider_webhook",
-    verification: "provider_signed",
+    ...providerProvenance(8),
     occurredAt: "2026-07-30T01:03:00.000Z",
   });
   assert.equal(refundPending.status, "refund_pending");
@@ -498,6 +523,8 @@ test("checkout lifecycle models cancellation, uncertainty recovery, and refunds"
         status: refundPending.providerStatus,
         source: refundPending.events.at(-1)?.source,
         verification: refundPending.events.at(-1)?.verification,
+        reconciliationKey: refundPending.events.at(-1)?.reconciliationKey,
+        payloadDigest: refundPending.events.at(-1)?.payloadDigest,
       },
       "production",
     ).retryAllowed,
@@ -507,8 +534,7 @@ test("checkout lifecycle models cancellation, uncertainty recovery, and refunds"
   const refunded = applyFundingCheckoutEvent(refundPending, {
     eventId: "provider-event-104",
     status: "refunded",
-    source: "provider_webhook",
-    verification: "provider_signed",
+    ...providerProvenance(9),
     occurredAt: "2026-07-30T01:04:00.000Z",
   });
   const refundOutcome = reconcileFundingCheckoutResult(
@@ -516,6 +542,8 @@ test("checkout lifecycle models cancellation, uncertainty recovery, and refunds"
       status: refunded.providerStatus,
       source: refunded.events.at(-1)?.source,
       verification: refunded.events.at(-1)?.verification,
+      reconciliationKey: refunded.events.at(-1)?.reconciliationKey,
+      payloadDigest: refunded.events.at(-1)?.payloadDigest,
     },
     "production",
   );
@@ -535,8 +563,7 @@ test("checkout lifecycle models cancellation, uncertainty recovery, and refunds"
   const cancelled = applyFundingCheckoutEvent(opened, {
     eventId: "provider-event-106",
     status: "cancelled",
-    source: "provider_webhook",
-    verification: "provider_signed",
+    ...providerProvenance(10),
     occurredAt: "2026-07-30T01:01:00.000Z",
   });
   assert.equal(cancelled.status, "cancelled");
@@ -546,6 +573,8 @@ test("checkout lifecycle models cancellation, uncertainty recovery, and refunds"
         status: cancelled.providerStatus,
         source: cancelled.events.at(-1)?.source,
         verification: cancelled.events.at(-1)?.verification,
+        reconciliationKey: cancelled.events.at(-1)?.reconciliationKey,
+        payloadDigest: cancelled.events.at(-1)?.payloadDigest,
       },
       "production",
     ).retryAllowed,
@@ -612,7 +641,7 @@ test("persisted checkout lifecycle rejects tampering and impossible history", ()
   assert.equal(
     isFundingCheckoutLifecycle({
       ...opened,
-      schema: "openescrow.funding-checkout.v1",
+      schema: "openescrow.funding-checkout.v2",
     }),
     false,
   );
@@ -669,6 +698,17 @@ test("persisted checkout lifecycle rejects tampering and impossible history", ()
         status: "submitted",
         source: "provider_webhook",
         verification: "unverified",
+        occurredAt: "2026-07-30T02:01:00.000Z",
+      }),
+    /valid checkout event provenance/i,
+  );
+  assert.throws(
+    () =>
+      applyFundingCheckoutEvent(opened, {
+        eventId: "missing-reconciliation-identity",
+        status: "submitted",
+        source: "provider_webhook",
+        verification: "provider_signed",
         occurredAt: "2026-07-30T02:01:00.000Z",
       }),
     /valid checkout event provenance/i,

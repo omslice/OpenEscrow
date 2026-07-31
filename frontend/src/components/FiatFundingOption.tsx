@@ -63,6 +63,8 @@ function checkoutOutcomeInput(checkout: FundingCheckoutLifecycle) {
     status: checkout.providerStatus,
     source: event?.source,
     verification: event?.verification,
+    reconciliationKey: event?.reconciliationKey,
+    payloadDigest: event?.payloadDigest,
   };
 }
 
@@ -204,7 +206,9 @@ export function FiatFundingOption({
                 (durableEvent.status !== localEvent.status ||
                   durableEvent.providerStatus !== localEvent.providerStatus ||
                   durableEvent.source !== localEvent.source ||
-                  durableEvent.verification !== localEvent.verification)
+                  durableEvent.verification !== localEvent.verification ||
+                  durableEvent.reconciliationKey !== localEvent.reconciliationKey ||
+                  durableEvent.payloadDigest !== localEvent.payloadDigest)
               ) {
                 throw new Error("The saved checkout histories conflict.");
               }
