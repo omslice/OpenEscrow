@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  clearRecoveryJsonIf,
   clearRecoveryValue,
   clearRecoveryValueIfMatches,
   getBrowserRecoveryStorage,
@@ -79,6 +80,46 @@ test("a late receipt save cannot clear a newer scoped transaction", () => {
   );
   assert.equal(storage.getItem("pending"), newerHash);
   assert.equal(scope.isCurrent(newerSave), true);
+});
+
+test("conditional JSON clearing removes only the matching receipt payload", () => {
+  const storage = new MemoryStorage();
+  const newerReceipt = {
+    type: "activity_hash_published",
+    transactionHash: `0x${"12".repeat(32)}`,
+  };
+  writeRecoveryJson("activity", newerReceipt, storage);
+
+  assert.equal(
+    clearRecoveryJsonIf(
+      "activity",
+      (value) =>
+        (value as { transactionHash?: string })?.transactionHash === hash,
+      storage,
+    ),
+    false,
+  );
+  assert.deepEqual(
+    readRecoveryJson(
+      "activity",
+      (value): value is typeof newerReceipt =>
+        (value as { transactionHash?: string })?.transactionHash ===
+        newerReceipt.transactionHash,
+      storage,
+    ),
+    newerReceipt,
+  );
+  assert.equal(
+    clearRecoveryJsonIf(
+      "activity",
+      (value) =>
+        (value as { transactionHash?: string })?.transactionHash ===
+        newerReceipt.transactionHash,
+      storage,
+    ),
+    true,
+  );
+  assert.equal(storage.getItem("activity"), null);
 });
 
 test("structured recovery validates data before returning it", () => {

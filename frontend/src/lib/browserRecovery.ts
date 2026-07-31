@@ -78,6 +78,24 @@ export function clearRecoveryValueIfMatches(
   }
 }
 
+export function clearRecoveryJsonIf(
+  key: string,
+  matches: (value: unknown) => boolean,
+  storage?: BrowserRecoveryStorage,
+) {
+  try {
+    const target = browserStorage(storage);
+    const stored = target?.getItem(key);
+    if (!target || stored === null) return false;
+    const parsed: unknown = JSON.parse(stored);
+    if (!matches(parsed)) return false;
+    target.removeItem(key);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function replaceRecoveryUrl(
   url: string | URL,
   state: unknown = null,

@@ -19,7 +19,7 @@ production readiness, or authorization to hold real rental deposits.
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
   outages, notification recovery, receipt spoofing, and RPC fallback.
-- **Verified:** The full repository release check passes with 77 server tests, 124 client-logic
+- **Verified:** The full repository release check passes with 77 server tests, 126 client-logic
   tests, lint, browser account-switch, accessibility/mobile, and load-recovery smoke checks, and
   the production build. These rendered checks are part of the required `npm run check` path
   rather than separate, potentially stale results.
@@ -152,6 +152,14 @@ production readiness, or authorization to hold real rental deposits.
   latest-operation guards with conditional browser-storage clearing. A late successful D1 save
   clears only its matching transaction hash and cannot erase a newer pending transaction,
   recovery control, or error message.
+- **Verified:** Shared transaction controls now deliver a mined receipt to the callback captured
+  when that exact transaction was submitted, rather than a callback from a later render. The
+  privacy-safe publisher locks its activity type and private text while publication is pending,
+  rejects completions after an agreement/account scope change, and pairs the transaction with the
+  canonical hash payload that was actually sent.
+- **Verified:** Private-activity D1 receipt recovery conditionally removes browser JSON only when
+  the stored activity type, content hash, and transaction hash match the successful save. An older
+  completion therefore cannot clear a newer proof's recovery control or feedback.
 - **Verified:** The exact validated candidate source is pushed to the existing Sites source
   branch and saved as a newer undeployed Sites version after each coherent slice. The public
   production deployment remains unchanged.

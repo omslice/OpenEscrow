@@ -136,6 +136,9 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Tenant funding and operations-reserve receipt recovery is newest-transaction safe: an older
   D1 receipt save can clear only its matching browser recovery hash and cannot erase or overwrite
   a newer pending transaction or its feedback
+- [x] Privacy-safe activity publication is exact-payload bound: shared transaction controls retain
+  the callback captured at submission, proof inputs lock while the receipt is pending, scope
+  changes reject late completions, and D1 recovery clears only matching structured receipt data
 - [x] Establish an initial browser performance budget and split the bootstrap from the
   authenticated wallet/workspace bundle
 - [x] Split infrequently used proposal, deposit, and record tools into tab-level chunks

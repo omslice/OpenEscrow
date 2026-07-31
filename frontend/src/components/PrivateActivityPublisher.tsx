@@ -1,4 +1,10 @@
-import { useEffect, useMemo, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useSendTransaction, useWallets } from "@privy-io/react-auth";
 import { encodeFunctionData } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
@@ -9,12 +15,13 @@ import {
 } from "../contracts/config";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import {
-  clearRecoveryValue,
+  clearRecoveryJsonIf,
   isTransactionHash,
   readRecoveryJson,
   writeRecoveryJson,
 } from "../lib/browserRecovery";
 import { downloadTextFile } from "../lib/browserActions";
+import { createAsyncOperationScope } from "../lib/asyncOperationScope";
 import {
   canonicalActivityEnvelope,
   createActivityEnvelopeV2,
@@ -46,10 +53,36 @@ type ActivityReceiptAction = Extract<
   { type: "activity_hash_published" }
 >;
 
+function isActivityReceiptAction(
+  value: unknown,
+): value is ActivityReceiptAction {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    candidate.type === "activity_hash_published" &&
+    [1, 2, 3, 4].includes(Number(candidate.activityType)) &&
+    isTransactionHash(candidate.contentHash) &&
+    isTransactionHash(candidate.transactionHash)
+  );
+}
+
+function sameActivityReceipt(
+  left: ActivityReceiptAction | null,
+  right: ActivityReceiptAction,
+) {
+  return (
+    left?.activityType === right.activityType &&
+    left.contentHash.toLowerCase() === right.contentHash.toLowerCase() &&
+    left.transactionHash.toLowerCase() === right.transactionHash.toLowerCase()
+  );
+}
+
 type PublishActionProps = {
   agreementId: bigint;
   activityType: number;
   contentHash: `0x${string}`;
+  onSubmit: () => void;
+  onBusyChange: (busy: boolean) => void;
   onSuccess: (transactionHash: `0x${string}`) => void;
 };
 
@@ -61,6 +94,8 @@ function StandardPublishAction(props: PublishActionProps) {
       functionName="publishActivity"
       args={[props.agreementId, props.activityType, props.contentHash]}
       label="Publish proof hash onchain"
+      onSubmit={props.onSubmit}
+      onBusyChange={props.onBusyChange}
       onSuccess={props.onSuccess}
     />
   );
@@ -72,6 +107,14 @@ function SponsoredPublishAction(props: PublishActionProps) {
   const { sendTransaction } = useSendTransaction();
   const [working, setWorking] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const onBusyChange = props.onBusyChange;
+
+  useEffect(
+    () => () => {
+      onBusyChange(false);
+    },
+    [onBusyChange],
+  );
 
   return (
     <>
@@ -81,6 +124,8 @@ function SponsoredPublishAction(props: PublishActionProps) {
         disabled={!address || !publicClient || working}
         onClick={async () => {
           if (!address || !publicClient) return;
+          props.onSubmit();
+          props.onBusyChange(true);
           setWorking(true);
           setError(null);
           try {
@@ -106,6 +151,7 @@ function SponsoredPublishAction(props: PublishActionProps) {
             );
           } finally {
             setWorking(false);
+            props.onBusyChange(false);
           }
         }}
       >
@@ -151,6 +197,7 @@ export function PrivateActivityPublisher({
   const [activityType, setActivityType] = useState<1 | 2 | 3 | 4>(1);
   const [content, setContent] = useState("");
   const [proof, setProof] = useState<ActivityProof | null>(null);
+  const [publishing, setPublishing] = useState(false);
   const [proofDownloadStatus, setProofDownloadStatus] = useState<{
     message: string;
     error: boolean;
@@ -160,6 +207,15 @@ export function PrivateActivityPublisher({
   const pendingRecordKey = negotiationAccess && address
     ? `openescrow:pending-activity-receipt:${negotiationAccess.proposalId}:${negotiationAccess.role}:${address.toLowerCase()}`
     : null;
+  const publisherScopeKey = JSON.stringify([
+    agreementId.toString(),
+    pendingRecordKey,
+  ]);
+  const publisherScope = useMemo(
+    () => createAsyncOperationScope(publisherScopeKey),
+    [publisherScopeKey],
+  );
+  const publicationOperation = useRef<number | null>(null);
   const trimmedContent = content.trim();
   const envelope = useMemo(
     () =>
@@ -180,17 +236,50 @@ export function PrivateActivityPublisher({
     trimmedContent.length >= 4 ? hashActivityEnvelope(envelope) : undefined;
   const selectedType = activityTypes.find((option) => option.value === activityType);
 
+  useLayoutEffect(() => {
+    publisherScope.open();
+    publicationOperation.current = null;
+    setActivityType(1);
+    setContent("");
+    setProof(null);
+    setPublishing(false);
+    setProofDownloadStatus(null);
+    setRecordError(null);
+    setPendingRecord(
+      pendingRecordKey
+        ? readRecoveryJson(pendingRecordKey, isActivityReceiptAction)
+        : null,
+    );
+    return () => publisherScope.close();
+  }, [pendingRecordKey, publisherScope]);
+
   async function saveActivityRecord(action: ActivityReceiptAction) {
+    const operationId = publisherScope.start();
     if (!negotiationAccess) {
-      setPendingRecord(null);
+      if (publisherScope.isCurrent(operationId)) {
+        setPendingRecord((current) =>
+          sameActivityReceipt(current, action) ? null : current,
+        );
+      }
       return;
     }
     setRecordError(null);
     try {
       await negotiationAction(negotiationAccess, action);
-      setPendingRecord(null);
-      if (pendingRecordKey) clearRecoveryValue(pendingRecordKey);
+      if (pendingRecordKey) {
+        clearRecoveryJsonIf(
+          pendingRecordKey,
+          (value) =>
+            isActivityReceiptAction(value) &&
+            sameActivityReceipt(value, action),
+        );
+      }
+      if (!publisherScope.isCurrent(operationId)) return;
+      setPendingRecord((current) =>
+        sameActivityReceipt(current, action) ? null : current,
+      );
     } catch (cause) {
+      if (!publisherScope.isCurrent(operationId)) return;
       setRecordError(
         cause instanceof Error
           ? `The onchain receipt succeeded, but its agreement record still needs to be saved: ${cause.message}`
@@ -198,24 +287,6 @@ export function PrivateActivityPublisher({
       );
     }
   }
-
-  useEffect(() => {
-    if (!pendingRecordKey) return;
-    const stored = readRecoveryJson(
-      pendingRecordKey,
-      (value): value is ActivityReceiptAction => {
-        if (!value || typeof value !== "object") return false;
-        const candidate = value as Record<string, unknown>;
-        return (
-          candidate.type === "activity_hash_published" &&
-          [1, 2, 3, 4].includes(Number(candidate.activityType)) &&
-          isTransactionHash(candidate.contentHash) &&
-          isTransactionHash(candidate.transactionHash)
-        );
-      },
-    );
-    if (stored) setPendingRecord(stored);
-  }, [pendingRecordKey]);
 
   function downloadProof() {
     if (!proof) return;
@@ -261,6 +332,7 @@ export function PrivateActivityPublisher({
         Activity type
         <select
           value={activityType}
+          disabled={publishing}
           onChange={(event) => {
             setActivityType(Number(event.target.value) as 1 | 2 | 3 | 4);
             setProof(null);
@@ -279,6 +351,7 @@ export function PrivateActivityPublisher({
         Private content to hash
         <textarea
           value={content}
+          disabled={publishing}
           maxLength={2_000}
           rows={4}
           placeholder="Enter the note or document description you want to prove existed…"
@@ -298,7 +371,19 @@ export function PrivateActivityPublisher({
             agreementId={agreementId}
             activityType={activityType}
             contentHash={contentHash}
+            onSubmit={() => {
+              publicationOperation.current = publisherScope.start();
+            }}
+            onBusyChange={setPublishing}
             onSuccess={(transactionHash) => {
+              const operationId = publicationOperation.current;
+              if (
+                operationId === null ||
+                !publisherScope.isCurrent(operationId)
+              ) {
+                return;
+              }
+              publicationOperation.current = null;
               setProof({ algorithm: "keccak256", canonical, contentHash, transactionHash });
               setProofDownloadStatus(null);
               const action: ActivityReceiptAction = {
