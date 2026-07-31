@@ -58,7 +58,17 @@ export interface FundingPlan {
 export const FUNDING_ROUTE_CATALOG_VERSION: string;
 export const ONRAMP_PROVIDER_CATALOG_VERSION: string;
 export const CONVERSION_ADAPTER_CATALOG_VERSION: string;
-export const FUNDING_CHECKOUT_SCHEMA: "openescrow.funding-checkout.v1";
+export const FUNDING_CHECKOUT_SCHEMA: "openescrow.funding-checkout.v2";
+export const FUNDING_CHECKOUT_EVENT_SOURCES: Readonly<{
+  BROWSER_CALLBACK: "browser_callback";
+  PROVIDER_WEBHOOK: "provider_webhook";
+  OPERATOR_RECONCILIATION: "operator_reconciliation";
+}>;
+export const FUNDING_CHECKOUT_EVENT_VERIFICATIONS: Readonly<{
+  UNVERIFIED: "unverified";
+  PROVIDER_SIGNED: "provider_signed";
+  OPERATOR_VERIFIED: "operator_verified";
+}>;
 export const ONRAMP_STRATEGY: Readonly<FundingProviderCatalogEntry>;
 
 export function validateFiatOnrampConfig(input?: {
@@ -139,11 +149,13 @@ export interface FundingCheckoutEvent {
   id: string;
   status: FundingCheckoutState;
   providerStatus: string;
+  source: "browser_callback" | "provider_webhook" | "operator_reconciliation";
+  verification: "unverified" | "provider_signed" | "operator_verified";
   occurredAt: string;
 }
 
 export interface FundingCheckoutLifecycle {
-  schema: "openescrow.funding-checkout.v1";
+  schema: "openescrow.funding-checkout.v2";
   intentKey: string;
   attemptId: string;
   environment: FundingEnvironment;
@@ -198,6 +210,8 @@ export function applyFundingCheckoutEvent(
     eventId: string;
     status: unknown;
     providerStatus?: unknown;
+    source?: FundingCheckoutEvent["source"];
+    verification?: FundingCheckoutEvent["verification"];
     occurredAt?: string;
   },
 ): Readonly<FundingCheckoutLifecycle>;

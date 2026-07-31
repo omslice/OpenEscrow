@@ -19,6 +19,8 @@ import {
   validateDepositAssetTerms,
 } from "../shared/deposit-assets.js";
 import {
+  FUNDING_CHECKOUT_EVENT_SOURCES,
+  FUNDING_CHECKOUT_EVENT_VERIFICATIONS,
   FUNDING_CHECKOUT_SCHEMA,
   applyFundingCheckoutEvent,
   createFundingCheckoutAttempt,
@@ -225,6 +227,10 @@ CREATE TABLE IF NOT EXISTS funding_checkout_events (
   event_id TEXT NOT NULL,
   status TEXT NOT NULL,
   provider_status TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'browser_callback'
+    CHECK (source IN ('browser_callback', 'provider_webhook', 'operator_reconciliation')),
+  verification TEXT NOT NULL DEFAULT 'unverified'
+    CHECK (verification IN ('unverified', 'provider_signed', 'operator_verified')),
   occurred_at TEXT NOT NULL,
   UNIQUE (attempt_id, event_id),
   FOREIGN KEY (attempt_id) REFERENCES funding_checkout_attempts(attempt_id) ON DELETE CASCADE
@@ -2415,7 +2421,7 @@ async function fundingCheckoutForAttempt(db, attemptId) {
   if (!attempt) return null;
   const eventResult = await db
     .prepare(
-      `SELECT event_id, status, provider_status, occurred_at
+      `SELECT event_id, status, provider_status, source, verification, occurred_at
        FROM funding_checkout_events
        WHERE attempt_id = ?
        ORDER BY sequence ASC`,
@@ -2439,6 +2445,8 @@ async function fundingCheckoutForAttempt(db, attemptId) {
       id: event.event_id,
       status: event.status,
       providerStatus: event.provider_status,
+      source: event.source,
+      verification: event.verification,
       occurredAt: event.occurred_at,
     })),
   };
@@ -2791,6 +2799,8 @@ async function appendSandboxFundingCheckoutEvent(request, env, id, attemptId) {
       eventId: body.eventId,
       status: body.status,
       providerStatus: body.providerStatus,
+      source: FUNDING_CHECKOUT_EVENT_SOURCES.BROWSER_CALLBACK,
+      verification: FUNDING_CHECKOUT_EVENT_VERIFICATIONS.UNVERIFIED,
       occurredAt: new Date().toISOString(),
     });
   } catch (error) {
@@ -2819,8 +2829,8 @@ async function appendSandboxFundingCheckoutEvent(request, env, id, attemptId) {
       env.DB
         .prepare(
           `INSERT INTO funding_checkout_events
-           (attempt_id, event_id, status, provider_status, occurred_at)
-           SELECT ?, ?, ?, ?, ?
+           (attempt_id, event_id, status, provider_status, source, verification, occurred_at)
+           SELECT ?, ?, ?, ?, ?, ?, ?
            WHERE EXISTS (
              SELECT 1
              FROM funding_checkout_attempts
@@ -2835,6 +2845,8 @@ async function appendSandboxFundingCheckoutEvent(request, env, id, attemptId) {
           event.id,
           event.status,
           event.providerStatus,
+          event.source,
+          event.verification,
           event.occurredAt,
           saved.checkout.attemptId,
           saved.checkout.status,
@@ -2856,6 +2868,8 @@ async function appendSandboxFundingCheckoutEvent(request, env, id, attemptId) {
                  AND event_id = ?
                  AND status = ?
                  AND provider_status = ?
+                 AND source = ?
+                 AND verification = ?
                  AND occurred_at = ?
              )`,
         )
@@ -2871,6 +2885,8 @@ async function appendSandboxFundingCheckoutEvent(request, env, id, attemptId) {
           event.id,
           event.status,
           event.providerStatus,
+          event.source,
+          event.verification,
           event.occurredAt,
         ),
     ]);
@@ -2881,7 +2897,9 @@ async function appendSandboxFundingCheckoutEvent(request, env, id, attemptId) {
         (candidate) =>
           candidate.id === event.id &&
           candidate.status === event.status &&
-          candidate.providerStatus === event.providerStatus,
+          candidate.providerStatus === event.providerStatus &&
+          candidate.source === event.source &&
+          candidate.verification === event.verification,
       )
     ) {
       return json({
@@ -2899,7 +2917,9 @@ async function appendSandboxFundingCheckoutEvent(request, env, id, attemptId) {
       (candidate) =>
         candidate.id === event.id &&
         candidate.status === event.status &&
-        candidate.providerStatus === event.providerStatus,
+        candidate.providerStatus === event.providerStatus &&
+        candidate.source === event.source &&
+        candidate.verification === event.verification,
     )
   ) {
     return json(

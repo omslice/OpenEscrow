@@ -188,6 +188,11 @@ production readiness, or authorization to hold real rental deposits.
   resolves the provider calls out of order and proves each scope gets a separate browser recovery
   key, each result is saved to its original durable attempt, bearer tokens are absent from key
   names, and late completions do not update the currently visible agreement.
+- **Verified:** Funding events now durably distinguish an unverified browser callback from a
+  future signed provider webhook or authorized operator reconciliation. The tenant sandbox API
+  ignores client-supplied provenance and can save only the unverified class. In production-mode
+  reconciliation logic, an unsigned terminal result cannot refresh balances or permit another
+  purchase; it stays locked until a trusted server-side event exists.
 - **Verified:** Arrow-key workspace navigation moves focus to the selected tab synchronously,
   eliminating an intermittent animation-frame race in the required accessibility smoke check.
 - **Verified:** The exact validated candidate source is pushed to the existing Sites source

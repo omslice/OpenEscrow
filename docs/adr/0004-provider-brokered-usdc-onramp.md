@@ -55,9 +55,15 @@ It would also incorrectly imply that a DEX is needed to enter or exit Aave.
 10. Use browser storage only as a best-effort recovery cache. On a later page load or device, the
     authenticated tenant recovers the D1 lifecycle and may reconcile a locally retained provider
     result. An interrupted opening remains locked until its status is resolved.
-11. Keep this ledger explicitly sandbox-only. Client-reported sandbox events never create an
-    agreement-funding event and are not evidence that assets reached the wallet or escrow. This is
-    not a substitute for signed provider webhooks and a production reconciliation ledger.
+11. Keep this ledger explicitly sandbox-only. Every event durably records its source and
+    verification class. The tenant endpoint ignores any client-supplied provenance and stamps
+    checkout-window callbacks as `browser_callback` plus `unverified`; those events never create
+    an agreement-funding event and are not evidence that assets reached the wallet or escrow.
+    Future production terminal outcomes may unlock balance refresh or retry only when they come
+    from a `provider_webhook` plus `provider_signed` event or an
+    `operator_reconciliation` plus `operator_verified` event. No current endpoint can mint either
+    trusted class, because provider-specific signature verification and operator authorization
+    have not been implemented.
 
 ## Why not choose a single onramp vendor now?
 

@@ -57,6 +57,15 @@ function durableRecoveryUnavailable(): FundingCheckoutOutcome {
   };
 }
 
+function checkoutOutcomeInput(checkout: FundingCheckoutLifecycle) {
+  const event = checkout.events.at(-1);
+  return {
+    status: checkout.providerStatus,
+    source: event?.source,
+    verification: event?.verification,
+  };
+}
+
 export function FiatFundingOption({
   walletAddress,
   amount,
@@ -193,7 +202,9 @@ export function FiatFundingOption({
               if (
                 durableEvent &&
                 (durableEvent.status !== localEvent.status ||
-                  durableEvent.providerStatus !== localEvent.providerStatus)
+                  durableEvent.providerStatus !== localEvent.providerStatus ||
+                  durableEvent.source !== localEvent.source ||
+                  durableEvent.verification !== localEvent.verification)
               ) {
                 throw new Error("The saved checkout histories conflict.");
               }
@@ -237,7 +248,7 @@ export function FiatFundingOption({
           setCheckout(recovered);
           setStatus(
             reconcileFundingCheckoutResult(
-              { status: recovered.providerStatus },
+              checkoutOutcomeInput(recovered),
               FIAT_ONRAMP_CONFIG.environment,
             ),
           );
@@ -266,7 +277,7 @@ export function FiatFundingOption({
         setCheckout(recovered);
         setStatus(
           reconcileFundingCheckoutResult(
-            { status: recovered.providerStatus },
+            checkoutOutcomeInput(recovered),
             FIAT_ONRAMP_CONFIG.environment,
           ),
         );
@@ -364,7 +375,7 @@ export function FiatFundingOption({
         setCheckout(closedCheckout);
         setStatus(
           reconcileFundingCheckoutResult(
-            { status: closedCheckout.status },
+            checkoutOutcomeInput(closedCheckout),
             FIAT_ONRAMP_CONFIG.environment,
           ),
         );
@@ -436,7 +447,7 @@ export function FiatFundingOption({
                 setCheckout(attempt);
                 setStatus(
                   reconcileFundingCheckoutResult(
-                    { status: attempt.providerStatus },
+                    checkoutOutcomeInput(attempt),
                     FIAT_ONRAMP_CONFIG.environment,
                   ),
                 );
@@ -488,7 +499,7 @@ export function FiatFundingOption({
               typeof result.status === "string"
                 ? result.status
                 : "unknown";
-            const eventId = `provider-result:${attempt.attemptId}`;
+            const eventId = `browser-result:${attempt.attemptId}`;
             attempt = applyFundingCheckoutEvent(attempt, {
               eventId,
               status: resultStatus,
@@ -531,7 +542,7 @@ export function FiatFundingOption({
               }
             }
             const outcome = reconcileFundingCheckoutResult(
-              { status: attempt.providerStatus },
+              checkoutOutcomeInput(attempt),
               FIAT_ONRAMP_CONFIG.environment,
             );
             if (operationScope.isCurrent(operationId)) setStatus(outcome);

@@ -59,6 +59,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0009_evidence_key_rotation.sql",
     "0010_sandbox_funding_checkouts.sql",
     "0011_evidence_key_fingerprints.sql",
+    "0012_funding_event_provenance.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -79,6 +80,12 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.ok(tables.includes("account_record_archives"));
   assert.ok(tables.includes("funding_checkout_attempts"));
   assert.ok(tables.includes("funding_checkout_events"));
+  const fundingEventColumns = database
+    .prepare("PRAGMA table_info(funding_checkout_events)")
+    .all()
+    .map((row) => row.name);
+  assert.equal(fundingEventColumns.includes("source"), true);
+  assert.equal(fundingEventColumns.includes("verification"), true);
 });
 
 class Statement {
@@ -1150,11 +1157,15 @@ test("pilot rehearsal: sandbox checkout recovery is durable and separate from ag
         eventId: "provider:submitted-1",
         status: "submitted",
         providerStatus: "processing",
+        source: "provider_webhook",
+        verification: "provider_signed",
       },
     ),
   );
   assert.equal(submitted.duplicate, false);
   assert.equal(submitted.checkout.status, "submitted");
+  assert.equal(submitted.checkout.events[0].source, "browser_callback");
+  assert.equal(submitted.checkout.events[0].verification, "unverified");
 
   const duplicateEvent = await jsonResponse(
     await fundingCheckoutRequest(

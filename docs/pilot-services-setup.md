@@ -244,9 +244,13 @@ Production is deliberately double-gated: both `VITE_FIAT_ONRAMP_ENABLED=true` an
 Do not set the production-approval flag until the mainnet escrow, legal/provider approvals, and
 independent security review are complete.
 
-The current recovery ledger is deliberately provider-neutral and stored only on the active
-device. Production also requires verified provider webhook signatures, durable server-side
-idempotency, cross-device reconciliation, and provider-specific cancellation/refund semantics.
+The current recovery ledger is deliberately provider-neutral and persists sandbox attempts in D1,
+with browser storage used only as a best-effort local cache. Every event records whether it came
+from an unverified browser callback, a future signed provider webhook, or a future authorized
+operator reconciliation. The tenant sandbox endpoint can create only the unverified class.
+Production still requires provider-specific signature verification, authorized operator controls,
+webhook monitoring, and reviewed cancellation/refund semantics before trusted event classes can
+be accepted.
 
 ### Production design
 

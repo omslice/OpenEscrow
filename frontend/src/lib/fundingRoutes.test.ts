@@ -244,8 +244,21 @@ test("funding intents cannot bypass the production approval gate", () => {
 });
 
 test("checkout reconciliation refreshes only after production confirmation", () => {
-  const productionConfirmed = reconcileFundingCheckoutResult(
+  const unverifiedProductionResult = reconcileFundingCheckoutResult(
     { status: "confirmed" },
+    "production",
+  );
+  assert.equal(unverifiedProductionResult.state, "unknown");
+  assert.equal(unverifiedProductionResult.shouldRefreshBalance, false);
+  assert.equal(unverifiedProductionResult.retryAllowed, false);
+  assert.match(unverifiedProductionResult.message, /verified provider or operator/i);
+
+  const productionConfirmed = reconcileFundingCheckoutResult(
+    {
+      status: "confirmed",
+      source: "provider_webhook",
+      verification: "provider_signed",
+    },
     "production",
   );
   assert.equal(productionConfirmed.state, "confirmed");
@@ -270,8 +283,19 @@ test("checkout reconciliation refreshes only after production confirmation", () 
 });
 
 test("checkout reconciliation fails closed for cancellation, failure, and unknown results", () => {
-  const cancelled = reconcileFundingCheckoutResult(
+  const unverifiedCancellation = reconcileFundingCheckoutResult(
     { status: "cancelled" },
+    "production",
+  );
+  assert.equal(unverifiedCancellation.state, "unknown");
+  assert.equal(unverifiedCancellation.retryAllowed, false);
+
+  const cancelled = reconcileFundingCheckoutResult(
+    {
+      status: "cancelled",
+      source: "provider_webhook",
+      verification: "provider_signed",
+    },
     "production",
   );
   assert.equal(cancelled.state, "cancelled");
@@ -279,13 +303,29 @@ test("checkout reconciliation fails closed for cancellation, failure, and unknow
   assert.equal(cancelled.shouldRefreshBalance, false);
   assert.equal(cancelled.retryAllowed, true);
 
-  for (const status of ["failed", "rejected", "unexpected"]) {
-    const outcome = reconcileFundingCheckoutResult({ status }, "production");
+  for (const status of ["failed", "rejected"]) {
+    const unverified = reconcileFundingCheckoutResult({ status }, "production");
+    assert.equal(unverified.state, "unknown");
+    assert.equal(unverified.retryAllowed, false);
+    const outcome = reconcileFundingCheckoutResult(
+      {
+        status,
+        source: "operator_reconciliation",
+        verification: "operator_verified",
+      },
+      "production",
+    );
     assert.equal(outcome.severity, "error");
     assert.equal(outcome.shouldRefreshBalance, false);
-    assert.equal(outcome.retryAllowed, status !== "unexpected");
+    assert.equal(outcome.retryAllowed, true);
     assert.match(outcome.message, /No agreement funding was recorded/i);
   }
+  const unexpected = reconcileFundingCheckoutResult(
+    { status: "unexpected" },
+    "production",
+  );
+  assert.equal(unexpected.state, "unknown");
+  assert.equal(unexpected.retryAllowed, false);
 
   const malformed = reconcileFundingCheckoutResult(null, "production");
   assert.equal(malformed.state, "unknown");
@@ -318,8 +358,19 @@ test("provider status aliases normalize without weakening retry gates", () => {
     { status: "expired" },
     "production",
   );
-  assert.equal(expired.state, "failed");
-  assert.equal(expired.retryAllowed, true);
+  assert.equal(expired.state, "unknown");
+  assert.equal(expired.retryAllowed, false);
+
+  const verifiedExpired = reconcileFundingCheckoutResult(
+    {
+      status: "expired",
+      source: "provider_webhook",
+      verification: "provider_signed",
+    },
+    "production",
+  );
+  assert.equal(verifiedExpired.state, "failed");
+  assert.equal(verifiedExpired.retryAllowed, true);
 });
 
 test("checkout lifecycle reconciles delayed confirmation idempotently", () => {
@@ -346,6 +397,8 @@ test("checkout lifecycle reconciles delayed confirmation idempotently", () => {
   });
   assert.equal(submitted.status, "submitted");
   assert.equal(submitted.events.length, 1);
+  assert.equal(submitted.events[0].source, "browser_callback");
+  assert.equal(submitted.events[0].verification, "unverified");
 
   const duplicate = applyFundingCheckoutEvent(submitted, {
     eventId: "provider-event-001",
@@ -361,6 +414,18 @@ test("checkout lifecycle reconciles delayed confirmation idempotently", () => {
         eventId: "provider-event-001",
         status: "confirmed",
         occurredAt: "2026-07-30T00:02:00.000Z",
+      }),
+    /conflicts with the saved checkout state/i,
+  );
+  assert.throws(
+    () =>
+      applyFundingCheckoutEvent(submitted, {
+        eventId: "provider-event-001",
+        status: "processing",
+        providerStatus: "processing",
+        source: "provider_webhook",
+        verification: "provider_signed",
+        occurredAt: "2026-07-30T00:01:00.000Z",
       }),
     /conflicts with the saved checkout state/i,
   );
@@ -415,17 +480,25 @@ test("checkout lifecycle models cancellation, uncertainty recovery, and refunds"
   const confirmed = applyFundingCheckoutEvent(uncertain, {
     eventId: "provider-event-102",
     status: "success",
+    source: "provider_webhook",
+    verification: "provider_signed",
     occurredAt: "2026-07-30T01:02:00.000Z",
   });
   const refundPending = applyFundingCheckoutEvent(confirmed, {
     eventId: "provider-event-103",
     status: "refunding",
+    source: "provider_webhook",
+    verification: "provider_signed",
     occurredAt: "2026-07-30T01:03:00.000Z",
   });
   assert.equal(refundPending.status, "refund_pending");
   assert.equal(
     reconcileFundingCheckoutResult(
-      { status: refundPending.providerStatus },
+      {
+        status: refundPending.providerStatus,
+        source: refundPending.events.at(-1)?.source,
+        verification: refundPending.events.at(-1)?.verification,
+      },
       "production",
     ).retryAllowed,
     false,
@@ -434,10 +507,16 @@ test("checkout lifecycle models cancellation, uncertainty recovery, and refunds"
   const refunded = applyFundingCheckoutEvent(refundPending, {
     eventId: "provider-event-104",
     status: "refunded",
+    source: "provider_webhook",
+    verification: "provider_signed",
     occurredAt: "2026-07-30T01:04:00.000Z",
   });
   const refundOutcome = reconcileFundingCheckoutResult(
-    { status: refunded.providerStatus },
+    {
+      status: refunded.providerStatus,
+      source: refunded.events.at(-1)?.source,
+      verification: refunded.events.at(-1)?.verification,
+    },
     "production",
   );
   assert.equal(refundOutcome.state, "refunded");
@@ -456,12 +535,18 @@ test("checkout lifecycle models cancellation, uncertainty recovery, and refunds"
   const cancelled = applyFundingCheckoutEvent(opened, {
     eventId: "provider-event-106",
     status: "cancelled",
+    source: "provider_webhook",
+    verification: "provider_signed",
     occurredAt: "2026-07-30T01:01:00.000Z",
   });
   assert.equal(cancelled.status, "cancelled");
   assert.equal(
     reconcileFundingCheckoutResult(
-      { status: cancelled.providerStatus },
+      {
+        status: cancelled.providerStatus,
+        source: cancelled.events.at(-1)?.source,
+        verification: cancelled.events.at(-1)?.verification,
+      },
       "production",
     ).retryAllowed,
     true,
@@ -527,6 +612,13 @@ test("persisted checkout lifecycle rejects tampering and impossible history", ()
   assert.equal(
     isFundingCheckoutLifecycle({
       ...opened,
+      schema: "openescrow.funding-checkout.v1",
+    }),
+    false,
+  );
+  assert.equal(
+    isFundingCheckoutLifecycle({
+      ...opened,
       assetId: "invented-asset",
       intentKey: opened.intentKey.replace("|usdc|", "|invented-asset|"),
     }),
@@ -554,4 +646,31 @@ test("persisted checkout lifecycle rejects tampering and impossible history", ()
     providerStatus: "refunded",
   };
   assert.equal(isFundingCheckoutLifecycle(impossible), false);
+
+  const browserEvent = applyFundingCheckoutEvent(opened, {
+    eventId: "browser-event-001",
+    status: "submitted",
+    occurredAt: "2026-07-30T02:01:00.000Z",
+  });
+  assert.equal(
+    isFundingCheckoutLifecycle({
+      ...browserEvent,
+      events: browserEvent.events.map((event) => ({
+        ...event,
+        source: "provider_webhook",
+      })),
+    }),
+    false,
+  );
+  assert.throws(
+    () =>
+      applyFundingCheckoutEvent(opened, {
+        eventId: "invalid-provenance-001",
+        status: "submitted",
+        source: "provider_webhook",
+        verification: "unverified",
+        occurredAt: "2026-07-30T02:01:00.000Z",
+      }),
+    /valid checkout event provenance/i,
+  );
 });

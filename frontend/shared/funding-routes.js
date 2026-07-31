@@ -6,7 +6,17 @@ import {
 export const FUNDING_ROUTE_CATALOG_VERSION = "2026-07-30.1";
 export const ONRAMP_PROVIDER_CATALOG_VERSION = FUNDING_ROUTE_CATALOG_VERSION;
 export const CONVERSION_ADAPTER_CATALOG_VERSION = FUNDING_ROUTE_CATALOG_VERSION;
-export const FUNDING_CHECKOUT_SCHEMA = "openescrow.funding-checkout.v1";
+export const FUNDING_CHECKOUT_SCHEMA = "openescrow.funding-checkout.v2";
+export const FUNDING_CHECKOUT_EVENT_SOURCES = Object.freeze({
+  BROWSER_CALLBACK: "browser_callback",
+  PROVIDER_WEBHOOK: "provider_webhook",
+  OPERATOR_RECONCILIATION: "operator_reconciliation",
+});
+export const FUNDING_CHECKOUT_EVENT_VERIFICATIONS = Object.freeze({
+  UNVERIFIED: "unverified",
+  PROVIDER_SIGNED: "provider_signed",
+  OPERATOR_VERIFIED: "operator_verified",
+});
 
 const ONRAMP_PROVIDERS = Object.freeze({
   "privy-brokered-fiat": Object.freeze({
@@ -367,6 +377,29 @@ function rawFundingProviderStatus(result) {
     : "unknown";
 }
 
+function rawFundingEventVerification(result) {
+  return result &&
+    typeof result === "object" &&
+    typeof result.verification === "string"
+    ? result.verification.trim().toLowerCase()
+    : FUNDING_CHECKOUT_EVENT_VERIFICATIONS.UNVERIFIED;
+}
+
+function rawFundingEventSource(result) {
+  return result && typeof result === "object" && typeof result.source === "string"
+    ? result.source.trim().toLowerCase()
+    : FUNDING_CHECKOUT_EVENT_SOURCES.BROWSER_CALLBACK;
+}
+
+function trustedFundingEventProvenance(source, verification) {
+  return (
+    (source === FUNDING_CHECKOUT_EVENT_SOURCES.PROVIDER_WEBHOOK &&
+      verification === FUNDING_CHECKOUT_EVENT_VERIFICATIONS.PROVIDER_SIGNED) ||
+    (source === FUNDING_CHECKOUT_EVENT_SOURCES.OPERATOR_RECONCILIATION &&
+      verification === FUNDING_CHECKOUT_EVENT_VERIFICATIONS.OPERATOR_VERIFIED)
+  );
+}
+
 export function normalizeFundingCheckoutState(status) {
   switch (String(status || "").trim().toLowerCase()) {
     case "created":
@@ -459,6 +492,17 @@ function validProviderStatus(value) {
     value.length >= 1 &&
     value.length <= 160 &&
     value.trim() === value
+  );
+}
+
+function validFundingCheckoutEventProvenance(source, verification) {
+  return (
+    (source === FUNDING_CHECKOUT_EVENT_SOURCES.BROWSER_CALLBACK &&
+      verification === FUNDING_CHECKOUT_EVENT_VERIFICATIONS.UNVERIFIED) ||
+    (source === FUNDING_CHECKOUT_EVENT_SOURCES.PROVIDER_WEBHOOK &&
+      verification === FUNDING_CHECKOUT_EVENT_VERIFICATIONS.PROVIDER_SIGNED) ||
+    (source === FUNDING_CHECKOUT_EVENT_SOURCES.OPERATOR_RECONCILIATION &&
+      verification === FUNDING_CHECKOUT_EVENT_VERIFICATIONS.OPERATOR_VERIFIED)
   );
 }
 
@@ -575,6 +619,7 @@ export function isFundingCheckoutLifecycle(value) {
       eventIds.has(event.id) ||
       !Object.hasOwn(CHECKOUT_TRANSITIONS, event.status) ||
       !validProviderStatus(event.providerStatus) ||
+      !validFundingCheckoutEventProvenance(event.source, event.verification) ||
       !validTimestamp(event.occurredAt) ||
       Date.parse(event.occurredAt) < previousTime ||
       !CHECKOUT_TRANSITIONS[status].includes(event.status)
@@ -608,6 +653,8 @@ export function applyFundingCheckoutEvent(
     eventId,
     status,
     providerStatus = status,
+    source = FUNDING_CHECKOUT_EVENT_SOURCES.BROWSER_CALLBACK,
+    verification = FUNDING_CHECKOUT_EVENT_VERIFICATIONS.UNVERIFIED,
     occurredAt = new Date().toISOString(),
   } = {},
 ) {
@@ -627,11 +674,16 @@ export function applyFundingCheckoutEvent(
   if (!validProviderStatus(normalizedProviderStatus)) {
     throw new Error("A valid provider status is required.");
   }
+  if (!validFundingCheckoutEventProvenance(source, verification)) {
+    throw new Error("A valid checkout event provenance is required.");
+  }
   const duplicate = checkout.events.find((event) => event.id === eventId);
   if (duplicate) {
     if (
       duplicate.status !== nextStatus ||
-      duplicate.providerStatus !== normalizedProviderStatus
+      duplicate.providerStatus !== normalizedProviderStatus ||
+      duplicate.source !== source ||
+      duplicate.verification !== verification
     ) {
       throw new Error("A duplicate provider event conflicts with the saved checkout state.");
     }
@@ -652,6 +704,8 @@ export function applyFundingCheckoutEvent(
     id: eventId,
     status: nextStatus,
     providerStatus: normalizedProviderStatus,
+    source,
+    verification,
     occurredAt,
   };
   return freezeFundingCheckout({
@@ -670,6 +724,24 @@ export function reconcileFundingCheckoutResult(
   const normalizedEnvironment = normalizeEnvironment(environment);
   const providerStatus = rawFundingProviderStatus(result);
   const state = normalizeFundingCheckoutState(providerStatus);
+  const source = rawFundingEventSource(result);
+  const verification = rawFundingEventVerification(result);
+
+  if (
+    normalizedEnvironment === "production" &&
+    !["opening", "submitted", "unknown"].includes(state) &&
+    !trustedFundingEventProvenance(source, verification)
+  ) {
+    return Object.freeze({
+      state: "unknown",
+      providerStatus,
+      severity: "error",
+      shouldRefreshBalance: false,
+      retryAllowed: false,
+      message:
+        "The checkout window returned a result, but OpenEscrow has not received a verified provider or operator reconciliation event. No agreement funding was recorded; do not retry until the provider status is reconciled.",
+    });
+  }
 
   if (state === "opening") {
     return Object.freeze({

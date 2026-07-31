@@ -75,6 +75,8 @@ the repository; they are not claims of legal approval or production readiness.
   asset, amount, and environment, without storing invitation or account-session bearer tokens
 - [x] Rehearse the rendered funding UI across same-wallet agreements and co-tenants with
   out-of-order provider completions, isolated browser caches, and correctly scoped durable events
+- [x] Persist provider-neutral event provenance and keep unsigned browser terminal outcomes
+  locked in production until a signed webhook or authorized operator reconciliation exists
 - [ ] Enable and validate an eligible provider sandbox in the Privy dashboard
 - [ ] Decide whether the pilot needs separate ACH/bank-deposit support
 - [ ] Complete provider approval, KYC/AML, fees, refunds, webhooks, reconciliation, and support
