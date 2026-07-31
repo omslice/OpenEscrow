@@ -86,10 +86,13 @@ detailed validation ledger.
   storage degrades to an in-memory retry instead of interrupting the completed action; malformed
   persisted hashes and JSON are discarded before use.
 - **Verified:** Invitation bearer tokens are scrubbed from the URL before browser persistence is
-  attempted. If local and session storage are blocked, the invitation, proposal bundle,
-  jurisdiction, tracked-agreement, preference, and notification caches degrade to current-session
-  state instead of blanking the page or making a completed action look failed. Worker
-  authorization remains unchanged.
+  attempted. A valid role-restricted invitation preserves a same-tab recovery copy before the
+  deferred workspace request, so an interrupted bundle download can reload without restoring the
+  bearer to browser history or accepting a different proposal, role, or account-discovery token.
+  If local and session storage are blocked, the invitation, proposal bundle, jurisdiction,
+  tracked-agreement, preference, and notification caches degrade to current-page state instead
+  of blanking the page or making a completed action look failed. Worker authorization remains
+  unchanged.
 - **Verified:** Workspace-role selection remains usable in current-page memory when session
   storage is blocked. History API failures no longer interrupt proposal close, invitation exit,
   or optional-yield dialog controls; invitation exit additionally attempts a clean navigation
@@ -362,7 +365,7 @@ detailed validation ledger.
   Playwright budget measures 54 JavaScript requests and about 2.35 MB, rejects eager workspace
   and jurisdiction chunks, verifies sign-in focus and mobile-width usability, proves agreement
   links persist validated jurisdiction hints on demand, and proves valid invitations retain their
-  locked role.
+  locked role and recover after an intentionally failed first workspace download.
 
 ## Remaining
 

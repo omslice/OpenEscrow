@@ -59,7 +59,8 @@ production landing-load budget runs through `npm.cmd run check:landing-load`; it
 agreement workspace and nationwide compliance data off a clean logged-out visit, shows neutral
 Google/wallet sign-in without a role selector, verifies mobile focus and sizing, and proves
 agreement links load jurisdiction hints on demand while valid invitations retain role-locked
-entry and scrub their bearer token. The
+entry, scrub their bearer token, and recover in the same tab when the first deferred workspace
+download is intentionally interrupted. The
 account-switch check holds archive, inventory, wallet setup,
 record-session revocation, preference-save, and test-email operations open across two deterministic
 identities and proves the old account cannot update, download into, announce inside, or sign out

@@ -55,7 +55,8 @@ production custody, or reliance on the compliance research as legal advice.
   its bearer token is scrubbed before the lazy workspace loads. The production browser budget
   holds the landing path to 54 JavaScript requests and 2.37 MB, keeps the 62 KB U.S. jurisdiction
   registry deferred, verifies mobile access and focus, and proves linked agreements and valid
-  invitations retain their intended routing.
+  invitations retain their intended routing. A failed first workspace download can be reloaded
+  in the same tab without restoring the bearer to the URL or losing the exact invitation role.
 - **Verified:** The public readiness endpoint returned HTTP 200 on 2026-07-30, but the deployed
   site is older than the saved candidate and exposes no exact release provenance. It reported
   eight required pilot actions: release provenance, email, scheduler, evidence keyring, activity

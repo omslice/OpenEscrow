@@ -6,6 +6,10 @@ import { PublicIntro } from "./components/PublicIntro";
 import { ACCOUNT_AUTH_ENABLED } from "./lib/accountConfig";
 import { preferredScrollBehavior } from "./lib/accessibility";
 import { replaceRecoveryUrl } from "./lib/browserRecovery";
+import {
+  preserveNegotiationAccessForReload,
+  recoverNegotiationAccessForEntry,
+} from "./lib/negotiationAccessRecovery";
 import type { NegotiationAccess, NegotiationRole } from "./lib/negotiations";
 import "./App.css";
 
@@ -26,6 +30,11 @@ function captureEntryContext(): EntryContext {
   const validRole =
     role === "landlord" || role === "tenant" || role === "arbiter";
   const validNegotiationInvitation = Boolean(proposalId && token && validRole);
+  const recoveredAccess =
+    !token && proposalId && validRole
+      ? recoverNegotiationAccessForEntry(proposalId, role)
+      : null;
+  const validNegotiationRecovery = Boolean(recoveredAccess);
   const agreementId = url.searchParams.get("id");
   let validAgreementInvitation = false;
   if (
@@ -51,6 +60,7 @@ function captureEntryContext(): EntryContext {
   if (
     inviteRole &&
     !validNegotiationInvitation &&
+    !validNegotiationRecovery &&
     !validAgreementInvitation
   ) {
     url.searchParams.delete("invite");
@@ -65,13 +75,21 @@ function captureEntryContext(): EntryContext {
   }
 
   if (proposalId && token && validRole) {
+    const initialAccess: NegotiationAccess = {
+      proposalId,
+      token,
+      role: role as NegotiationRole,
+      source: "invite",
+    };
+    preserveNegotiationAccessForReload(initialAccess);
     return {
-      initialAccess: {
-        proposalId,
-        token,
-        role: role as NegotiationRole,
-        source: "invite",
-      },
+      initialAccess,
+      roleLocked: true,
+    };
+  }
+  if (recoveredAccess) {
+    return {
+      initialAccess: recoveredAccess,
       roleLocked: true,
     };
   }

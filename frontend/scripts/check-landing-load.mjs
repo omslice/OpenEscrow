@@ -197,6 +197,54 @@ try {
   );
   await invitationContext.close();
 
+  const recoverableInvitationContext = await browser.newContext();
+  const recoverableInvitationPage =
+    await recoverableInvitationContext.newPage();
+  const workspaceAssetPattern = "**/assets/WorkspaceApp-*.js";
+  await recoverableInvitationPage.route(
+    workspaceAssetPattern,
+    async (route) => {
+      await route.abort("failed");
+    },
+  );
+  await recoverableInvitationPage.goto(
+    `${baseUrl}/?proposal=recoverable-proposal&token=recoverable-secret&invite=tenant`,
+    { waitUntil: "domcontentloaded" },
+  );
+  await recoverableInvitationPage
+    .getByRole("heading", { name: "OpenEscrow couldn't finish loading" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    new URL(recoverableInvitationPage.url()).searchParams.has("token"),
+    false,
+    "A failed workspace download must not put the invitation token back in the URL.",
+  );
+  assert.equal(
+    await recoverableInvitationPage.evaluate(
+      () =>
+        JSON.parse(
+          window.sessionStorage.getItem(
+            "openescrow.negotiationAccess.recoverable-proposal.tenant",
+          ) || "{}",
+        ).token,
+    ),
+    "recoverable-secret",
+    "A scrubbed invitation must retain same-tab recovery before the workspace downloads.",
+  );
+  await recoverableInvitationPage.unroute(workspaceAssetPattern);
+  await recoverableInvitationPage
+    .getByRole("button", { name: "Reload OpenEscrow" })
+    .click();
+  await recoverableInvitationPage
+    .getByRole("button", { name: "Continue as tenant with Google" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    new URL(recoverableInvitationPage.url()).searchParams.has("token"),
+    false,
+    "Reload recovery must keep the bearer token out of browser history.",
+  );
+  await recoverableInvitationContext.close();
+
   const invalidInvitationContext = await browser.newContext();
   const invalidInvitationPage = await invalidInvitationContext.newPage();
   const invalidInvitationAssets = observeLocalScripts(invalidInvitationPage);
@@ -283,7 +331,7 @@ try {
   await agreementInvitationContext.close();
 
   console.log(
-    `Landing-load check passed: ${landingAssets.size} JavaScript file(s), ${landingBytes} bytes, no eager workspace or jurisdiction registry; clean visits show neutral sign-in, agreement hints remain deferred, and invitations retain role-aware entry.`,
+    `Landing-load check passed: ${landingAssets.size} JavaScript file(s), ${landingBytes} bytes, no eager workspace or jurisdiction registry; clean visits show neutral sign-in, agreement hints remain deferred, and invitations retain role-aware entry plus same-tab load recovery.`,
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);
