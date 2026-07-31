@@ -84,8 +84,66 @@ try {
     "A failed workspace section should not blank the rest of the app.",
   );
 
+  const depositPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
+  await depositPage.goto(`${baseUrl}/testing/agreement-load-recovery.html`, {
+    waitUntil: "networkidle",
+  });
+  const depositAlert = depositPage.getByRole("alert", {
+    name: "OE-A-000043 could not be loaded",
+  });
+  await depositAlert.waitFor({ state: "visible" });
+  assert.match(
+    await depositAlert.innerText(),
+    /deposit has not been removed/i,
+    "A connection failure should not imply that the deposit disappeared.",
+  );
+  assert.match(
+    await depositAlert.innerText(),
+    /before repeating any payment, claim, or withdrawal/i,
+    "Deposit recovery should prevent duplicate user actions.",
+  );
+
+  const depositRetry = depositPage.getByRole("button", {
+    name: "Try loading deposit again",
+  });
+  await depositRetry.focus();
+  await depositRetry.press("Enter");
+  await depositPage.getByText(/still could not reconnect/i).waitFor({
+    state: "visible",
+  });
+  await depositPage.waitForFunction(
+    () => document.activeElement?.textContent?.includes("Try loading deposit again"),
+    undefined,
+    { timeout: 1_000 },
+  );
+  assert.equal(
+    await depositRetry.evaluate((element) => element === document.activeElement),
+    true,
+    "A failed deposit retry should return focus to its recovery action.",
+  );
+  assert.equal(
+    await depositAlert.getAttribute("aria-busy"),
+    "false",
+    "The deposit failure should clear its busy state after a failed retry.",
+  );
+  assert.equal(
+    await depositPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "Deposit recovery should not overflow a mobile viewport.",
+  );
+
+  await depositRetry.press("Enter");
+  await depositPage.getByRole("status").waitFor({ state: "visible" });
+  assert.match(
+    await depositPage.getByRole("status").innerText(),
+    /without repeating a deposit action/i,
+    "A successful retry should return to the deposit without submitting a new action.",
+  );
+
   process.stdout.write(
-    "Load recovery check passed: app bootstrap and workspace chunk failures remain actionable without blanking the page.\n",
+    "Load recovery check passed: app, workspace, and deposit connection failures remain accessible and actionable without duplicate transactions or blank pages.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

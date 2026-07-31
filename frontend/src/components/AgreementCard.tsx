@@ -16,6 +16,7 @@ import {
   type AgreementPanel,
 } from "../lib/agreementPanelLoading";
 import { AgreementDashboard } from "./AgreementDashboard";
+import { AgreementLoadFailure } from "./AgreementLoadFailure";
 import { NextAction } from "./NextAction";
 import { AgreementNoticeCenter } from "./AgreementNoticeCenter";
 import { DeferredLoadBoundary } from "./DeferredLoadBoundary";
@@ -88,7 +89,7 @@ export function AgreementCard({
   onPanelChange?: (panel: AgreementPanel) => void;
   focusRequest?: AgreementFocusRequest;
 }) {
-  const { agreement, exists, isLoading, error, refetch } = useAgreement(id);
+  const { agreement, exists, isLoading, isFetching, error, refetch } = useAgreement(id);
   const [localPanel, setLocalPanel] = useState<AgreementPanel | null>(null);
   const [visitedPanels, setVisitedPanels] = useState<readonly AgreementPanel[]>([
     "summary",
@@ -141,12 +142,14 @@ export function AgreementCard({
   }
   if (error) {
     return (
-      <div className="card">
-        <p>{agreementReference(id)} could not be loaded right now.</p>
-        <button className="btn btn-ghost" onClick={() => void refetch()}>
-          Try again
-        </button>
-      </div>
+      <AgreementLoadFailure
+        id={id}
+        retrying={isFetching}
+        onRetry={async () => {
+          const result = await refetch();
+          if (result.error) throw result.error;
+        }}
+      />
     );
   }
 

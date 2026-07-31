@@ -319,6 +319,12 @@ production readiness, or authorization to hold real rental deposits.
   discovery, terminal expiry, recovery by an authorized participant, and post-acceptance access
   isolation. Replacement invitations also use the shared permission-safe clipboard path, with a
   visible link that remains manually selectable if browser copy access is blocked.
+- **Verified:** An active deposit that cannot be read from the chain now retains a clear,
+  consumer-readable recovery card instead of a terse retry. It states that the deposit was not
+  removed, warns the participant to check the wallet and Record before repeating a payment,
+  claim, or withdrawal, announces retry progress and failure, and restores keyboard focus after a
+  failed retry. The rendered load-recovery check covers keyboard retry, retry failure and success,
+  duplicate-action guidance, and mobile-width behavior.
 
 ## Material unknowns
 

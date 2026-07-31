@@ -101,6 +101,28 @@
   margin-top: 18px;
 }
 
+.agreement-load-failure {
+  display: grid;
+  gap: 16px;
+}
+
+.agreement-load-failure h2 {
+  margin: 4px 0 8px;
+  color: var(--text-h);
+  font-size: clamp(21px, 4vw, 27px);
+}
+
+.agreement-load-failure p {
+  margin: 0;
+  max-width: 72ch;
+}
+
+.agreement-load-recovery {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
 @media (max-width: 680px) {
   .agreement-card-header {
     align-items: flex-start;
@@ -129,5 +151,14 @@
     min-height: 40px;
     scroll-snap-align: start;
     white-space: nowrap;
+  }
+
+  .agreement-load-recovery,
+  .agreement-load-recovery .btn {
+    width: 100%;
+  }
+
+  .agreement-load-recovery .btn {
+    min-height: 44px;
   }
 }
