@@ -66,7 +66,17 @@ try {
     async (route) => route.abort("failed"),
   );
   await workspacePage.goto(baseUrl, { waitUntil: "networkidle" });
-  await workspacePage.getByRole("button", { name: /I am a landlord/ }).click();
+  const landlordWorkspace = workspacePage.getByRole("button", {
+    name: /I am a landlord/,
+  });
+  await landlordWorkspace.waitFor({ state: "visible" });
+  // Normal pointer activation is covered by the accessibility and account-switch checks. Dispatch
+  // this setup click directly so Playwright's navigation waiter cannot consume the intentional
+  // lazy-module failure that this recovery-specific page installs next.
+  await landlordWorkspace.dispatchEvent("click");
+  await workspacePage
+    .getByRole("tablist", { name: "Landlord workspace" })
+    .waitFor({ state: "visible" });
   await workspacePage.getByRole("tab", { name: "Proposals" }).click();
   await workspacePage.getByRole("button", { name: "Start a new proposal" }).click();
 

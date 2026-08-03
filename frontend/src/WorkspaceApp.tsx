@@ -1551,6 +1551,7 @@ function AppView({
           <div className="role-choice-grid">
             <button
               className={`role-choice${workspaceRole === "landlord" ? " selected" : ""}`}
+              type="button"
               aria-pressed={workspaceRole === "landlord"}
               onClick={() => {
                 selectWorkspaceRole("landlord");
@@ -1565,6 +1566,7 @@ function AppView({
             </button>
             <button
               className={`role-choice${workspaceRole === "tenant" ? " selected" : ""}`}
+              type="button"
               aria-pressed={workspaceRole === "tenant"}
               onClick={() => {
                 selectWorkspaceRole("tenant");
@@ -1577,6 +1579,7 @@ function AppView({
             </button>
             {ARBITER_UI_ENABLED && <button
               className={`role-choice${workspaceRole === "arbiter" ? " selected" : ""}`}
+              type="button"
               aria-pressed={workspaceRole === "arbiter"}
               onClick={() => {
                 selectWorkspaceRole("arbiter");
