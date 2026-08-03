@@ -59,7 +59,9 @@ For focused troubleshooting, run `npm.cmd run test:account-switch` or
 `npm.cmd run test:accessibility`. Run `npm.cmd run test:evidence-recovery` for the supporting-file
 same-file retry, status announcements, scope isolation, and mobile-width regression. Run
 `npm.cmd run test:deposit-list` to verify that multi-agreement accounts mount only one live deposit
-at a time while retaining keyboard and mobile usability. The
+at a time while retaining keyboard and mobile usability. Run `npm.cmd run test:record-list` to
+verify that collapsed multi-record disclosures retain valid accessible targets, mount their tools
+only on demand, keep archive actions separate, and fit a mobile viewport. The
 production landing-load budget runs through `npm.cmd run check:landing-load`; it keeps the
 agreement workspace, nationwide compliance data, and blockchain wallet providers off a clean
 logged-out visit, shows neutral Google/wallet sign-in without a role selector, verifies mobile

@@ -17,6 +17,7 @@ import { useDiscoverAgreements } from "./lib/useDiscoverAgreements";
 import { PublicIntro } from "./components/PublicIntro";
 import { AccountCenter } from "./components/AccountCenter";
 import { DepositAgreementListItem } from "./components/DepositAgreementListItem";
+import { RecordListItem } from "./components/RecordListItem";
 import { DeferredLoadBoundary } from "./components/DeferredLoadBoundary";
 import {
   roleLabel,
@@ -1169,55 +1170,36 @@ function AppView({
       const key = savedRecordKey(item);
       const expanded = Boolean(expandedRecordKeys[key]);
       const contentId = `record-content-${item.record.id}-${item.access.role}`;
+      const reference = agreementId
+        ? agreementReference(agreementId)
+        : proposalReference(item.record.id);
       return (
-        <article
-          className={`card record-workspace-card record-list-item${
-            archived ? " is-archived" : ""
-          }`}
+        <RecordListItem
           id={
             agreementId
               ? `record-agreement-${agreementId}`
               : `record-proposal-${item.record.id}`
           }
           key={`${item.access.proposalId}-${item.access.role}`}
-          role="listitem"
-          data-record-key={key}
-          tabIndex={-1}
-        >
-          <header className="record-workspace-header record-list-row">
-            <button
-              className="record-expand-button"
-              type="button"
-              aria-expanded={expanded}
-              aria-controls={contentId}
-              onClick={() =>
-                setExpandedRecordKeys((current) => ({
-                  ...current,
-                  [key]: !expanded,
-                }))
-              }
-            >
-              <span className="record-list-identity">
-                <span className="eyebrow">
-                  {isFinalized ? "Finalized agreement record" : "Proposal record"}
-                </span>
-                <strong>
-                  {agreementId
-                    ? agreementReference(agreementId)
-                    : proposalReference(item.record.id)}
-                </strong>
-                <small>
-                  {agreementId
-                    ? `${proposalReference(item.record.id)} · onchain ID ${agreementId}`
-                    : `Updated ${new Date(item.record.updatedAt).toLocaleDateString()}`}
-                </small>
-              </span>
-              <span className="record-expand-label" aria-hidden="true">
-                {expanded ? "Hide details" : "Show details"}
-                <span className="record-expand-chevron">⌄</span>
-              </span>
-            </button>
-            <div className="record-workspace-actions">
+          detailsId={contentId}
+          expanded={expanded}
+          eyebrow={isFinalized ? "Finalized agreement record" : "Proposal record"}
+          reference={reference}
+          meta={
+            agreementId
+              ? `${proposalReference(item.record.id)} · onchain ID ${agreementId}`
+              : `Updated ${new Date(item.record.updatedAt).toLocaleDateString()}`
+          }
+          className={archived ? "is-archived" : undefined}
+          dataRecordKey={key}
+          onToggle={() =>
+            setExpandedRecordKeys((current) => ({
+              ...current,
+              [key]: !current[key],
+            }))
+          }
+          actions={
+            <>
               <span className={`negotiation-status status-${item.record.status}`}>
                 {item.record.status} · revision {item.record.revision}
               </span>
@@ -1237,49 +1219,48 @@ function AppView({
                       : "Archive"}
                 </button>
               )}
-            </div>
-          </header>
-          {recordArchiveError?.key === key && (
-            <p className="tx-error record-archive-error" role="alert">
-              {recordArchiveError.message}
-            </p>
-          )}
-          {expanded && (
-            <div className="record-workspace-body" id={contentId}>
-              <DeferredLoadBoundary
-                area="workspace"
-                fallback={<WorkspaceToolFallback label="Loading record tools..." />}
-              >
-                <RecordSnapshotControls
-                  access={item.access}
-                  agreementId={agreementId ? BigInt(agreementId) : undefined}
-                />
-              </DeferredLoadBoundary>
-              <details className="technical-details agreement-activity">
-                <summary>View timestamped activity ({item.record.events.length})</summary>
-                <ol className="activity-timeline">
-                  {[...item.record.events].reverse().map((event) => (
-                    <li key={event.id}>
-                      <time dateTime={event.createdAt}>
-                        {new Date(event.createdAt).toLocaleString()}
-                      </time>
-                      <strong>
-                        {roleLabel[event.actorRole as keyof typeof roleLabel] || "System"}
-                      </strong>
-                      <span>{friendlyActivitySummary(event)}</span>
-                      {activityHasVerificationDetails(event) && (
-                        <details className="activity-verification-details">
-                          <summary>Details for verification</summary>
-                          <p>{event.summary}</p>
-                        </details>
-                      )}
-                    </li>
-                  ))}
-                </ol>
-              </details>
-            </div>
-          )}
-        </article>
+            </>
+          }
+          error={
+            recordArchiveError?.key === key ? (
+              <p className="tx-error record-archive-error" role="alert">
+                {recordArchiveError.message}
+              </p>
+            ) : null
+          }
+        >
+          <DeferredLoadBoundary
+            area="workspace"
+            fallback={<WorkspaceToolFallback label="Loading record tools..." />}
+          >
+            <RecordSnapshotControls
+              access={item.access}
+              agreementId={agreementId ? BigInt(agreementId) : undefined}
+            />
+          </DeferredLoadBoundary>
+          <details className="technical-details agreement-activity">
+            <summary>View timestamped activity ({item.record.events.length})</summary>
+            <ol className="activity-timeline">
+              {[...item.record.events].reverse().map((event) => (
+                <li key={event.id}>
+                  <time dateTime={event.createdAt}>
+                    {new Date(event.createdAt).toLocaleString()}
+                  </time>
+                  <strong>
+                    {roleLabel[event.actorRole as keyof typeof roleLabel] || "System"}
+                  </strong>
+                  <span>{friendlyActivitySummary(event)}</span>
+                  {activityHasVerificationDetails(event) && (
+                    <details className="activity-verification-details">
+                      <summary>Details for verification</summary>
+                      <p>{event.summary}</p>
+                    </details>
+                  )}
+                </li>
+              ))}
+            </ol>
+          </details>
+        </RecordListItem>
       );
     }
 
@@ -1288,48 +1269,28 @@ function AppView({
       const expanded = Boolean(expandedRecordKeys[key]);
       const contentId = `record-content-onchain-${id.toString()}`;
       return (
-        <article
-          className="card record-workspace-card record-list-item"
+        <RecordListItem
           id={`record-agreement-${id.toString()}`}
           key={`unlinked-${id.toString()}`}
-          role="listitem"
-          tabIndex={-1}
+          detailsId={contentId}
+          expanded={expanded}
+          eyebrow="Onchain-only record"
+          reference={agreementReference(id)}
+          meta={`Onchain agreement ID ${id.toString()}`}
+          onToggle={() =>
+            setExpandedRecordKeys((current) => ({
+              ...current,
+              [key]: !current[key],
+            }))
+          }
         >
-          <header className="record-workspace-header record-list-row">
-            <button
-              className="record-expand-button"
-              type="button"
-              aria-expanded={expanded}
-              aria-controls={contentId}
-              onClick={() =>
-                setExpandedRecordKeys((current) => ({
-                  ...current,
-                  [key]: !expanded,
-                }))
-              }
-            >
-              <span className="record-list-identity">
-                <span className="eyebrow">Onchain-only record</span>
-                <strong>{agreementReference(id)}</strong>
-                <small>Onchain agreement ID {id.toString()}</small>
-              </span>
-              <span className="record-expand-label" aria-hidden="true">
-                {expanded ? "Hide details" : "Show details"}
-                <span className="record-expand-chevron">⌄</span>
-              </span>
-            </button>
-          </header>
-          {expanded && (
-            <div className="record-workspace-body" id={contentId}>
-              <DeferredLoadBoundary
-                area="workspace"
-                fallback={<WorkspaceToolFallback label="Loading agreement record..." />}
-              >
-                <AgreementOnchainActivity agreementId={id} isParty={false} />
-              </DeferredLoadBoundary>
-            </div>
-          )}
-        </article>
+          <DeferredLoadBoundary
+            area="workspace"
+            fallback={<WorkspaceToolFallback label="Loading agreement record..." />}
+          >
+            <AgreementOnchainActivity agreementId={id} isParty={false} />
+          </DeferredLoadBoundary>
+        </RecordListItem>
       );
     }
 

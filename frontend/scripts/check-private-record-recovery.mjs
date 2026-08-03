@@ -114,6 +114,7 @@ server.stderr.on("data", (chunk) => {
 });
 
 let browser;
+let releaseClaimNotification;
 try {
   await waitForServer();
   browser = await chromium.launch({ headless: true });
@@ -121,9 +122,12 @@ try {
   const claimPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await routePrivateRecord(claimPage, new Set([1, 2, 4]));
   let claimNotificationAttempts = 0;
+  const claimNotificationPending = new Promise((resolve) => {
+    releaseClaimNotification = resolve;
+  });
   await claimPage.route(/\/api\/notifications\/claim$/, async (route) => {
     claimNotificationAttempts += 1;
-    await new Promise((resolve) => setTimeout(resolve, 80));
+    await claimNotificationPending;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -199,6 +203,8 @@ try {
     true,
     "The automatic claim email must not allow duplicate sends while pending.",
   );
+  releaseClaimNotification();
+  releaseClaimNotification = undefined;
   await claimPage
     .getByText("Tenant claim email sent and added to the record.")
     .waitFor({ state: "visible" });
@@ -290,6 +296,7 @@ try {
   if (serverError) process.stderr.write(serverError);
   throw error;
 } finally {
+  releaseClaimNotification?.();
   await browser?.close();
   server.kill();
 }

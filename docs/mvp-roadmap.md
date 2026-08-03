@@ -81,6 +81,11 @@ production custody, or reliance on the compliance research as legal advice.
   A single deposit still opens automatically, while proposal links and activity notifications
   expand their exact target. Rendered keyboard and mobile-width coverage proves switching rows
   unmounts the prior live view and collapsing leaves focus on the same control.
+- **Verified:** Every collapsed Record disclosure now retains the detail region referenced by its
+  accessible control while expensive report, backup, verification, and onchain tools remain
+  unmounted until the record is opened. A rendered multi-record regression proves valid collapsed
+  targets, independent comparison of explicitly opened records, keyboard-focus retention,
+  archive-action separation, 44-pixel touch targets, and no mobile overflow.
 - **Verified:** A clean logged-out visit shows neutral Google/wallet choices without loading the
   account provider, agreement workspace, jurisdiction registry, or blockchain wallet code. The
   provider loads only after an explicit choice, opens the selected method without a second click,

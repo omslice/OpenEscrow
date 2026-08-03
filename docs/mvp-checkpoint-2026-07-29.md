@@ -195,6 +195,12 @@ detailed validation ledger.
   Proposal and activity navigation opens the exact requested deposit. A rendered narrow-screen
   regression proves one-at-a-time mounting, keyboard expansion/collapse with focus retention,
   44-pixel touch targets, and no horizontal overflow.
+- **Verified:** Collapsed proposal and agreement records now keep an empty, hidden detail region in
+  the document so every disclosure control's `aria-controls` target remains valid, without
+  mounting report, encrypted-backup, verification, or onchain tools before expansion. A rendered
+  two-record regression proves independent expansion for comparison, child unmounting on
+  collapse, exact keyboard-focus retention, archive actions that do not toggle details, 44-pixel
+  touch targets, and no horizontal overflow at 390 pixels.
 - **Verified:** Onchain activity notifications and expanded agreement records share one registry
   cache per Base Sepolia client. The first caller queries both registry event types in bounded
   block ranges; concurrent callers reuse that scan, and later polls query only new blocks plus a
@@ -424,8 +430,10 @@ detailed validation ledger.
   open long enough to verify `aria-busy` and disabled-button progress, proves a failed retry
   restores focus, then proves the next retry recovers without horizontal overflow. The same
   rendered flow proves a tenant-claim email accepted for delivery is never relabeled as failed
-  when only the subsequent private-record refresh is unavailable; delivery is disabled while in
-  flight, bound to the initiating access scope, and the record-only retry cannot resend it.
+  when only the subsequent private-record refresh is unavailable. It now holds that delivery
+  pending until the duplicate-send control is proven disabled, eliminating a timing race from the
+  rehearsal itself; delivery remains bound to the initiating access scope, and the record-only
+  retry cannot resend it.
 
 ## Remaining
 

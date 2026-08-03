@@ -193,6 +193,10 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Keep multi-agreement Deposit accounts compact and mount live contract polling for only the
   one expanded deposit, while single-deposit accounts still open directly and notification or
   proposal navigation expands the exact target
+- [x] Keep collapsed Record disclosures connected to persistent accessible detail regions while
+  mounting report, backup, and verification tools only after the user opens a record; verify
+  keyboard focus, separate archive actions, 44-pixel touch targets, and mobile width in a rendered
+  multi-record regression
 - [x] Prevent bootstrap and deferred workspace failures from blanking the page, with focused,
   privacy-safe reload recovery and automated browser regression coverage
 - [ ] Configure hosted email, Cron, encryption, registry, address, and compliance-source services
