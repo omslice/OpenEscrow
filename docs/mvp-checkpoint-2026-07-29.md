@@ -1,4 +1,4 @@
-# Testnet MVP checkpoint — updated 2026-07-31
+# Testnet MVP checkpoint — updated 2026-08-03
 
 This checkpoint records repository and delivery evidence without claiming legal approval,
 production readiness, or authorization to hold real rental deposits.
@@ -189,6 +189,12 @@ detailed validation ledger.
   first use so in-progress state survives panel switches, and have panel-local recovery if a
   deferred chunk fails. The agreement-card JavaScript chunk fell from about 76.7 KB to 22.1 KB
   (about 71%), with a dedicated regression budget preventing the tools from being folded back in.
+- **Verified:** The Deposits tab no longer mounts every agreement card and its live contract
+  polling at once. Multi-agreement accounts start as a compact address-labeled list, opening a row
+  replaces the previously mounted live view, and single-deposit accounts retain direct access.
+  Proposal and activity navigation opens the exact requested deposit. A rendered narrow-screen
+  regression proves one-at-a-time mounting, keyboard expansion/collapse with focus retention,
+  44-pixel touch targets, and no horizontal overflow.
 - **Verified:** Onchain activity notifications and expanded agreement records share one registry
   cache per Base Sepolia client. The first caller queries both registry event types in bounded
   block ranges; concurrent callers reuse that scan, and later polls query only new blocks plus a

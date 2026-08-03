@@ -76,6 +76,11 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** Deferred workspace loading, bounded onchain event reads, shared receipt polling,
   one-snapshot wallet discovery, and workspace-only blockchain wallet providers reduce initial and
   repeat network work without weakening account recognition, invitation roles, or receipt checks.
+- **Verified:** Multi-agreement Deposit accounts now start as a compact list and mount only one
+  live agreement view at a time, bounding contract polling and deferred tools as an account grows.
+  A single deposit still opens automatically, while proposal links and activity notifications
+  expand their exact target. Rendered keyboard and mobile-width coverage proves switching rows
+  unmounts the prior live view and collapsing leaves focus on the same control.
 - **Verified:** A clean logged-out visit shows neutral Google/wallet choices without loading the
   account provider, agreement workspace, jurisdiction registry, or blockchain wallet code. The
   provider loads only after an explicit choice, opens the selected method without a second click,
@@ -93,7 +98,7 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** The clean signed-out landing page omits the empty agreement-notification bell.
   Provider-independent rendered coverage proves notification access remains available after
   authentication and on valid role-locked invitation workspaces.
-- **Verified:** The public site and readiness endpoint returned HTTP 200 on 2026-07-31 and exposed
+- **Verified:** The public site and readiness endpoint returned HTTP 200 on 2026-08-03 and exposed
   exact release provenance for the approved source. Seven hosted pilot actions remain: email,
   scheduler health, evidence keyring, activity-registry binding, address attestation,
   official-source baseline, and monitor freshness.

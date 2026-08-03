@@ -124,5 +124,10 @@ provider or hosting control that owns the secret.
 Move an item here with its completion date and public verification reference.
 Never record a secret value.
 
+- [x] **Approved exact Sites version 145 deployed — 2026-08-03.** The public site and readiness
+  endpoint returned HTTP 200 and reported source commit
+  `7eee06088eda8241b242eaeb882eaab1e09d0191`. Existing D1/R2 bindings and hosted data were
+  preserved.
+
 - [x] **Sites source connection refreshed and exact candidate saved undeployed — 2026-07-29.**
   The source credential was used ephemerally and was not persisted. Production was not changed.

@@ -190,6 +190,9 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Split infrequently used proposal, deposit, and record tools into tab-level chunks
 - [x] Load each agreement's funding and claims tools only after that panel is visited, preserve
   the mounted panel after first use, and contain deferred-load failures within the agreement
+- [x] Keep multi-agreement Deposit accounts compact and mount live contract polling for only the
+  one expanded deposit, while single-deposit accounts still open directly and notification or
+  proposal navigation expands the exact target
 - [x] Prevent bootstrap and deferred workspace failures from blanking the page, with focused,
   privacy-safe reload recovery and automated browser regression coverage
 - [ ] Configure hosted email, Cron, encryption, registry, address, and compliance-source services

@@ -16,6 +16,7 @@ import { useTrackedAgreements } from "./lib/useTrackedAgreements";
 import { useDiscoverAgreements } from "./lib/useDiscoverAgreements";
 import { PublicIntro } from "./components/PublicIntro";
 import { AccountCenter } from "./components/AccountCenter";
+import { DepositAgreementListItem } from "./components/DepositAgreementListItem";
 import { DeferredLoadBoundary } from "./components/DeferredLoadBoundary";
 import {
   roleLabel,
@@ -42,6 +43,11 @@ import { preferredScrollBehavior } from "./lib/accessibility";
 import { startVisibilityAwarePolling } from "./lib/visiblePolling";
 import { replaceRecoveryUrl } from "./lib/browserRecovery";
 import { createAccountOperationGuard } from "./lib/accountOperationGuard";
+import {
+  resolveExpandedDepositId,
+  toggleExpandedDepositId,
+  type RequestedDepositId,
+} from "./lib/depositListSelection";
 import {
   activityHasVerificationDetails,
   friendlyActivitySummary,
@@ -98,6 +104,12 @@ function savedRecordKey(item: SavedProposal) {
 
 function onchainRecordKey(agreementId: bigint | string) {
   return `onchain:${agreementId.toString()}`;
+}
+
+function linkedAgreementIdFromUrl(): string | undefined {
+  const id = new URLSearchParams(window.location.search).get("id");
+  if (!id || !/^[0-9]+$/.test(id)) return undefined;
+  return BigInt(id).toString();
 }
 
 function WorkspaceToolFallback({ label }: { label: string }) {
@@ -225,6 +237,8 @@ function AppView({
   const [expandedRecordKeys, setExpandedRecordKeys] = useState<Record<string, boolean>>(
     {},
   );
+  const [requestedDepositId, setRequestedDepositId] =
+    useState<RequestedDepositId>(() => linkedAgreementIdFromUrl());
   const [isRecordArchiveOpen, setIsRecordArchiveOpen] = useState(false);
   const [isProposalArchiveOpen, setIsProposalArchiveOpen] = useState(false);
   const [recordArchivePendingKey, setRecordArchivePendingKey] = useState<string | null>(
@@ -259,6 +273,10 @@ function AppView({
     : ids;
   const displayedIds = discoveredAgreementIds.filter(
     (id) => !unavailableAgreementIds.has(id.toString()),
+  );
+  const expandedDepositId = resolveExpandedDepositId(
+    requestedDepositId,
+    displayedIds.map((id) => id.toString()),
   );
   const notificationAgreementIds = displayedIds;
   const onchainNotifications =
@@ -352,6 +370,7 @@ function AppView({
         }
         if (!active) return;
         addId(id);
+        setRequestedDepositId(id.toString());
         setTab("agreements");
       } catch {
         // ignore malformed id in the URL
@@ -371,6 +390,7 @@ function AppView({
     setSavedProposals([]);
     setSavedRecords([]);
     setExpandedRecordKeys({});
+    setRequestedDepositId(linkedAgreementIdFromUrl());
     setIsRecordArchiveOpen(false);
     setRecordArchivePendingKey(null);
     setRecordArchiveError(null);
@@ -390,6 +410,7 @@ function AppView({
     setSavedProposals([]);
     setSavedRecords([]);
     setExpandedRecordKeys({});
+    setRequestedDepositId(linkedAgreementIdFromUrl());
     setIsRecordArchiveOpen(false);
     setIsProposalArchiveOpen(false);
     setRecordArchivePendingKey(null);
@@ -571,6 +592,7 @@ function AppView({
       setProposalAccess(null);
       setActiveLandlordAccess(null);
       setIsProposalComposerOpen(false);
+      setRequestedDepositId(agreementId);
       setTab("agreements");
       setAgreementPanels((current) => ({
         ...current,
@@ -640,6 +662,7 @@ function AppView({
     if (agreementId && requestedPanel) {
       addId(BigInt(agreementId));
       setProposalAccess(null);
+      setRequestedDepositId(agreementId);
       setTab("agreements");
       setAgreementPanels((current) => ({
         ...current,
@@ -1025,43 +1048,67 @@ function AppView({
             </span>
           </div>
         )}
-        {displayedIds.map((id) => {
-          const proposal = finalizedProposals.find(
-            (item) => item.record.onchainAgreementId === id.toString(),
-          );
-          return (
-            <DeferredLoadBoundary
-              area="workspace"
-              key={id.toString()}
-              fallback={<WorkspaceToolFallback label="Loading deposit details..." />}
-            >
-              <AgreementCard
-                id={id}
-                onRemove={() => removeId(id)}
-                onUnavailable={() => {
-                  removeId(id);
-                  setUnavailableAgreementIds((current) => {
-                    const key = id.toString();
-                    if (current.has(key)) return current;
-                    const next = new Set(current);
-                    next.add(key);
-                    return next;
-                  });
-                }}
-                negotiationAccess={proposal?.access}
-                participantRecord={proposal?.record}
-                activePanel={agreementPanels[id.toString()]}
-                focusRequest={agreementFocusRequests[id.toString()]}
-                onPanelChange={(panel) =>
-                  setAgreementPanels((current) => ({
-                    ...current,
-                    [id.toString()]: panel,
-                  }))
-                }
-              />
-            </DeferredLoadBoundary>
-          );
-        })}
+        {displayedIds.length > 0 && (
+          <div className="deposit-list" role="list" aria-label="Active security deposits">
+            {displayedIds.map((id) => {
+              const agreementKey = id.toString();
+              const proposal = finalizedProposals.find(
+                (item) => item.record.onchainAgreementId === agreementKey,
+              );
+              const expanded = expandedDepositId === agreementKey;
+              return (
+                <DepositAgreementListItem
+                  key={agreementKey}
+                  id={id}
+                  propertyAddress={proposal?.record.terms.propertyAddress}
+                  expanded={expanded}
+                  onToggle={() =>
+                    setRequestedDepositId(
+                      toggleExpandedDepositId(expandedDepositId, agreementKey),
+                    )
+                  }
+                >
+                  <DeferredLoadBoundary
+                    area="workspace"
+                    fallback={<WorkspaceToolFallback label="Loading deposit details..." />}
+                  >
+                    <AgreementCard
+                      id={id}
+                      onRemove={() => {
+                        removeId(id);
+                        setRequestedDepositId((current) =>
+                          current === agreementKey ? null : current,
+                        );
+                      }}
+                      onUnavailable={() => {
+                        removeId(id);
+                        setRequestedDepositId((current) =>
+                          current === agreementKey ? null : current,
+                        );
+                        setUnavailableAgreementIds((current) => {
+                          if (current.has(agreementKey)) return current;
+                          const next = new Set(current);
+                          next.add(agreementKey);
+                          return next;
+                        });
+                      }}
+                      negotiationAccess={proposal?.access}
+                      participantRecord={proposal?.record}
+                      activePanel={agreementPanels[agreementKey]}
+                      focusRequest={agreementFocusRequests[agreementKey]}
+                      onPanelChange={(panel) =>
+                        setAgreementPanels((current) => ({
+                          ...current,
+                          [agreementKey]: panel,
+                        }))
+                      }
+                    />
+                  </DeferredLoadBoundary>
+                </DepositAgreementListItem>
+              );
+            })}
+          </div>
+        )}
         {workspaceRole === "tenant" && (
           <DeferredLoadBoundary
             area="workspace"

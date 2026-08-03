@@ -2778,6 +2778,40 @@ a.btn.disabled {
   border-width: 2px;
 }
 
+.deposit-list {
+  display: grid;
+  gap: 12px;
+}
+
+.deposit-list-item {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+}
+
+.deposit-list-item.is-expanded {
+  border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
+}
+
+.deposit-list-row {
+  padding: 16px 18px;
+}
+
+.deposit-list-toggle {
+  width: 100%;
+}
+
+.deposit-list-body {
+  border-top: 1px solid var(--border);
+  padding: 12px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--bg));
+}
+
+.deposit-list-body > .agreement-card {
+  margin: 0;
+}
+
 .review-back {
   margin-bottom: 12px;
 }
@@ -4092,6 +4126,11 @@ a.btn.disabled {
   }
 
   .record-list-row {
+    padding: 14px;
+  }
+
+  .deposit-list-row,
+  .deposit-list-body {
     padding: 14px;
   }
 
