@@ -271,6 +271,11 @@ detailed validation ledger.
   closed even if they bypass the application lifecycle validator.
 - **Verified:** Arrow-key workspace navigation moves focus to the selected tab synchronously,
   eliminating an intermittent animation-frame race in the required accessibility smoke check.
+- **Verified:** The validated-address combobox now retains the listbox referenced by
+  `aria-controls` as an empty hidden target before lookup and after selection, declares its
+  listbox popup relationship, and mounts interactive options only while suggestions are open.
+  The rendered proposal regression proves the target, arrow-key selection, collapsed state, and
+  option unmounting together.
 - **Verified:** Supporting-evidence uploads now expose an explicit same-file retry, announce busy,
   success, and error states, restore keyboard focus only after the completed upload state is
   committed, and reject a delayed completion after the agreement or access token changes. A

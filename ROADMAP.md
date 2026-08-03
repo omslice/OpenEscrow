@@ -148,7 +148,9 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Internal keyboard/mobile accessibility smoke coverage plus workspace tab, address combobox,
   proposal focus-recovery, async announcement, reduced-motion, mobile-overflow fixes, and an
   accessible in-memory copy fallback for blocked account-inventory downloads; notification
-  outcomes use explicit atomic status/error semantics rather than message-text inference
+  outcomes use explicit atomic status/error semantics rather than message-text inference; the
+  address combobox retains a valid hidden listbox target while closed and mounts interactive
+  suggestions only while open
 - [x] Supporting-evidence upload recovery with an explicit same-file retry, announced busy/error
   states, focus restoration, agreement/access-scope isolation, and rendered mobile regression
 - [x] Public-receipt recovery contains unexpected retry failures, shows plain-language feedback,

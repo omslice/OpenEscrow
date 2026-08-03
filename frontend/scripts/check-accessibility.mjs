@@ -276,8 +276,18 @@ try {
   await page.getByLabel("Tenant first and last name").fill("Taylor Tenant");
   await page.getByLabel("Tenant email address").fill("taylor.tenant@example.com");
   const address = page.getByRole("combobox", { name: "Rental property address" });
+  const addressListId = await address.getAttribute("aria-controls");
+  assert.ok(addressListId, "The address combobox should identify its suggestion list.");
+  const addressList = page.locator(`[id="${addressListId}"]`);
+  assert.equal(
+    await addressList.count(),
+    1,
+    "The address combobox target should exist before suggestions open.",
+  );
+  assert.equal(await addressList.isHidden(), true);
+  assert.equal(await address.getAttribute("aria-haspopup"), "listbox");
   await address.fill("123 Main");
-  await page.getByRole("listbox").waitFor({ state: "visible" });
+  await addressList.waitFor({ state: "visible" });
   await address.press("ArrowDown");
   assert.match(
     (await address.getAttribute("aria-activedescendant")) || "",
@@ -294,6 +304,16 @@ try {
     await address.getAttribute("aria-expanded"),
     "false",
     "Selecting an address should close the suggestion list.",
+  );
+  assert.equal(
+    await addressList.isHidden(),
+    true,
+    "The controlled suggestion list should remain present but hidden after selection.",
+  );
+  assert.equal(
+    await addressList.getByRole("option").count(),
+    0,
+    "Closed address suggestions should unmount their interactive options.",
   );
 
   await page.getByRole("button", { name: "Continue to deposit terms" }).click();

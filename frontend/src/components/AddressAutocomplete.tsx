@@ -247,6 +247,7 @@ export function AddressAutocomplete({
           data-proposal-field="propertyAddress"
           aria-invalid={invalid}
           aria-autocomplete="list"
+          aria-haspopup="listbox"
           aria-controls={listId}
           aria-expanded={isOpen}
           aria-activedescendant={
@@ -271,27 +272,32 @@ export function AddressAutocomplete({
           </span>
         )}
       </div>
-      {isOpen && (
-        <ul id={listId} className="address-suggestions" role="listbox">
-          {suggestions.map((suggestion, index) => (
-            <li key={suggestion.id} role="none">
-              <button
-                id={`${listId}-option-${index}`}
-                type="button"
-                role="option"
-                tabIndex={-1}
-                aria-selected={activeIndex === index}
-                className={activeIndex === index ? "active" : undefined}
-                onMouseDown={(event) => event.preventDefault()}
-                onMouseEnter={() => setActiveIndex(index)}
-                onClick={() => selectSuggestion(suggestion)}
-              >
-                {suggestion.label}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      <ul
+        id={listId}
+        className="address-suggestions"
+        role="listbox"
+        hidden={!isOpen}
+      >
+        {isOpen
+          ? suggestions.map((suggestion, index) => (
+              <li key={suggestion.id} role="none">
+                <button
+                  id={`${listId}-option-${index}`}
+                  type="button"
+                  role="option"
+                  tabIndex={-1}
+                  aria-selected={activeIndex === index}
+                  className={activeIndex === index ? "active" : undefined}
+                  onMouseDown={(event) => event.preventDefault()}
+                  onMouseEnter={() => setActiveIndex(index)}
+                  onClick={() => selectSuggestion(suggestion)}
+                >
+                  {suggestion.label}
+                </button>
+              </li>
+            ))
+          : null}
+      </ul>
       <span className="address-sr-status" role="status" aria-live="polite">
         {isLoading
           ? "Searching for addresses."

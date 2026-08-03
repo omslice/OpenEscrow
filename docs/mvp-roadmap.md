@@ -37,7 +37,9 @@ production custody, or reliance on the compliance research as legal advice.
   active exceptions.
 - **Verified:** Critical flows have rendered accessibility, keyboard/focus, mobile-width, loading,
   error, and retry checks. Remaining usability work requires moderated human sessions rather than
-  another code-only claim.
+  another code-only claim. The validated-address combobox keeps its controlled listbox present but
+  hidden before and after lookup, exposes it as a listbox popup, and mounts interactive options
+  only while suggestions are open; the rendered keyboard regression proves the complete contract.
 - **Verified:** Claim requirements now fail closed when their private agreement record cannot be
   loaded, with a focused retry action before any claim or amendment can proceed. Tenant response
   remains available for time-sensitive onchain action while its private summary has a separate
