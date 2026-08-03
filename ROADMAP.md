@@ -106,6 +106,8 @@ the repository; they are not claims of legal approval or production readiness.
 
 - [x] CI contract tests and `frontend` release check
 - [x] High/critical production-dependency advisory gate with moderate-advisory reporting
+- [x] Patched, offline-pinned Hono CORS middleware in the transitive wallet tree, with an
+  import/version compatibility gate and a clean production audit
 - [x] Fail-closed Sites project/binding, asset, eligibility, and fiat-production configuration checks
 - [x] Hosted readiness endpoint for email, scheduler, evidence, receipts, registry, address, and sources
 - [x] Credential-free pilot rehearsals for no-claim, accepted-claim, disputed-claim, withdrawals,

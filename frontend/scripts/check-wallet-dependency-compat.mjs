@@ -11,6 +11,9 @@ const lock = JSON.parse(
 const uuidPackages = Object.entries(lock.packages || {}).filter(([packagePath]) =>
   packagePath.endsWith("node_modules/uuid"),
 );
+const honoPackages = Object.entries(lock.packages || {}).filter(([packagePath]) =>
+  packagePath.endsWith("node_modules/hono"),
+);
 
 assert.ok(uuidPackages.length > 0, "The wallet dependency tree must contain a locked uuid package.");
 for (const [packagePath, packageMetadata] of uuidPackages) {
@@ -18,6 +21,15 @@ for (const [packagePath, packageMetadata] of uuidPackages) {
     packageMetadata.version,
     "11.1.1",
     `${packagePath} must use the reviewed bounds-safe uuid release.`,
+  );
+}
+
+assert.ok(honoPackages.length > 0, "The wallet dependency tree must contain a locked hono package.");
+for (const [packagePath, packageMetadata] of honoPackages) {
+  assert.equal(
+    packageMetadata.version,
+    "4.12.34",
+    `${packagePath} must use the reviewed CORS-safe hono release.`,
   );
 }
 
@@ -42,7 +54,14 @@ assert.ok(
   Object.keys(communicationLayer).length > 0,
   "The MetaMask communication layer must remain importable.",
 );
+const hono = await import("hono");
+assert.equal(
+  typeof hono.Hono,
+  "function",
+  "The transitive Hono runtime must remain importable.",
+);
 
 console.log(
-  `Wallet dependency compatibility verified: ${uuidPackages.length} locked UUID path(s) use 11.1.1, connector imports pass, and undersized buffers fail closed.`,
+  `Wallet dependency compatibility verified: ${uuidPackages.length} locked UUID path(s) use 11.1.1, ` +
+    `${honoPackages.length} locked Hono path(s) use 4.12.34, connector imports pass, and undersized buffers fail closed.`,
 );

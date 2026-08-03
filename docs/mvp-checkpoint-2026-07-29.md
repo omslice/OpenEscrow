@@ -406,6 +406,9 @@ detailed validation ledger.
   reports zero vulnerabilities, and a required candidate check imports the affected connector
   modules, verifies UUID generation/validation, and proves an undersized output buffer fails
   closed.
+- **Verified:** A newly disclosed Hono CORS middleware advisory is eliminated without a policy
+  exception. The wallet tree pins Hono 4.12.34, the offline dependency gate verifies the exact
+  lockfile version and runtime import, and the production audit reports zero vulnerabilities.
 - **Verified:** A clean logged-out production visit now renders its complete public entry before
   importing the account provider and offers neutral Google/wallet choices without a role selector.
   The selected method opens automatically after its provider loads; rejected automatic and direct

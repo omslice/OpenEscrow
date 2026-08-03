@@ -34,7 +34,8 @@ production custody, or reliance on the compliance research as legal advice.
   moderate advisory. The former transitive `uuid` advisory is removed from the locked
   wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector
   imports are exercised on every candidate, and the production dependency audit is clean with no
-  active exceptions.
+  active exceptions. A newly disclosed Hono CORS middleware advisory is also removed: the
+  transitive wallet path is pinned to 4.12.34 and verified offline before each release.
 - **Verified:** Critical flows have rendered accessibility, keyboard/focus, mobile-width, loading,
   error, and retry checks. Remaining usability work requires moderated human sessions rather than
   another code-only claim. The validated-address combobox keeps its controlled listbox present but
