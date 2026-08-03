@@ -146,7 +146,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Push the validated exact source and save a newer undeployed Sites candidate without
   changing production or hosted D1/R2 data
 - [x] Internal keyboard/mobile accessibility smoke coverage plus workspace tab, address combobox,
-  proposal focus-recovery, async announcement, reduced-motion, mobile-overflow fixes, and an
+  proposal continue/reset/replacement focus recovery, async announcement, reduced-motion,
+  mobile-overflow fixes, and an
   accessible in-memory copy fallback for blocked account-inventory downloads; notification
   outcomes use explicit atomic status/error semantics rather than message-text inference; the
   address combobox retains a valid hidden listbox target while closed and mounts interactive

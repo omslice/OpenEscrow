@@ -276,6 +276,10 @@ detailed validation ledger.
   listbox popup relationship, and mounts interactive options only while suggestions are open.
   The rendered proposal regression proves the target, arrow-key selection, collapsed state, and
   option unmounting together.
+- **Verified:** Proposal Continue actions, new-proposal resets, tenant replacements, and finalized-
+  proposal replacement edits share one focus-aware step transition. The rendered regression proves
+  forward navigation and a reset from the review panel focus the newly visible panel instead of
+  leaving keyboard focus on a removed control.
 - **Verified:** Supporting-evidence uploads now expose an explicit same-file retry, announce busy,
   success, and error states, restore keyboard focus only after the completed upload state is
   committed, and reject a delayed completion after the agreement or access token changes. A

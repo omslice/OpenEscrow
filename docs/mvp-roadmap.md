@@ -40,6 +40,8 @@ production custody, or reliance on the compliance research as legal advice.
   another code-only claim. The validated-address combobox keeps its controlled listbox present but
   hidden before and after lookup, exposes it as a listbox popup, and mounts interactive options
   only while suggestions are open; the rendered keyboard regression proves the complete contract.
+  Proposal Continue actions and user-driven reset, replacement, and finalized-edit transitions
+  move focus into the newly visible panel instead of leaving it on a removed review control.
 - **Verified:** Claim requirements now fail closed when their private agreement record cannot be
   loaded, with a focused retry action before any claim or amendment can proceed. Tenant response
   remains available for time-sensitive onchain action while its private summary has a separate

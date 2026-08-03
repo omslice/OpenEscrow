@@ -943,7 +943,7 @@ function AgreementForm({
     setInvalidField(null);
     setFormError(null);
     setFormMessage("Ready to create a separate proposal.");
-    setProposalStep("participants");
+    goToProposalStep("participants");
   }
 
   function addOrReplaceTenant() {
@@ -972,7 +972,7 @@ function AgreementForm({
     setFormMessage(
       "Started a separate proposal for a new tenant. The existing approved record remains unchanged.",
     );
-    setProposalStep("participants");
+    goToProposalStep("participants");
   }
 
   async function addTenantReviewer() {
@@ -1202,7 +1202,7 @@ function AgreementForm({
         finalizedAgreementId ? ` #${finalizedAgreementId}` : ""
       } remains unchanged; cancel it from its Manage proposal section before it is funded.`,
     );
-    setProposalStep("participants");
+    goToProposalStep("participants");
   }
 
   function rebalancePendingTenantShares(changedIndex: number, requestedBps: number) {

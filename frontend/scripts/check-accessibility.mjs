@@ -317,6 +317,14 @@ try {
   );
 
   await page.getByRole("button", { name: "Continue to deposit terms" }).click();
+  await page.waitForFunction(
+    () => document.activeElement?.id === "proposal-panel-terms",
+  );
+  assert.equal(
+    await page.locator(":focus").getAttribute("id"),
+    "proposal-panel-terms",
+    "Continuing should move focus into the newly visible deposit-terms panel.",
+  );
   const sourcePanel = page.getByRole("region", {
     name: "Official requirements source",
   });
@@ -337,6 +345,14 @@ try {
   assert.match(await sourcePanel.textContent(), /Official source last checked:/);
   await page.getByLabel("Monthly rent").fill("1500");
   await page.getByRole("button", { name: "Continue to review" }).click();
+  await page.waitForFunction(
+    () => document.activeElement?.id === "proposal-panel-review",
+  );
+  assert.equal(
+    await page.locator(":focus").getAttribute("id"),
+    "proposal-panel-review",
+    "Continuing should move focus into the newly visible proposal-review panel.",
+  );
   await page.getByRole("button", { name: "Save proposal for review" }).click();
   await page.getByText(
     "Proposal saved. Invitations are now unlocked for this exact revision.",
@@ -382,6 +398,16 @@ try {
     ).count(),
     0,
     "A stale success message should not remain beside a blocked-confirmation error.",
+  );
+
+  await page.getByRole("button", { name: "Start another proposal" }).click();
+  await page.waitForFunction(
+    () => document.activeElement?.id === "proposal-panel-participants",
+  );
+  assert.equal(
+    await page.locator(":focus").getAttribute("id"),
+    "proposal-panel-participants",
+    "Resetting a proposal should move focus into the newly visible participants panel.",
   );
 
   await page.getByRole("button", { name: "Close proposal editor" }).click();
