@@ -67,6 +67,11 @@ detailed validation ledger.
 - **Verified:** A validated statewide profile now shows its research date and official source
   link. A rate-limited, version-pinned recheck reports when that source was checked and flags
   possible changes without silently rewriting the reviewed profile or a finalized agreement.
+- **Verified:** Source recheck responses must match the selected profile version, citation, and
+  URL before the client displays them. Unreachable sources require attention rather than receiving
+  success styling; failed retries clear the prior green result and remain retryable. Same-source
+  requests share one in-flight fetch per runtime, while timestamp and version guards prevent an
+  older or superseded completion from overwriting a newer D1 result across runtimes.
 - **Verified:** The compliance source registry is immutable, uniquely keyed, HTTPS-only, and
   version-matched to every statewide and overlay source. Missing exact sources now fail closed in
   automated proposal tests for all three reviewed local overlays: Chicago, Seattle, and Portland.

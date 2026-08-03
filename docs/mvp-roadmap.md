@@ -66,6 +66,10 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** Validated U.S. addresses route to immutable, versioned state snapshots with
   conditional/business-day deadline regression coverage and fail-closed official-source gates.
   This is a best-effort research aid, not an assertion that every legal rule is complete.
+- **Verified:** A manual official-source recheck accepts only the selected profile's exact version,
+  citation, and URL. Unreachable sources are shown as needing attention, a failed retry cannot
+  leave a stale green result beside its error, simultaneous requests share one bounded check, and
+  an older late completion cannot overwrite a newer durable result. No rule content is rewritten.
 - **Verified:** Compliance event inputs now reject impossible dates and timestamps without an
   explicit timezone before they can be stored. Business-day rules reject a malformed holiday
   calendar instead of silently dropping bad dates, inherited event fields are ignored, combined

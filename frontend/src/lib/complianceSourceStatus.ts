@@ -12,6 +12,43 @@ export type ComplianceSourceStatus = {
   immutableSnapshotNotice: string;
 };
 
+export type ExpectedComplianceSource = {
+  citation: string;
+  url: string;
+};
+
+const SOURCE_STATUSES = new Set(["pending", "unchanged", "changed", "unreachable"]);
+const INVALID_SOURCE_RESPONSE =
+  "OpenEscrow could not verify that this source check matches the selected compliance profile. Try again.";
+
+function isNullableTimestamp(value: unknown): value is string | null {
+  return value === null || (typeof value === "string" && Number.isFinite(Date.parse(value)));
+}
+
+function isExactComplianceSourceStatus(
+  value: unknown,
+  jurisdiction: string,
+  profileVersion: string,
+  expectedSource: ExpectedComplianceSource,
+): value is ComplianceSourceStatus {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Partial<ComplianceSourceStatus>;
+  const source = candidate.source;
+  return Boolean(
+    candidate.jurisdiction === jurisdiction &&
+      candidate.profileVersion === profileVersion &&
+      typeof candidate.immutableSnapshotNotice === "string" &&
+      candidate.immutableSnapshotNotice.trim() &&
+      source &&
+      source.citation === expectedSource.citation &&
+      source.url === expectedSource.url &&
+      SOURCE_STATUSES.has(source.status) &&
+      isNullableTimestamp(source.lastCheckedAt) &&
+      isNullableTimestamp(source.lastVerifiedAt) &&
+      typeof source.requiresReview === "boolean",
+  );
+}
+
 async function responseError(response: Response) {
   try {
     const body = (await response.json()) as { error?: unknown };
@@ -25,6 +62,7 @@ async function responseError(response: Response) {
 export async function checkComplianceSourceStatus(
   jurisdiction: string,
   profileVersion: string,
+  expectedSource: ExpectedComplianceSource,
 ): Promise<ComplianceSourceStatus> {
   const response = await fetch("/api/compliance/source-status", {
     method: "POST",
@@ -32,7 +70,16 @@ export async function checkComplianceSourceStatus(
     body: JSON.stringify({ jurisdiction, profileVersion }),
   });
   if (!response.ok) throw new Error(await responseError(response));
-  return (await response.json()) as ComplianceSourceStatus;
+  let result: unknown;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(INVALID_SOURCE_RESPONSE);
+  }
+  if (!isExactComplianceSourceStatus(result, jurisdiction, profileVersion, expectedSource)) {
+    throw new Error(INVALID_SOURCE_RESPONSE);
+  }
+  return result;
 }
 
 export function complianceSourceStatusMessage(

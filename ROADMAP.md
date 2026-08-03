@@ -54,8 +54,9 @@ the repository; they are not claims of legal approval or production readiness.
   event times, malformed holiday calendars, and inherited event fields without silently
   scheduling a deadline
 - [x] Address-routed proposals show the profile research date and official state source, with a
-  version-pinned source recheck that detects possible changes but cannot rewrite reviewed rules
-  or finalized agreement snapshots
+  version-pinned source recheck that rejects mismatched responses, treats unreachable sources as
+  needing attention, bounds simultaneous checks, preserves a newer result from an older late
+  completion, and cannot rewrite reviewed rules or finalized agreement snapshots
 - [ ] Select initial cities/counties and implement approved local overlays
 - [ ] Select and attest a property-timezone source and qualified local-time/DST policy for the
   pilot; the current engine is deterministic only for explicit instants

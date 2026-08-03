@@ -76,8 +76,8 @@ record-session revocation, preference-save, and test-email operations open acros
 identities and proves the old account cannot update, download into, announce inside, or sign out
 the new account. The accessibility check covers the public yield dialog and focus return,
 80%-zoom yield-card spacing and badge legibility, workspace tab keyboard behavior, proposal editor
-focus recovery, keyboard address selection, the official-source provenance/recheck control, and
-mobile-width overflow.
+focus recovery, keyboard address selection, the official-source provenance/recheck control and its
+failure/retry recovery, and mobile-width overflow.
 
 Dynamic wallet setup, transaction, proposal, negotiation, account-security, notification,
 record-export, and receipt-recovery outcomes use status or alert live regions so they are announced

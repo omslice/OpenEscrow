@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { complianceSourceStatusMessage } from "./complianceSourceStatus.ts";
+import {
+  checkComplianceSourceStatus,
+  complianceSourceStatusMessage,
+  type ComplianceSourceStatus,
+} from "./complianceSourceStatus.ts";
 
 const source = {
   citation: "Official source",
@@ -27,4 +31,44 @@ test("compliance source messages never claim changed rules were automatically ad
     complianceSourceStatusMessage({ ...source, status: "unreachable" }),
     /recorded profile remains unchanged/i,
   );
+});
+
+test("source check responses must match the requested profile and official source", async () => {
+  const originalFetch = globalThis.fetch;
+  const expectedSource = {
+    citation: "Official source",
+    url: "https://example.gov/rules",
+  };
+  let result: ComplianceSourceStatus = {
+    jurisdiction: "us-ca",
+    profileVersion: "ca-reviewed-1",
+    source: { ...source, status: "unchanged" },
+    immutableSnapshotNotice: "Finalized agreements keep their recorded snapshot.",
+  };
+  globalThis.fetch = async () => Response.json(result);
+
+  try {
+    assert.deepEqual(
+      await checkComplianceSourceStatus("us-ca", "ca-reviewed-1", expectedSource),
+      result,
+    );
+
+    result = { ...result, jurisdiction: "us-ny" };
+    await assert.rejects(
+      checkComplianceSourceStatus("us-ca", "ca-reviewed-1", expectedSource),
+      /could not verify.*selected compliance profile/i,
+    );
+
+    result = {
+      ...result,
+      jurisdiction: "us-ca",
+      source: { ...result.source, url: "https://example.gov/different-rules" },
+    };
+    await assert.rejects(
+      checkComplianceSourceStatus("us-ca", "ca-reviewed-1", expectedSource),
+      /could not verify.*selected compliance profile/i,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });

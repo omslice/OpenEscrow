@@ -2758,8 +2758,10 @@ test("a user-triggered state source check reports provenance without rewriting a
   const originalFetch = globalThis.fetch;
   let sourceBody = "official requirements baseline";
   let fetchCount = 0;
+  let sourceFailure = false;
   globalThis.fetch = async () => {
     fetchCount += 1;
+    if (sourceFailure) throw new Error("Official source temporarily unavailable.");
     return new Response(sourceBody, {
       status: 200,
       headers: {
@@ -2804,6 +2806,20 @@ test("a user-triggered state source check reports provenance without rewriting a
     assert.equal(changed.source.requiresReview, true);
     assert.equal(changed.profileVersion, newYorkProfile.version);
     assert.equal(fetchCount, 2);
+
+    await db
+      .prepare(
+        `UPDATE compliance_source_checks
+         SET last_checked_at = '2020-01-01T00:00:00.000Z'
+         WHERE source_key = 'state:ny'`,
+      )
+      .run();
+    sourceFailure = true;
+    const unreachable = await jsonResponse(await worker.fetch(sourceRequest(), env));
+    assert.equal(unreachable.source.status, "unreachable");
+    assert.equal(unreachable.source.requiresReview, true);
+    assert.ok(unreachable.source.lastVerifiedAt);
+    assert.equal(fetchCount, 3);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -2816,6 +2832,145 @@ test("a user-triggered state source check reports provenance without rewriting a
     env,
   );
   assert.equal(unknown.status, 404);
+});
+
+test("simultaneous state source requests share one bounded external check", async () => {
+  const db = new TestD1();
+  await worker.fetch(request("/api/system/readiness"), { DB: db });
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+  let markStarted;
+  let releaseSource;
+  const started = new Promise((resolve) => {
+    markStarted = resolve;
+  });
+  const released = new Promise((resolve) => {
+    releaseSource = resolve;
+  });
+  globalThis.fetch = async () => {
+    fetchCount += 1;
+    markStarted();
+    await released;
+    return new Response("official requirements baseline", {
+      status: 200,
+      headers: { "content-type": "text/html", etag: '"shared-check"' },
+    });
+  };
+  const env = {
+    DB: db,
+    COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+  };
+  const sourceRequest = () =>
+    request("/api/compliance/source-status", "POST", {
+      jurisdiction: newYorkProfile.code,
+      profileVersion: newYorkProfile.version,
+    });
+
+  try {
+    const first = worker.fetch(sourceRequest(), env);
+    await started;
+    const second = worker.fetch(sourceRequest(), env);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    assert.equal(fetchCount, 1, "Concurrent requests should reuse the active source check.");
+    releaseSource();
+    const [firstResult, secondResult] = await Promise.all([
+      jsonResponse(await first),
+      jsonResponse(await second),
+    ]);
+    assert.equal(firstResult.source.status, "unchanged");
+    assert.equal(secondResult.source.status, "unchanged");
+    assert.equal(firstResult.profileVersion, newYorkProfile.version);
+    assert.equal(secondResult.profileVersion, newYorkProfile.version);
+    assert.equal(fetchCount, 1);
+  } finally {
+    releaseSource?.();
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("an older source failure cannot overwrite a newer successful check", async () => {
+  const db = new TestD1();
+  await worker.fetch(request("/api/system/readiness"), { DB: db });
+  const originalFetch = globalThis.fetch;
+  const env = {
+    DB: db,
+    COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+  };
+  const sourceRequest = () =>
+    request("/api/compliance/source-status", "POST", {
+      jurisdiction: newYorkProfile.code,
+      profileVersion: newYorkProfile.version,
+    });
+  const sourceResponse = () =>
+    new Response("official requirements baseline", {
+      status: 200,
+      headers: { "content-type": "text/html", etag: '"stable-source"' },
+    });
+  let releaseOlder;
+
+  try {
+    globalThis.fetch = async () => sourceResponse();
+    const baseline = await jsonResponse(await worker.fetch(sourceRequest(), env));
+    assert.equal(baseline.source.status, "unchanged");
+    await db
+      .prepare(
+        `UPDATE compliance_source_checks
+         SET last_checked_at = '2020-01-01T00:00:00.000Z'
+         WHERE source_key = 'state:ny'`,
+      )
+      .run();
+
+    let fetchCount = 0;
+    let markOlderStarted;
+    const olderStarted = new Promise((resolve) => {
+      markOlderStarted = resolve;
+    });
+    const releaseOlderCheck = new Promise((resolve) => {
+      releaseOlder = resolve;
+    });
+    globalThis.fetch = async () => {
+      fetchCount += 1;
+      if (fetchCount === 1) {
+        markOlderStarted();
+        await releaseOlderCheck;
+        throw new Error("Older source request failed late.");
+      }
+      return sourceResponse();
+    };
+    const aliasedDb = {
+      prepare(sql) {
+        return db.prepare(sql);
+      },
+      batch(statements) {
+        return db.batch(statements);
+      },
+    };
+
+    const older = worker.fetch(sourceRequest(), env);
+    await olderStarted;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+    const newer = await jsonResponse(
+      await worker.fetch(sourceRequest(), { ...env, DB: aliasedDb }),
+    );
+    assert.equal(newer.source.status, "unchanged");
+    releaseOlder();
+    const olderResult = await jsonResponse(await older);
+    assert.equal(olderResult.source.status, "unchanged");
+    assert.equal(fetchCount, 2);
+
+    const stored = await db
+      .prepare(
+        `SELECT status, error, last_verified_at
+         FROM compliance_source_checks WHERE source_key = 'state:ny'`,
+      )
+      .first();
+    assert.equal(stored.status, "unchanged");
+    assert.equal(stored.error, null);
+    assert.ok(stored.last_verified_at);
+  } finally {
+    releaseOlder?.();
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("every reviewed local overlay requires its exact monitored source", async () => {

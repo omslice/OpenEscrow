@@ -496,6 +496,13 @@ const ADDRESS_ATTRIBUTION = Object.freeze({
 });
 const addressSuggestionCache = new Map();
 const activityRegistryReadinessCache = new Map();
+const complianceSourceChecksInFlight = new WeakMap();
+const COMPLIANCE_SOURCE_STATUS_VALUES = new Set([
+  "pending",
+  "unchanged",
+  "changed",
+  "unreachable",
+]);
 const encoder = new TextEncoder();
 
 function json(data, status = 200) {
@@ -2100,14 +2107,17 @@ async function complianceSourceStatus(request, env) {
     !Number.isFinite(lastCheckedMs) ||
     Date.now() - lastCheckedMs >= minimumRefreshIntervalMs
   ) {
-    await checkComplianceSource(env.DB, row, new Date());
+    await checkComplianceSourceOnce(env.DB, row, new Date());
     row = await env.DB
       .prepare("SELECT * FROM compliance_source_checks WHERE source_key = ?")
       .bind(sourceItem.key)
       .first();
   }
 
-  const status = cleanText(row?.status, 40) || "pending";
+  const storedStatus = cleanText(row?.status, 40) || "pending";
+  const status = COMPLIANCE_SOURCE_STATUS_VALUES.has(storedStatus)
+    ? storedStatus
+    : "pending";
   return json({
     jurisdiction,
     profileVersion,
@@ -2117,7 +2127,7 @@ async function complianceSourceStatus(request, env) {
       status,
       lastCheckedAt: row?.last_checked_at || null,
       lastVerifiedAt: row?.last_verified_at || null,
-      requiresReview: status === "changed" || status === "pending",
+      requiresReview: status !== "unchanged",
     },
     immutableSnapshotNotice:
       "Finalized agreements keep their recorded compliance snapshot. A source change must be reviewed and published as a new profile version before a draft can adopt it.",
@@ -5606,6 +5616,7 @@ async function digestSourceResponse(response) {
 async function checkComplianceSource(db, sourceRow, now) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
+  const checkedAt = now.toISOString();
   try {
     const sourceUrl = new URL(sourceRow.url);
     if (sourceUrl.protocol !== "https:") throw new Error("HTTPS is required.");
@@ -5622,31 +5633,45 @@ async function checkComplianceSource(db, sourceRow, now) {
       throw new Error(`Official source returned HTTP ${response.status}.`);
     }
     const signature = await digestSourceResponse(response);
-    const baseline = sourceRow.baseline_signature || signature;
-    const changed = Boolean(
-      sourceRow.baseline_signature && sourceRow.baseline_signature !== signature,
-    );
     await db
       .prepare(
         `UPDATE compliance_source_checks
-         SET baseline_signature = ?, current_signature = ?, http_status = ?,
-             status = ?, last_checked_at = ?,
-             last_verified_at = CASE WHEN ? THEN last_verified_at ELSE ? END,
-             last_changed_at = CASE WHEN ? THEN ? ELSE last_changed_at END,
+         SET baseline_signature = COALESCE(baseline_signature, ?),
+             current_signature = ?, http_status = ?,
+             status = CASE
+               WHEN COALESCE(baseline_signature, ?) = ? THEN 'unchanged'
+               ELSE 'changed'
+             END,
+             last_checked_at = ?,
+             last_verified_at = CASE
+               WHEN COALESCE(baseline_signature, ?) = ? THEN ?
+               ELSE last_verified_at
+             END,
+             last_changed_at = CASE
+               WHEN COALESCE(baseline_signature, ?) <> ? THEN ?
+               ELSE last_changed_at
+             END,
              error = NULL
-         WHERE source_key = ?`,
+         WHERE source_key = ? AND profile_version = ? AND url = ?
+           AND (last_checked_at IS NULL OR last_checked_at <= ?)`,
       )
       .bind(
-        baseline,
+        signature,
         signature,
         response.status,
-        changed ? "changed" : "unchanged",
-        now.toISOString(),
-        changed ? 1 : 0,
-        now.toISOString(),
-        changed ? 1 : 0,
-        now.toISOString(),
+        signature,
+        signature,
+        checkedAt,
+        signature,
+        signature,
+        checkedAt,
+        signature,
+        signature,
+        checkedAt,
         sourceRow.source_key,
+        sourceRow.profile_version,
+        sourceRow.url,
+        checkedAt,
       )
       .run();
   } catch (error) {
@@ -5654,17 +5679,44 @@ async function checkComplianceSource(db, sourceRow, now) {
       .prepare(
         `UPDATE compliance_source_checks
          SET status = 'unreachable', last_checked_at = ?, error = ?
-         WHERE source_key = ?`,
+         WHERE source_key = ? AND profile_version = ? AND url = ?
+           AND (last_checked_at IS NULL OR last_checked_at <= ?)`,
       )
       .bind(
-        now.toISOString(),
+        checkedAt,
         cleanText(error instanceof Error ? error.message : "Source check failed.", 300),
         sourceRow.source_key,
+        sourceRow.profile_version,
+        sourceRow.url,
+        checkedAt,
       )
       .run();
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function checkComplianceSourceOnce(db, sourceRow, now) {
+  let checksForDatabase = complianceSourceChecksInFlight.get(db);
+  if (!checksForDatabase) {
+    checksForDatabase = new Map();
+    complianceSourceChecksInFlight.set(db, checksForDatabase);
+  }
+  const checkKey = JSON.stringify([
+    sourceRow.source_key,
+    sourceRow.profile_version,
+    sourceRow.url,
+  ]);
+  const existing = checksForDatabase.get(checkKey);
+  if (existing) return existing;
+
+  const pending = checkComplianceSource(db, sourceRow, now).finally(() => {
+    if (checksForDatabase.get(checkKey) === pending) {
+      checksForDatabase.delete(checkKey);
+    }
+  });
+  checksForDatabase.set(checkKey, pending);
+  return pending;
 }
 
 async function runComplianceSourceAudit(env, now = new Date()) {
@@ -5696,7 +5748,7 @@ async function runComplianceSourceAudit(env, now = new Date()) {
     )
     .all();
   for (const row of pending.results || []) {
-    await checkComplianceSource(env.DB, row, now);
+    await checkComplianceSourceOnce(env.DB, row, now);
   }
 }
 

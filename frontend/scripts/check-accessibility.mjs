@@ -145,6 +145,17 @@ try {
     complianceSourceChecks += 1;
     assert.equal(route.request().method(), "POST");
     const input = route.request().postDataJSON();
+    if (complianceSourceChecks === 2) {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error:
+            "OpenEscrow could not reach the official source right now. The recorded profile remains unchanged.",
+        }),
+      });
+      return;
+    }
     await route.fulfill({
       status: 200,
       contentType: "application/json",
@@ -152,8 +163,8 @@ try {
         jurisdiction: input.jurisdiction,
         profileVersion: input.profileVersion,
         source: {
-          citation: "California Civil Code",
-          url: "https://leginfo.legislature.ca.gov/",
+          citation: "Cal. Civ. Code § 1950.5",
+          url: "https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CIV&sectionNum=1950.5.",
           status: "unchanged",
           lastCheckedAt: "2026-07-30T12:00:00.000Z",
           lastVerifiedAt: "2026-07-30T12:00:00.000Z",
@@ -333,16 +344,40 @@ try {
     "https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CIV&sectionNum=1950.5.",
     "The address-routed profile should expose its official source link.",
   );
-  await sourcePanel
-    .getByRole("button", { name: "Check official source for updates" })
-    .click();
-  await sourcePanel
-    .getByText("The official source matches the reviewed profile baseline.", {
+  const sourceCheckButton = sourcePanel.getByRole("button", {
+    name: "Check official source for updates",
+  });
+  const currentSourceMessage = sourcePanel.getByText(
+    "The official source matches the reviewed profile baseline.",
+    {
       exact: false,
-    })
-    .waitFor({ state: "visible" });
+    },
+  );
+  await sourceCheckButton.click();
+  await currentSourceMessage.waitFor({ state: "visible" });
   assert.equal(complianceSourceChecks, 1);
   assert.match(await sourcePanel.textContent(), /Official source last checked:/);
+
+  await sourceCheckButton.click();
+  const sourceCheckError = sourcePanel.getByRole("alert");
+  await sourceCheckError.waitFor({ state: "visible" });
+  assert.match(await sourceCheckError.textContent(), /could not reach the official source/i);
+  assert.equal(complianceSourceChecks, 2);
+  assert.equal(
+    await currentSourceMessage.count(),
+    0,
+    "A failed recheck must not leave the prior success result beside the error.",
+  );
+  assert.doesNotMatch(await sourcePanel.textContent(), /Official source last checked:/);
+
+  await sourceCheckButton.click();
+  await currentSourceMessage.waitFor({ state: "visible" });
+  assert.equal(complianceSourceChecks, 3);
+  assert.equal(
+    await sourceCheckError.count(),
+    0,
+    "A later successful recheck should clear the retryable source error.",
+  );
   await page.getByLabel("Monthly rent").fill("1500");
   await page.getByRole("button", { name: "Continue to review" }).click();
   await page.waitForFunction(
@@ -466,7 +501,7 @@ try {
   );
 
   process.stdout.write(
-    "Accessibility smoke check passed: modal focus, workspace tabs, proposal focus recovery, blocked destructive confirmation, address keyboard selection, and mobile width.\n",
+    "Accessibility smoke check passed: modal focus, workspace tabs, proposal focus recovery, blocked destructive confirmation, address keyboard selection, source-check retry recovery, and mobile width.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

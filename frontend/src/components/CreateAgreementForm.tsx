@@ -467,12 +467,17 @@ function AgreementForm({
   async function refreshComplianceSource() {
     if (!selectedJurisdiction) return;
     const operationId = complianceSourceScope.start();
+    setComplianceSourceResult(null);
     setComplianceSourceError(null);
     setIsCheckingComplianceSource(true);
     try {
       const result = await checkComplianceSourceStatus(
         selectedJurisdiction.code,
         selectedJurisdiction.version,
+        {
+          citation: selectedJurisdiction.statuteCitation,
+          url: selectedJurisdiction.statuteUrl,
+        },
       );
       if (!complianceSourceScope.isCurrent(operationId)) return;
       setComplianceSourceResult(result);
