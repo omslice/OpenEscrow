@@ -369,9 +369,12 @@ detailed validation ledger.
   service outage.
 - **Verified:** Public activity-receipt query failures now render as a visible alert instead of
   being hidden in a closed receipt-history disclosure. The alert distinguishes a connection
-  problem from missing agreement data, retains a manual retry, keeps raw RPC text collapsed,
-  restores focus after a failed keyboard retry, clears busy state, fits a 390-pixel viewport,
-  and proves successful recovery does not repeat an agreement action.
+  problem from missing agreement data, retains a manual retry, and keeps raw RPC text collapsed.
+  An unexpected retry rejection is contained as another safe failure, plain-language feedback is
+  visible, and a layout effect restores the exact enabled button after each consecutive keyboard
+  failure. The rendered regression no longer treats focus on the document body as success, fits a
+  390-pixel viewport, clears busy state after every failure, and proves later recovery does not
+  repeat an agreement action.
 - **Verified:** The temporary transitive `uuid` dependency exception has been eliminated. Every
   locked Privy/Wagmi wallet-provider UUID path now resolves to 11.1.1, the production audit
   reports zero vulnerabilities, and a required candidate check imports the affected connector

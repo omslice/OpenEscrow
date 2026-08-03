@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { useId, useLayoutEffect, useRef, useState } from "react";
 
 export function ActivityLoadFailure({
   error,
@@ -9,19 +9,34 @@ export function ActivityLoadFailure({
 }) {
   const headingId = useId();
   const retryRef = useRef<HTMLButtonElement>(null);
+  const retryInFlight = useRef(false);
   const [retrying, setRetrying] = useState(false);
+  const [retryFailed, setRetryFailed] = useState(false);
+  const [focusRequest, setFocusRequest] = useState(0);
+
+  useLayoutEffect(() => {
+    if (focusRequest > 0) {
+      retryRef.current?.focus({ preventScroll: true });
+    }
+  }, [focusRequest]);
 
   async function retry() {
-    if (retrying) return;
+    if (retryInFlight.current) return;
+    retryInFlight.current = true;
     setRetrying(true);
+    setRetryFailed(false);
     let recovered = false;
     try {
       recovered = await onRetry();
+    } catch {
+      recovered = false;
     } finally {
+      retryInFlight.current = false;
       setRetrying(false);
     }
     if (!recovered) {
-      window.requestAnimationFrame(() => retryRef.current?.focus());
+      setRetryFailed(true);
+      setFocusRequest((request) => request + 1);
     }
   }
 
@@ -41,6 +56,12 @@ export function ActivityLoadFailure({
         <summary>Connection details</summary>
         <code>{error.slice(0, 500)}</code>
       </details>
+      {retryFailed && (
+        <p className="field-help" role="status">
+          Still couldn&apos;t connect. Your saved record remains available; check your connection
+          and try again.
+        </p>
+      )}
       <button
         ref={retryRef}
         className="btn btn-secondary small"

@@ -29,7 +29,11 @@ function ActivityLoadFailureHarness() {
           await new Promise((resolve) => window.setTimeout(resolve, 30));
           if (attempts === 0) {
             setAttempts(1);
-            setError("Simulated RPC gateway still unavailable");
+            throw new Error("Simulated retry rejection");
+          }
+          if (attempts === 1) {
+            setAttempts(2);
+            setError("Simulated RPC gateway still unavailable (attempt 2)");
             return false;
           }
           setLoaded(true);

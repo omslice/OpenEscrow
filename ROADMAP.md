@@ -151,6 +151,9 @@ the repository; they are not claims of legal approval or production readiness.
   outcomes use explicit atomic status/error semantics rather than message-text inference
 - [x] Supporting-evidence upload recovery with an explicit same-file retry, announced busy/error
   states, focus restoration, agreement/access-scope isolation, and rendered mobile regression
+- [x] Public-receipt recovery contains unexpected retry failures, shows plain-language feedback,
+  restores the exact retry control after every failed attempt in React's committed layout phase,
+  and proves repeated keyboard recovery without duplicating an agreement action
 - [x] Consumer-facing activity summaries keep hashes and storage receipts behind expandable
   verification details, and the optional-yield dialog remains spaced and legible at 80% zoom
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a

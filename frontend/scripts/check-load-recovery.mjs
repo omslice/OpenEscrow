@@ -111,14 +111,8 @@ try {
   await depositPage.getByText(/still could not reconnect/i).waitFor({
     state: "visible",
   });
-  await depositPage.waitForFunction(
-    () => document.activeElement?.textContent?.includes("Try loading deposit again"),
-    undefined,
-    { timeout: 1_000 },
-  );
-  assert.equal(
-    await depositRetry.evaluate((element) => element === document.activeElement),
-    true,
+  await assertFocusedElement(
+    depositRetry,
     "A failed deposit retry should return focus to its recovery action.",
   );
   assert.equal(
@@ -167,16 +161,10 @@ try {
   await activityRetry.focus();
   await activityRetry.press("Enter");
   await activityAlert
-    .getByText("Simulated RPC gateway still unavailable")
-    .waitFor({ state: "attached" });
-  await activityPage.waitForFunction(
-    () => document.activeElement?.textContent?.includes("Try loading public receipts again"),
-    undefined,
-    { timeout: 1_000 },
-  );
-  assert.equal(
-    await activityRetry.evaluate((element) => element === document.activeElement),
-    true,
+    .getByText(/Still couldn't connect. Your saved record remains available/i)
+    .waitFor({ state: "visible" });
+  await assertFocusedElement(
+    activityRetry,
     "A failed receipt retry should return focus to its recovery action.",
   );
   assert.equal(
@@ -184,9 +172,22 @@ try {
     "false",
     "The receipt failure should clear its busy state after a failed retry.",
   );
+  await activityRetry.press("Enter");
+  await activityAlert
+    .getByText("Simulated RPC gateway still unavailable (attempt 2)")
+    .waitFor({ state: "attached" });
+  await assertFocusedElement(
+    activityRetry,
+    "Every failed receipt retry should return focus to its recovery action.",
+  );
+  assert.equal(
+    await activityAlert.getAttribute("aria-busy"),
+    "false",
+    "A repeated receipt failure should clear its busy state.",
+  );
   await activityAlert.getByText("Connection details").click();
   await activityAlert
-    .getByText("Simulated RPC gateway still unavailable")
+    .getByText("Simulated RPC gateway still unavailable (attempt 2)")
     .waitFor({ state: "visible" });
   assert.equal(
     await activityPage.evaluate(
@@ -222,4 +223,27 @@ async function assertFocusedReload(page, message) {
     true,
     message,
   );
+}
+
+async function assertFocusedElement(locator, message, timeoutMs = 1_000) {
+  const focused = await locator.evaluate(
+    (element, timeout) =>
+      new Promise((resolve) => {
+        const deadline = performance.now() + timeout;
+        const check = () => {
+          if (element === document.activeElement) {
+            resolve(true);
+            return;
+          }
+          if (performance.now() >= deadline) {
+            resolve(false);
+            return;
+          }
+          requestAnimationFrame(check);
+        };
+        check();
+      }),
+    timeoutMs,
+  );
+  assert.equal(focused, true, message);
 }
