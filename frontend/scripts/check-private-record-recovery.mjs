@@ -100,6 +100,48 @@ function routePrivateRecord(page, failAttempts = new Set([1, 2])) {
   });
 }
 
+async function routeClaimReceiptRecovery(page) {
+  let attempts = 0;
+  await page.route(/\/api\/negotiations\/OE-P-RECOVERY\/actions$/, async (route) => {
+    attempts += 1;
+    const body = JSON.parse(route.request().postData() || "{}");
+    assert.equal(
+      body.token,
+      "synthetic-private-record-recovery-token",
+      "The receipt retry must remain bound to the landlord's exact agreement access.",
+    );
+    assert.equal(body.type, "claim_submitted");
+    assert.equal(body.transactionHash, `0x${"9".repeat(64)}`);
+    if (attempts === 1) {
+      await route.fulfill({
+        status: 503,
+        contentType: "application/json",
+        body: JSON.stringify({ error: "Simulated receipt-save outage" }),
+      });
+      return;
+    }
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(negotiationRecord),
+    });
+  });
+  await page.route("**/api/evidence", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        cid: "synthetic-recovery-file",
+        uri: "openescrow://evidence/synthetic-recovery-file",
+        gatewayUrl: "/api/evidence/synthetic-recovery-file",
+        sha256: `0x${"7".repeat(64)}`,
+        storageKind: "encrypted-private",
+      }),
+    });
+  });
+  return () => attempts;
+}
+
 const server = spawn(
   process.execPath,
   [
@@ -287,6 +329,151 @@ try {
     "Refreshing the private record must never resend the tenant email.",
   );
 
+  const claimReceiptPage = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+  });
+  await routePrivateRecord(claimReceiptPage, new Set());
+  const claimReceiptAttempts = await routeClaimReceiptRecovery(claimReceiptPage);
+  await claimReceiptPage.goto(
+    `${baseUrl}/testing/private-record-recovery.html?role=landlord&flow=claim-receipt&tx=claim-success`,
+    { waitUntil: "networkidle" },
+  );
+  await claimReceiptPage.getByLabel("Description").fill("Damaged synthetic test door");
+  await claimReceiptPage.getByLabel("Amount (shares)").fill("0.5");
+  await claimReceiptPage
+    .getByRole("checkbox", {
+      name: /Every test deduction is separately itemized and described/,
+    })
+    .check();
+  await claimReceiptPage
+    .getByRole("checkbox", {
+      name: /supporting file includes applicable invoices/i,
+    })
+    .check();
+  await claimReceiptPage
+    .getByRole("button", { name: "Supporting file", exact: true })
+    .setInputFiles({
+      name: "synthetic-receipt.pdf",
+      mimeType: "application/pdf",
+      buffer: Buffer.from("%PDF-synthetic-claim-receipt"),
+    });
+  await claimReceiptPage
+    .getByText("Supporting file stored privately and ready to submit.")
+    .waitFor({ state: "visible" });
+  const submitClaim = claimReceiptPage.getByRole("button", {
+    name: "Submit documented deduction claim",
+  });
+  await submitClaim.click();
+
+  const receiptRetry = claimReceiptPage.getByRole("button", {
+    name: "Retry saving claim receipt",
+  });
+  await receiptRetry.waitFor({ state: "visible" });
+  assert.equal(
+    await submitClaim.isDisabled(),
+    true,
+    "A confirmed claim with a pending private receipt must disable another onchain submission.",
+  );
+  assert.equal(
+    await receiptRetry.evaluate((element) => element === document.activeElement),
+    true,
+    "A failed private receipt save should focus its retry control.",
+  );
+  const recoveryEntries = await claimReceiptPage.evaluate(() => {
+    const entries = [];
+    for (let index = 0; index < window.sessionStorage.length; index += 1) {
+      const key = window.sessionStorage.key(index);
+      if (key?.startsWith("openescrow:pending-claim-receipt:")) {
+        entries.push([key, window.sessionStorage.getItem(key)]);
+      }
+    }
+    return entries;
+  });
+  assert.equal(recoveryEntries.length, 1);
+  assert.doesNotMatch(
+    JSON.stringify(recoveryEntries),
+    /synthetic-private-record-recovery-token/,
+    "The durable receipt retry must not store its bearer token.",
+  );
+  assert.equal(
+    await claimReceiptPage.evaluate(() =>
+      window.sessionStorage.getItem("openescrow:test:claim-transaction-writes"),
+    ),
+    "1",
+  );
+
+  await claimReceiptPage.reload({ waitUntil: "networkidle" });
+  const recoveredReceiptRetry = claimReceiptPage.getByRole("button", {
+    name: "Retry saving claim receipt",
+  });
+  await recoveredReceiptRetry.waitFor({ state: "visible" });
+  await claimReceiptPage
+    .getByText(/recovered a confirmed testnet claim/i)
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await claimReceiptPage
+      .getByRole("button", { name: "Submit documented amendment" })
+      .isDisabled(),
+    true,
+    "Reload recovery must disable a new onchain amendment until the confirmed claim receipt is saved.",
+  );
+  assert.equal(
+    await recoveredReceiptRetry.evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+    "Reload recovery should focus the one safe receipt action.",
+  );
+  await recoveredReceiptRetry.press("Enter");
+  await claimReceiptPage.waitForFunction(() => {
+    for (let index = 0; index < window.sessionStorage.length; index += 1) {
+      if (
+        window.sessionStorage
+          .key(index)
+          ?.startsWith("openescrow:pending-claim-receipt:")
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
+  await claimReceiptPage
+    .getByRole("button", {
+      name: /(?:Saving|Retry saving) claim receipt/,
+    })
+    .waitFor({ state: "detached" });
+  assert.equal(claimReceiptAttempts(), 2);
+  assert.equal(
+    await claimReceiptPage.evaluate(() =>
+      window.sessionStorage.getItem("openescrow:test:claim-transaction-writes"),
+    ),
+    "1",
+    "Retrying the private receipt must never resubmit the onchain claim.",
+  );
+  assert.equal(
+    await claimReceiptPage.evaluate(() => {
+      for (let index = 0; index < window.sessionStorage.length; index += 1) {
+        if (
+          window.sessionStorage
+            .key(index)
+            ?.startsWith("openescrow:pending-claim-receipt:")
+        ) {
+          return false;
+        }
+      }
+      return true;
+    }),
+    true,
+    "A successful idempotent receipt save should clear only its matching recovery payload.",
+  );
+  assert.equal(
+    await claimReceiptPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "Durable claim receipt recovery should not overflow a mobile viewport.",
+  );
+
   const responsePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await routePrivateRecord(responsePage);
   await responsePage.goto(
@@ -342,7 +529,7 @@ try {
   );
 
   process.stdout.write(
-    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, time-sensitive tenant responses remain available, retries restore focus, and a delivered claim email is never repeated by a record-only retry.\n",
+    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, a confirmed claim survives a private-record outage and reload without another transaction or stored bearer token, time-sensitive tenant responses remain available, retries restore focus, and a delivered claim email is never repeated by a record-only retry.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

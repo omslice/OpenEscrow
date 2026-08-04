@@ -385,6 +385,12 @@ detailed validation ledger.
   focus to the new or surviving deduction after React commits the change, gives removal controls
   distinct accessible names, and uses 44-pixel mobile targets without horizontal overflow. The
   rendered private-record recovery rehearsal covers the full keyboard interaction.
+- **Verified:** A confirmed testnet claim now writes its unsaved private receipt retry to
+  session-only browser recovery before contacting the record service. The key is scoped by
+  agreement, proposal, landlord wallet, and role and contains no bearer token. The rendered
+  rehearsal interrupts the first receipt save, reloads the page, verifies focused recovery,
+  completes the idempotent save, clears the matching payload, and proves no second transaction
+  occurred.
 - **Verified:** The compliance evaluator now rejects malformed deadline metadata before a
   triggering event can make the error visible, propagates an invalid member into an
   earlier-of/later-of controlling deadline, and rejects a snapshot whose recorded jurisdiction

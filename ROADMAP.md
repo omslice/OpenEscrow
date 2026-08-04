@@ -175,6 +175,9 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Claim line-item editing announces additions and removals, gives every removal control a
   unique accessible name, keeps keyboard focus on the relevant deduction, and preserves
   44-pixel touch targets without mobile overflow
+- [x] A confirmed testnet claim whose private receipt save is interrupted retains an
+  account/agreement-scoped same-tab retry across reload, excludes bearer access from recovery
+  storage, restores keyboard focus, and cannot repeat the onchain claim
 - [x] Public-receipt recovery contains unexpected retry failures, shows plain-language feedback,
   restores the exact retry control after every failed attempt in React's committed layout phase,
   and proves repeated keyboard recovery without duplicating an agreement action

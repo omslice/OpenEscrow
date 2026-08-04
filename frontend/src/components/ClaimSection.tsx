@@ -13,13 +13,24 @@ import {
 } from "../lib/browserActions";
 import { createAsyncOperationScope } from "../lib/asyncOperationScope";
 import {
+  clearRecoveryJsonIf,
+  getBrowserRecoveryStorage,
+  readRecoveryJson,
+  writeRecoveryJson,
+} from "../lib/browserRecovery";
+import {
+  claimReceiptRecoveryKey,
+  isClaimReceiptAction,
+  sameClaimReceipt,
+  type ClaimReceiptAction,
+} from "../lib/claimReceiptRecovery";
+import {
   buildNegotiationInviteUrl,
   loadNegotiation,
   negotiationAction,
   readLandlordBundle,
   sendClaimNotification,
   type DeductionLineItem,
-  type NegotiationAction,
   type NegotiationAccess,
   type NegotiationRecord,
 } from "../lib/negotiations";
@@ -78,8 +89,9 @@ export function ClaimSection({
   const [recordLoadError, setRecordLoadError] = useState<string | null>(null);
   const [isLoadingRecord, setIsLoadingRecord] = useState(false);
   const [claimRecorded, setClaimRecorded] = useState(false);
-  const [pendingRecord, setPendingRecord] = useState<NegotiationAction | null>(null);
+  const [pendingRecord, setPendingRecord] = useState<ClaimReceiptAction | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
+  const [isSavingClaimRecord, setIsSavingClaimRecord] = useState(false);
   const [noticeCopied, setNoticeCopied] = useState(false);
   const [noticeStatus, setNoticeStatus] = useState<string | null>(null);
   const [isSendingTenantNotification, setIsSendingTenantNotification] = useState(false);
@@ -93,6 +105,8 @@ export function ClaimSection({
   >({});
   const restoredClaim = useRef(false);
   const recordRetryButton = useRef<HTMLButtonElement>(null);
+  const claimReceiptRetryButton = useRef<HTMLButtonElement>(null);
+  const pendingRecordStored = useRef(true);
   const itemFieldsets = useRef<Array<HTMLFieldSetElement | null>>([]);
   const pendingItemFocus = useRef<number | null>(null);
   const recordLoadProposalId = negotiationAccess?.role === "landlord"
@@ -109,12 +123,45 @@ export function ClaimSection({
     () => createAsyncOperationScope(recordLoadScope || "no-landlord-record"),
     [recordLoadScope],
   );
+  const pendingRecordKey =
+    negotiationAccess?.role === "landlord" && address
+      ? claimReceiptRecoveryKey({
+          agreementId: id.toString(),
+          proposalId: negotiationAccess.proposalId,
+          role: "landlord",
+          address,
+        })
+      : null;
+  const claimRecordScopeKey = JSON.stringify([id.toString(), pendingRecordKey]);
+  const claimRecordScope = useMemo(
+    () => createAsyncOperationScope(claimRecordScopeKey),
+    [claimRecordScopeKey],
+  );
 
   useEffect(() => {
     tenantNotificationScope.open();
     setIsSendingTenantNotification(false);
     return () => tenantNotificationScope.close();
   }, [tenantNotificationScope]);
+
+  useLayoutEffect(() => {
+    claimRecordScope.open();
+    setIsSavingClaimRecord(false);
+    const storage = getBrowserRecoveryStorage("session");
+    const recovered =
+      pendingRecordKey && storage
+        ? readRecoveryJson(pendingRecordKey, isClaimReceiptAction, storage)
+        : null;
+    pendingRecordStored.current = Boolean(recovered);
+    setPendingRecord(recovered);
+    setClaimRecorded(Boolean(recovered));
+    setRecordError(
+      recovered
+        ? "OpenEscrow recovered a confirmed testnet claim whose private activity receipt still needs to be saved. Retry the record save; do not submit another claim."
+        : null,
+    );
+    return () => claimRecordScope.close();
+  }, [claimRecordScope, pendingRecordKey]);
 
   useEffect(() => {
     if (!recordLoadProposalId || !recordLoadToken) {
@@ -173,6 +220,12 @@ export function ClaimSection({
     pendingItemFocus.current = null;
     itemFieldsets.current[index]?.focus({ preventScroll: true });
   }, [items]);
+
+  useLayoutEffect(() => {
+    if (pendingRecord && recordError && !isSavingClaimRecord) {
+      claimReceiptRetryButton.current?.focus({ preventScroll: true });
+    }
+  }, [isSavingClaimRecord, pendingRecord, recordError]);
 
   useEffect(() => {
     if (!record || restoredClaim.current || agreement.phase !== Phase.ClaimOpen) return;
@@ -287,21 +340,44 @@ export function ClaimSection({
     setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
-  async function saveClaimRecord(action: NegotiationAction) {
+  async function saveClaimRecord(action: ClaimReceiptAction) {
     if (!negotiationAccess || negotiationAccess.role !== "landlord") return;
+    const operationId = claimRecordScope.start();
     setRecordError(null);
+    setIsSavingClaimRecord(true);
     try {
       const updated = await negotiationAction(negotiationAccess, action);
+      const storage = getBrowserRecoveryStorage("session");
+      if (pendingRecordKey && storage) {
+        clearRecoveryJsonIf(
+          pendingRecordKey,
+          (value) =>
+            isClaimReceiptAction(value) && sameClaimReceipt(value, action),
+          storage,
+        );
+      }
+      if (!claimRecordScope.isCurrent(operationId)) return;
       setRecord(updated);
       setClaimRecorded(true);
-      setPendingRecord(null);
+      setPendingRecord((current) =>
+        sameClaimReceipt(current, action) ? null : current,
+      );
       onRefetch?.();
     } catch (cause) {
+      if (!claimRecordScope.isCurrent(operationId)) return;
+      const reloadWarning = pendingRecordStored.current
+        ? " This retry is kept only in this browser tab until it is saved."
+        : " This browser could not keep a reload-recovery copy, so keep this page open and retry now.";
+      const failureDetail = cause instanceof Error
+        ? `: ${cause.message.replace(/[.\s]+$/, "")}.`
+        : ".";
       setRecordError(
-        cause instanceof Error
-          ? `The onchain claim succeeded, but its activity record still needs to be saved: ${cause.message}`
-          : "The onchain claim succeeded, but its activity record still needs to be saved.",
+        `The onchain claim succeeded, but its activity record still needs to be saved${failureDetail}${reloadWarning}`,
       );
+    } finally {
+      if (claimRecordScope.isCurrent(operationId)) {
+        setIsSavingClaimRecord(false);
+      }
     }
   }
 
@@ -327,7 +403,7 @@ export function ClaimSection({
               }
             : {}),
         };
-    const action: NegotiationAction = amended
+    const action: ClaimReceiptAction = amended
       ? {
           type: "claim_amended" as const,
           amount,
@@ -352,7 +428,14 @@ export function ClaimSection({
           claimConfirmations,
           transactionHash,
         };
+    setClaimRecorded(true);
     setPendingRecord(action);
+    const storage = getBrowserRecoveryStorage("session");
+    pendingRecordStored.current = Boolean(
+      pendingRecordKey &&
+        storage &&
+        writeRecoveryJson(pendingRecordKey, action, storage),
+    );
     void saveClaimRecord(action);
   }
 
@@ -743,17 +826,28 @@ export function ClaimSection({
     }
   }
   const showNotice = agreement.phase === Phase.ClaimOpen || claimRecorded;
-  const recordRecovery = pendingRecord && recordError && (
-    <div className="receipt-recovery">
-      <p className="tx-error" role="alert">
-        {recordError}
-      </p>
+  const recordRecovery = pendingRecord && (
+    <div className="receipt-recovery" aria-busy={isSavingClaimRecord}>
+      {recordError && (
+        <p className="tx-error" role="alert">
+          {recordError}
+        </p>
+      )}
+      {isSavingClaimRecord && (
+        <p className="hint" role="status" aria-live="polite">
+          Saving the confirmed claim to the private activity record...
+        </p>
+      )}
       <button
+        ref={claimReceiptRetryButton}
         className="btn btn-ghost small"
         type="button"
+        disabled={isSavingClaimRecord}
         onClick={() => void saveClaimRecord(pendingRecord)}
       >
-        Retry saving claim receipt
+        {isSavingClaimRecord
+          ? "Saving claim receipt..."
+          : "Retry saving claim receipt"}
       </button>
     </div>
   );
@@ -792,6 +886,8 @@ export function ClaimSection({
              !itemsValid ||
              isClaimPolicyUnavailable ||
              !claimRequirementsConfirmed ||
+             claimRecorded ||
+             Boolean(pendingRecord) ||
              amountRaw === null ||
             amountRaw <= 0n ||
             amountRaw > agreement.depositAmount
@@ -872,6 +968,8 @@ export function ClaimSection({
             !itemsValid ||
             isClaimPolicyUnavailable ||
             !claimRequirementsConfirmed ||
+            claimRecorded ||
+            Boolean(pendingRecord) ||
             amountRaw === null ||
             amountRaw > agreement.claimedAmount
           }
@@ -917,6 +1015,19 @@ export function ClaimSection({
             )}
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (recordRecovery) {
+    return (
+      <div className="action-section">
+        <h3>Finish saving the confirmed claim</h3>
+        <p className="hint">
+          The testnet agreement has moved forward, but this private activity
+          receipt still needs the safe record-only retry below.
+        </p>
+        {recordRecovery}
       </div>
     );
   }

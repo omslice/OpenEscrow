@@ -14,6 +14,13 @@ import "../App.css";
 
 const LANDLORD = "0x1111111111111111111111111111111111111111" as const;
 const TENANT = "0x2222222222222222222222222222222222222222" as const;
+const search = new URLSearchParams(window.location.search);
+const role = search.get("role");
+const claimReceiptFlow = search.get("flow") === "claim-receipt";
+const claimTransactionWrites = Number(
+  window.sessionStorage.getItem("openescrow:test:claim-transaction-writes") ||
+    "0",
+);
 
 const agreement: Agreement = {
   landlord: LANDLORD,
@@ -23,7 +30,10 @@ const agreement: Agreement = {
   claimAmended: false,
   pendingArbiterConfirmed: false,
   tenant: TENANT,
-  phase: Phase.ClaimOpen,
+  phase:
+    claimReceiptFlow && claimTransactionWrites === 0
+      ? Phase.Active
+      : Phase.ClaimOpen,
   closeReason: 0,
   arbiter: ZERO_ADDRESS,
   pendingArbiter: ZERO_ADDRESS,
@@ -47,7 +57,6 @@ const agreement: Agreement = {
   withdrawn: 0n,
 };
 
-const role = new URLSearchParams(window.location.search).get("role");
 const access: NegotiationAccess = {
   proposalId: "OE-P-RECOVERY",
   role: role === "tenant" ? "tenant" : "landlord",

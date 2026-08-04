@@ -58,6 +58,11 @@ production custody, or reliance on the compliance research as legal advice.
   separately scoped from its follow-up record refresh: pending delivery cannot be double-sent,
   an account/access change discards stale completion, and a refresh-only outage retries without
   resending the email.
+- **Verified:** After a testnet claim confirms, its private receipt retry is saved only in the
+  current browser tab and is isolated by agreement, proposal, landlord wallet, and role without
+  storing the bearer token. A rendered outage-and-reload rehearsal proves the retry regains focus,
+  saves idempotently, clears only its matching recovery payload, and never submits a second
+  onchain claim.
 - **Verified:** The Record workspace now leads with plain-language report, private-backup, public-
   proof, and independent-check guidance. Encryption algorithms and raw fingerprints remain
   available in keyboard-accessible collapsed disclosures; the rendered rehearsal still proves
