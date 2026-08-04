@@ -31,8 +31,8 @@ production custody, or reliance on the compliance research as legal advice.
   agreement creator before another landlord receipt can be recorded; the recovered wallet is
   retained for later checks. Routine agreement, report, and canonical-snapshot reads now keep the
   bearer out of current-client URLs by using a strict authorization header; authenticated report
-  downloads remain usable, malformed-header downgrade attempts fail closed, and legacy query
-  access remains covered during migration.
+  downloads remain usable, and missing, malformed, or wrong authorization headers fail closed
+  without accepting an agreement bearer from a query string.
 - **Verified:** The release dependency audit blocks every high/critical finding and every unknown
   moderate advisory. The former transitive `uuid` advisory is removed from the locked
   wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector

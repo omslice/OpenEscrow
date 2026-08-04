@@ -251,9 +251,10 @@ MIME type. Evidence downloads and printable reports add no-referrer, no-sniffing
 restrictive content-security headers. Static app responses also receive no-referrer and no-sniffing
 headers. Current-client agreement, report, and canonical-snapshot reads carry their agreement
 bearer in the authorization header rather than the URL. The report control performs an
-authenticated fetch and starts a local browser download. Legacy query credentials remain readable
-for older clients, but a present malformed or wrong authorization header takes precedence and
-fails closed instead of downgrading to a valid query credential.
+authenticated fetch and starts a local browser download. The Worker ignores query-string
+credentials for all three private reads: a missing, malformed, or wrong authorization header
+fails closed, while a valid header remains authoritative even if the URL contains an unrelated
+query value.
 
 Compliance finalization now treats wallet preflight only as an audited readiness observation.
 The exact versioned official-source set is checked again before the receipt can be saved, and a

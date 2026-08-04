@@ -1360,9 +1360,23 @@ test("address resolution rejects incomplete or non-US geocoder records", () => {
 });
 
 function request(path, method = "GET", body) {
-  return new Request(`https://openescrow.example${path}`, {
+  const url = new URL(path, "https://openescrow.example");
+  const headers = method === "GET" ? {} : { "content-type": "application/json" };
+  if (
+    method === "GET" &&
+    /^\/api\/negotiations\/[a-zA-Z0-9-]+(?:\/(?:report|snapshot))?$/.test(
+      url.pathname,
+    ) &&
+    url.searchParams.has("token")
+  ) {
+    // Older test fixtures expressed private reads as URLs. Exercise the current
+    // header-only boundary without retaining bearer secrets in request targets.
+    headers.authorization = `Bearer ${url.searchParams.get("token")}`;
+    url.searchParams.delete("token");
+  }
+  return new Request(url, {
     method,
-    headers: method === "GET" ? undefined : { "content-type": "application/json" },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
 }
@@ -6027,7 +6041,7 @@ test("sensitive authorized reads reject cross-site browser requests without an O
   assert.equal(signedLinkEntryPoint.status, 404);
 });
 
-test("private agreement reads prefer a strict bearer header and retain legacy URL compatibility", async () => {
+test("private agreement reads require a strict bearer header and reject URL credentials", async () => {
   const db = new TestD1();
   const created = await create(db);
   const paths = [
@@ -6046,13 +6060,16 @@ test("private agreement reads prefer a strict bearer header and retain legacy UR
     assert.equal(authorized.headers.get("referrer-policy"), "no-referrer");
   }
 
-  const legacy = await worker.fetch(
-    request(
-      `${paths[0]}?token=${encodeURIComponent(created.access.tenant)}`,
-    ),
-    { DB: db },
-  );
-  assert.equal(legacy.status, 200);
+  for (const path of paths) {
+    const separator = path.includes("?") ? "&" : "?";
+    const queryOnly = await worker.fetch(
+      new Request(
+        `https://openescrow.example${path}${separator}token=${encodeURIComponent(created.access.tenant)}`,
+      ),
+      { DB: db },
+    );
+    assert.equal(queryOnly.status, 403, path);
+  }
 
   const malformedHeader = await worker.fetch(
     new Request(
@@ -6071,6 +6088,15 @@ test("private agreement reads prefer a strict bearer header and retain legacy UR
     { DB: db },
   );
   assert.equal(wrongBearer.status, 403);
+
+  const validBearerWithWrongQuery = await worker.fetch(
+    new Request(
+      `https://openescrow.example${paths[0]}?token=wrong-query-token`,
+      { headers: { authorization: `Bearer ${created.access.tenant}` } },
+    ),
+    { DB: db },
+  );
+  assert.equal(validBearerWithWrongQuery.status, 200);
 });
 
 test("pilot rehearsal: an evidence upload outage is retryable without a phantom record", async () => {

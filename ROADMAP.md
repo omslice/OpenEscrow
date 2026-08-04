@@ -139,8 +139,8 @@ the repository; they are not claims of legal approval or production readiness.
   retaining legacy read compatibility
 - [x] Current-client agreement, complete-report, and canonical-snapshot reads use strict bearer
   authorization headers and token-free paths; authenticated report downloads retain their filename,
-  report outages restore the retry control and keyboard focus, malformed-header downgrade attempts
-  fail closed, and older query clients remain compatible
+  report outages restore the retry control and keyboard focus, and missing, malformed, or wrong
+  headers fail closed without accepting a bearer secret from the URL
 - [x] Landlord-authorized optional-arbiter invitation rotation with old-link and account-session
   invalidation, verified-email rediscovery, and cross-account isolation, retained behind the
   disabled-by-default arbiter UI

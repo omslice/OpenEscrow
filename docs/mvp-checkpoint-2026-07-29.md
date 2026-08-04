@@ -373,6 +373,11 @@ detailed validation ledger.
 - **Verified:** Role-authorized agreement, report, snapshot, private-evidence, and notification
   preference reads reject cross-site browser requests even when `Origin` is absent. Public
   readiness and signed email-unsubscribe entry points remain available by design.
+- **Verified:** Agreement, complete-report, and canonical-snapshot reads now require a strict
+  authorization header. Query-only agreement bearers are rejected across all three routes, and a
+  malformed or wrong header cannot downgrade to a URL credential. Invitation entry remains
+  available because the client captures that capability into same-tab recovery, scrubs the page
+  URL, and uses the header-only API boundary afterward.
 - **Verified:** Closing the optional-yield dialog returns keyboard focus to the visible
   **Earn yield?** control instead of its hidden tooltip link. The deterministic browser check
   guards this focus return along with workspace tabs, proposal focus recovery, keyboard address
