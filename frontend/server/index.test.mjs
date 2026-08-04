@@ -9,6 +9,7 @@ import {
   calculateDeadline,
   evaluateCompliance,
   evaluateComplianceSnapshot,
+  isVersionedComplianceSnapshot,
   normalizeComplianceEventInstant,
   normalizeAddressResolution,
 } from "../shared/us-compliance-engine.js";
@@ -421,6 +422,25 @@ test("the implemented registry covers every state and the District of Columbia",
     ),
   );
   assert.ok(US_JURISDICTION_PROFILES.every((profile) => profile.legalReviewRequired));
+  for (const profile of US_JURISDICTION_PROFILES) {
+    const snapshot = buildComplianceSnapshot(profile, {
+      provider: "photon-openstreetmap",
+      providerFeatureId: `R:${profile.postalCode}:snapshot-schema`,
+      label: `1 Main Street, Test City, ${profile.postalCode} 00000`,
+      countryCode: "US",
+      stateCode: profile.postalCode,
+      city: "Test City",
+      county: "Test County",
+      postalCode: "00000",
+      latitude: 38,
+      longitude: -97,
+    });
+    assert.equal(
+      isVersionedComplianceSnapshot(snapshot),
+      true,
+      `Invalid generated snapshot for ${profile.code}.`,
+    );
+  }
   const recognizedConditionFacts = new Set([
     ...STATIC_COMPLIANCE_FACT_KEYS,
     ...Object.keys(DYNAMIC_COMPLIANCE_FACTS),
@@ -864,6 +884,76 @@ test("versioned compliance snapshots detach conditional rules from the live regi
     ).dueAt,
     "2027-02-01T12:00:00.000Z",
   );
+});
+
+test("versioned compliance snapshots reject malformed stored shapes and detach evaluations", () => {
+  const maineProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "ME",
+  );
+  const snapshot = buildComplianceSnapshot(maineProfile, {
+    provider: "photon-openstreetmap",
+    providerFeatureId: "R:maine:stored-shape",
+    label: "1 Main Street, Portland, ME 04101",
+    countryCode: "US",
+    stateCode: "ME",
+    city: "Portland",
+    county: "Cumberland County",
+    postalCode: "04101",
+    latitude: 43.6591,
+    longitude: -70.2568,
+  });
+  assert.equal(isVersionedComplianceSnapshot(snapshot), true);
+
+  const legacySnapshot = structuredClone(snapshot);
+  delete legacySnapshot.claimPolicy;
+  legacySnapshot.schema = "openescrow.us-compliance-profile.v3";
+  assert.equal(isVersionedComplianceSnapshot(legacySnapshot), true);
+
+  const malformedSnapshots = [
+    ["requirements are not a list", (candidate) => { candidate.requirements = "not-a-list"; }],
+    ["exceptions are not a list", (candidate) => { candidate.exceptions = null; }],
+    ["locality keys are not a list", (candidate) => { candidate.localityKeys = {}; }],
+    ["missing facts are not a list", (candidate) => { candidate.missingFacts = "unknown"; }],
+    ["unresolved overlays are not a list", (candidate) => { candidate.unresolvedOverlays = {}; }],
+    ["an overlay is null", (candidate) => { candidate.overlays = [null]; }],
+    ["overlay requirements are not a list", (candidate) => { candidate.overlays[0].requirements = "not-a-list"; }],
+    ["overlay sources are not a list", (candidate) => { candidate.overlays[0].sources = {}; }],
+    ["overlay deadlines are not a list", (candidate) => { candidate.overlays[0].deadlines = "not-a-list"; }],
+    ["claim attestations are not a list", (candidate) => { candidate.claimPolicy.commonAttestations = {}; }],
+    ["a recorded source is not HTTPS", (candidate) => { candidate.source.url = "http://example.test/rule"; }],
+    ["recorded facts contain a nested value", (candidate) => { candidate.facts.ownerOccupied = { forged: true }; }],
+    ["the address conflicts with the jurisdiction", (candidate) => { candidate.jurisdiction = "us-nv"; }],
+    ["local coverage is unknown", (candidate) => { candidate.localCoverage = "assumed-covered"; }],
+    ["the deposit cap is malformed", (candidate) => { candidate.depositCap.months = -1; }],
+  ];
+  for (const [label, mutate] of malformedSnapshots) {
+    const candidate = structuredClone(snapshot);
+    mutate(candidate);
+    assert.equal(
+      isVersionedComplianceSnapshot(candidate),
+      false,
+      label,
+    );
+    assert.equal(evaluateComplianceSnapshot(candidate), null, label);
+  }
+
+  const parsedSnapshot = structuredClone(snapshot);
+  const evaluation = evaluateComplianceSnapshot(parsedSnapshot, {
+    facts: { writtenRentalAgreement: true },
+    events: { possessionReturnedAt: "2027-01-02T12:00:00Z" },
+  });
+  assert.ok(evaluation);
+  assert.ok(Object.isFrozen(evaluation));
+  assert.ok(Object.isFrozen(evaluation.deadlines[0].condition));
+  assert.ok(Object.isFrozen(evaluation.overlays[0].sources[0]));
+  assert.notEqual(evaluation.deadlines[0].condition, parsedSnapshot.deadlines[0].condition);
+  assert.notEqual(evaluation.overlays[0].sources, parsedSnapshot.overlays[0].sources);
+  const evaluatedCitation = evaluation.overlays[0].sources[0].citation;
+  parsedSnapshot.overlays[0].sources[0].citation = "A later parsed-record mutation";
+  assert.equal(evaluation.overlays[0].sources[0].citation, evaluatedCitation);
+  assert.throws(() => {
+    evaluation.overlays[0].sources[0].citation = "A consumer mutation";
+  }, TypeError);
 });
 
 test("versioned business-day deadlines fail closed on unsupported rule metadata", () => {
@@ -2524,6 +2614,58 @@ test("address-routed compliance profiles require their exact version and deadlin
   assert.equal(forgedAttestation.status, 400);
 });
 
+test("reports fail closed on malformed saved compliance snapshots", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
+        tenantEmail: "tenant@example.com",
+        arbiterName: "",
+        arbiterEmail: null,
+        terms: newYorkResearchTerms,
+      }),
+      {
+        DB: db,
+        ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+      },
+    ),
+  );
+  const corruptedTerms = structuredClone(created.record.terms);
+  corruptedTerms.complianceSnapshot.requirements = "forged-requirements";
+  await db
+    .prepare("UPDATE agreement_negotiations SET terms_json = ? WHERE id = ?")
+    .bind(JSON.stringify(corruptedTerms), created.record.id)
+    .run();
+  const createdEvent = await db
+    .prepare(
+      "SELECT id, metadata_json FROM negotiation_events WHERE negotiation_id = ? AND action = 'proposal_created'",
+    )
+    .bind(created.record.id)
+    .first();
+  const corruptedEventMetadata = JSON.parse(createdEvent.metadata_json);
+  corruptedEventMetadata.terms.complianceSnapshot.requirements =
+    "forged-requirements";
+  await db
+    .prepare("UPDATE negotiation_events SET metadata_json = ? WHERE id = ?")
+    .bind(JSON.stringify(corruptedEventMetadata), createdEvent.id)
+    .run();
+
+  const response = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}/report?token=${created.access.landlord}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(response.status, 200);
+  const html = await response.text();
+  assert.match(html, /Recorded compliance details need review/);
+  assert.doesNotMatch(html, /forged-requirements/);
+  assert.equal(html.includes(newYorkProfile.requirements[0]), false);
+});
+
 test("monitored compliance sources fail closed for pending, changed, and stale profiles", async () => {
   const db = new TestD1();
   const monitoredEnv = {
@@ -2691,6 +2833,13 @@ test("monitored compliance sources fail closed for pending, changed, and stale p
     preflight.events.at(-1).metadata.sourceGateEnforced,
     true,
   );
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(
+      preflight.events.at(-1).metadata,
+      "expiresAt",
+    ),
+    false,
+  );
 
   await db
     .prepare(
@@ -2702,20 +2851,22 @@ test("monitored compliance sources fail closed for pending, changed, and stale p
     )
     .bind(new Date().toISOString())
     .run();
-  const finalizedAfterPreflight = await jsonResponse(
-    await act(
-      db,
-      createdProposal.record.id,
-      createdProposal.access.landlord,
-      {
-        type: "finalize",
-        agreementId: "74",
-        transactionHash: `0x${"7".repeat(64)}`,
-      },
-      { COMPLIANCE_SOURCE_MONITOR_ENABLED: "true" },
-    ),
+  const blockedAfterEnforcedPreflight = await act(
+    db,
+    createdProposal.record.id,
+    createdProposal.access.landlord,
+    {
+      type: "finalize",
+      agreementId: "74",
+      transactionHash: `0x${"7".repeat(64)}`,
+    },
+    { COMPLIANCE_SOURCE_MONITOR_ENABLED: "true" },
   );
-  assert.equal(finalizedAfterPreflight.status, "finalized");
+  assert.equal(blockedAfterEnforcedPreflight.status, 503);
+  assert.match(
+    (await blockedAfterEnforcedPreflight.json()).error,
+    /source changed/i,
+  );
 
   await db
     .prepare(

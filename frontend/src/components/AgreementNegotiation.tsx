@@ -5,6 +5,7 @@ import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import {
   CALIFORNIA_POLICY,
   evaluateSnapshotCompliance,
+  isVersionedComplianceSnapshot,
   jurisdictionLabel,
   jurisdictionProfile,
   type JurisdictionCode,
@@ -45,8 +46,18 @@ function Terms({ record }: { record: NegotiationRecord }) {
   const isLegacyCalifornia =
     terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
     terms.policyVersion === CALIFORNIA_POLICY.version;
-  const researchProfile = jurisdictionProfile(terms.jurisdiction);
-  const complianceSnapshot = terms.complianceSnapshot;
+  const storedComplianceSnapshot = terms.complianceSnapshot;
+  const complianceSnapshot = isVersionedComplianceSnapshot(
+    storedComplianceSnapshot,
+  )
+    ? storedComplianceSnapshot
+    : null;
+  const complianceSnapshotInvalid = Boolean(
+    storedComplianceSnapshot && !complianceSnapshot,
+  );
+  const researchProfile = storedComplianceSnapshot
+    ? null
+    : jurisdictionProfile(terms.jurisdiction);
   return (
     <dl className="negotiation-terms">
       <div><dt>Rental property</dt><dd>{terms.propertyAddress || "Legacy proposal: not recorded"}</dd></div>
@@ -168,6 +179,19 @@ function Terms({ record }: { record: NegotiationRecord }) {
                 Software output is not legal advice.
               </small>
             </details>
+          </dd>
+        </div>
+      )}
+      {complianceSnapshotInvalid && (
+        <div>
+          <dt>Compliance requirements</dt>
+          <dd>
+            <strong>Recorded compliance details need review.</strong>
+            <span>
+              OpenEscrow will not substitute today&apos;s rules for the agreement&apos;s
+              saved version. Preserve the record and contact support before relying on
+              its checklist or deadlines.
+            </span>
           </dd>
         </div>
       )}
@@ -477,8 +501,15 @@ function AgreementNegotiationView({
   const requiresAssetConsent = Boolean(
     record.terms.depositAssetId && reviewAsset?.consentRequired,
   );
-  const complianceSnapshot = record.terms.complianceSnapshot;
-  const activeComplianceProfile = jurisdictionProfile(record.terms.jurisdiction);
+  const storedComplianceSnapshot = record.terms.complianceSnapshot;
+  const complianceSnapshot = isVersionedComplianceSnapshot(
+    storedComplianceSnapshot,
+  )
+    ? storedComplianceSnapshot
+    : null;
+  const activeComplianceProfile = storedComplianceSnapshot
+    ? null
+    : jurisdictionProfile(record.terms.jurisdiction);
   const dynamicFactOptions = dynamicComplianceFactsForProfile(
     complianceSnapshot || activeComplianceProfile,
   );

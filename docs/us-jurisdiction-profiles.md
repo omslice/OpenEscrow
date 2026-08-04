@@ -214,10 +214,12 @@ again. Generic test agreements are not subject to this release gate.
 
 Before the wallet is asked to create an onchain agreement, the landlord client
 runs a server preflight for the exact approved revision. A successful preflight
-is recorded with a ten-minute expiry so a transaction authorized immediately
-before a monitor update can still have its receipt saved without leaving the
-onchain and private records inconsistent. Without that exact, unexpired
-preflight, finalization rechecks the source gate and refuses the action.
+is recorded for the audit trail, but it is not a waiver: receipt finalization
+rechecks the exact sources and fails closed if any source has since changed,
+gone stale, become pending, or fallen out of the versioned registry. If a source
+gate closes after a transaction is broadcast but before its receipt is saved,
+the private record remains unfinalized and the incident must be reconciled
+explicitly rather than silently accepting an outdated compliance state.
 
 After finalization, deadline calculations, reminders, and the agreement
 timeline use the immutable rules and overlays stored in that agreement's

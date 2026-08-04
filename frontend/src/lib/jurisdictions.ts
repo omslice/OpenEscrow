@@ -8,6 +8,7 @@ import {
   buildComplianceSnapshot as sharedBuildComplianceSnapshot,
   evaluateCompliance as sharedEvaluateCompliance,
   evaluateComplianceSnapshot as sharedEvaluateComplianceSnapshot,
+  isVersionedComplianceSnapshot as sharedIsVersionedComplianceSnapshot,
   normalizeAddressResolution as sharedNormalizeAddressResolution,
 } from "../../shared/us-compliance-engine.js";
 import {
@@ -293,6 +294,12 @@ export function evaluateSnapshotCompliance(
   },
 ) {
   return sharedEvaluateComplianceSnapshot(snapshot, input);
+}
+
+export function isVersionedComplianceSnapshot(
+  value: unknown,
+): value is ComplianceSnapshot {
+  return sharedIsVersionedComplianceSnapshot(value);
 }
 
 export function rememberJurisdiction(id: bigint, code: JurisdictionCode): void {

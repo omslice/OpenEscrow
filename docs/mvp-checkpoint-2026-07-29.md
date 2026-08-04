@@ -451,6 +451,15 @@ detailed validation ledger.
   pending until the duplicate-send control is proven disabled, eliminating a timing race from the
   rehearsal itself; delivery remains bound to the initiating access scope, and the record-only
   retry cannot resend it.
+- **Verified:** A successful finalization preflight no longer bypasses the exact official-source
+  gate if a required source changes, goes stale, becomes pending, or falls out of the registry
+  before receipt finalization. The preflight remains an audit event, but carries no temporary
+  waiver. A focused regression changes a required source after preflight and proves the proposal
+  stays unfinalized.
+- **Verified:** Versioned compliance snapshots now validate their stored collection, source,
+  fact, deposit-cap, overlay, and claim-policy shapes before use. Malformed D1-decoded snapshots
+  fail closed without throwing or falling back to current rules, while valid evaluations are
+  recursively copied and frozen so later parsed-record or consumer mutations cannot alter them.
 
 ## Remaining
 

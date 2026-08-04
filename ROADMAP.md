@@ -53,6 +53,11 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Strict event and holiday date validation rejects impossible dates, timezone-ambiguous
   event times, malformed holiday calendars, and inherited event fields without silently
   scheduling a deadline
+- [x] Finalization rechecks every required official source after wallet preflight; an earlier
+  preflight cannot waive a later changed, stale, pending, or incomplete source gate
+- [x] Stored v3/v4 snapshot boundaries reject malformed requirements, overlays, sources, facts,
+  deposit caps, and claim-policy collections; valid parsed evaluations are detached and deeply
+  immutable instead of retaining mutable D1-decoded references
 - [x] Address-routed proposals show the profile research date and official state source, with a
   version-pinned source recheck that rejects mismatched responses, treats unreachable sources as
   needing attention, bounds simultaneous checks, preserves a newer result from an older late

@@ -5873,9 +5873,6 @@ async function applyAction(request, env, id) {
     if (!sourceGate.allowed) {
       return complianceSourceGateResponse(sourceGate);
     }
-    const expiresAt = new Date(
-      new Date(now).getTime() + 10 * 60 * 1000,
-    ).toISOString();
     statements.push(
       db.prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?").bind(now, id),
       eventStatement(
@@ -5890,7 +5887,6 @@ async function applyAction(request, env, id) {
           policyVersion: approvedTerms.policyVersion,
           sourceGateEnforced: sourceGate.enforced,
           sourceKeys: sourceGate.sources.map((sourceItem) => sourceItem.key),
-          expiresAt,
         },
       ),
     );
@@ -6217,28 +6213,7 @@ async function applyAction(request, env, id) {
     }
     const sourceGate = await complianceSourceGate(approvedTerms, env);
     if (!sourceGate.allowed) {
-      const recentPreflight = recordedEvents.some(
-        (event) => {
-          const sourceKeys = Array.isArray(event.metadata?.sourceKeys)
-            ? event.metadata.sourceKeys
-            : [];
-          return (
-            event.action === "finalization_preflight_passed" &&
-            Number(event.revision) === revision &&
-            event.metadata?.sourceGateEnforced === true &&
-            sourceGate.sources.length > 0 &&
-            sourceKeys.length === sourceGate.sources.length &&
-            sourceGate.sources.every((sourceItem) =>
-              sourceKeys.includes(sourceItem.key),
-            ) &&
-            new Date(event.metadata?.expiresAt || 0).getTime() >=
-              new Date(now).getTime()
-          );
-        },
-      );
-      if (!recentPreflight) {
-        return complianceSourceGateResponse(sourceGate);
-      }
+      return complianceSourceGateResponse(sourceGate);
     }
     const agreementId = cleanText(body.agreementId, 80);
     const transactionHash = cleanText(body.transactionHash, 100);
@@ -8580,15 +8555,23 @@ async function report(db, id, token, download = false) {
     const isCalifornia =
       candidate.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
       candidate.policyVersion === CALIFORNIA_POLICY.version;
-    const researchProfile = US_JURISDICTION_PROFILE_BY_CODE[candidate.jurisdiction];
+    const jurisdictionProfile =
+      US_JURISDICTION_PROFILE_BY_CODE[candidate.jurisdiction];
+    const storedComplianceSnapshot = candidate.complianceSnapshot;
     const complianceSnapshot =
-      candidate.complianceSnapshot?.schema ===
+      storedComplianceSnapshot?.schema ===
         "openescrow.us-compliance-profile.v2" ||
-      isVersionedComplianceSnapshot(candidate.complianceSnapshot)
-        ? candidate.complianceSnapshot
+      isVersionedComplianceSnapshot(storedComplianceSnapshot)
+        ? storedComplianceSnapshot
         : null;
+    const complianceSnapshotInvalid = Boolean(
+      storedComplianceSnapshot && !complianceSnapshot,
+    );
+    const researchProfile = storedComplianceSnapshot
+      ? null
+      : jurisdictionProfile;
     const jurisdiction =
-      researchProfile?.label ||
+      jurisdictionProfile?.label ||
       (isCalifornia
         ? "California residential tenancy"
         : "Non-specific jurisdiction (testing only)");
@@ -8648,6 +8631,7 @@ ${record.arbiterEmail ? `<tr><th>OpenEscrow arbiter period</th><td>${escapeHtml(
 <tr><th>Jurisdiction</th><td>${escapeHtml(jurisdiction)}</td></tr>
 <tr><th>Policy profile</th><td>${escapeHtml(candidate.policyVersion || "Legacy proposal")}</td></tr>
 ${resolvedLocation ? `<tr><th>Validated location</th><td>${escapeHtml([resolvedLocation.city, resolvedLocation.county, resolvedLocation.stateCode, resolvedLocation.postalCode].filter(Boolean).join(", "))}<br><small>Photon/OpenStreetMap feature ${escapeHtml(resolvedLocation.providerFeatureId)}</small></td></tr>` : ""}
+${complianceSnapshotInvalid ? `<tr><th>Compliance requirements</th><td><strong>Recorded compliance details need review.</strong><br>OpenEscrow did not substitute todayâ€™s rules for the agreementâ€™s saved version. Preserve the record and reconcile the saved snapshot before relying on its checklist or deadlines.</td></tr>` : ""}
 ${claimPacket ? `<tr><th>Versioned claim packet</th><td>${claimPacket}</td></tr>` : ""}
 ${deadlineRules.length ? `<tr><th>Compliance deadline paths</th><td>${deadlinePaths}</td></tr><tr><th>Applied statewide requirements</th><td>${requirements}</td></tr>${overlayRequirements ? `<tr><th>Federal and program overlays</th><td>${overlayRequirements}</td></tr>` : ""}<tr><th>Unresolved coverage</th><td>${(complianceSnapshot?.unresolvedOverlays || ["Confirm local, federal, housing-program, and fact-specific overlays."]).map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")}<small>Software output is not legal advice.</small></td></tr>` : ""}
 ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordException ? "Qualifying small-landlord exception asserted" : "Standard one-month cap"}${candidate.tenantIsServiceMember ? " · tenant is a service member" : ""}</td></tr>` : ""}`;
@@ -8657,10 +8641,15 @@ ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordExc
       (event) => `<tr><td>${escapeHtml(event.createdAt)}</td><td>${escapeHtml(event.actorRole)}</td><td>${escapeHtml(event.summary)}</td></tr>`,
     )
     .join("");
+  const reportComplianceSnapshot = isVersionedComplianceSnapshot(
+    terms.complianceSnapshot,
+  )
+    ? terms.complianceSnapshot
+    : null;
   const claimAttestationLabels = new Map(
     [
-      ...(terms.complianceSnapshot?.claimPolicy?.commonAttestations || []),
-      ...(terms.complianceSnapshot?.claimPolicy?.stateAttestations || []),
+      ...(reportComplianceSnapshot?.claimPolicy?.commonAttestations || []),
+      ...(reportComplianceSnapshot?.claimPolicy?.stateAttestations || []),
     ].map((attestation) => [attestation.id, attestation.label]),
   );
   const claimBreakdowns = record.events

@@ -249,8 +249,16 @@ authenticated fetch and starts a local browser download. Legacy query credential
 for older clients, but a present malformed or wrong authorization header takes precedence and
 fails closed instead of downgrading to a valid query credential.
 
+Compliance finalization now treats wallet preflight only as an audited readiness observation.
+The exact versioned official-source set is checked again before the receipt can be saved, and a
+later changed, stale, pending, or incomplete source state cannot be waived by that earlier event.
+Stored v3/v4 snapshots also cross a structural validation boundary before deadline, claim, report,
+or workspace use. Malformed collections and nested source/fact/cap/overlay/policy shapes fail
+closed; valid JSON-decoded evaluations are recursively copied and frozen so mutable database
+objects cannot alter an evaluation after it is produced.
+
 Automated coverage at this addendum is 221 passing Solidity tests across 20 suites, including the
-three 32,768-call stateful invariants and 512-run fuzz cases, plus 87 passing hosted workflow tests.
+three 32,768-call stateful invariants and 512-run fuzz cases, plus 98 passing hosted workflow tests.
 The workflow suite contains a complete two-tenant/optional-arbiter negotiation, funding, claim,
 response, dispute, ruling, refund, and withdrawal scenario. Receipt regressions independently
 reject wrong finalization participants, amounts, and tokens; another tenant's funding event;
@@ -271,6 +279,10 @@ not deployed until a new version-matched registry is broadcast and validated.
 - Receipt verification depends on a Base Sepolia RPC endpoint. A temporary provider outage can
   delay saving the readable receipt record, although it does not alter the completed onchain
   transaction and the UI retains a retry path.
+- A compliance source can close between transaction broadcast and private receipt persistence.
+  The source gate intentionally stays closed even after a successful preflight, so the transaction
+  hash and private proposal must be preserved and explicitly reconciled; the application does not
+  silently finalize against a newly blocked source state.
 - Older finalized records created before landlord-wallet capture now re-verify their stored
   finalization receipt, exact approved terms and participants, selected token, and creating
   landlord before accepting another landlord receipt. The recovered wallet is preserved in the

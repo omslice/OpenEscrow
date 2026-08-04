@@ -11,6 +11,18 @@ const VERSIONED_COMPLIANCE_SNAPSHOT_SCHEMAS = new Set([
 ]);
 const DEADLINE_DAY_TYPES = new Set(["calendar", "business"]);
 const DEADLINE_COMPARISONS = new Set(["earlier-of", "later-of"]);
+const SNAPSHOT_LOCAL_COVERAGE = new Set([
+  "reviewed-overlay-applied",
+  "unreviewed-locality",
+]);
+const SNAPSHOT_OVERLAY_APPLICABILITY = new Set(["applies", "needs-fact"]);
+const SNAPSHOT_OVERLAY_SCOPES = new Set([
+  "federal",
+  "federal-program",
+  "state",
+  "county",
+  "city",
+]);
 
 function cloneAndFreeze(value) {
   if (Array.isArray(value)) {
@@ -35,6 +47,104 @@ function finiteCoordinate(value, minimum, maximum) {
   return Number.isFinite(number) && number >= minimum && number <= maximum
     ? number
     : null;
+}
+
+function isRecord(value) {
+  return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function validStoredText(value, maxLength = 2_000) {
+  return (
+    typeof value === "string" &&
+    value.trim().length > 0 &&
+    value.length <= maxLength
+  );
+}
+
+function validStoredTextList(value, maxItems = 500) {
+  return (
+    Array.isArray(value) &&
+    value.length <= maxItems &&
+    value.every((item) => validStoredText(item))
+  );
+}
+
+function validSnapshotSource(value) {
+  if (
+    !isRecord(value) ||
+    !validStoredText(value.citation) ||
+    !validStoredText(value.url)
+  ) {
+    return false;
+  }
+  try {
+    return new URL(value.url).protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function validSnapshotDepositCap(value) {
+  if (
+    !isRecord(value) ||
+    !validStoredText(value.summary) ||
+    (value.kind !== "months-rent" && value.kind !== "manual")
+  ) {
+    return false;
+  }
+  return value.kind === "months-rent"
+    ? Number.isFinite(value.months) && value.months > 0
+    : value.months === null;
+}
+
+function validSnapshotAttestation(value) {
+  return Boolean(
+    isRecord(value) &&
+      validStoredText(value.id, 120) &&
+      validStoredText(value.label) &&
+      (value.basis === "openescrow-safeguard" ||
+        value.basis === "state-source") &&
+      validStoredTextList(value.appliesToCategoryIds, 100),
+  );
+}
+
+function validSnapshotClaimPolicy(value) {
+  return Boolean(
+    isRecord(value) &&
+      value.schema === "openescrow.claim-policy.v1" &&
+      validStoredText(value.version, 200) &&
+      validStoredTextList(value.allowedCategoryIds, 100) &&
+      Array.isArray(value.commonAttestations) &&
+      value.commonAttestations.length <= 100 &&
+      value.commonAttestations.every(validSnapshotAttestation) &&
+      Array.isArray(value.stateAttestations) &&
+      value.stateAttestations.length <= 100 &&
+      value.stateAttestations.every(validSnapshotAttestation) &&
+      validStoredTextList(value.stateInstructions) &&
+      validSnapshotSource(value.source) &&
+      value.legalReviewRequired === true,
+  );
+}
+
+function validSnapshotOverlay(value) {
+  return Boolean(
+    isRecord(value) &&
+      validStoredText(value.id, 120) &&
+      SNAPSHOT_OVERLAY_SCOPES.has(value.scope) &&
+      validStoredText(value.label) &&
+      validStoredText(value.version, 200) &&
+      SNAPSHOT_OVERLAY_APPLICABILITY.has(value.applicability) &&
+      Array.isArray(value.sources) &&
+      value.sources.length > 0 &&
+      value.sources.length <= 100 &&
+      value.sources.every(validSnapshotSource) &&
+      validStoredTextList(value.requirements) &&
+      Array.isArray(value.deadlines) &&
+      value.deadlines.length <= 500 &&
+      (value.privacyNote === null ||
+        (typeof value.privacyNote === "string" &&
+          value.privacyNote.length <= 2_000)),
+  );
 }
 
 export function normalizeAddressResolution(value) {
@@ -71,11 +181,40 @@ export function normalizeAddressResolution(value) {
 }
 
 export function isVersionedComplianceSnapshot(value) {
-  return Boolean(
-    value &&
-      typeof value === "object" &&
-      VERSIONED_COMPLIANCE_SNAPSHOT_SCHEMAS.has(value.schema),
-  );
+  const address = isRecord(value)
+    ? normalizeAddressResolution(value.address)
+    : null;
+  if (
+    !isRecord(value) ||
+    !VERSIONED_COMPLIANCE_SNAPSHOT_SCHEMAS.has(value.schema) ||
+    !/^us-[a-z]{2}$/.test(value.jurisdiction) ||
+    !address ||
+    value.jurisdiction !== `us-${address.stateCode.toLowerCase()}` ||
+    !validStoredText(value.profileVersion, 200) ||
+    !validStoredText(value.researchedOn, 40) ||
+    !validStoredText(value.reviewMethod) ||
+    !validSnapshotSource(value.source) ||
+    !isRecord(value.facts) ||
+    !Object.values(value.facts).every(isComplianceScalar) ||
+    !validStoredTextList(value.localityKeys, 100) ||
+    !SNAPSHOT_LOCAL_COVERAGE.has(value.localCoverage) ||
+    !validSnapshotDepositCap(value.depositCap) ||
+    !Array.isArray(value.deadlines) ||
+    value.deadlines.length > 500 ||
+    !validStoredTextList(value.requirements) ||
+    !validStoredTextList(value.exceptions) ||
+    !Array.isArray(value.overlays) ||
+    value.overlays.length > 500 ||
+    !value.overlays.every(validSnapshotOverlay) ||
+    !validStoredTextList(value.missingFacts, 500) ||
+    !validStoredTextList(value.unresolvedOverlays, 500)
+  ) {
+    return false;
+  }
+  return value.schema === "openescrow.us-compliance-profile.v3"
+    ? value.claimPolicy === undefined ||
+        validSnapshotClaimPolicy(value.claimPolicy)
+    : validSnapshotClaimPolicy(value.claimPolicy);
 }
 
 export function addressResolutionMatchesProfile(resolution, profile) {
@@ -583,11 +722,9 @@ export function evaluateComplianceSnapshot(snapshot, input = {}) {
     return null;
   }
   const inputFacts =
-    input.facts && typeof input.facts === "object" ? input.facts : {};
+    isRecord(input.facts) ? input.facts : {};
   const rawFacts = {
-    ...(snapshot.facts && typeof snapshot.facts === "object"
-      ? snapshot.facts
-      : {}),
+    ...snapshot.facts,
     ...inputFacts,
   };
   const facts = Object.freeze({
@@ -595,7 +732,7 @@ export function evaluateComplianceSnapshot(snapshot, input = {}) {
     ...normalizeComplianceFacts(rawFacts),
   });
   const events =
-    input.events && typeof input.events === "object" ? input.events : {};
+    isRecord(input.events) ? input.events : {};
   const holidayDates = Object.prototype.hasOwnProperty.call(
     input,
     "holidayDates",
@@ -632,7 +769,7 @@ export function evaluateComplianceSnapshot(snapshot, input = {}) {
         .filter(Boolean),
     ),
   ];
-  return Object.freeze({
+  return cloneAndFreeze({
     jurisdiction: snapshot.jurisdiction,
     profileVersion: snapshot.profileVersion,
     status: "versioned-snapshot",
@@ -648,16 +785,14 @@ export function evaluateComplianceSnapshot(snapshot, input = {}) {
     ),
     deadlines: Object.freeze(deadlines),
     combinedDeadlines: Object.freeze(combinedDeadlines),
-    requirements: Object.freeze([...(snapshot.requirements || [])]),
-    exceptions: Object.freeze([...(snapshot.exceptions || [])]),
+    requirements: snapshot.requirements,
+    exceptions: snapshot.exceptions,
     facts,
-    overlays: Object.freeze(overlayEvaluations),
-    localityKeys: Object.freeze([...(snapshot.localityKeys || [])]),
+    overlays: overlayEvaluations,
+    localityKeys: snapshot.localityKeys,
     localCoverage: snapshot.localCoverage,
     missingFacts: Object.freeze(missingFacts),
-    unresolvedOverlays: Object.freeze([
-      ...(snapshot.unresolvedOverlays || []),
-    ]),
+    unresolvedOverlays: snapshot.unresolvedOverlays,
     generatedAt: new Date().toISOString(),
   });
 }

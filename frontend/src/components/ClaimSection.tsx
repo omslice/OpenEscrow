@@ -3,7 +3,10 @@ import { useAccount } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
 import { agreementReference } from "../lib/displayIds";
 import { formatUSDC, parseUSDC } from "../lib/format";
-import { CALIFORNIA_POLICY } from "../lib/jurisdictions";
+import {
+  CALIFORNIA_POLICY,
+  isVersionedComplianceSnapshot,
+} from "../lib/jurisdictions";
 import {
   copyTextToClipboard,
   openExternalWindow,
@@ -197,9 +200,23 @@ export function ClaimSection({
   const isCaliforniaPolicy =
     record?.terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
     record.terms.policyVersion === CALIFORNIA_POLICY.version;
-  const versionedClaimPolicy = record?.terms.complianceSnapshot?.claimPolicy;
+  const storedComplianceSnapshot = record?.terms.complianceSnapshot;
+  const complianceSnapshot = isVersionedComplianceSnapshot(
+    storedComplianceSnapshot,
+  )
+    ? storedComplianceSnapshot
+    : null;
+  const complianceSnapshotInvalid = Boolean(
+    storedComplianceSnapshot && !complianceSnapshot,
+  );
+  const versionedClaimPolicy = complianceSnapshot?.claimPolicy;
   const isClaimPolicyLoading = Boolean(negotiationAccess && isLoadingRecord);
-  const isClaimPolicyUnavailable = Boolean(negotiationAccess && !record);
+  const isClaimPolicyUnavailable = Boolean(
+    negotiationAccess && (!record || complianceSnapshotInvalid),
+  );
+  const claimRequirementsError = complianceSnapshotInvalid
+    ? "OpenEscrow could not validate this agreement's saved claim requirements. Preserve the record and contact support before submitting or amending a deduction."
+    : recordLoadError;
   const amount = amountRaw === null ? "" : formatUSDC(amountRaw);
   const evidenceType =
     items.length === 1 ? Number(items[0].category) : Number("13");
@@ -369,14 +386,14 @@ export function ClaimSection({
 
   const itemEditor = (
     <div className="claim-line-items">
-      {recordLoadError && (
+      {claimRequirementsError && (
         <div
           className="receipt-recovery"
           role="alert"
           aria-label="Private claim requirements could not be loaded"
           aria-busy={isLoadingRecord}
         >
-          <p className="tx-error">{recordLoadError}</p>
+          <p className="tx-error">{claimRequirementsError}</p>
           <button
             ref={recordRetryButton}
             className="btn btn-ghost small"
