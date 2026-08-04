@@ -76,6 +76,12 @@ production custody, or reliance on the compliance research as legal advice.
   restore focus to the one safe receipt retry, and prove the wallet action count stays at one.
   Recovery payloads contain no bearer access, and concurrent withdrawal retries return an
   idempotent result only to the exact invited tenant that recorded the receipt.
+- **Verified:** The server's receipt-replay shortcut now exact-binds multi-tenant operations-
+  reserve, deposit-funding, withdrawal, response, and deadline actions. Concurrent retries from
+  the initiating tenant resolve to one append-only event, while a co-tenant cannot reuse the same
+  transaction hash to receive a false-success response. New deadline events carry the initiating
+  tenant ID; historical single-tenant receipts retain their compatible retry behavior, while an
+  unattributed historical receipt on a multi-tenant agreement fails closed.
 - **Verified:** The Record workspace now leads with plain-language report, private-backup, public-
   proof, and independent-check guidance. Encryption algorithms and raw fingerprints remain
   available in keyboard-accessible collapsed disclosures; the rendered rehearsal still proves

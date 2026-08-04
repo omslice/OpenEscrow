@@ -186,6 +186,10 @@ the repository; they are not claims of legal approval or production readiness.
   bearer-free same-tab recovery across reload and account switches; focused 44-pixel record-only
   retries cannot submit a second transaction, and withdrawal replays remain bound to the exact
   invited tenant under concurrent D1 writes
+- [x] Multi-tenant reserve, deposit-funding, withdrawal, response, and deadline receipt retries
+  return idempotent success only to the exact invited tenant that recorded the transaction;
+  simultaneous same-tenant retries remain one immutable D1 event, co-tenant replay conflicts, and
+  historical receipts without participant attribution fail closed on multi-tenant agreements
 - [x] Public-receipt recovery contains unexpected retry failures, shows plain-language feedback,
   restores the exact retry control after every failed attempt in React's committed layout phase,
   and proves repeated keyboard recovery without duplicating an agreement action

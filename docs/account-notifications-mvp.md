@@ -57,8 +57,11 @@ keys are scoped to the proposal, agreement, role where applicable, and active wa
 response, ruling, withdrawal, and deadline-action payloads do not contain invitation or
 account-session bearer access. Server-side transaction actions are idempotent by transaction
 hash, and an append-only receipt guard prevents simultaneous retries from duplicating the event
-timeline. Response and tenant-withdrawal retries must also match the exact invited tenant, and
-ruling retries must match the appointed arbiter, before the server returns an existing event.
+timeline. Reserve, deposit-funding, response, tenant-withdrawal, and tenant-triggered deadline
+retries must also match the exact invited tenant, and ruling retries must match the appointed
+arbiter, before the server returns an existing event. Historical single-tenant events that predate
+participant metadata retain their compatible idempotent behavior; an unattributed receipt on a
+multi-tenant agreement fails closed instead of guessing which tenant submitted it.
 Browser storage is treated as best-effort: blocked storage cannot interrupt the D1 receipt update,
 corrupt recovery values are discarded, and an in-memory retry remains available for the current
 page session. A browser that blocks storage cannot preserve that retry across a refresh, so the

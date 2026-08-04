@@ -85,6 +85,15 @@ CREATE TABLE IF NOT EXISTS negotiation_receipt_guards (
   FOREIGN KEY (negotiation_id) REFERENCES agreement_negotiations(id) ON DELETE CASCADE
 )`;
 
+const TENANT_BOUND_RECEIPT_REPLAY_ACTIONS = new Set([
+  "operations_reserve_paid",
+  "tenant_share_funded",
+  "agreement_funded",
+  "claim_response",
+  "withdrawal_completed",
+  "timeout_executed",
+]);
+
 const RECEIPT_GUARDS_BACKFILL = `
 INSERT OR IGNORE INTO negotiation_receipt_guards
   (negotiation_id, action, transaction_hash, created_at)
@@ -5883,13 +5892,19 @@ async function authorizedReceiptReplay({
   );
   if (!recorded || recorded.actorRole !== role) return false;
   const tenantBoundReplay =
-    role === "tenant" &&
-    (actionType === "claim_response" ||
-      actionType === "withdrawal_completed");
+    role === "tenant" && TENANT_BOUND_RECEIPT_REPLAY_ACTIONS.has(actionType);
   if (!tenantBoundReplay) return true;
-
   const tenant = await tenantForToken(db, id, token);
-  return Boolean(tenant && recorded.metadata?.tenantId === tenant.id);
+  if (!tenant) return false;
+  if (!Object.prototype.hasOwnProperty.call(recorded.metadata || {}, "tenantId")) {
+    // Historical single-tenant receipts predate participant metadata. Preserve
+    // only that legacy shape; multi-tenant records fail closed when the actor
+    // cannot be attributed to an exact participant.
+    const tenantRows = await tenantsFor(db, id);
+    return tenantRows.length === 1 && tenantRows[0]?.id === tenant.id;
+  }
+
+  return recorded.metadata?.tenantId === tenant.id;
 }
 
 async function applyAction(request, env, id) {
@@ -7607,6 +7622,14 @@ async function applyAction(request, env, id) {
       return json({ error: "This deadline action is already recorded." }, 409);
     }
     const tenantRows = await tenantsFor(db, id);
+    const actingTenant =
+      role === "tenant" ? await tenantForToken(db, id, body.token) : null;
+    if (role === "tenant" && !actingTenant) {
+      return json(
+        { error: "Only an invited tenant may record this deadline action." },
+        403,
+      );
+    }
     const dispute = claimDisputeState(recordedEvents, tenantRows);
     if (timeout === "no_claim_refund") {
       if (role !== "tenant") {
@@ -7659,7 +7682,11 @@ async function applyAction(request, env, id) {
         "timeout_executed",
         `${timeoutLabels[timeout]} in transaction ${transactionHash}.`,
         revision,
-        { timeout, transactionHash },
+        {
+          timeout,
+          transactionHash,
+          tenantId: actingTenant?.id || null,
+        },
       ),
     );
   } else {

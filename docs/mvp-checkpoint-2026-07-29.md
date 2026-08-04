@@ -308,6 +308,12 @@ detailed validation ledger.
   D1 save. The rendered 390-pixel rehearsals change accounts, reload, restore focus to a 44-pixel
   record-only retry, and prove each wallet action remains single-submit with no bearer token in
   browser recovery. Concurrent withdrawal retries are atomic and exact-tenant bound.
+- **Verified:** Multi-tenant reserve, deposit-funding, response, withdrawal, and deadline receipt
+  retries now authorize the exact invited tenant before returning an existing event. Concurrent
+  same-tenant writes remain idempotent, co-tenant reuse of the hash conflicts, and new deadline
+  events retain the initiating tenant ID without rewriting historical records. Old receipts without
+  participant attribution remain compatible only on single-tenant agreements and otherwise fail
+  closed.
 - **Verified:** The optional-yield dialog has explicit heading-to-card spacing and larger asset
   badges, with a rendered 80%-zoom regression. Technical hashes and receipt text in the Record
   activity feed now sit behind **Details for verification**, while the main feed uses

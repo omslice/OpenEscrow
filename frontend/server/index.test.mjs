@@ -8796,6 +8796,76 @@ test("transaction receipt retries are atomic and remain bound to the exact parti
       transactionHash: transactionHash(151),
     }),
   );
+
+  const reservePayment = {
+    type: "operations_reserve_paid",
+    amount: "2.5",
+    transactionHash: transactionHash(150),
+  };
+  const concurrentReservePayments = await Promise.all([
+    act(
+      db,
+      created.record.id,
+      created.access.tenants[0].token,
+      reservePayment,
+    ),
+    act(
+      db,
+      created.record.id,
+      created.access.tenants[0].token,
+      reservePayment,
+    ),
+  ]);
+  assert.deepEqual(
+    concurrentReservePayments.map((response) => response.status),
+    [200, 200],
+  );
+  const crossTenantReserveReplay = await act(
+    db,
+    created.record.id,
+    created.access.tenants[1].token,
+    reservePayment,
+  );
+  assert.equal(crossTenantReserveReplay.status, 409);
+  assert.match(
+    (await crossTenantReserveReplay.json()).error,
+    /already assigned to another participant action/,
+  );
+
+  const shareFunding = {
+    type: "tenant_share_funded",
+    amount: "720",
+    transactionHash: transactionHash(149),
+  };
+  const concurrentShareFunding = await Promise.all([
+    act(
+      db,
+      created.record.id,
+      created.access.tenants[0].token,
+      shareFunding,
+    ),
+    act(
+      db,
+      created.record.id,
+      created.access.tenants[0].token,
+      shareFunding,
+    ),
+  ]);
+  assert.deepEqual(
+    concurrentShareFunding.map((response) => response.status),
+    [200, 200],
+  );
+  const crossTenantShareReplay = await act(
+    db,
+    created.record.id,
+    created.access.tenants[1].token,
+    { ...shareFunding, amount: "480" },
+  );
+  assert.equal(crossTenantShareReplay.status, 409);
+  assert.match(
+    (await crossTenantShareReplay.json()).error,
+    /already assigned to another participant action/,
+  );
   await submitStandardClaim(db, created, {
     amount: "300",
     transactionByte: "c",
@@ -8835,7 +8905,7 @@ test("transaction receipt retries are atomic and remain bound to the exact parti
   assert.equal(crossTenantReplay.status, 409);
   assert.match(
     (await crossTenantReplay.json()).error,
-    /already assigned to another participant action/,
+    /already recorded|already assigned to another participant action/,
   );
   await jsonResponse(
     await act(db, created.record.id, created.access.tenants[1].token, {
@@ -8927,15 +8997,163 @@ test("transaction receipt retries are atomic and remain bound to the exact parti
     1,
   );
   assert.equal(
+    record.events.filter(
+      (event) => event.action === "operations_reserve_paid",
+    ).length,
+    1,
+  );
+  assert.equal(
+    record.events.filter((event) => event.action === "tenant_share_funded")
+      .length,
+    1,
+  );
+  assert.equal(
     db.database
       .prepare(
         `SELECT COUNT(*) AS count
          FROM negotiation_receipt_guards
          WHERE negotiation_id = ?
-           AND action IN ('claim_response_submitted', 'arbiter_ruling_submitted', 'withdrawal_completed')`,
+           AND action IN ('operations_reserve_paid', 'tenant_share_funded', 'claim_response_submitted', 'arbiter_ruling_submitted', 'withdrawal_completed')`,
       )
       .get(created.record.id).count,
-    4,
+    6,
+  );
+});
+
+test("deadline receipt retries are atomic and exact-tenant bound", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenants: [
+          {
+            name: "Terry Tenant",
+            email: "tenant@example.com",
+            depositShareBps: 6000,
+          },
+          {
+            name: "Casey Co-tenant",
+            email: "casey@example.com",
+            depositShareBps: 4000,
+          },
+        ],
+        arbiterName: "",
+        arbiterEmail: null,
+        terms,
+      }),
+      { DB: db },
+    ),
+  );
+  for (const [index, tenant] of created.access.tenants.entries()) {
+    await jsonResponse(
+      await act(db, created.record.id, tenant.token, {
+        type: "approve",
+        wallet:
+          index === 0
+            ? "0x1111111111111111111111111111111111111111"
+            : "0x2222222222222222222222222222222222222222",
+      }),
+    );
+  }
+  await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "finalize",
+      agreementId: "152",
+      transactionHash: transactionHash(156),
+    }),
+  );
+
+  const historicalReserveHash = transactionHash(158);
+  db.database
+    .prepare(
+      `INSERT INTO negotiation_events
+       (negotiation_id, created_at, actor_role, action, summary, revision,
+        metadata_json)
+       VALUES (?, ?, 'tenant', 'operations_reserve_paid', ?, 1, ?)`,
+    )
+    .run(
+      created.record.id,
+      "2026-08-04T00:00:00.000Z",
+      "Historical unscoped reserve receipt.",
+      JSON.stringify({
+        amount: "2.5",
+        token: "testUSDC",
+        transactionHash: historicalReserveHash,
+      }),
+    );
+  const unscopedCrossTenantReplay = await act(
+    db,
+    created.record.id,
+    created.access.tenants[1].token,
+    {
+      type: "operations_reserve_paid",
+      amount: "2.5",
+      transactionHash: historicalReserveHash,
+    },
+  );
+  assert.equal(unscopedCrossTenantReplay.status, 409);
+  assert.match(
+    (await unscopedCrossTenantReplay.json()).error,
+    /already assigned to another participant action/,
+  );
+
+  const deadlineAction = {
+    type: "timeout_executed",
+    timeout: "no_claim_refund",
+    transactionHash: transactionHash(157),
+  };
+  const concurrentActions = await Promise.all([
+    act(
+      db,
+      created.record.id,
+      created.access.tenants[0].token,
+      deadlineAction,
+    ),
+    act(
+      db,
+      created.record.id,
+      created.access.tenants[0].token,
+      deadlineAction,
+    ),
+  ]);
+  assert.deepEqual(
+    concurrentActions.map((response) => response.status),
+    [200, 200],
+  );
+  const crossTenantReplay = await act(
+    db,
+    created.record.id,
+    created.access.tenants[1].token,
+    deadlineAction,
+  );
+  assert.equal(crossTenantReplay.status, 409);
+  assert.match(
+    (await crossTenantReplay.json()).error,
+    /already recorded|already assigned to another participant action/,
+  );
+
+  const record = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${created.access.landlord}`,
+      ),
+      { DB: db },
+    ),
+  );
+  const deadlineEvents = record.events.filter(
+    (event) => event.action === "timeout_executed",
+  );
+  assert.equal(deadlineEvents.length, 1);
+  assert.equal(deadlineEvents[0].metadata.tenantId, created.record.tenants[0].id);
+  assert.equal(
+    record.events.filter(
+      (event) =>
+        event.action === "operations_reserve_paid" &&
+        event.metadata.transactionHash === historicalReserveHash,
+    ).length,
+    1,
   );
 });
 
