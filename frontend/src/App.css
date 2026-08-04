@@ -3995,6 +3995,17 @@ a.btn.disabled {
     grid-template-columns: 1fr;
   }
 
+  .claim-line-items-heading {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .claim-line-items-heading .btn,
+  .claim-line-item .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
   .test-funds {
     align-items: flex-start;
     flex-direction: column;

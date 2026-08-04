@@ -50,8 +50,10 @@ production custody, or reliance on the compliance research as legal advice.
   loaded, with a focused retry action before any claim or amendment can proceed. Tenant response
   remains available for time-sensitive onchain action while its private summary has a separate
   retry path. A rendered mobile-width browser regression proves retry progress remains visible,
-  failed retries restore keyboard focus, and later recovery succeeds. Invitation and notice
-  audit-save failures are caught and explained without undoing a successfully opened email,
+  failed retries restore keyboard focus, and later recovery succeeds. Claim line-item additions
+  and removals are announced, move keyboard focus to the relevant deduction, expose distinct
+  removal names, and retain 44-pixel mobile targets without horizontal overflow. Invitation and
+  notice audit-save failures are caught and explained without undoing a successfully opened email,
   copied link, submitted claim, or submitted response. Automatic tenant-claim email delivery is
   separately scoped from its follow-up record refresh: pending delivery cannot be double-sent,
   an account/access change discards stale completion, and a refresh-only outage retries without

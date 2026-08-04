@@ -381,6 +381,10 @@ detailed validation ledger.
   of racing the parent's loading-state update; five consecutive rendered checks passed. The
   load-recovery check covers keyboard retry, retry failure and success, duplicate-action guidance,
   and mobile-width behavior.
+- **Verified:** Claim line-item editing now announces each addition and removal, moves keyboard
+  focus to the new or surviving deduction after React commits the change, gives removal controls
+  distinct accessible names, and uses 44-pixel mobile targets without horizontal overflow. The
+  rendered private-record recovery rehearsal covers the full keyboard interaction.
 - **Verified:** The compliance evaluator now rejects malformed deadline metadata before a
   triggering event can make the error visible, propagates an invalid member into an
   earlier-of/later-of controlling deadline, and rejects a snapshot whose recorded jurisdiction

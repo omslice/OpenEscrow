@@ -201,6 +201,47 @@ try {
     "Claim recovery should not overflow a mobile viewport.",
   );
 
+  const addLineItem = claimPage.getByRole("button", { name: "Add line item" });
+  await addLineItem.focus();
+  await addLineItem.press("Enter");
+  const secondDeduction = claimPage.getByRole("group", { name: "Deduction 2" });
+  await secondDeduction.waitFor({ state: "visible" });
+  assert.equal(
+    await secondDeduction.evaluate((element) => element === document.activeElement),
+    true,
+    "Adding a deduction should move keyboard focus to the new item.",
+  );
+  await claimPage
+    .getByText("Deduction 2 added. Fill in its details.")
+    .waitFor({ state: "attached" });
+  const removeSecondDeduction = secondDeduction.getByRole("button", {
+    name: "Remove deduction 2",
+  });
+  const removeButtonBox = await removeSecondDeduction.boundingBox();
+  assert.equal(
+    Boolean(removeButtonBox && removeButtonBox.height >= 44),
+    true,
+    "Claim line-item removal should remain a full-size mobile touch target.",
+  );
+  await removeSecondDeduction.focus();
+  await removeSecondDeduction.press("Enter");
+  const firstDeduction = claimPage.getByRole("group", { name: "Deduction 1" });
+  assert.equal(
+    await firstDeduction.evaluate((element) => element === document.activeElement),
+    true,
+    "Removing a deduction should move focus to the remaining item instead of the document body.",
+  );
+  await claimPage
+    .getByText("Deduction 2 removed. 1 deduction remains.")
+    .waitFor({ state: "attached" });
+  assert.equal(
+    await claimPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "Adding and removing claim items should not introduce mobile overflow.",
+  );
+
   const sendClaimEmail = claimPage.getByRole("button", {
     name: "Send tenant email(s)",
   });
@@ -301,7 +342,7 @@ try {
   );
 
   process.stdout.write(
-    "Private-record recovery browser check passed: claim requirements fail closed, time-sensitive tenant responses remain available, retries announce progress and restore focus, successful retries recover at mobile width, and a delivered claim email is never repeated by a record-only retry.\n",
+    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, time-sensitive tenant responses remain available, retries restore focus, and a delivered claim email is never repeated by a record-only retry.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

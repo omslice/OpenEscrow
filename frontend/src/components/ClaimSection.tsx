@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
 import { agreementReference } from "../lib/displayIds";
@@ -71,6 +71,7 @@ export function ClaimSection({
   const { address } = useAccount();
   const { fields, contentHash, uri, valid } = useEvidenceInputs(negotiationAccess);
   const [items, setItems] = useState<DeductionLineItem[]>([{ ...EMPTY_ITEM }]);
+  const [itemChangeStatus, setItemChangeStatus] = useState("");
   const [note, setNote] = useState("");
   const [record, setRecord] = useState<NegotiationRecord | null>(null);
   const [recordLoadAttempt, setRecordLoadAttempt] = useState(0);
@@ -92,6 +93,8 @@ export function ClaimSection({
   >({});
   const restoredClaim = useRef(false);
   const recordRetryButton = useRef<HTMLButtonElement>(null);
+  const itemFieldsets = useRef<Array<HTMLFieldSetElement | null>>([]);
+  const pendingItemFocus = useRef<number | null>(null);
   const recordLoadProposalId = negotiationAccess?.role === "landlord"
     ? negotiationAccess.proposalId
     : null;
@@ -163,6 +166,13 @@ export function ClaimSection({
       recordRetryButton.current?.focus();
     }
   }, [isLoadingRecord, recordLoadError]);
+
+  useLayoutEffect(() => {
+    const index = pendingItemFocus.current;
+    if (index === null) return;
+    pendingItemFocus.current = null;
+    itemFieldsets.current[index]?.focus({ preventScroll: true });
+  }, [items]);
 
   useEffect(() => {
     if (!record || restoredClaim.current || agreement.phase !== Phase.ClaimOpen) return;
@@ -257,10 +267,23 @@ export function ClaimSection({
   }
 
   function addItem() {
+    if (items.length >= 20) return;
+    pendingItemFocus.current = items.length;
+    setItemChangeStatus(
+      `Deduction ${items.length + 1} added. Fill in its details.`,
+    );
     setItems((current) => [...current, { ...EMPTY_ITEM }]);
   }
 
   function removeItem(index: number) {
+    if (items.length <= 1) return;
+    const remainingCount = items.length - 1;
+    pendingItemFocus.current = Math.min(index, remainingCount - 1);
+    setItemChangeStatus(
+      `Deduction ${index + 1} removed. ${remainingCount} ${
+        remainingCount === 1 ? "deduction remains" : "deductions remain"
+      }.`,
+    );
     setItems((current) => current.filter((_, itemIndex) => itemIndex !== index));
   }
 
@@ -426,8 +449,18 @@ export function ClaimSection({
           Add line item
         </button>
       </div>
+      <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {itemChangeStatus}
+      </p>
       {items.map((item, index) => (
-        <fieldset className="claim-line-item" key={index}>
+        <fieldset
+          className="claim-line-item"
+          key={index}
+          ref={(element) => {
+            itemFieldsets.current[index] = element;
+          }}
+          tabIndex={-1}
+        >
           <legend>Deduction {index + 1}</legend>
           <label>
             Category
@@ -465,6 +498,7 @@ export function ClaimSection({
             <button
               className="btn btn-ghost"
               type="button"
+              aria-label={`Remove deduction ${index + 1}`}
               onClick={() => removeItem(index)}
             >
               Remove line item

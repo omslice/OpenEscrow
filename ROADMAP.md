@@ -172,6 +172,9 @@ the repository; they are not claims of legal approval or production readiness.
   suggestions only while open
 - [x] Supporting-evidence upload recovery with an explicit same-file retry, announced busy/error
   states, focus restoration, agreement/access-scope isolation, and rendered mobile regression
+- [x] Claim line-item editing announces additions and removals, gives every removal control a
+  unique accessible name, keeps keyboard focus on the relevant deduction, and preserves
+  44-pixel touch targets without mobile overflow
 - [x] Public-receipt recovery contains unexpected retry failures, shows plain-language feedback,
   restores the exact retry control after every failed attempt in React's committed layout phase,
   and proves repeated keyboard recovery without duplicating an agreement action
