@@ -3801,6 +3801,10 @@ a.btn.disabled {
   margin: 0;
 }
 
+.receipt-recovery .btn {
+  min-height: 44px;
+}
+
 .activity-load-failure {
   display: grid;
   justify-items: start;
@@ -4209,7 +4213,7 @@ a.btn.disabled {
 @media (pointer: coarse) {
   .btn.small,
   .btn-ghost.small {
-    min-height: 40px;
+    min-height: 44px;
     padding-block: 8px;
   }
 }

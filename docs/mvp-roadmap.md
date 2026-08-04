@@ -63,6 +63,13 @@ production custody, or reliance on the compliance research as legal advice.
   storing the bearer token. A rendered outage-and-reload rehearsal proves the retry regains focus,
   saves idempotently, clears only its matching recovery payload, and never submits a second
   onchain claim.
+- **Verified:** Confirmed tenant responses and arbiter rulings now use the same bounded,
+  bearer-free recovery model, scoped to the exact agreement, proposal, wallet, and participant
+  role. Rendered mobile rehearsals prove an interrupted private-record save survives reload,
+  restores focus to a 44-pixel record-only retry, clears only its matching payload, and never
+  submits another blockchain decision. An append-only D1 guard makes transaction-receipt event
+  creation atomic under simultaneous retries; the server authorizes the exact tenant or arbiter
+  before returning an idempotent result, while preserving existing event history.
 - **Verified:** The Record workspace now leads with plain-language report, private-backup, public-
   proof, and independent-check guidance. Encryption algorithms and raw fingerprints remain
   available in keyboard-accessible collapsed disclosures; the rendered rehearsal still proves

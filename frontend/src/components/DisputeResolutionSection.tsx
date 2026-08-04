@@ -1,13 +1,25 @@
-import { useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
 import { formatUSDC, parseUSDC } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
 import { EvidenceList } from "./EvidenceList";
+import { createAsyncOperationScope } from "../lib/asyncOperationScope";
+import {
+  clearRecoveryJsonIf,
+  getBrowserRecoveryStorage,
+  readRecoveryJson,
+  writeRecoveryJson,
+} from "../lib/browserRecovery";
+import {
+  decisionReceiptRecoveryKey,
+  isArbiterRulingReceiptAction,
+  sameDecisionReceipt,
+  type ArbiterRulingReceiptAction,
+} from "../lib/decisionReceiptRecovery";
 import {
   negotiationAction,
-  type NegotiationAction,
   type NegotiationAccess,
 } from "../lib/negotiations";
 
@@ -25,11 +37,68 @@ export function DisputeResolutionSection({
   const { address } = useAccount();
   const [award, setAward] = useState("");
   const [note, setNote] = useState("");
-  const [pendingRecord, setPendingRecord] = useState<NegotiationAction | null>(null);
+  const [pendingRecord, setPendingRecord] =
+    useState<ArbiterRulingReceiptAction | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
+  const [isSavingRulingRecord, setIsSavingRulingRecord] = useState(false);
+  const [rulingRecorded, setRulingRecorded] = useState(false);
+  const rulingReceiptRetryButton = useRef<HTMLButtonElement>(null);
+  const pendingRecordStored = useRef(true);
+  const pendingRecordKey =
+    negotiationAccess?.role === "arbiter" && address
+      ? decisionReceiptRecoveryKey({
+          receipt: "arbiter-ruling",
+          agreementId: id.toString(),
+          proposalId: negotiationAccess.proposalId,
+          role: "arbiter",
+          address,
+        })
+      : null;
+  const rulingReceiptScopeKey = JSON.stringify([
+    id.toString(),
+    pendingRecordKey,
+  ]);
+  const rulingReceiptScope = useMemo(
+    () => createAsyncOperationScope(rulingReceiptScopeKey),
+    [rulingReceiptScopeKey],
+  );
+
+  useLayoutEffect(() => {
+    rulingReceiptScope.open();
+    setIsSavingRulingRecord(false);
+    const storage = getBrowserRecoveryStorage("session");
+    const recovered =
+      pendingRecordKey && storage
+        ? readRecoveryJson(
+            pendingRecordKey,
+            isArbiterRulingReceiptAction,
+            storage,
+          )
+        : null;
+    pendingRecordStored.current = Boolean(recovered);
+    setPendingRecord(recovered);
+    setRulingRecorded(Boolean(recovered));
+    setRecordError(
+      recovered
+        ? "OpenEscrow recovered a confirmed testnet ruling whose private activity receipt still needs to be saved. Retry the record save; do not submit another ruling."
+        : null,
+    );
+    return () => rulingReceiptScope.close();
+  }, [pendingRecordKey, rulingReceiptScope]);
+
+  useLayoutEffect(() => {
+    if (pendingRecord && recordError && !isSavingRulingRecord) {
+      rulingReceiptRetryButton.current?.focus({ preventScroll: true });
+    }
+  }, [isSavingRulingRecord, pendingRecord, recordError]);
 
   const isArbiter = address?.toLowerCase() === agreement.arbiter.toLowerCase();
-  if (!isArbiter || agreement.phase !== Phase.Disputed) return null;
+  if (
+    !isArbiter ||
+    (agreement.phase !== Phase.Disputed && !pendingRecord && !rulingRecorded)
+  ) {
+    return null;
+  }
 
   const disputed = agreement.locked;
   let awardRaw: bigint | null = null;
@@ -40,20 +109,88 @@ export function DisputeResolutionSection({
   }
   const valid = awardRaw !== null && awardRaw >= 0n && awardRaw <= disputed;
 
-  async function saveRuling(action: NegotiationAction) {
+  async function saveRuling(action: ArbiterRulingReceiptAction) {
     if (!negotiationAccess || negotiationAccess.role !== "arbiter") return;
+    const operationId = rulingReceiptScope.start();
     setRecordError(null);
+    setIsSavingRulingRecord(true);
     try {
       await negotiationAction(negotiationAccess, action);
-      setPendingRecord(null);
+      const storage = getBrowserRecoveryStorage("session");
+      if (pendingRecordKey && storage) {
+        clearRecoveryJsonIf(
+          pendingRecordKey,
+          (value) =>
+            isArbiterRulingReceiptAction(value) &&
+            sameDecisionReceipt(value, action),
+          storage,
+        );
+      }
+      if (!rulingReceiptScope.isCurrent(operationId)) return;
+      setPendingRecord((current) =>
+        sameDecisionReceipt(current, action) ? null : current,
+      );
+      setRulingRecorded(true);
       onRefetch?.();
     } catch (cause) {
+      if (!rulingReceiptScope.isCurrent(operationId)) return;
+      const reloadWarning = pendingRecordStored.current
+        ? " This retry is kept only in this browser tab until it is saved."
+        : " This browser could not keep a reload-recovery copy, so keep this page open and retry now.";
+      const failureDetail = cause instanceof Error
+        ? `: ${cause.message.replace(/[.\s]+$/, "")}.`
+        : ".";
       setRecordError(
-        cause instanceof Error
-          ? `The onchain ruling succeeded, but its activity record still needs to be saved: ${cause.message}`
-          : "The onchain ruling succeeded, but its activity record still needs to be saved.",
+        `The onchain ruling succeeded, but its activity record still needs to be saved${failureDetail}${reloadWarning}`,
       );
+    } finally {
+      if (rulingReceiptScope.isCurrent(operationId)) {
+        setIsSavingRulingRecord(false);
+      }
     }
+  }
+
+  const recordRecovery = pendingRecord && (
+    <div className="receipt-recovery" aria-busy={isSavingRulingRecord}>
+      {recordError && (
+        <p className="tx-error" role="alert">
+          {recordError}
+        </p>
+      )}
+      {isSavingRulingRecord && (
+        <p className="hint" role="status" aria-live="polite">
+          Saving the confirmed ruling to the private activity record...
+        </p>
+      )}
+      <button
+        ref={rulingReceiptRetryButton}
+        className="btn btn-ghost small"
+        type="button"
+        disabled={isSavingRulingRecord}
+        onClick={() => void saveRuling(pendingRecord)}
+      >
+        {isSavingRulingRecord
+          ? "Saving ruling receipt..."
+          : "Retry saving ruling receipt"}
+      </button>
+    </div>
+  );
+
+  if (rulingRecorded || agreement.phase !== Phase.Disputed) {
+    return (
+      <div
+        className="action-section"
+        id={`agreement-${id.toString()}-resolution`}
+        tabIndex={-1}
+      >
+        <h3>Ruling confirmed</h3>
+        <p className="hint">
+          The testnet ruling is confirmed. OpenEscrow will only retry its private
+          activity receipt; it will not submit another ruling.
+        </p>
+        {recordRecovery}
+      </div>
+    );
   }
 
   return (
@@ -95,26 +232,24 @@ export function DisputeResolutionSection({
         disabled={!valid}
         onSuccess={(transactionHash) => {
           if (!negotiationAccess || negotiationAccess.role !== "arbiter" || awardRaw === null) return;
-          const action: NegotiationAction = {
+          const action: ArbiterRulingReceiptAction = {
             type: "arbiter_ruling",
             awardToLandlord: formatUSDC(awardRaw),
             note: note.trim(),
             transactionHash,
           };
+          setRulingRecorded(true);
           setPendingRecord(action);
+          const storage = getBrowserRecoveryStorage("session");
+          pendingRecordStored.current = Boolean(
+            pendingRecordKey &&
+              storage &&
+              writeRecoveryJson(pendingRecordKey, action, storage),
+          );
           void saveRuling(action);
         }}
       />
-      {pendingRecord && recordError && (
-        <button
-          className="btn btn-ghost small"
-          type="button"
-          onClick={() => void saveRuling(pendingRecord)}
-        >
-          Retry saving ruling receipt
-        </button>
-      )}
-      {recordError && <p className="tx-error" role="alert">{recordError}</p>}
+      {recordRecovery}
     </div>
   );
 }

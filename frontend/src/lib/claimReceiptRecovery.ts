@@ -14,6 +14,10 @@ function isBoundedString(value: unknown, maxLength: number): value is string {
   return typeof value === "string" && value.length <= maxLength;
 }
 
+function hasOnlyKeys(value: Record<string, unknown>, allowed: Set<string>) {
+  return Object.keys(value).every((key) => allowed.has(key));
+}
+
 function isClaimConfirmations(value: unknown) {
   if (!isPlainRecord(value)) return false;
   if (Object.keys(value).length === 0) return false;
@@ -46,7 +50,19 @@ export function isClaimReceiptAction(value: unknown): value is ClaimReceiptActio
   if (value.type !== "claim_submitted" && value.type !== "claim_amended") {
     return false;
   }
+  const allowedKeys = new Set([
+    "type",
+    "amount",
+    "items",
+    "note",
+    "evidenceUri",
+    "evidenceHash",
+    "claimConfirmations",
+    "transactionHash",
+    ...(value.type === "claim_submitted" ? ["category"] : []),
+  ]);
   if (
+    !hasOnlyKeys(value, allowedKeys) ||
     !isBoundedString(value.amount, 80) ||
     !/^\d+(?:\.\d{1,6})?$/.test(value.amount) ||
     !Array.isArray(value.items) ||
@@ -65,6 +81,7 @@ export function isClaimReceiptAction(value: unknown): value is ClaimReceiptActio
     value.items.some(
       (item) =>
         !isPlainRecord(item) ||
+        !hasOnlyKeys(item, new Set(["category", "description", "amount"])) ||
         !isBoundedString(item.category, 120) ||
         item.category.length === 0 ||
         !isBoundedString(item.description, 500) ||

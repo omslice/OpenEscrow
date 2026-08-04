@@ -297,6 +297,12 @@ detailed validation ledger.
   success, and error states, restore keyboard focus only after the completed upload state is
   committed, and reject a delayed completion after the agreement or access token changes. A
   rendered mobile regression covers this flow.
+- **Verified:** Confirmed tenant responses and arbiter rulings now preserve a bounded private-
+  record retry across a same-tab reload without storing bearer access. Rendered mobile checks
+  prove focus restoration, 44-pixel retry controls, matching-payload cleanup, and exactly one
+  blockchain transaction. A new append-only D1 guard makes response and ruling event insertion
+  atomic under simultaneous retries; exact participant authorization precedes idempotent replay,
+  and cross-tenant or cross-role receipt reuse is rejected without rewriting prior events.
 - **Verified:** The optional-yield dialog has explicit heading-to-card spacing and larger asset
   badges, with a rendered 80%-zoom regression. Technical hashes and receipt text in the Record
   activity feed now sit behind **Details for verification**, while the main feed uses

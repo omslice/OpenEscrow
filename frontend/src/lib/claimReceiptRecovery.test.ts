@@ -39,6 +39,10 @@ test("claim receipt recovery accepts the bounded retry payload", () => {
 
 test("claim receipt recovery rejects malformed or unrelated browser data", () => {
   assert.equal(isClaimReceiptAction({ ...action, transactionHash: "0x1234" }), false);
+  assert.equal(
+    isClaimReceiptAction({ ...action, token: "must-not-persist" }),
+    false,
+  );
   assert.equal(isClaimReceiptAction({ ...action, items: [] }), false);
   assert.equal(
     isClaimReceiptAction({

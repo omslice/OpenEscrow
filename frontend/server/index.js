@@ -75,6 +75,78 @@ const EVENTS_INDEX = `
 CREATE INDEX IF NOT EXISTS negotiation_events_negotiation_id_idx
 ON negotiation_events (negotiation_id, id)`;
 
+const RECEIPT_GUARDS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS negotiation_receipt_guards (
+  negotiation_id TEXT NOT NULL,
+  action TEXT NOT NULL,
+  transaction_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (negotiation_id, action, transaction_hash),
+  FOREIGN KEY (negotiation_id) REFERENCES agreement_negotiations(id) ON DELETE CASCADE
+)`;
+
+const RECEIPT_GUARDS_BACKFILL = `
+INSERT OR IGNORE INTO negotiation_receipt_guards
+  (negotiation_id, action, transaction_hash, created_at)
+SELECT negotiation_id, action,
+       lower(json_extract(metadata_json, '$.transactionHash')),
+       MIN(created_at)
+FROM negotiation_events
+WHERE action IN (
+  'posted_onchain',
+  'operations_reserve_paid',
+  'tenant_share_funded',
+  'agreement_funded',
+  'record_snapshot_anchored',
+  'activity_hash_published',
+  'deduction_claim_submitted',
+  'deduction_claim_amended',
+  'claim_response_submitted',
+  'arbiter_ruling_submitted',
+  'withdrawal_completed',
+  'timeout_executed',
+  'arbiter_replacement_proposed',
+  'arbiter_replacement_confirmed',
+  'arbiter_replacement_cancelled',
+  'arbiter_replacement_accepted'
+)
+AND json_type(metadata_json, '$.transactionHash') = 'text'
+GROUP BY negotiation_id, action,
+         lower(json_extract(metadata_json, '$.transactionHash'))`;
+
+const RECEIPT_GUARDS_TRIGGER = `
+CREATE TRIGGER IF NOT EXISTS negotiation_events_receipt_guard
+BEFORE INSERT ON negotiation_events
+WHEN NEW.action IN (
+  'posted_onchain',
+  'operations_reserve_paid',
+  'tenant_share_funded',
+  'agreement_funded',
+  'record_snapshot_anchored',
+  'activity_hash_published',
+  'deduction_claim_submitted',
+  'deduction_claim_amended',
+  'claim_response_submitted',
+  'arbiter_ruling_submitted',
+  'withdrawal_completed',
+  'timeout_executed',
+  'arbiter_replacement_proposed',
+  'arbiter_replacement_confirmed',
+  'arbiter_replacement_cancelled',
+  'arbiter_replacement_accepted'
+)
+AND json_type(NEW.metadata_json, '$.transactionHash') = 'text'
+BEGIN
+  INSERT INTO negotiation_receipt_guards
+    (negotiation_id, action, transaction_hash, created_at)
+  VALUES (
+    NEW.negotiation_id,
+    NEW.action,
+    lower(json_extract(NEW.metadata_json, '$.transactionHash')),
+    NEW.created_at
+  );
+END`;
+
 const ACCOUNT_ACCESS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS negotiation_account_access (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2468,6 +2540,9 @@ async function initialize(db) {
     db.prepare(AGREEMENTS_SCHEMA),
     db.prepare(EVENTS_SCHEMA),
     db.prepare(EVENTS_INDEX),
+    db.prepare(RECEIPT_GUARDS_SCHEMA),
+    db.prepare(RECEIPT_GUARDS_BACKFILL),
+    db.prepare(RECEIPT_GUARDS_TRIGGER),
     db.prepare(ACCOUNT_ACCESS_SCHEMA),
     db.prepare(ACCOUNT_ACCESS_INDEX),
     db.prepare(ACCOUNT_RECORD_ARCHIVES_SCHEMA),
@@ -5780,6 +5855,39 @@ async function runNotificationJob(env, now = new Date()) {
   await runScheduledNotifications(env, now);
 }
 
+async function authorizedReceiptReplay({
+  db,
+  id,
+  row,
+  role,
+  token,
+  actionType,
+  expectedEvent,
+  transactionHash,
+  events,
+}) {
+  if (!expectedEvent || !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+    return false;
+  }
+  if (
+    actionType === "finalize" &&
+    row.onchain_tx_hash?.toLowerCase() === transactionHash.toLowerCase()
+  ) {
+    return role === "landlord";
+  }
+  const recorded = events.find(
+    (event) =>
+      event.action === expectedEvent &&
+      event.metadata?.transactionHash?.toLowerCase() ===
+        transactionHash.toLowerCase(),
+  );
+  if (!recorded || recorded.actorRole !== role) return false;
+  if (actionType !== "claim_response") return true;
+
+  const tenant = await tenantForToken(db, id, token);
+  return Boolean(tenant && recorded.metadata?.tenantId === tenant.id);
+}
+
 async function applyAction(request, env, id) {
   const db = env.DB;
   const body = await request.json();
@@ -5831,19 +5939,22 @@ async function applyAction(request, env, id) {
   };
   const expectedEvent = transactionEventByAction[body.type];
   const incomingTransactionHash = cleanText(body.transactionHash, 100);
+  const recordedEvents = await eventsFor(db, id);
   if (expectedEvent && /^0x[a-fA-F0-9]{64}$/.test(incomingTransactionHash)) {
-    const currentRecord = await serialize(db, row);
-    const alreadyRecorded =
-      (body.type === "finalize" && row.onchain_tx_hash === incomingTransactionHash) ||
-      currentRecord.events.some(
-        (event) =>
-          event.action === expectedEvent &&
-          event.metadata?.transactionHash === incomingTransactionHash,
-      );
-    if (alreadyRecorded) return json(currentRecord);
+    const replayIsAuthorized = await authorizedReceiptReplay({
+      db,
+      id,
+      row,
+      role,
+      token: body.token,
+      actionType: body.type,
+      expectedEvent,
+      transactionHash: incomingTransactionHash,
+      events: recordedEvents,
+    });
+    if (replayIsAuthorized) return json(await serialize(db, row));
   }
 
-  const recordedEvents = await eventsFor(db, id);
   const now = new Date().toISOString();
   const revision = Number(row.revision);
   const statements = [];
@@ -7650,7 +7761,44 @@ async function applyAction(request, env, id) {
     );
   }
 
-  await db.batch(statements);
+  try {
+    await db.batch(statements);
+  } catch (cause) {
+    if (expectedEvent && /^0x[a-fA-F0-9]{64}$/.test(incomingTransactionHash)) {
+      const latestRow = await rowFor(db, id);
+      const latestEvents = await eventsFor(db, id);
+      const replayIsAuthorized = await authorizedReceiptReplay({
+        db,
+        id,
+        row: latestRow,
+        role,
+        token: body.token,
+        actionType: body.type,
+        expectedEvent,
+        transactionHash: incomingTransactionHash,
+        events: latestEvents,
+      });
+      if (replayIsAuthorized) {
+        return json(await serialize(db, latestRow));
+      }
+      const receiptIsAlreadyAssigned = latestEvents.some(
+        (event) =>
+          event.action === expectedEvent &&
+          event.metadata?.transactionHash?.toLowerCase() ===
+            incomingTransactionHash.toLowerCase(),
+      );
+      if (receiptIsAlreadyAssigned) {
+        return json(
+          {
+            error:
+              "This transaction receipt is already assigned to another participant action.",
+          },
+          409,
+        );
+      }
+    }
+    throw cause;
+  }
   let updated = await rowFor(db, id);
   if (body.type === "approve") {
     const tenantRows = await tenantsFor(db, id);

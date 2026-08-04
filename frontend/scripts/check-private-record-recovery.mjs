@@ -142,6 +142,54 @@ async function routeClaimReceiptRecovery(page) {
   return () => attempts;
 }
 
+async function routeDecisionReceiptRecovery(
+  page,
+  { type, transactionHash },
+) {
+  let attempts = 0;
+  await page.route(
+    /\/api\/negotiations\/OE-P-RECOVERY\/actions$/,
+    async (route) => {
+      attempts += 1;
+      const body = JSON.parse(route.request().postData() || "{}");
+      assert.equal(
+        body.token,
+        "synthetic-private-record-recovery-token",
+        "Decision receipt retries must use the current scoped access without persisting it.",
+      );
+      assert.equal(body.type, type);
+      assert.equal(body.transactionHash, transactionHash);
+      if (attempts === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Simulated receipt-save outage" }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(negotiationRecord),
+      });
+    },
+  );
+  return () => attempts;
+}
+
+async function pendingDecisionRecoveryEntries(page) {
+  return page.evaluate(() => {
+    const entries = [];
+    for (let index = 0; index < window.sessionStorage.length; index += 1) {
+      const key = window.sessionStorage.key(index);
+      if (key?.startsWith("openescrow:pending-decision-receipt:")) {
+        entries.push([key, window.sessionStorage.getItem(key)]);
+      }
+    }
+    return entries;
+  });
+}
+
 const server = spawn(
   process.execPath,
   [
@@ -528,8 +576,246 @@ try {
     "Response recovery should not overflow a mobile viewport.",
   );
 
+  const responseReceiptPage = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+  });
+  await routePrivateRecord(responseReceiptPage, new Set());
+  const responseReceiptAttempts = await routeDecisionReceiptRecovery(
+    responseReceiptPage,
+    {
+      type: "claim_response",
+      transactionHash: `0x${"8".repeat(64)}`,
+    },
+  );
+  let responseNotificationAttempts = 0;
+  await responseReceiptPage.route(
+    /\/api\/notifications\/claim-response$/,
+    async (route) => {
+      responseNotificationAttempts += 1;
+      const body = JSON.parse(route.request().postData() || "{}");
+      assert.equal(body.token, "synthetic-private-record-recovery-token");
+      assert.equal(body.transactionHash, `0x${"8".repeat(64)}`);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({ messageId: "synthetic-response-message" }),
+      });
+    },
+  );
+  await responseReceiptPage.goto(
+    `${baseUrl}/testing/private-record-recovery.html?role=tenant&flow=response-receipt&tx=response-success`,
+    { waitUntil: "networkidle" },
+  );
+  await responseReceiptPage.getByLabel("Dispute in full").check();
+  await responseReceiptPage
+    .getByLabel(/Decision explanation/)
+    .fill("The synthetic invoice does not establish tenant responsibility.");
+  await responseReceiptPage
+    .getByRole("button", { name: "Dispute deduction" })
+    .click();
+
+  const responseReceiptRetry = responseReceiptPage.getByRole("button", {
+    name: "Retry saving response receipt",
+  });
+  await responseReceiptRetry.waitFor({ state: "visible" });
+  assert.equal(
+    await responseReceiptRetry.evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+    "A failed response receipt save should focus its retry control.",
+  );
+  assert.equal(
+    await responseReceiptPage
+      .getByRole("button", { name: "Dispute deduction" })
+      .count(),
+    0,
+    "A confirmed response must hide the control that could submit another transaction.",
+  );
+  const responseRetryBox = await responseReceiptRetry.boundingBox();
+  assert.equal(
+    Boolean(responseRetryBox && responseRetryBox.height >= 44),
+    true,
+    "The response receipt retry must remain a 44px mobile touch target.",
+  );
+  const responseRecoveryEntries = await pendingDecisionRecoveryEntries(
+    responseReceiptPage,
+  );
+  assert.equal(responseRecoveryEntries.length, 1);
+  assert.doesNotMatch(
+    JSON.stringify(responseRecoveryEntries),
+    /synthetic-private-record-recovery-token/,
+    "The durable response retry must not store its bearer token.",
+  );
+  assert.equal(
+    await responseReceiptPage.evaluate(() =>
+      window.sessionStorage.getItem(
+        "openescrow:test:response-transaction-writes",
+      ),
+    ),
+    "1",
+  );
+
+  await responseReceiptPage.reload({ waitUntil: "networkidle" });
+  const recoveredResponseReceiptRetry = responseReceiptPage.getByRole(
+    "button",
+    { name: "Retry saving response receipt" },
+  );
+  await recoveredResponseReceiptRetry.waitFor({ state: "visible" });
+  await responseReceiptPage
+    .getByText(/recovered a confirmed testnet response/i)
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await recoveredResponseReceiptRetry.evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+    "Reload recovery should focus the response's record-only action.",
+  );
+  await recoveredResponseReceiptRetry.press("Enter");
+  await recoveredResponseReceiptRetry.waitFor({ state: "detached" });
+  await responseReceiptPage
+    .getByText("The landlord was emailed automatically.")
+    .waitFor({ state: "visible" });
+  assert.equal(responseReceiptAttempts(), 2);
+  assert.equal(responseNotificationAttempts, 1);
+  assert.equal((await pendingDecisionRecoveryEntries(responseReceiptPage)).length, 0);
+  assert.equal(
+    await responseReceiptPage.evaluate(() =>
+      window.sessionStorage.getItem(
+        "openescrow:test:response-transaction-writes",
+      ),
+    ),
+    "1",
+    "Retrying the response receipt must never resubmit the onchain decision.",
+  );
+  assert.equal(
+    await responseReceiptPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "Durable response receipt recovery should not overflow a mobile viewport.",
+  );
+
+  const rulingReceiptPage = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+  });
+  const rulingReceiptAttempts = await routeDecisionReceiptRecovery(
+    rulingReceiptPage,
+    {
+      type: "arbiter_ruling",
+      transactionHash: `0x${"6".repeat(64)}`,
+    },
+  );
+  await rulingReceiptPage.goto(
+    `${baseUrl}/testing/private-record-recovery.html?role=arbiter&flow=ruling-receipt&tx=ruling-success`,
+    { waitUntil: "networkidle" },
+  );
+  await rulingReceiptPage.getByLabel(/Award to landlord/).fill("0.25");
+  await rulingReceiptPage
+    .getByLabel("Ruling note")
+    .fill("The synthetic documentation supports a partial allocation.");
+  await rulingReceiptPage
+    .getByRole("button", { name: "Submit ruling" })
+    .click();
+
+  const rulingReceiptRetry = rulingReceiptPage.getByRole("button", {
+    name: "Retry saving ruling receipt",
+  });
+  await rulingReceiptRetry.waitFor({ state: "visible" });
+  await rulingReceiptPage
+    .getByRole("heading", { name: "Ruling confirmed" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await rulingReceiptRetry.evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+    "A failed ruling receipt save should focus its retry control.",
+  );
+  assert.equal(
+    await rulingReceiptPage.getByRole("button", { name: "Submit ruling" }).count(),
+    0,
+    "A confirmed ruling must hide the control that could submit another transaction.",
+  );
+  const rulingRetryBox = await rulingReceiptRetry.boundingBox();
+  assert.equal(
+    Boolean(rulingRetryBox && rulingRetryBox.height >= 44),
+    true,
+    "The ruling receipt retry must remain a 44px mobile touch target.",
+  );
+  const rulingRecoveryEntries = await pendingDecisionRecoveryEntries(
+    rulingReceiptPage,
+  );
+  assert.equal(rulingRecoveryEntries.length, 1);
+  assert.doesNotMatch(
+    JSON.stringify(rulingRecoveryEntries),
+    /synthetic-private-record-recovery-token/,
+    "The durable ruling retry must not store its bearer token.",
+  );
+  assert.equal(
+    await rulingReceiptPage.evaluate(() =>
+      window.sessionStorage.getItem(
+        "openescrow:test:ruling-transaction-writes",
+      ),
+    ),
+    "1",
+  );
+
+  await rulingReceiptPage.reload({ waitUntil: "networkidle" });
+  const recoveredRulingReceiptRetry = rulingReceiptPage.getByRole("button", {
+    name: "Retry saving ruling receipt",
+  });
+  await recoveredRulingReceiptRetry.waitFor({ state: "visible" });
+  await rulingReceiptPage
+    .getByText(/recovered a confirmed testnet ruling/i)
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await recoveredRulingReceiptRetry.evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+    "Reload recovery should focus the ruling's record-only action.",
+  );
+  await recoveredRulingReceiptRetry.press("Enter");
+  await rulingReceiptPage.waitForFunction(() => {
+    for (let index = 0; index < window.sessionStorage.length; index += 1) {
+      if (
+        window.sessionStorage
+          .key(index)
+          ?.startsWith("openescrow:pending-decision-receipt:")
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
+  await rulingReceiptPage
+    .getByRole("button", {
+      name: /(?:Saving|Retry saving) ruling receipt/,
+    })
+    .waitFor({ state: "detached" });
+  assert.equal(rulingReceiptAttempts(), 2);
+  assert.equal((await pendingDecisionRecoveryEntries(rulingReceiptPage)).length, 0);
+  assert.equal(
+    await rulingReceiptPage.evaluate(() =>
+      window.sessionStorage.getItem(
+        "openescrow:test:ruling-transaction-writes",
+      ),
+    ),
+    "1",
+    "Retrying the ruling receipt must never resubmit the onchain ruling.",
+  );
+  assert.equal(
+    await rulingReceiptPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "Durable ruling receipt recovery should not overflow a mobile viewport.",
+  );
+
   process.stdout.write(
-    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, a confirmed claim survives a private-record outage and reload without another transaction or stored bearer token, time-sensitive tenant responses remain available, retries restore focus, and a delivered claim email is never repeated by a record-only retry.\n",
+    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, confirmed claims, tenant responses, and arbiter rulings survive private-record outages and reloads without another transaction or stored bearer token, time-sensitive responses remain available, retries restore focus, and delivered email is not repeated by a record-only retry.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

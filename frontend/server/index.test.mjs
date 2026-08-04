@@ -65,6 +65,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0013_funding_reconciliation_identity.sql",
     "0014_funding_event_provenance_guards.sql",
     "0015_arbiter_replacement_access.sql",
+    "0016_transaction_receipt_guards.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -87,6 +88,7 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.ok(tables.includes("funding_checkout_events"));
   assert.ok(tables.includes("arbiter_replacement_access"));
   assert.ok(tables.includes("arbiter_replacement_account_access"));
+  assert.ok(tables.includes("negotiation_receipt_guards"));
   const fundingEventColumns = database
     .prepare("PRAGMA table_info(funding_checkout_events)")
     .all()
@@ -115,6 +117,18 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.deepEqual(fundingEventTriggers, [
     "funding_checkout_events_provenance_insert_guard",
     "funding_checkout_events_provenance_update_guard",
+  ]);
+  const receiptGuardTriggers = database
+    .prepare(
+      `SELECT name
+       FROM sqlite_master
+       WHERE type = 'trigger' AND tbl_name = 'negotiation_events'
+       ORDER BY name`,
+    )
+    .all()
+    .map((row) => row.name);
+  assert.deepEqual(receiptGuardTriggers, [
+    "negotiation_events_receipt_guard",
   ]);
   const reconciliationKey = `sha256:${"a".repeat(64)}`;
   const payloadDigest = `sha256:${"b".repeat(64)}`;
@@ -202,6 +216,79 @@ test("the packaged D1 migration applies cleanly", () => {
     /invalid funding checkout event provenance/i,
   );
   database.exec("PRAGMA foreign_keys = ON");
+});
+
+test("the receipt guard migration preserves and backfills historical duplicate events", () => {
+  const database = new DatabaseSync(":memory:");
+  const applyMigration = (migrationName) => {
+    const migration = readFileSync(
+      new URL(`../../drizzle/${migrationName}`, import.meta.url),
+      "utf8",
+    );
+    for (const statement of migration.split("--> statement-breakpoint")) {
+      if (statement.trim()) database.exec(statement);
+    }
+  };
+  applyMigration("0000_agreement_negotiations.sql");
+  database
+    .prepare(
+      `INSERT INTO agreement_negotiations
+       (id, created_at, updated_at, status, revision, terms_json,
+        landlord_email, tenant_email, landlord_token_hash, tenant_token_hash)
+       VALUES ('OE-P-HISTORY', ?, ?, 'finalized', 1, '{}',
+               'landlord@example.test', 'tenant@example.test', 'landlord-hash',
+               'tenant-hash')`,
+    )
+    .run(
+      "2026-08-01T00:00:00.000Z",
+      "2026-08-01T00:00:00.000Z",
+    );
+  const historicalReceipt = JSON.stringify({
+    transactionHash: `0x${"a".repeat(64)}`,
+  });
+  const insertHistoricalEvent = database.prepare(
+    `INSERT INTO negotiation_events
+     (negotiation_id, created_at, actor_role, action, summary, revision,
+      metadata_json)
+     VALUES ('OE-P-HISTORY', ?, 'tenant', 'claim_response_submitted',
+             'Historical response.', 1, ?)`,
+  );
+  insertHistoricalEvent.run("2026-08-01T00:01:00.000Z", historicalReceipt);
+  insertHistoricalEvent.run("2026-08-01T00:02:00.000Z", historicalReceipt);
+
+  applyMigration("0016_transaction_receipt_guards.sql");
+  assert.equal(
+    database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM negotiation_events WHERE negotiation_id = 'OE-P-HISTORY'",
+      )
+      .get().count,
+    2,
+  );
+  assert.equal(
+    database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM negotiation_receipt_guards WHERE negotiation_id = 'OE-P-HISTORY'",
+      )
+      .get().count,
+    1,
+  );
+  assert.throws(
+    () =>
+      insertHistoricalEvent.run(
+        "2026-08-01T00:03:00.000Z",
+        historicalReceipt,
+      ),
+    /unique/i,
+  );
+  assert.equal(
+    database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM negotiation_events WHERE negotiation_id = 'OE-P-HISTORY'",
+      )
+      .get().count,
+    2,
+  );
 });
 
 class Statement {
@@ -8657,6 +8744,159 @@ test("pilot rehearsal: record export and proof include claim, decision, and rece
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("transaction receipt retries are atomic and remain bound to the exact participant", async () => {
+  const db = new TestD1();
+  const created = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenants: [
+          {
+            name: "Terry Tenant",
+            email: "tenant@example.com",
+            depositShareBps: 6000,
+          },
+          {
+            name: "Casey Co-tenant",
+            email: "casey@example.com",
+            depositShareBps: 4000,
+          },
+        ],
+        arbiterName: "Ari Arbiter",
+        arbiterEmail: "arbiter@example.com",
+        terms,
+      }),
+      { DB: db },
+    ),
+  );
+  for (const [index, tenant] of created.access.tenants.entries()) {
+    await jsonResponse(
+      await act(db, created.record.id, tenant.token, {
+        type: "approve",
+        wallet:
+          index === 0
+            ? "0x1111111111111111111111111111111111111111"
+            : "0x2222222222222222222222222222222222222222",
+      }),
+    );
+  }
+  await jsonResponse(
+    await act(db, created.record.id, created.access.arbiter, {
+      type: "approve",
+      wallet: "0x3333333333333333333333333333333333333333",
+    }),
+  );
+  await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "finalize",
+      agreementId: "151",
+      transactionHash: transactionHash(151),
+    }),
+  );
+  await submitStandardClaim(db, created, {
+    amount: "300",
+    transactionByte: "c",
+  });
+
+  const primaryResponse = {
+    type: "claim_response",
+    decision: "dispute",
+    acceptedAmount: "0",
+    note: "The documentation does not establish tenant responsibility.",
+    transactionHash: transactionHash(152),
+  };
+  const concurrentResponses = await Promise.all([
+    act(
+      db,
+      created.record.id,
+      created.access.tenants[0].token,
+      primaryResponse,
+    ),
+    act(
+      db,
+      created.record.id,
+      created.access.tenants[0].token,
+      primaryResponse,
+    ),
+  ]);
+  assert.deepEqual(
+    concurrentResponses.map((response) => response.status),
+    [200, 200],
+  );
+  const crossTenantReplay = await act(
+    db,
+    created.record.id,
+    created.access.tenants[1].token,
+    primaryResponse,
+  );
+  assert.equal(crossTenantReplay.status, 409);
+  assert.match(
+    (await crossTenantReplay.json()).error,
+    /already assigned to another participant action/,
+  );
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenants[1].token, {
+      ...primaryResponse,
+      transactionHash: transactionHash(153),
+    }),
+  );
+
+  const ruling = {
+    type: "arbiter_ruling",
+    awardToLandlord: "75",
+    note: "The documentation supports part of the requested amount.",
+    transactionHash: transactionHash(154),
+  };
+  const concurrentRulings = await Promise.all([
+    act(db, created.record.id, created.access.arbiter, ruling),
+    act(db, created.record.id, created.access.arbiter, ruling),
+  ]);
+  assert.deepEqual(
+    concurrentRulings.map((response) => response.status),
+    [200, 200],
+  );
+  const crossRoleReplay = await act(
+    db,
+    created.record.id,
+    created.access.tenants[0].token,
+    ruling,
+  );
+  assert.equal(crossRoleReplay.status, 403);
+
+  const record = await jsonResponse(
+    await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}?token=${created.access.landlord}`,
+      ),
+      { DB: db },
+    ),
+  );
+  assert.equal(
+    record.events.filter(
+      (event) => event.action === "claim_response_submitted",
+    ).length,
+    2,
+  );
+  assert.equal(
+    record.events.filter(
+      (event) => event.action === "arbiter_ruling_submitted",
+    ).length,
+    1,
+  );
+  assert.equal(
+    db.database
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM negotiation_receipt_guards
+         WHERE negotiation_id = ?
+           AND action IN ('claim_response_submitted', 'arbiter_ruling_submitted')`,
+      )
+      .get(created.record.id).count,
+    3,
+  );
 });
 
 test("pilot rehearsal: a disputed claim completes funding, ruling, and withdrawals once", async () => {

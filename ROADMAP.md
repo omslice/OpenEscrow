@@ -178,6 +178,10 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] A confirmed testnet claim whose private receipt save is interrupted retains an
   account/agreement-scoped same-tab retry across reload, excludes bearer access from recovery
   storage, restores keyboard focus, and cannot repeat the onchain claim
+- [x] Confirmed tenant responses and arbiter rulings retain the same bounded, bearer-free,
+  account/agreement-scoped reload recovery; the record-only retry restores focus, prevents a
+  second onchain decision, and is protected by an append-only D1 receipt guard that rejects
+  concurrent duplicates and cross-participant replay without changing historical events
 - [x] Public-receipt recovery contains unexpected retry failures, shows plain-language feedback,
   restores the exact retry control after every failed attempt in React's committed layout phase,
   and proves repeated keyboard recovery without duplicating an agreement action

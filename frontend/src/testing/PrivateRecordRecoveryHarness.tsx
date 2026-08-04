@@ -1,6 +1,7 @@
 /* oxlint-disable react/only-export-components -- This test-only entry mounts one deterministic browser harness. */
 import { createRoot } from "react-dom/client";
 import { ClaimSection } from "../components/ClaimSection";
+import { DisputeResolutionSection } from "../components/DisputeResolutionSection";
 import { ResponseSection } from "../components/ResponseSection";
 import { Phase, ZERO_ADDRESS } from "../contracts/config";
 import {
@@ -14,13 +15,36 @@ import "../App.css";
 
 const LANDLORD = "0x1111111111111111111111111111111111111111" as const;
 const TENANT = "0x2222222222222222222222222222222222222222" as const;
+const ARBITER = "0x4444444444444444444444444444444444444444" as const;
 const search = new URLSearchParams(window.location.search);
 const role = search.get("role");
-const claimReceiptFlow = search.get("flow") === "claim-receipt";
+const flow = search.get("flow");
 const claimTransactionWrites = Number(
   window.sessionStorage.getItem("openescrow:test:claim-transaction-writes") ||
     "0",
 );
+const responseTransactionWrites = Number(
+  window.sessionStorage.getItem(
+    "openescrow:test:response-transaction-writes",
+  ) || "0",
+);
+const rulingTransactionWrites = Number(
+  window.sessionStorage.getItem("openescrow:test:ruling-transaction-writes") ||
+    "0",
+);
+
+function agreementPhase() {
+  if (flow === "claim-receipt") {
+    return claimTransactionWrites === 0 ? Phase.Active : Phase.ClaimOpen;
+  }
+  if (flow === "response-receipt") {
+    return responseTransactionWrites === 0 ? Phase.ClaimOpen : Phase.Disputed;
+  }
+  if (flow === "ruling-receipt") {
+    return rulingTransactionWrites === 0 ? Phase.Disputed : Phase.Closed;
+  }
+  return Phase.ClaimOpen;
+}
 
 const agreement: Agreement = {
   landlord: LANDLORD,
@@ -30,12 +54,9 @@ const agreement: Agreement = {
   claimAmended: false,
   pendingArbiterConfirmed: false,
   tenant: TENANT,
-  phase:
-    claimReceiptFlow && claimTransactionWrites === 0
-      ? Phase.Active
-      : Phase.ClaimOpen,
+  phase: agreementPhase(),
   closeReason: 0,
-  arbiter: ZERO_ADDRESS,
+  arbiter: role === "arbiter" ? ARBITER : ZERO_ADDRESS,
   pendingArbiter: ZERO_ADDRESS,
   pendingArbiterProposer: ZERO_ADDRESS,
   token: "0x3333333333333333333333333333333333333333",
@@ -59,12 +80,12 @@ const agreement: Agreement = {
 
 const access: NegotiationAccess = {
   proposalId: "OE-P-RECOVERY",
-  role: role === "tenant" ? "tenant" : "landlord",
+  role: role === "tenant" ? "tenant" : role === "arbiter" ? "arbiter" : "landlord",
   token: "synthetic-private-record-recovery-token",
   source: "invite",
 };
 
-if (role !== "tenant") {
+if (role !== "tenant" && role !== "arbiter") {
   rememberLandlordBundle({
     record: { id: access.proposalId },
     access: {
@@ -81,6 +102,12 @@ createRoot(document.getElementById("root")!).render(
     <section className="card">
       {role === "tenant" ? (
         <ResponseSection
+          id={43n}
+          agreement={agreement}
+          negotiationAccess={access}
+        />
+      ) : role === "arbiter" ? (
+        <DisputeResolutionSection
           id={43n}
           agreement={agreement}
           negotiationAccess={access}

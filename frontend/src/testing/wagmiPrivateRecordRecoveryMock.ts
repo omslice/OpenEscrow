@@ -2,13 +2,27 @@ import { useState } from "react";
 
 const LANDLORD = "0x1111111111111111111111111111111111111111" as const;
 const TENANT = "0x2222222222222222222222222222222222222222" as const;
+const ARBITER = "0x4444444444444444444444444444444444444444" as const;
 const CLAIM_TRANSACTION_HASH = `0x${"9".repeat(64)}` as const;
+const RESPONSE_TRANSACTION_HASH = `0x${"8".repeat(64)}` as const;
+const RULING_TRANSACTION_HASH = `0x${"6".repeat(64)}` as const;
 const CLAIM_TRANSACTION_COUNT_KEY = "openescrow:test:claim-transaction-writes";
+const RESPONSE_TRANSACTION_COUNT_KEY =
+  "openescrow:test:response-transaction-writes";
+const RULING_TRANSACTION_COUNT_KEY =
+  "openescrow:test:ruling-transaction-writes";
+
+function transactionCount(key: string) {
+  return Number(window.sessionStorage.getItem(key) || "0");
+}
+
+function recordTransaction(key: string) {
+  window.sessionStorage.setItem(key, String(transactionCount(key) + 1));
+}
 
 function selectedAddress() {
-  return new URLSearchParams(window.location.search).get("role") === "tenant"
-    ? TENANT
-    : LANDLORD;
+  const role = new URLSearchParams(window.location.search).get("role");
+  return role === "tenant" ? TENANT : role === "arbiter" ? ARBITER : LANDLORD;
 }
 
 export function useAccount() {
@@ -20,7 +34,12 @@ export function useReadContract(parameters: { functionName?: string }) {
     case "tenantShareBps":
       return { data: 10_000n };
     case "tenantClaimResponded":
-      return { data: false };
+      return {
+        data:
+          new URLSearchParams(window.location.search).get("flow") ===
+            "response-receipt" &&
+          transactionCount(RESPONSE_TRANSACTION_COUNT_KEY) > 0,
+      };
     case "claimResponseCount":
       return { data: 0n };
     case "getTenantParticipants":
@@ -38,18 +57,16 @@ export function useWriteContract() {
   const [data, setData] = useState<`0x${string}` | undefined>();
   return {
     writeContract: () => {
-      if (
-        new URLSearchParams(window.location.search).get("tx") ===
-        "claim-success"
-      ) {
-        const count = Number(
-          window.sessionStorage.getItem(CLAIM_TRANSACTION_COUNT_KEY) || "0",
-        );
-        window.sessionStorage.setItem(
-          CLAIM_TRANSACTION_COUNT_KEY,
-          String(count + 1),
-        );
+      const transaction = new URLSearchParams(window.location.search).get("tx");
+      if (transaction === "claim-success") {
+        recordTransaction(CLAIM_TRANSACTION_COUNT_KEY);
         setData(CLAIM_TRANSACTION_HASH);
+      } else if (transaction === "response-success") {
+        recordTransaction(RESPONSE_TRANSACTION_COUNT_KEY);
+        setData(RESPONSE_TRANSACTION_HASH);
+      } else if (transaction === "ruling-success") {
+        recordTransaction(RULING_TRANSACTION_COUNT_KEY);
+        setData(RULING_TRANSACTION_HASH);
       }
     },
     data,

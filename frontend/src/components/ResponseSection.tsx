@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
 import { agreementReference } from "../lib/displayIds";
@@ -7,13 +7,25 @@ import {
   copyTextToClipboard,
   openExternalWindow,
 } from "../lib/browserActions";
+import { createAsyncOperationScope } from "../lib/asyncOperationScope";
+import {
+  clearRecoveryJsonIf,
+  getBrowserRecoveryStorage,
+  readRecoveryJson,
+  writeRecoveryJson,
+} from "../lib/browserRecovery";
+import {
+  decisionReceiptRecoveryKey,
+  isClaimResponseReceiptAction,
+  sameDecisionReceipt,
+  type ClaimResponseReceiptAction,
+} from "../lib/decisionReceiptRecovery";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
 import {
   loadNegotiation,
   negotiationAction,
   sendClaimResponseNotification,
-  type NegotiationAction,
   type NegotiationAccess,
   type NegotiationEvent,
   type NegotiationRecord,
@@ -21,7 +33,7 @@ import {
 import { EvidenceList } from "./EvidenceList";
 
 type Mode = "accept" | "partial" | "dispute";
-type ClaimResponseAction = Extract<NegotiationAction, { type: "claim_response" }>;
+type ClaimResponseAction = ClaimResponseReceiptAction;
 
 function responseFromEvent(
   event: NegotiationEvent | undefined,
@@ -82,8 +94,11 @@ export function ResponseSection({
   const [submittedResponse, setSubmittedResponse] = useState<ClaimResponseAction | null>(null);
   const [pendingRecord, setPendingRecord] = useState<ClaimResponseAction | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
+  const [isSavingResponseRecord, setIsSavingResponseRecord] = useState(false);
   const [noticeStatus, setNoticeStatus] = useState<string | null>(null);
   const recordRetryButton = useRef<HTMLButtonElement>(null);
+  const responseReceiptRetryButton = useRef<HTMLButtonElement>(null);
+  const pendingRecordStored = useRef(true);
   const recordLoadProposalId = negotiationAccess?.role === "tenant"
     ? negotiationAccess.proposalId
     : null;
@@ -94,6 +109,55 @@ export function ResponseSection({
     ? `${recordLoadProposalId}:tenant:${recordLoadToken}`
     : null;
   const previousRecordLoadScope = useRef<string | null>(null);
+  const pendingRecordKey =
+    negotiationAccess?.role === "tenant" && address
+      ? decisionReceiptRecoveryKey({
+          receipt: "claim-response",
+          agreementId: id.toString(),
+          proposalId: negotiationAccess.proposalId,
+          role: "tenant",
+          address,
+        })
+      : null;
+  const responseReceiptScopeKey = JSON.stringify([
+    id.toString(),
+    pendingRecordKey,
+  ]);
+  const responseReceiptScope = useMemo(
+    () => createAsyncOperationScope(responseReceiptScopeKey),
+    [responseReceiptScopeKey],
+  );
+  const responseNotificationScope = useMemo(
+    () => createAsyncOperationScope(responseReceiptScopeKey),
+    [responseReceiptScopeKey],
+  );
+
+  useLayoutEffect(() => {
+    responseReceiptScope.open();
+    responseNotificationScope.open();
+    setIsSavingResponseRecord(false);
+    const storage = getBrowserRecoveryStorage("session");
+    const recovered =
+      pendingRecordKey && storage
+        ? readRecoveryJson(
+            pendingRecordKey,
+            isClaimResponseReceiptAction,
+            storage,
+          )
+        : null;
+    pendingRecordStored.current = Boolean(recovered);
+    setPendingRecord(recovered);
+    setSubmittedResponse(recovered);
+    setRecordError(
+      recovered
+        ? "OpenEscrow recovered a confirmed testnet response whose private activity receipt still needs to be saved. Retry the record save; do not submit another response."
+        : null,
+    );
+    return () => {
+      responseReceiptScope.close();
+      responseNotificationScope.close();
+    };
+  }, [pendingRecordKey, responseNotificationScope, responseReceiptScope]);
 
   const { data: tenantShare } = useReadContract({
     address: OPEN_ESCROW_ADDRESS,
@@ -178,6 +242,12 @@ export function ResponseSection({
     }
   }, [isLoadingRecord, recordLoadError]);
 
+  useLayoutEffect(() => {
+    if (pendingRecord && recordError && !isSavingResponseRecord) {
+      responseReceiptRetryButton.current?.focus({ preventScroll: true });
+    }
+  }, [isSavingResponseRecord, pendingRecord, recordError]);
+
   const isTenant =
     (typeof tenantShare === "bigint" && tenantShare > 0n) ||
     (typeof tenantShare === "number" && tenantShare > 0);
@@ -260,6 +330,7 @@ export function ResponseSection({
 
   async function notifyLandlord(action: ClaimResponseAction) {
     if (!negotiationAccess || negotiationAccess.role !== "tenant") return;
+    const operationId = responseNotificationScope.start();
     setNoticeStatus("Sending the landlord notification...");
     try {
       await sendClaimResponseNotification(negotiationAccess, {
@@ -270,27 +341,58 @@ export function ResponseSection({
         transactionHash: action.transactionHash,
         reviewUrl: landlordReviewUrl(),
       });
-      setNoticeStatus("The landlord was emailed automatically.");
+      if (responseNotificationScope.isCurrent(operationId)) {
+        setNoticeStatus("The landlord was emailed automatically.");
+      }
     } catch {
-      setNoticeStatus("Automatic email is unavailable. Use the Gmail or copy-email option below.");
+      if (responseNotificationScope.isCurrent(operationId)) {
+        setNoticeStatus(
+          "Automatic email is unavailable. Use the Gmail or copy-email option below.",
+        );
+      }
     }
   }
 
   async function saveResponse(action: ClaimResponseAction) {
     if (!negotiationAccess || negotiationAccess.role !== "tenant") return;
+    const operationId = responseReceiptScope.start();
     setRecordError(null);
+    setIsSavingResponseRecord(true);
     try {
       const updated = await negotiationAction(negotiationAccess, action);
+      const storage = getBrowserRecoveryStorage("session");
+      if (pendingRecordKey && storage) {
+        clearRecoveryJsonIf(
+          pendingRecordKey,
+          (value) =>
+            isClaimResponseReceiptAction(value) &&
+            sameDecisionReceipt(value, action),
+          storage,
+        );
+      }
+      if (!responseReceiptScope.isCurrent(operationId)) return;
       setRecord(updated);
-      setPendingRecord(null);
+      setPendingRecord((current) =>
+        sameDecisionReceipt(current, action) ? null : current,
+      );
+      setSubmittedResponse(action);
       void notifyLandlord(action);
       onRefetch?.();
     } catch (cause) {
+      if (!responseReceiptScope.isCurrent(operationId)) return;
+      const reloadWarning = pendingRecordStored.current
+        ? " This retry is kept only in this browser tab until it is saved."
+        : " This browser could not keep a reload-recovery copy, so keep this page open and retry now.";
+      const failureDetail = cause instanceof Error
+        ? `: ${cause.message.replace(/[.\s]+$/, "")}.`
+        : ".";
       setRecordError(
-        cause instanceof Error
-          ? `The onchain response succeeded, but its activity record still needs to be saved: ${cause.message}`
-          : "The onchain response succeeded, but its activity record still needs to be saved.",
+        `The onchain response succeeded, but its activity record still needs to be saved${failureDetail}${reloadWarning}`,
       );
+    } finally {
+      if (responseReceiptScope.isCurrent(operationId)) {
+        setIsSavingResponseRecord(false);
+      }
     }
   }
 
@@ -475,7 +577,12 @@ export function ResponseSection({
                     ? "Dispute deduction"
                     : "Approve part and dispute remainder"
               }
-              disabled={!validAmount || !validExplanation}
+              disabled={
+                !validAmount ||
+                !validExplanation ||
+                submittedResponse !== null ||
+                Boolean(pendingRecord)
+              }
               onSuccess={(transactionHash) => {
                 if (!negotiationAccess || negotiationAccess.role !== "tenant") return;
                 const action: ClaimResponseAction = {
@@ -487,6 +594,12 @@ export function ResponseSection({
                 };
                 setSubmittedResponse(action);
                 setPendingRecord(action);
+                const storage = getBrowserRecoveryStorage("session");
+                pendingRecordStored.current = Boolean(
+                  pendingRecordKey &&
+                    storage &&
+                    writeRecoveryJson(pendingRecordKey, action, storage),
+                );
                 void saveResponse(action);
               }}
             />
@@ -515,19 +628,30 @@ export function ResponseSection({
         </div>
       )}
 
-      {pendingRecord && recordError && (
-        <button
-          className="btn btn-ghost small"
-          type="button"
-          onClick={() => void saveResponse(pendingRecord)}
-        >
-          Retry saving response receipt
-        </button>
-      )}
-      {recordError && (
-        <p className="tx-error" role="alert">
-          {recordError}
-        </p>
+      {pendingRecord && (
+        <div className="receipt-recovery" aria-busy={isSavingResponseRecord}>
+          {recordError && (
+            <p className="tx-error" role="alert">
+              {recordError}
+            </p>
+          )}
+          {isSavingResponseRecord && (
+            <p className="hint" role="status" aria-live="polite">
+              Saving the confirmed response to the private activity record...
+            </p>
+          )}
+          <button
+            ref={responseReceiptRetryButton}
+            className="btn btn-ghost small"
+            type="button"
+            disabled={isSavingResponseRecord}
+            onClick={() => void saveResponse(pendingRecord)}
+          >
+            {isSavingResponseRecord
+              ? "Saving response receipt..."
+              : "Retry saving response receipt"}
+          </button>
+        </div>
       )}
 
       {email && (
