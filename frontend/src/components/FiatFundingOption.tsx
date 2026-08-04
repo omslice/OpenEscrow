@@ -10,6 +10,7 @@ import {
   createFundingCheckoutAttempt,
   createFundingIntent,
   createFundingPlan,
+  fundingIntentKey,
   isFundingCheckoutLifecycle,
   reconcileFundingCheckoutError,
   reconcileFundingCheckoutResult,
@@ -57,6 +58,30 @@ function durableRecoveryUnavailable(): FundingCheckoutOutcome {
   };
 }
 
+function activeIntentMismatch(): FundingCheckoutOutcome {
+  return {
+    state: "unknown",
+    providerStatus: "active_intent_mismatch",
+    severity: "error",
+    shouldRefreshBalance: false,
+    retryAllowed: false,
+    message:
+      "An earlier no-money checkout for this agreement is still open with different funding details. Close that preview below before starting one with the updated amount or asset.",
+  };
+}
+
+function requestedIntentMatches(
+  checkout: FundingCheckoutLifecycle | null,
+  intent: ReturnType<typeof createFundingIntent>,
+  serverMatch: boolean | undefined,
+) {
+  const locallyMatched =
+    !checkout || checkout.intentKey === fundingIntentKey(intent);
+  return serverMatch === undefined
+    ? locallyMatched
+    : serverMatch && locallyMatched;
+}
+
 function checkoutOutcomeInput(checkout: FundingCheckoutLifecycle) {
   const event = checkout.events.at(-1);
   return {
@@ -86,6 +111,7 @@ export function FiatFundingOption({
   const { fund } = useFiatOnramp();
   const [status, setStatus] = useState<FundingCheckoutOutcome | null>(null);
   const [checkout, setCheckout] = useState<FundingCheckoutLifecycle | null>(null);
+  const [hasIntentMismatch, setHasIntentMismatch] = useState(false);
   const [isRecovering, setIsRecovering] = useState(true);
   const [isOpening, setIsOpening] = useState(false);
   const [isResolving, setIsResolving] = useState(false);
@@ -148,6 +174,7 @@ export function FiatFundingOption({
       !cancelled && operationScope.isCurrent(operationId);
     setStatus(null);
     setCheckout(null);
+    setHasIntentMismatch(false);
     setRefreshError(null);
     setIsRecovering(true);
     if (!FIAT_ONRAMP_CONFIG) {
@@ -183,19 +210,31 @@ export function FiatFundingOption({
             onrampEnabled: true,
             productionApproved: false,
           });
-          let recovered = (
-            await recoverDurableFundingCheckout(durableAccess, intent)
-          ).checkout;
+          const recovery = await recoverDurableFundingCheckout(durableAccess, intent);
+          let recovered = recovery.checkout;
+          let requestedIntentMatched = requestedIntentMatches(
+            recovered,
+            intent,
+            recovery.requestedIntentMatched,
+          );
           if (!recovered && saved) {
-            recovered = (
-              await createDurableFundingCheckout(
-                durableAccess,
-                intent,
-                saved.attemptId,
-              )
-            ).checkout;
+            const created = await createDurableFundingCheckout(
+              durableAccess,
+              intent,
+              saved.attemptId,
+            );
+            recovered = created.checkout;
+            requestedIntentMatched = requestedIntentMatches(
+              recovered,
+              intent,
+              created.requestedIntentMatched,
+            );
           }
-          if (recovered && saved?.attemptId === recovered.attemptId) {
+          if (
+            requestedIntentMatched &&
+            recovered &&
+            saved?.attemptId === recovered.attemptId
+          ) {
             const recoveredEvents = new Map(
               recovered.events.map((event) => [event.id, event]),
             );
@@ -246,9 +285,16 @@ export function FiatFundingOption({
             setStatus(null);
             return;
           }
+          if (!requestedIntentMatched) {
+            setHasIntentMismatch(true);
+            setCheckout(recovered);
+            setStatus(activeIntentMismatch());
+            return;
+          }
           if (checkoutStorageKey) {
             writeRecoveryJson(checkoutStorageKey, recovered);
           }
+          setHasIntentMismatch(false);
           setCheckout(recovered);
           setStatus(
             reconcileFundingCheckoutResult(
@@ -325,7 +371,9 @@ export function FiatFundingOption({
   const sandboxClosureStatus = sandboxCheckoutClosureStatus(checkout);
   const checkoutLocked = status?.retryAllowed === false;
   const checkoutLabel =
-    status?.state === "confirmed"
+    hasIntentMismatch
+      ? "Resolve previous checkout below"
+      : status?.state === "confirmed"
       ? "Checkout complete"
       : status?.state === "refund_pending"
         ? "Refund pending"
@@ -371,12 +419,14 @@ export function FiatFundingOption({
       }
       if (
         checkoutStorageKey &&
+        !hasIntentMismatch &&
         !writeRecoveryJson(checkoutStorageKey, closedCheckout) &&
         !durableAccess
       ) {
         throw new Error("The closed sandbox preview could not be saved.");
       }
       if (operationScope.isCurrent(operationId)) {
+        setHasIntentMismatch(false);
         setCheckout(closedCheckout);
         setStatus(
           reconcileFundingCheckoutResult(
@@ -445,6 +495,23 @@ export function FiatFundingOption({
                 attemptId,
               );
               attempt = durableAttempt.checkout;
+              if (
+                !requestedIntentMatches(
+                  attempt,
+                  intent,
+                  durableAttempt.requestedIntentMatched,
+                )
+              ) {
+                if (operationScope.isCurrent(operationId)) {
+                  setHasIntentMismatch(true);
+                  setCheckout(attempt);
+                  setStatus(activeIntentMismatch());
+                }
+                return;
+              }
+              if (operationScope.isCurrent(operationId)) {
+                setHasIntentMismatch(false);
+              }
               if (checkoutStorageKey) {
                 writeRecoveryJson(checkoutStorageKey, attempt);
               }
@@ -667,14 +734,15 @@ export function FiatFundingOption({
                 : "Close no-money sandbox preview"}
           </button>
           <small>
-            No real money moved. This ends only the sandbox rehearsal record so you can
-            retry it. Production results stay locked until the provider or an authorized
-            operator verifies them.
+            {hasIntentMismatch
+              ? "No real money moved. Close the earlier preview so the updated funding details can start a separate rehearsal."
+              : "No real money moved. This ends only the sandbox rehearsal record so you can retry it. Production results stay locked until the provider or an authorized operator verifies them."}
           </small>
         </>
       )}
       {status &&
         (status.shouldRefreshBalance || !status.retryAllowed) &&
+        !hasIntentMismatch &&
         !isOpening &&
         onComplete && (
         <button

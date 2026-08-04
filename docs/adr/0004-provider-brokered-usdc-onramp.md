@@ -54,7 +54,11 @@ It would also incorrectly imply that a DEX is needed to enter or exit Aave.
    guards prevent simultaneous provider results from forking the saved lifecycle.
 10. Use browser storage only as a best-effort recovery cache. On a later page load or device, the
     authenticated tenant recovers the D1 lifecycle and may reconcile a locally retained provider
-    result. An interrupted opening remains locked until its status is resolved.
+    result. An interrupted opening remains locked until its status is resolved. If the approved
+    wallet, asset, or amount changes while an attempt is active, the API explicitly reports that
+    the requested intent does not match. The client independently verifies the intent key, does
+    not copy the stale attempt into the new browser-recovery key, and requires the tenant to close
+    the no-money preview before starting the updated intent.
 11. Keep this ledger explicitly sandbox-only. Every event durably records its source and
     verification class. The tenant endpoint ignores any client-supplied provenance and stamps
     checkout-window callbacks as `browser_callback` plus `unverified`; those events never create

@@ -242,6 +242,10 @@ detailed validation ledger.
   approval, test-token, record-anchor, and private-activity follow-up actions run only after a
   receipt reports success; a reverted or unknown receipt creates no optimistic funded state,
   private activity record, or browser recovery receipt.
+- **Verified:** Durable sandbox recovery distinguishes the current funding intent from an earlier
+  active attempt after an amount, asset, or wallet change. The client verifies the returned intent
+  key, keeps the stale attempt out of the new local recovery key, and requires an explicit
+  no-money close before it can open the updated preview.
 - **Verified:** An interrupted no-money provider sandbox preview remains locked until the tenant
   explicitly closes its durable attempt. Closing records a terminal cancellation before enabling
   a new preview, while production checkouts with unknown outcomes remain fail-closed for provider

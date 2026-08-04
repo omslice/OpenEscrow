@@ -103,6 +103,9 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Require a successful mined receipt before any sponsored test-token, approval, deposit,
   record-proof, or private-activity flow can show success or create a recovery/activity record;
   reverted and unknown receipts fail closed with no optimistic funding state
+- [x] Expose and verify active sandbox checkout intent mismatches so a changed amount, asset, or
+  wallet cannot inherit the earlier attempt's UI or browser-recovery key; the tenant must close
+  the no-money preview before opening the updated intent
 - [ ] Enable and validate an eligible provider sandbox in the Privy dashboard
 - [ ] Decide whether the pilot needs separate ACH/bank-deposit support
 - [ ] Complete provider approval, KYC/AML, fees, refunds, webhooks, reconciliation, and support

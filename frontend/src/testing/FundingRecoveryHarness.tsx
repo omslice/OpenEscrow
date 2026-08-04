@@ -46,11 +46,13 @@ const FUNDING_SCOPES: Record<ScopeId, FundingScope> = {
 };
 
 const walletAddress = "0xAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
-const amount = 1_250_000n;
+const originalAmount = 1_250_000n;
+const updatedAmount = 2_000_000n;
 const depositAsset = getDepositAsset("usdc");
 
 function FundingRecoveryHarness() {
   const [scopeId, setScopeId] = useState<ScopeId>("agreement-a-tenant-1");
+  const [amount, setAmount] = useState(originalAmount);
   const scope = FUNDING_SCOPES[scopeId];
 
   return (
@@ -79,6 +81,18 @@ function FundingRecoveryHarness() {
         <p aria-live="polite">
           Current scope: <strong>{scope.label}</strong>
         </p>
+        <p aria-live="polite">
+          Preview amount: <strong>{amount.toString()} micros</strong>
+        </p>
+        <button
+          className="btn btn-ghost"
+          type="button"
+          onClick={() => setAmount((current) =>
+            current === originalAmount ? updatedAmount : originalAmount
+          )}
+        >
+          {amount === originalAmount ? "Use updated amount" : "Restore original amount"}
+        </button>
         <FiatFundingOption
           walletAddress={walletAddress}
           amount={amount}

@@ -5,6 +5,7 @@ import { chromium } from "playwright";
 import {
   applyFundingCheckoutEvent,
   createFundingCheckoutAttempt,
+  fundingIntentKey,
 } from "../shared/funding-routes.js";
 
 const host = "127.0.0.1";
@@ -139,11 +140,15 @@ try {
       const proposalId = decodeURIComponent(recoveryMatch[1]);
       const key = scopeKey(proposalId, body.token);
       recoveredScopes.push(key);
+      const checkout = attempts.get(key) || null;
+      const requestedIntentMatched =
+        !checkout || checkout.intentKey === fundingIntentKey(hydrateIntent(body.intent));
       await route.fulfill({
         status: 200,
         contentType: "application/json",
         body: JSON.stringify({
-          checkout: attempts.get(key) || null,
+          checkout,
+          requestedIntentMatched,
           durable: true,
           sandboxOnly: true,
         }),
@@ -155,13 +160,33 @@ try {
     const proposalId = decodeURIComponent(createMatch[1]);
     const key = scopeKey(proposalId, body.token);
     const existing = attempts.get(key);
+    const requestedIntent = hydrateIntent(body.intent);
+    const requestedIntentMatched =
+      !existing || existing.intentKey === fundingIntentKey(requestedIntent);
+    if (
+      existing &&
+      !["cancelled", "failed", "refunded"].includes(existing.status)
+    ) {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          checkout: existing,
+          created: false,
+          requestedIntentMatched,
+          durable: true,
+          sandboxOnly: true,
+        }),
+      });
+      return;
+    }
     assert.equal(
       existing === undefined ||
         ["cancelled", "failed", "refunded"].includes(existing.status),
       true,
       `A new checkout for ${key} requires a terminal prior attempt.`,
     );
-    const checkout = createFundingCheckoutAttempt(hydrateIntent(body.intent), {
+    const checkout = createFundingCheckoutAttempt(requestedIntent, {
       attemptId: body.attemptId,
     });
     attempts.set(key, checkout);
@@ -172,6 +197,7 @@ try {
       body: JSON.stringify({
         checkout,
         created: true,
+        requestedIntentMatched: true,
         durable: true,
         sandboxOnly: true,
       }),
@@ -331,8 +357,70 @@ try {
   assert.equal(attempts.get("proposal-a:access-a-1")?.status, "cancelled");
   await page.getByRole("button", { name: "Start a new checkout" }).waitFor();
 
+  await page.getByRole("button", { name: "Start a new checkout" }).click();
+  await page.waitForFunction(
+    () => window.__openEscrowFundingRecoveryTest?.snapshot().callCount === 5,
+  );
+  const recoveryKeyCountBeforeIntentChange = await page.evaluate(
+    () =>
+      Object.keys(localStorage).filter((key) =>
+        key.startsWith("openescrow:funding-checkout:"),
+      ).length,
+  );
+  await page.getByRole("button", { name: "Use updated amount" }).click();
+  await page.getByText("Preview amount: 2000000 micros").waitFor();
+  await page
+    .getByText(/earlier no-money checkout.*different funding details/i)
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await page.getByRole("button", { name: "Resolve previous checkout below" }).isDisabled(),
+    true,
+    "Changed funding details must not open a second provider checkout while the old attempt is active.",
+  );
+  assert.equal(
+    await page.getByRole("button", { name: "Refresh wallet balance" }).count(),
+    0,
+    "Intent mismatch recovery must present only the close-and-retry action.",
+  );
+  assert.equal(
+    (await page.evaluate(() => window.__openEscrowFundingRecoveryTest?.snapshot().callCount)),
+    5,
+    "Intent mismatch recovery must not call the provider again.",
+  );
+  assert.equal(
+    await page.evaluate(
+      () =>
+        Object.keys(localStorage).filter((key) =>
+          key.startsWith("openescrow:funding-checkout:"),
+        ).length,
+    ),
+    recoveryKeyCountBeforeIntentChange,
+    "The stale attempt must not be copied into the updated intent's browser recovery key.",
+  );
+  await page
+    .getByRole("button", { name: "Close no-money sandbox preview" })
+    .click();
+  await page
+    .getByText(/Checkout was closed before confirmation/)
+    .waitFor({ state: "visible" });
+  await page.getByRole("button", { name: "Start a new checkout" }).click();
+  await page.waitForFunction(
+    () => window.__openEscrowFundingRecoveryTest?.snapshot().callCount === 6,
+  );
+  assert.equal(
+    attempts.get("proposal-a:access-a-1")?.amountMicros,
+    "2000000",
+    "The replacement preview must use the updated amount only after the stale attempt closes.",
+  );
+  await page.evaluate(() => {
+    window.__openEscrowFundingRecoveryTest?.resolveCall(5, "cancelled");
+  });
+  await page
+    .getByText(/Checkout was closed before confirmation/)
+    .waitFor({ state: "visible" });
+
   process.stdout.write(
-    "Funding recovery browser check passed: same-wallet agreements and co-tenants retain isolated state, and no-money confirmed or submitted previews reset through valid refund or cancellation transitions.\n",
+    "Funding recovery browser check passed: agreement and tenant state stays isolated, active intent mismatches must close before updated details can open, and no-money previews reset through valid refund or cancellation transitions.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

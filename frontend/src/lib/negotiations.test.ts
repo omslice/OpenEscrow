@@ -305,7 +305,12 @@ test("durable sandbox checkout requests keep bearer access and bigint amounts ou
     });
     const url = String(input);
     if (url.endsWith("/recover")) {
-      return Response.json({ checkout, durable: true, sandboxOnly: true });
+      return Response.json({
+        checkout,
+        requestedIntentMatched: true,
+        durable: true,
+        sandboxOnly: true,
+      });
     }
     if (url.endsWith("/events")) {
       return Response.json({
@@ -318,6 +323,7 @@ test("durable sandbox checkout requests keep bearer access and bigint amounts ou
     return Response.json({
       checkout,
       created: true,
+      requestedIntentMatched: true,
       durable: true,
       sandboxOnly: true,
     });

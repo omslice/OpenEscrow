@@ -267,12 +267,14 @@ type SerializableFundingIntent = Omit<FundingIntent, "amountMicros"> & {
 export interface DurableFundingCheckoutResult {
   checkout: FundingCheckoutLifecycle;
   created: boolean;
+  requestedIntentMatched: boolean;
   durable: true;
   sandboxOnly: true;
 }
 
 export interface DurableFundingCheckoutRecovery {
   checkout: FundingCheckoutLifecycle | null;
+  requestedIntentMatched: boolean;
   durable: true;
   sandboxOnly: true;
 }

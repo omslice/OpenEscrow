@@ -3652,6 +3652,7 @@ async function createSandboxFundingCheckout(request, env, id) {
     return json({
       checkout: existingAttempt.checkout,
       created: false,
+      requestedIntentMatched: true,
       durable: true,
       sandboxOnly: true,
     });
@@ -3673,6 +3674,7 @@ async function createSandboxFundingCheckout(request, env, id) {
     return json({
       checkout: saved.checkout,
       created: false,
+      requestedIntentMatched: saved.checkout.intentKey === context.intentKey,
       durable: true,
       sandboxOnly: true,
     });
@@ -3719,6 +3721,7 @@ async function createSandboxFundingCheckout(request, env, id) {
       return json({
         checkout: saved.checkout,
         created: false,
+        requestedIntentMatched: saved.checkout.intentKey === context.intentKey,
         durable: true,
         sandboxOnly: true,
       });
@@ -3730,6 +3733,7 @@ async function createSandboxFundingCheckout(request, env, id) {
     {
       checkout: newCheckout,
       created: true,
+      requestedIntentMatched: true,
       durable: true,
       sandboxOnly: true,
     },
@@ -3774,6 +3778,8 @@ async function recoverSandboxFundingCheckout(request, env, id) {
     : null;
   return json({
     checkout: saved?.checkout || null,
+    requestedIntentMatched:
+      !saved || saved.checkout.intentKey === context.intentKey,
     durable: true,
     sandboxOnly: true,
   });

@@ -1725,6 +1725,7 @@ test("pilot rehearsal: sandbox checkout recovery is durable and separate from ag
   assert.equal(openedResponse.status, 201);
   const opened = await jsonResponse(openedResponse);
   assert.equal(opened.created, true);
+  assert.equal(opened.requestedIntentMatched, true);
   assert.equal(opened.durable, true);
   assert.equal(opened.sandboxOnly, true);
   assert.equal(opened.checkout.status, "opening");
@@ -1739,6 +1740,7 @@ test("pilot rehearsal: sandbox checkout recovery is durable and separate from ag
     }),
   );
   assert.equal(repeated.created, false);
+  assert.equal(repeated.requestedIntentMatched, true);
   assert.equal(repeated.checkout.attemptId, attemptId);
 
   const duplicateIntent = await jsonResponse(
@@ -1749,6 +1751,7 @@ test("pilot rehearsal: sandbox checkout recovery is durable and separate from ag
     }),
   );
   assert.equal(duplicateIntent.created, false);
+  assert.equal(duplicateIntent.requestedIntentMatched, true);
   assert.equal(duplicateIntent.checkout.attemptId, attemptId);
 
   const differentAmountIntent = sandboxFundingIntent({ amountMicros: 100_000_000n });
@@ -1760,6 +1763,7 @@ test("pilot rehearsal: sandbox checkout recovery is durable and separate from ag
     }),
   );
   assert.equal(duplicateDifferentAmount.created, false);
+  assert.equal(duplicateDifferentAmount.requestedIntentMatched, false);
   assert.equal(duplicateDifferentAmount.checkout.attemptId, attemptId);
   assert.equal(duplicateDifferentAmount.checkout.amountMicros, "1205000000");
 
@@ -1770,6 +1774,7 @@ test("pilot rehearsal: sandbox checkout recovery is durable and separate from ag
     }),
   );
   assert.equal(recovered.checkout.attemptId, attemptId);
+  assert.equal(recovered.requestedIntentMatched, false);
   assert.equal(recovered.checkout.status, "opening");
 
   const submitted = await jsonResponse(
