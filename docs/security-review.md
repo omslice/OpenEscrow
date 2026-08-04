@@ -243,7 +243,11 @@ emergency diagnostics setting.
 Evidence upload now checks PDF/JPEG/PNG/WebP file signatures instead of trusting a browser-provided
 MIME type. Evidence downloads and printable reports add no-referrer, no-sniffing, anti-framing, and
 restrictive content-security headers. Static app responses also receive no-referrer and no-sniffing
-headers.
+headers. Current-client agreement, report, and canonical-snapshot reads carry their agreement
+bearer in the authorization header rather than the URL. The report control performs an
+authenticated fetch and starts a local browser download. Legacy query credentials remain readable
+for older clients, but a present malformed or wrong authorization header takes precedence and
+fails closed instead of downgrading to a valid query credential.
 
 Automated coverage at this addendum is 221 passing Solidity tests across 20 suites, including the
 three 32,768-call stateful invariants and 512-run fuzz cases, plus 87 passing hosted workflow tests.

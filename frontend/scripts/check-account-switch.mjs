@@ -310,8 +310,19 @@ try {
       }),
     });
   });
-  await page.route(/\/api\/negotiations\/(?:aaaaaaaa|bbbbbbbb)\?/, async (route) => {
+  await page.route(/\/api\/negotiations\/(?:aaaaaaaa|bbbbbbbb)$/, async (route) => {
     const account = route.request().url().includes("aaaaaaaa") ? "a" : "b";
+    const requestUrl = new URL(route.request().url());
+    assert.equal(
+      requestUrl.searchParams.has("token"),
+      false,
+      "Account-discovered record access must keep its bearer out of the URL.",
+    );
+    assert.equal(
+      route.request().headers().authorization,
+      `Bearer record-token-${account}`,
+      "Account-discovered record access must use the matching authorization header.",
+    );
     await route.fulfill({
       status: 200,
       contentType: "application/json",

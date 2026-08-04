@@ -189,11 +189,26 @@ try {
       body: JSON.stringify({ error: "Base Sepolia intentionally unavailable." }),
     });
   });
+  const privateReadRequests = [];
+  let reportAttempts = 0;
   await page.route("**/api/negotiations/**", async (route) => {
     const url = new URL(route.request().url());
+    const authorization = route.request().headers().authorization;
+    const isPrivateRead = [
+      `/api/negotiations/${proposalId}`,
+      `/api/negotiations/${proposalId}/report`,
+      `/api/negotiations/${proposalId}/snapshot`,
+    ].includes(url.pathname);
+    if (isPrivateRead) {
+      privateReadRequests.push({
+        pathname: url.pathname,
+        search: url.search,
+        authorization,
+      });
+    }
     if (
       url.pathname === `/api/negotiations/${proposalId}` &&
-      url.searchParams.get("token") === accessToken
+      authorization === `Bearer ${accessToken}`
     ) {
       await route.fulfill({
         status: 200,
@@ -203,8 +218,35 @@ try {
       return;
     }
     if (
+      url.pathname === `/api/negotiations/${proposalId}/report` &&
+      authorization === `Bearer ${accessToken}` &&
+      url.searchParams.get("download") === "1"
+    ) {
+      reportAttempts += 1;
+      if (reportAttempts === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({
+            error: "The complete record is temporarily unavailable. Try again.",
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "text/html; charset=utf-8",
+        headers: {
+          "content-disposition":
+            'attachment; filename="openescrow-rendered-complete-record.html"',
+        },
+        body: "<!doctype html><title>OpenEscrow rendered complete record</title>",
+      });
+      return;
+    }
+    if (
       url.pathname === `/api/negotiations/${proposalId}/snapshot` &&
-      url.searchParams.get("token") === accessToken
+      authorization === `Bearer ${accessToken}`
     ) {
       await route.fulfill({
         status: 200,
@@ -233,6 +275,46 @@ try {
   });
   await recordToggle.waitFor({ state: "visible" });
   await recordToggle.click();
+
+  const completeRecordButton = page.getByRole("button", {
+    name: "Download complete record report",
+  });
+  await completeRecordButton.click();
+  await page
+    .getByRole("alert")
+    .filter({
+      hasText: "The complete record is temporarily unavailable. Try again.",
+    })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await completeRecordButton.isEnabled(),
+    true,
+    "A report outage should restore the download action for an explicit retry.",
+  );
+  assert.equal(
+    await completeRecordButton.evaluate(
+      (element) => document.activeElement === element,
+    ),
+    true,
+    "A report outage should keep keyboard focus on the retryable download action.",
+  );
+  const [completeRecordDownload] = await Promise.all([
+    page.waitForEvent("download"),
+    completeRecordButton.click(),
+  ]);
+  assert.equal(
+    completeRecordDownload.suggestedFilename(),
+    "openescrow-rendered-complete-record.html",
+  );
+  const completeRecordPath = await completeRecordDownload.path();
+  assert.ok(completeRecordPath, "The complete record report should have a local path.");
+  assert.match(
+    await readFile(completeRecordPath, "utf8"),
+    /OpenEscrow rendered complete record/,
+  );
+  await page.getByText("Complete timestamped record downloaded.").waitFor({
+    state: "visible",
+  });
 
   const downloadRecord = page.getByRole("button", {
     name: "Download encrypted record",
@@ -336,9 +418,40 @@ try {
     true,
     "The expanded Record workflow should not cause horizontal overflow on a narrow screen.",
   );
+  assert.ok(
+    privateReadRequests.some(
+      ({ pathname, search }) =>
+        pathname === `/api/negotiations/${proposalId}` && search === "",
+    ),
+    "The rendered workspace should load its agreement through the token-free route.",
+  );
+  assert.ok(
+    privateReadRequests.some(
+      ({ pathname, search }) =>
+        pathname === `/api/negotiations/${proposalId}/report` &&
+        search === "?download=1",
+    ),
+    "The rendered report should retain only its non-secret download flag.",
+  );
+  assert.ok(
+    privateReadRequests.some(
+      ({ pathname, search }) =>
+        pathname === `/api/negotiations/${proposalId}/snapshot` && search === "",
+    ),
+    "The rendered encrypted export should load its snapshot through the token-free route.",
+  );
+  for (const privateReadRequest of privateReadRequests) {
+    assert.equal(
+      privateReadRequest.authorization,
+      `Bearer ${accessToken}`,
+      privateReadRequest.pathname,
+    );
+    assert.equal(privateReadRequest.search.includes(accessToken), false);
+    assert.equal(privateReadRequest.search.includes("token="), false);
+  }
 
   process.stdout.write(
-    "Record verification browser check passed: plain-language guidance, keyboard-accessible technical details, mobile width, encrypted export, separate key download, wrong-key rejection, and local integrity verification remain usable during a public-proof outage.\n",
+    "Record verification browser check passed: header-authorized readable report download, plain-language guidance, keyboard-accessible technical details, mobile width, encrypted export, separate key download, wrong-key rejection, and local integrity verification remain usable during a public-proof outage.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

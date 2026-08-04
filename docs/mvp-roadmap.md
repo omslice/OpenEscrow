@@ -29,7 +29,10 @@ production custody, or reliance on the compliance research as legal advice.
   to the current tab, while verified account sessions and landlord-created access retain their
   distinct durability boundaries. Older finalized records must re-prove the exact original
   agreement creator before another landlord receipt can be recorded; the recovered wallet is
-  retained for later checks.
+  retained for later checks. Routine agreement, report, and canonical-snapshot reads now keep the
+  bearer out of current-client URLs by using a strict authorization header; authenticated report
+  downloads remain usable, malformed-header downgrade attempts fail closed, and legacy query
+  access remains covered during migration.
 - **Verified:** The release dependency audit blocks every high/critical finding and every unknown
   moderate advisory. The former transitive `uuid` advisory is removed from the locked
   wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector
@@ -56,8 +59,9 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** The Record workspace now leads with plain-language report, private-backup, public-
   proof, and independent-check guidance. Encryption algorithms and raw fingerprints remain
   available in keyboard-accessible collapsed disclosures; the rendered rehearsal still proves
-  narrow-screen layout, separate-key export, wrong-key rejection, and local verification during
-  a public-proof outage.
+  narrow-screen layout, authenticated readable-report download and outage retry with focus
+  recovery, separate-key export, wrong-key rejection, and local verification during a public-
+  proof outage.
 - **Verified:** A public-receipt query failure is no longer hidden inside collapsed history.
   The visible recovery panel explains that agreement activity was not removed, keeps raw
   connection text in an optional disclosure, contains an unexpected retry rejection, and gives

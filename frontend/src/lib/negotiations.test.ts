@@ -7,6 +7,9 @@ import {
   clearLandlordBundle,
   createDurableFundingCheckout,
   listNegotiationAccesses,
+  loadNegotiation,
+  loadNegotiationReport,
+  loadNegotiationSnapshot,
   readLandlordBundle,
   readLatestLandlordAccess,
   readNegotiationAccess,
@@ -353,4 +356,59 @@ test("durable sandbox checkout requests keep bearer access and bigint amounts ou
     "1205000000",
   );
   assert.equal(captured[2].body.eventId, "provider:test-event");
+});
+
+test("private agreement reads use an authorization header instead of a bearer URL", async () => {
+  const originalFetch = globalThis.fetch;
+  const captured: Array<{ url: string; headers: Headers }> = [];
+  const access: NegotiationAccess = {
+    proposalId: "proposal/private read",
+    role: "tenant",
+    token: "tenant-private-read-secret",
+  };
+
+  globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    captured.push({ url, headers: new Headers(init?.headers) });
+    if (url.includes("/report?")) {
+      return new Response("<!doctype html><title>Complete record</title>", {
+        headers: {
+          "content-type": "text/html; charset=utf-8",
+          "content-disposition":
+            'attachment; filename="openescrow-private-read-complete-record.html"',
+        },
+      });
+    }
+    if (url.endsWith("/snapshot")) {
+      return Response.json({ algorithm: "SHA-256", hash: "0x1234" });
+    }
+    return Response.json({ id: access.proposalId, status: "finalized" });
+  }) as typeof fetch;
+
+  try {
+    await loadNegotiation(access);
+    const report = await loadNegotiationReport(access);
+    await loadNegotiationSnapshot(access);
+    assert.equal(report.filename, "openescrow-private-read-complete-record.html");
+    assert.match(report.content, /Complete record/);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  assert.deepEqual(
+    captured.map(({ url }) => url),
+    [
+      "/api/negotiations/proposal%2Fprivate%20read",
+      "/api/negotiations/proposal%2Fprivate%20read/report?download=1",
+      "/api/negotiations/proposal%2Fprivate%20read/snapshot",
+    ],
+  );
+  for (const privateRead of captured) {
+    assert.equal(privateRead.url.includes("token="), false);
+    assert.equal(privateRead.url.includes(access.token), false);
+    assert.equal(
+      privateRead.headers.get("authorization"),
+      `Bearer ${access.token}`,
+    );
+  }
 });

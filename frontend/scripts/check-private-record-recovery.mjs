@@ -70,7 +70,18 @@ async function waitForServer() {
 
 function routePrivateRecord(page, failAttempts = new Set([1, 2])) {
   let attempts = 0;
-  return page.route(/\/api\/negotiations\/OE-P-RECOVERY\?token=/, async (route) => {
+  return page.route(/\/api\/negotiations\/OE-P-RECOVERY$/, async (route) => {
+    const requestUrl = new URL(route.request().url());
+    assert.equal(
+      requestUrl.searchParams.has("token"),
+      false,
+      "Private-record recovery must keep agreement access out of the URL.",
+    );
+    assert.equal(
+      route.request().headers().authorization,
+      "Bearer synthetic-private-record-recovery-token",
+      "Private-record recovery must use its exact agreement authorization header.",
+    );
     attempts += 1;
     await new Promise((resolve) => setTimeout(resolve, 80));
     if (failAttempts.has(attempts)) {

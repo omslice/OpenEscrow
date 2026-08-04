@@ -8824,6 +8824,15 @@ function sameOriginGet(request) {
   );
 }
 
+function negotiationReadToken(request, url) {
+  const authorization = request.headers.get("authorization");
+  if (authorization !== null) {
+    const bearer = authorization.match(/^Bearer[\t ]+([a-zA-Z0-9_-]{1,200})$/i);
+    return bearer?.[1] || "";
+  }
+  return url.searchParams.get("token");
+}
+
 async function addressSuggestionResponse(
   suggestions,
   env,
@@ -9174,7 +9183,7 @@ const worker = {
       if (!match) return json({ error: "Agreement record endpoint not found." }, 404);
       const [, id, action, resourceId] = match;
       if (!action && request.method === "GET") {
-        return getNegotiation(env.DB, id, url.searchParams.get("token"));
+        return getNegotiation(env.DB, id, negotiationReadToken(request, url));
       }
       if (action === "actions" && request.method === "POST") {
         return applyAction(request, env, id);
@@ -9198,12 +9207,12 @@ const worker = {
         return report(
           env.DB,
           id,
-          url.searchParams.get("token"),
+          negotiationReadToken(request, url),
           url.searchParams.get("download") === "1",
         );
       }
       if (action === "snapshot" && request.method === "GET") {
-        return snapshot(env.DB, id, url.searchParams.get("token"), env);
+        return snapshot(env.DB, id, negotiationReadToken(request, url), env);
       }
       return json({ error: "Method not allowed." }, 405);
     }

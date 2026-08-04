@@ -126,6 +126,10 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Private evidence opens through a same-origin form submission with token-free paths, keeping
   agreement access bearers out of new links, copied URLs, browser history, and referrers while
   retaining legacy read compatibility
+- [x] Current-client agreement, complete-report, and canonical-snapshot reads use strict bearer
+  authorization headers and token-free paths; authenticated report downloads retain their filename,
+  report outages restore the retry control and keyboard focus, malformed-header downgrade attempts
+  fail closed, and older query clients remain compatible
 - [x] Landlord-authorized optional-arbiter invitation rotation with old-link and account-session
   invalidation, verified-email rediscovery, and cross-account isolation, retained behind the
   disabled-by-default arbiter UI

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useMemo, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useSendTransaction, useWallets } from "@privy-io/react-auth";
 import { encodeFunctionData } from "viem";
 import { useAccount, usePublicClient, useReadContract } from "wagmi";
@@ -20,7 +20,7 @@ import {
 import { createAsyncOperationScope } from "../lib/asyncOperationScope";
 import {
   loadNegotiationSnapshot,
-  negotiationReportDownloadUrl,
+  loadNegotiationReport,
   negotiationAction,
   type AgreementSnapshot,
   type NegotiationAccess,
@@ -315,7 +315,9 @@ export function RecordSnapshotControls({
     verificationKey: string;
   } | null>(null);
   const [feedback, setFeedback] = useState<RecordExportFeedback | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState<"report" | "encrypted" | null>(null);
+  const reportButtonRef = useRef<HTMLButtonElement>(null);
+  const encryptedButtonRef = useRef<HTMLButtonElement>(null);
   const exportScopeKey = JSON.stringify([
     access.proposalId,
     access.role,
@@ -332,13 +334,52 @@ export function RecordSnapshotControls({
     setSnapshot(null);
     setEncryptedExport(null);
     setFeedback(null);
-    setLoading(false);
+    setLoading(null);
     return () => exportScope.close();
   }, [exportScope]);
 
+  async function downloadReadableReport() {
+    const operationId = exportScope.start();
+    const actionButton = reportButtonRef.current;
+    const restoreFocus = document.activeElement === actionButton;
+    setLoading("report");
+    setFeedback(null);
+    try {
+      const report = await loadNegotiationReport(access);
+      if (!exportScope.isCurrent(operationId)) return;
+      downloadTextFile(report.content, report.contentType, report.filename);
+      setFeedback({
+        tone: "success",
+        message: "Complete timestamped record downloaded.",
+      });
+    } catch (error) {
+      if (!exportScope.isCurrent(operationId)) return;
+      setFeedback({
+        tone: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "The complete record report could not be downloaded.",
+      });
+    } finally {
+      if (exportScope.isCurrent(operationId)) {
+        setLoading(null);
+        if (restoreFocus) {
+          window.requestAnimationFrame(() => {
+            if (exportScope.isCurrent(operationId) && actionButton?.isConnected) {
+              actionButton.focus({ preventScroll: true });
+            }
+          });
+        }
+      }
+    }
+  }
+
   async function downloadEncryptedRecord() {
     const operationId = exportScope.start();
-    setLoading(true);
+    const actionButton = encryptedButtonRef.current;
+    const restoreFocus = document.activeElement === actionButton;
+    setLoading("encrypted");
     setFeedback(null);
     try {
       const next = await loadNegotiationSnapshot(access);
@@ -370,7 +411,16 @@ export function RecordSnapshotControls({
             : "The encrypted record could not be generated.",
       });
     } finally {
-      if (exportScope.isCurrent(operationId)) setLoading(false);
+      if (exportScope.isCurrent(operationId)) {
+        setLoading(null);
+        if (restoreFocus) {
+          window.requestAnimationFrame(() => {
+            if (exportScope.isCurrent(operationId) && actionButton?.isConnected) {
+              actionButton.focus({ preventScroll: true });
+            }
+          });
+        }
+      }
     }
   }
 
@@ -441,12 +491,17 @@ export function RecordSnapshotControls({
             receipts, and every timestamped activity recorded for this agreement.
           </p>
         </div>
-        <a
+        <button
+          ref={reportButtonRef}
           className="btn btn-secondary"
-          href={negotiationReportDownloadUrl(access)}
+          type="button"
+          onClick={() => void downloadReadableReport()}
+          disabled={loading !== null}
         >
-          Download complete record report
-        </a>
+          {loading === "report"
+            ? "Preparing complete record..."
+            : "Download complete record report"}
+        </button>
       </section>
 
       <section className="record-export-step">
@@ -467,12 +522,15 @@ export function RecordSnapshotControls({
         </div>
         <div className="button-row">
           <button
+            ref={encryptedButtonRef}
             className="btn btn-primary"
             type="button"
             onClick={() => void downloadEncryptedRecord()}
-            disabled={loading}
+            disabled={loading !== null}
           >
-            {loading ? "Preparing encrypted record..." : "Download encrypted record"}
+            {loading === "encrypted"
+              ? "Preparing encrypted record..."
+              : "Download encrypted record"}
           </button>
           {encryptedExport && (
             <>

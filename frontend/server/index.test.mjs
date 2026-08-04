@@ -1200,6 +1200,15 @@ function evidenceDownloadRequest(path, token, headers) {
   });
 }
 
+function negotiationReadRequest(path, token, headers = {}) {
+  return new Request(`https://openescrow.example${path}`, {
+    headers: {
+      ...headers,
+      authorization: `Bearer ${token}`,
+    },
+  });
+}
+
 async function jsonResponse(response) {
   const body = await response.json();
   assert.ok(response.ok, JSON.stringify(body));
@@ -5697,30 +5706,45 @@ test("sensitive authorized reads reject cross-site browser requests without an O
       { DB: db, EVIDENCE: evidence },
     ),
   );
-  const sensitivePaths = [
-    "/api/profile/notification-preferences",
-    `/api/negotiations/${created.record.id}?token=${created.access.landlord}`,
-    `/api/negotiations/${created.record.id}/report?token=${created.access.landlord}`,
-    `/api/negotiations/${created.record.id}/snapshot?token=${created.access.landlord}`,
-    uploaded.gatewayUrl,
+  const sensitiveRequests = [
+    new Request("https://openescrow.example/api/profile/notification-preferences", {
+      headers: { "sec-fetch-site": "cross-site" },
+    }),
+    negotiationReadRequest(
+      `/api/negotiations/${created.record.id}`,
+      created.access.landlord,
+      { "sec-fetch-site": "cross-site" },
+    ),
+    negotiationReadRequest(
+      `/api/negotiations/${created.record.id}/report`,
+      created.access.landlord,
+      { "sec-fetch-site": "cross-site" },
+    ),
+    negotiationReadRequest(
+      `/api/negotiations/${created.record.id}/snapshot`,
+      created.access.landlord,
+      { "sec-fetch-site": "cross-site" },
+    ),
+    new Request(`https://openescrow.example${uploaded.gatewayUrl}`, {
+      headers: { "sec-fetch-site": "cross-site" },
+    }),
   ];
-  for (const path of sensitivePaths) {
-    const response = await worker.fetch(
-      new Request(`https://openescrow.example${path}`, {
-        headers: { "sec-fetch-site": "cross-site" },
-      }),
-      { DB: db, EVIDENCE: evidence },
-    );
-    assert.equal(response.status, 403, path);
+  for (const sensitiveRequest of sensitiveRequests) {
+    const response = await worker.fetch(sensitiveRequest, {
+      DB: db,
+      EVIDENCE: evidence,
+    });
+    assert.equal(response.status, 403, sensitiveRequest.url);
     assert.deepEqual(await response.json(), {
       error: "Cross-origin reads are not allowed.",
     });
   }
 
   const sameOriginRecord = await worker.fetch(
-    new Request(
-      `https://openescrow.example/api/negotiations/${created.record.id}?token=${created.access.landlord}`,
-      { headers: { "sec-fetch-site": "same-origin" } },
+    negotiationReadRequest(
+      `/api/negotiations/${created.record.id}`,
+      created.access.landlord,
+      { "sec-fetch-site": "same-origin" },
     ),
     { DB: db },
   );
@@ -5758,6 +5782,52 @@ test("sensitive authorized reads reject cross-site browser requests without an O
     { DB: db },
   );
   assert.equal(signedLinkEntryPoint.status, 404);
+});
+
+test("private agreement reads prefer a strict bearer header and retain legacy URL compatibility", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const paths = [
+    `/api/negotiations/${created.record.id}`,
+    `/api/negotiations/${created.record.id}/report?download=1`,
+    `/api/negotiations/${created.record.id}/snapshot`,
+  ];
+
+  for (const path of paths) {
+    assert.equal(path.includes(created.access.tenant), false);
+    const authorized = await worker.fetch(
+      negotiationReadRequest(path, created.access.tenant),
+      { DB: db },
+    );
+    assert.equal(authorized.status, 200, path);
+    assert.equal(authorized.headers.get("referrer-policy"), "no-referrer");
+  }
+
+  const legacy = await worker.fetch(
+    request(
+      `${paths[0]}?token=${encodeURIComponent(created.access.tenant)}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(legacy.status, 200);
+
+  const malformedHeader = await worker.fetch(
+    new Request(
+      `https://openescrow.example${paths[0]}?token=${encodeURIComponent(created.access.tenant)}`,
+      { headers: { authorization: "Basic not-a-bearer-token" } },
+    ),
+    { DB: db },
+  );
+  assert.equal(malformedHeader.status, 403);
+
+  const wrongBearer = await worker.fetch(
+    new Request(
+      `https://openescrow.example${paths[0]}?token=${encodeURIComponent(created.access.tenant)}`,
+      { headers: { authorization: "Bearer wrong-token" } },
+    ),
+    { DB: db },
+  );
+  assert.equal(wrongBearer.status, 403);
 });
 
 test("pilot rehearsal: an evidence upload outage is retryable without a phantom record", async () => {

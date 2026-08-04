@@ -877,7 +877,10 @@ export function resetNegotiationArbiterInvite(access: NegotiationAccess) {
 
 export async function loadNegotiation(access: NegotiationAccess) {
   return request<NegotiationRecord>(
-    `/api/negotiations/${encodeURIComponent(access.proposalId)}?token=${encodeURIComponent(access.token)}`,
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}`,
+    {
+      headers: { authorization: `Bearer ${access.token}` },
+    },
   );
 }
 
@@ -1207,17 +1210,48 @@ export async function arbiterReplacementAction(
     : { record: result, invite: null };
 }
 
-export function negotiationReportUrl(access: NegotiationAccess) {
-  return `/api/negotiations/${encodeURIComponent(access.proposalId)}/report?token=${encodeURIComponent(access.token)}`;
-}
-
-export function negotiationReportDownloadUrl(access: NegotiationAccess) {
-  return `${negotiationReportUrl(access)}&download=1`;
+export async function loadNegotiationReport(access: NegotiationAccess) {
+  const response = await fetch(
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}/report?download=1`,
+    {
+      headers: { authorization: `Bearer ${access.token}` },
+    },
+  );
+  if (!response.ok) {
+    let message = "The complete record report could not be downloaded.";
+    try {
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const data = (await response.json()) as { error?: string };
+        if (data.error) message = data.error;
+      } else {
+        const text = (await response.text()).trim();
+        if (text && text.length <= 240) message = text;
+      }
+    } catch {
+      // Keep the consistent consumer-facing fallback above.
+    }
+    throw new Error(message);
+  }
+  const disposition = response.headers.get("content-disposition") || "";
+  const suppliedFilename = disposition
+    .match(/filename="([^"]+)"/i)?.[1]
+    ?.replace(/[^a-zA-Z0-9._-]/g, "-");
+  const fallbackId = access.proposalId.replace(/[^a-zA-Z0-9-]/g, "-");
+  return {
+    content: await response.text(),
+    contentType: response.headers.get("content-type") || "text/html; charset=utf-8",
+    filename:
+      suppliedFilename || `openescrow-${fallbackId}-complete-record.html`,
+  };
 }
 
 export function loadNegotiationSnapshot(access: NegotiationAccess) {
   return request<AgreementSnapshot>(
-    `/api/negotiations/${encodeURIComponent(access.proposalId)}/snapshot?token=${encodeURIComponent(access.token)}`,
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}/snapshot`,
+    {
+      headers: { authorization: `Bearer ${access.token}` },
+    },
   );
 }
 
