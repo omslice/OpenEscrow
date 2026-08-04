@@ -240,6 +240,12 @@ submitted hash and activity type. Aggregate `AgreementFunded` and `ClaimResponde
 stand in for participant-specific events. Verification can be disabled only through an explicit
 emergency diagnostics setting.
 
+Sponsored-wallet client flows also inspect the mined receipt status before they announce success
+or hand a transaction hash to private-record recovery. A reverted or unknown receipt stops test
+token claims, approval/funding follow-up, record anchoring, and privacy-safe activity publishing;
+it therefore cannot create a temporary funded state or a misleading recovery record while the
+server-side verifier later rejects the same transaction.
+
 Evidence upload now checks PDF/JPEG/PNG/WebP file signatures instead of trusting a browser-provided
 MIME type. Evidence downloads and printable reports add no-referrer, no-sniffing, anti-framing, and
 restrictive content-security headers. Static app responses also receive no-referrer and no-sniffing

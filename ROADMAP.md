@@ -100,6 +100,9 @@ the repository; they are not claims of legal approval or production readiness.
   events, with a global D1 uniqueness gate and no client path for minting trusted provenance
 - [x] Enforce provenance and SHA-256 identity pairing at the D1 insert/update boundary for both
   fresh and already-migrated databases
+- [x] Require a successful mined receipt before any sponsored test-token, approval, deposit,
+  record-proof, or private-activity flow can show success or create a recovery/activity record;
+  reverted and unknown receipts fail closed with no optimistic funding state
 - [ ] Enable and validate an eligible provider sandbox in the Privy dashboard
 - [ ] Decide whether the pilot needs separate ACH/bank-deposit support
 - [ ] Complete provider approval, KYC/AML, fees, refunds, webhooks, reconciliation, and support

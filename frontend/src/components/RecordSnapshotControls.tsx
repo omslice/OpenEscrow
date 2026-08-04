@@ -18,6 +18,7 @@ import {
   downloadTextFile,
 } from "../lib/browserActions";
 import { createAsyncOperationScope } from "../lib/asyncOperationScope";
+import { waitForSuccessfulTransactionReceipt } from "../lib/successfulTransactionReceipt";
 import {
   loadNegotiationSnapshot,
   loadNegotiationReport,
@@ -248,7 +249,10 @@ function SponsoredAnchorAction({
               },
               { address, sponsor: true },
             );
-            await publicClient.waitForTransactionReceipt({ hash: result.hash });
+            await waitForSuccessfulTransactionReceipt(
+              () => publicClient.waitForTransactionReceipt({ hash: result.hash }),
+              "The record-proof transaction reached the test network but did not complete. No public proof or receipt was recorded. Refresh the record and try again.",
+            );
             recovery.remember(result.hash);
             await recordReceipt(result.hash);
             await anchored.refetch();

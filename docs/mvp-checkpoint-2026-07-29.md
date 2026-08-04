@@ -238,6 +238,10 @@ detailed validation ledger.
   control, discards the submitted success callback, and announces the error instead of leaving a
   disabled button waiting forever. Tenant token approval uses the same shared boundary, and
   proposal finalization now surfaces a mined-receipt error for a safe retry.
+- **Verified:** Sponsored testnet writes now enforce the same mined-receipt boundary. Funding,
+  approval, test-token, record-anchor, and private-activity follow-up actions run only after a
+  receipt reports success; a reverted or unknown receipt creates no optimistic funded state,
+  private activity record, or browser recovery receipt.
 - **Verified:** An interrupted no-money provider sandbox preview remains locked until the tenant
   explicitly closes its durable attempt. Closing records a terminal cancellation before enabling
   a new preview, while production checkouts with unknown outcomes remain fail-closed for provider

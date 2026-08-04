@@ -22,6 +22,7 @@ import {
 } from "../lib/browserRecovery";
 import { downloadTextFile } from "../lib/browserActions";
 import { createAsyncOperationScope } from "../lib/asyncOperationScope";
+import { waitForSuccessfulTransactionReceipt } from "../lib/successfulTransactionReceipt";
 import {
   canonicalActivityEnvelope,
   createActivityEnvelopeV2,
@@ -141,7 +142,10 @@ function SponsoredPublishAction(props: PublishActionProps) {
               },
               { address, sponsor: true },
             );
-            await publicClient.waitForTransactionReceipt({ hash: result.hash });
+            await waitForSuccessfulTransactionReceipt(
+              () => publicClient.waitForTransactionReceipt({ hash: result.hash }),
+              "The activity proof transaction reached the test network but did not complete. No public proof or activity receipt was recorded. Refresh the agreement and try again.",
+            );
             props.onSuccess(result.hash);
           } catch (cause) {
             setError(

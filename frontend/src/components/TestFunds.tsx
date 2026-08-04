@@ -5,6 +5,7 @@ import { useAccount, usePublicClient, useReadContract } from "wagmi";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import { MockUSDCABI, USDC_ADDRESS, YIELD_USDC_ADDRESS } from "../contracts/config";
 import { formatUSDC } from "../lib/format";
+import { waitForSuccessfulTransactionReceipt } from "../lib/successfulTransactionReceipt";
 import { TxButton } from "./TxButton";
 
 const TEST_FUNDS = 1_000_000_000n;
@@ -83,9 +84,14 @@ function SponsoredTestFunds({
         <div className="tx-button">
           <button
             className="btn btn-ghost"
-            disabled={!address || status === "submitting" || status === "confirming"}
+            disabled={
+              !address ||
+              !publicClient ||
+              status === "submitting" ||
+              status === "confirming"
+            }
             onClick={async () => {
-              if (!address) return;
+              if (!address || !publicClient) return;
               setClaimError(null);
               setStatus("submitting");
               try {
@@ -106,7 +112,10 @@ function SponsoredTestFunds({
                   },
                 );
                 setStatus("confirming");
-                await publicClient?.waitForTransactionReceipt({ hash: result.hash });
+                await waitForSuccessfulTransactionReceipt(
+                  () => publicClient.waitForTransactionReceipt({ hash: result.hash }),
+                  `The ${label} request reached the test network but did not complete. No test tokens were received. Refresh the balance and try again.`,
+                );
                 await refetch();
                 setStatus("success");
               } catch (caught) {

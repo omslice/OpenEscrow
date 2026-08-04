@@ -92,6 +92,10 @@ production custody, or reliance on the compliance research as legal advice.
   refund-pending previews can reset through the valid refunded transition. Rendered and durable
   regressions prove a new rehearsal can then start. Real-money and production provider routes
   remain disabled and require trusted provider or authorized-operator reconciliation.
+- **Verified:** Sponsored testnet writes now inspect the mined receipt status before continuing.
+  A reverted or unknown receipt cannot mark a tenant share funded, claim test tokens, save a
+  record proof, publish a private-activity receipt, or create a success-recovery record. The
+  participant receives a plain-language failure instead, while production money remains disabled.
 - **Verified:** Deferred workspace loading, bounded onchain event reads, shared receipt polling,
   one-snapshot wallet discovery, and workspace-only blockchain wallet providers reduce initial and
   repeat network work without weakening account recognition, invitation roles, or receipt checks.

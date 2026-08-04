@@ -29,6 +29,7 @@ import {
 } from "../lib/browserRecovery";
 import { createAsyncOperationScope } from "../lib/asyncOperationScope";
 import { formatUSDC } from "../lib/format";
+import { waitForSuccessfulTransactionReceipt } from "../lib/successfulTransactionReceipt";
 import {
   negotiationAction,
   type NegotiationAccess,
@@ -496,7 +497,10 @@ function SponsoredTenantFundAction({
       { address, sponsor: true },
     );
     if (!publicClient) throw new Error("The network connection is not ready.");
-    await publicClient.waitForTransactionReceipt({ hash: result.hash });
+    await waitForSuccessfulTransactionReceipt(
+      () => publicClient.waitForTransactionReceipt({ hash: result.hash }),
+      "The sponsored transaction reached the test network but did not complete. No approval, tokens, or deposit funding was recorded. Refresh the agreement and try again.",
+    );
     return result.hash;
   }
 
