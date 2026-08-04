@@ -182,6 +182,10 @@ the repository; they are not claims of legal approval or production readiness.
   account/agreement-scoped reload recovery; the record-only retry restores focus, prevents a
   second onchain decision, and is protected by an append-only D1 receipt guard that rejects
   concurrent duplicates and cross-participant replay without changing historical events
+- [x] Confirmed withdrawals and all three deadline outcomes retain account/agreement-scoped,
+  bearer-free same-tab recovery across reload and account switches; focused 44-pixel record-only
+  retries cannot submit a second transaction, and withdrawal replays remain bound to the exact
+  invited tenant under concurrent D1 writes
 - [x] Public-receipt recovery contains unexpected retry failures, shows plain-language feedback,
   restores the exact retry control after every failed attempt in React's committed layout phase,
   and proves repeated keyboard recovery without duplicating an agreement action

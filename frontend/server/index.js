@@ -5882,7 +5882,11 @@ async function authorizedReceiptReplay({
         transactionHash.toLowerCase(),
   );
   if (!recorded || recorded.actorRole !== role) return false;
-  if (actionType !== "claim_response") return true;
+  const tenantBoundReplay =
+    role === "tenant" &&
+    (actionType === "claim_response" ||
+      actionType === "withdrawal_completed");
+  if (!tenantBoundReplay) return true;
 
   const tenant = await tenantForToken(db, id, token);
   return Boolean(tenant && recorded.metadata?.tenantId === tenant.id);

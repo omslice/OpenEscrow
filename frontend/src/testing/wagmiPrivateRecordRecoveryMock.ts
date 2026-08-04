@@ -6,11 +6,17 @@ const ARBITER = "0x4444444444444444444444444444444444444444" as const;
 const CLAIM_TRANSACTION_HASH = `0x${"9".repeat(64)}` as const;
 const RESPONSE_TRANSACTION_HASH = `0x${"8".repeat(64)}` as const;
 const RULING_TRANSACTION_HASH = `0x${"6".repeat(64)}` as const;
+const WITHDRAWAL_TRANSACTION_HASH = `0x${"5".repeat(64)}` as const;
+const NO_CLAIM_TIMEOUT_TRANSACTION_HASH = `0x${"3".repeat(64)}` as const;
+const NO_RESPONSE_TIMEOUT_TRANSACTION_HASH = `0x${"2".repeat(64)}` as const;
+const ARBITER_TIMEOUT_TRANSACTION_HASH = `0x${"1".repeat(64)}` as const;
 const CLAIM_TRANSACTION_COUNT_KEY = "openescrow:test:claim-transaction-writes";
 const RESPONSE_TRANSACTION_COUNT_KEY =
   "openescrow:test:response-transaction-writes";
 const RULING_TRANSACTION_COUNT_KEY =
   "openescrow:test:ruling-transaction-writes";
+const WITHDRAWAL_TRANSACTION_COUNT_KEY =
+  "openescrow:test:withdrawal-transaction-writes";
 
 function transactionCount(key: string) {
   return Number(window.sessionStorage.getItem(key) || "0");
@@ -25,6 +31,10 @@ function selectedAddress() {
   return role === "tenant" ? TENANT : role === "arbiter" ? ARBITER : LANDLORD;
 }
 
+function currentFlow() {
+  return new URLSearchParams(window.location.search).get("flow");
+}
+
 export function useAccount() {
   return { address: selectedAddress() };
 }
@@ -32,7 +42,15 @@ export function useAccount() {
 export function useReadContract(parameters: { functionName?: string }) {
   switch (parameters.functionName) {
     case "tenantShareBps":
-      return { data: 10_000n };
+      return { data: selectedAddress() === TENANT ? 10_000n : 0n };
+    case "tenantWithdrawableByAddress":
+      return {
+        data:
+          currentFlow() === "withdrawal-receipt" &&
+          transactionCount(WITHDRAWAL_TRANSACTION_COUNT_KEY) === 0
+            ? 500_000n
+            : 0n,
+      };
     case "tenantClaimResponded":
       return {
         data:
@@ -67,6 +85,27 @@ export function useWriteContract() {
       } else if (transaction === "ruling-success") {
         recordTransaction(RULING_TRANSACTION_COUNT_KEY);
         setData(RULING_TRANSACTION_HASH);
+      } else if (transaction === "terminal-success") {
+        const flow = currentFlow();
+        if (flow === "withdrawal-receipt") {
+          recordTransaction(WITHDRAWAL_TRANSACTION_COUNT_KEY);
+          setData(WITHDRAWAL_TRANSACTION_HASH);
+        } else if (flow === "no-claim-timeout-receipt") {
+          recordTransaction(
+            "openescrow:test:no-claim-timeout-receipt-transaction-writes",
+          );
+          setData(NO_CLAIM_TIMEOUT_TRANSACTION_HASH);
+        } else if (flow === "no-response-timeout-receipt") {
+          recordTransaction(
+            "openescrow:test:no-response-timeout-receipt-transaction-writes",
+          );
+          setData(NO_RESPONSE_TIMEOUT_TRANSACTION_HASH);
+        } else if (flow === "arbiter-timeout-receipt") {
+          recordTransaction(
+            "openescrow:test:arbiter-timeout-receipt-transaction-writes",
+          );
+          setData(ARBITER_TIMEOUT_TRANSACTION_HASH);
+        }
       }
     },
     data,

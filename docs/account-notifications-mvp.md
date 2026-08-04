@@ -51,13 +51,14 @@ the OpenEscrow UI still needs a production event indexer before it can reliably 
 
 For transaction-backed proposal actions, the browser keeps a narrowly scoped pending receipt after
 the chain confirms but before the D1 activity record succeeds. Finalization, the operations reserve,
-record anchors, privacy-safe activity receipts, claims, tenant responses, and arbiter rulings
-survive a same-tab refresh and can be retried; their storage keys are scoped to the proposal,
-agreement, role where applicable, and active wallet. The bounded response and ruling payloads do
-not contain invitation or account-session bearer access. Server-side transaction actions are
-idempotent by transaction hash, and an append-only receipt guard prevents simultaneous retries
-from duplicating the event timeline. Response retries must also match the exact invited tenant,
-and ruling retries must match the appointed arbiter, before the server returns an existing event.
+record anchors, privacy-safe activity receipts, claims, tenant responses, arbiter rulings,
+withdrawals, and deadline outcomes survive a same-tab refresh and can be retried; their storage
+keys are scoped to the proposal, agreement, role where applicable, and active wallet. The bounded
+response, ruling, withdrawal, and deadline-action payloads do not contain invitation or
+account-session bearer access. Server-side transaction actions are idempotent by transaction
+hash, and an append-only receipt guard prevents simultaneous retries from duplicating the event
+timeline. Response and tenant-withdrawal retries must also match the exact invited tenant, and
+ruling retries must match the appointed arbiter, before the server returns an existing event.
 Browser storage is treated as best-effort: blocked storage cannot interrupt the D1 receipt update,
 corrupt recovery values are discarded, and an in-memory retry remains available for the current
 page session. A browser that blocks storage cannot preserve that retry across a refresh, so the

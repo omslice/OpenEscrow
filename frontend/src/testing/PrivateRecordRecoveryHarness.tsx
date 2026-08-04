@@ -3,6 +3,8 @@ import { createRoot } from "react-dom/client";
 import { ClaimSection } from "../components/ClaimSection";
 import { DisputeResolutionSection } from "../components/DisputeResolutionSection";
 import { ResponseSection } from "../components/ResponseSection";
+import { TimeoutSection } from "../components/TimeoutSection";
+import { WithdrawSection } from "../components/WithdrawSection";
 import { Phase, ZERO_ADDRESS } from "../contracts/config";
 import {
   rememberLandlordBundle,
@@ -32,6 +34,16 @@ const rulingTransactionWrites = Number(
   window.sessionStorage.getItem("openescrow:test:ruling-transaction-writes") ||
     "0",
 );
+const withdrawalTransactionWrites = Number(
+  window.sessionStorage.getItem(
+    "openescrow:test:withdrawal-transaction-writes",
+  ) || "0",
+);
+const timeoutTransactionWrites = Number(
+  window.sessionStorage.getItem(
+    `openescrow:test:${flow || "unknown"}-transaction-writes`,
+  ) || "0",
+);
 
 function agreementPhase() {
   if (flow === "claim-receipt") {
@@ -42,6 +54,16 @@ function agreementPhase() {
   }
   if (flow === "ruling-receipt") {
     return rulingTransactionWrites === 0 ? Phase.Disputed : Phase.Closed;
+  }
+  if (flow === "withdrawal-receipt") return Phase.Closed;
+  if (flow === "no-claim-timeout-receipt") {
+    return timeoutTransactionWrites === 0 ? Phase.Active : Phase.Closed;
+  }
+  if (flow === "no-response-timeout-receipt") {
+    return timeoutTransactionWrites === 0 ? Phase.ClaimOpen : Phase.Disputed;
+  }
+  if (flow === "arbiter-timeout-receipt") {
+    return timeoutTransactionWrites === 0 ? Phase.Disputed : Phase.Closed;
   }
   return Phase.ClaimOpen;
 }
@@ -72,7 +94,10 @@ const agreement: Agreement = {
   disputeCreatedAt: 0n,
   arbiterRulingDeadline: 0n,
   claimedAmount: 500_000n,
-  tenantWithdrawable: 0n,
+  tenantWithdrawable:
+    flow === "withdrawal-receipt" && withdrawalTransactionWrites === 0
+      ? 500_000n
+      : 0n,
   landlordWithdrawable: 0n,
   locked: 1_000_000n,
   withdrawn: 0n,
@@ -100,7 +125,19 @@ if (role !== "tenant" && role !== "arbiter") {
 createRoot(document.getElementById("root")!).render(
   <main className="app-shell">
     <section className="card">
-      {role === "tenant" ? (
+      {flow === "withdrawal-receipt" ? (
+        <WithdrawSection
+          id={43n}
+          agreement={agreement}
+          negotiationAccess={access}
+        />
+      ) : flow?.endsWith("timeout-receipt") ? (
+        <TimeoutSection
+          id={43n}
+          agreement={agreement}
+          negotiationAccess={access}
+        />
+      ) : role === "tenant" ? (
         <ResponseSection
           id={43n}
           agreement={agreement}

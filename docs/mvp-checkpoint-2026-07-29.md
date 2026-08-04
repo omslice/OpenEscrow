@@ -303,6 +303,11 @@ detailed validation ledger.
   blockchain transaction. A new append-only D1 guard makes response and ruling event insertion
   atomic under simultaneous retries; exact participant authorization precedes idempotent replay,
   and cross-tenant or cross-role receipt reuse is rejected without rewriting prior events.
+- **Verified:** Confirmed withdrawals and the no-claim, no-response, and arbiter-timeout actions
+  now preserve session-only, account/agreement-scoped private-receipt recovery after an interrupted
+  D1 save. The rendered 390-pixel rehearsals change accounts, reload, restore focus to a 44-pixel
+  record-only retry, and prove each wallet action remains single-submit with no bearer token in
+  browser recovery. Concurrent withdrawal retries are atomic and exact-tenant bound.
 - **Verified:** The optional-yield dialog has explicit heading-to-card spacing and larger asset
   badges, with a rendered 80%-zoom regression. Technical hashes and receipt text in the Record
   activity feed now sit behind **Details for verification**, while the main feed uses

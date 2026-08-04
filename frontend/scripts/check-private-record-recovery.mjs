@@ -144,7 +144,7 @@ async function routeClaimReceiptRecovery(page) {
 
 async function routeDecisionReceiptRecovery(
   page,
-  { type, transactionHash },
+  { type, transactionHash, timeout },
 ) {
   let attempts = 0;
   await page.route(
@@ -159,6 +159,7 @@ async function routeDecisionReceiptRecovery(
       );
       assert.equal(body.type, type);
       assert.equal(body.transactionHash, transactionHash);
+      if (timeout) assert.equal(body.timeout, timeout);
       if (attempts === 1) {
         await route.fulfill({
           status: 503,
@@ -188,6 +189,137 @@ async function pendingDecisionRecoveryEntries(page) {
     }
     return entries;
   });
+}
+
+async function pendingTerminalRecoveryEntries(page) {
+  return page.evaluate(() => {
+    const entries = [];
+    for (let index = 0; index < window.sessionStorage.length; index += 1) {
+      const key = window.sessionStorage.key(index);
+      if (key?.startsWith("openescrow:pending-terminal-receipt:")) {
+        entries.push([key, window.sessionStorage.getItem(key)]);
+      }
+    }
+    return entries;
+  });
+}
+
+async function exerciseTerminalReceiptRecovery(
+  browserInstance,
+  {
+    flow,
+    role,
+    actionType,
+    timeout,
+    transactionHash,
+    transactionButton,
+    retryButton,
+    confirmedHeading,
+    recoveredText,
+    transactionCountKey,
+  },
+) {
+  const page = await browserInstance.newPage({
+    viewport: { width: 390, height: 844 },
+  });
+  const receiptAttempts = await routeDecisionReceiptRecovery(page, {
+    type: actionType,
+    transactionHash,
+    timeout,
+  });
+  const pageUrl = `${baseUrl}/testing/private-record-recovery.html?role=${role}&flow=${flow}`;
+  await page.goto(`${pageUrl}&tx=terminal-success`, {
+    waitUntil: "networkidle",
+  });
+  await page.getByRole("button", { name: transactionButton }).click();
+
+  const retry = page.getByRole("button", { name: retryButton });
+  await retry.waitFor({ state: "visible" });
+  await page
+    .getByRole("heading", { name: confirmedHeading })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await page.getByRole("button", { name: transactionButton }).count(),
+    0,
+    "A confirmed terminal action must hide the control that could submit another transaction.",
+  );
+  assert.equal(
+    await retry.evaluate((element) => element === document.activeElement),
+    true,
+    "A failed terminal receipt save should focus its record-only retry.",
+  );
+  const retryBox = await retry.boundingBox();
+  assert.equal(
+    Boolean(retryBox && retryBox.height >= 44),
+    true,
+    "A terminal receipt retry must remain a 44px mobile touch target.",
+  );
+  const entries = await pendingTerminalRecoveryEntries(page);
+  assert.equal(entries.length, 1);
+  assert.doesNotMatch(
+    JSON.stringify(entries),
+    /synthetic-private-record-recovery-token/,
+    "A terminal receipt retry must not store its bearer token.",
+  );
+  assert.equal(
+    await page.evaluate((key) => window.sessionStorage.getItem(key), transactionCountKey),
+    "1",
+  );
+
+  const otherRole = role === "tenant" ? "landlord" : "tenant";
+  await page.goto(`${baseUrl}/testing/private-record-recovery.html?role=${otherRole}&flow=${flow}`, {
+    waitUntil: "networkidle",
+  });
+  assert.equal(
+    await page.getByRole("button", { name: retryButton }).count(),
+    0,
+    "A different wallet and role must not see another participant's pending receipt.",
+  );
+
+  await page.goto(pageUrl, { waitUntil: "networkidle" });
+  const recoveredRetry = page.getByRole("button", { name: retryButton });
+  await recoveredRetry.waitFor({ state: "visible" });
+  await page.getByText(recoveredText).waitFor({ state: "visible" });
+  assert.equal(
+    await recoveredRetry.evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+    "Reload recovery should focus the terminal action's record-only retry.",
+  );
+  await recoveredRetry.press("Enter");
+  await page.waitForFunction(() => {
+    for (let index = 0; index < window.sessionStorage.length; index += 1) {
+      if (
+        window.sessionStorage
+          .key(index)
+          ?.startsWith("openescrow:pending-terminal-receipt:")
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
+  await page
+    .getByRole("button", {
+      name: new RegExp(`(?:Saving|${retryButton})`, "i"),
+    })
+    .waitFor({ state: "detached" });
+  assert.equal(receiptAttempts(), 2);
+  assert.equal(
+    await page.evaluate((key) => window.sessionStorage.getItem(key), transactionCountKey),
+    "1",
+    "A record-only retry must never resubmit the confirmed transaction.",
+  );
+  assert.equal((await pendingTerminalRecoveryEntries(page)).length, 0);
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "Terminal receipt recovery should not overflow a mobile viewport.",
+  );
+  await page.close();
 }
 
 const server = spawn(
@@ -814,8 +946,56 @@ try {
     "Durable ruling receipt recovery should not overflow a mobile viewport.",
   );
 
+  await exerciseTerminalReceiptRecovery(browser, {
+    flow: "withdrawal-receipt",
+    role: "tenant",
+    actionType: "withdrawal_completed",
+    transactionHash: `0x${"5".repeat(64)}`,
+    transactionButton: "Withdraw 0.5 USDC",
+    retryButton: "Retry saving withdrawal receipt",
+    confirmedHeading: "Withdrawal confirmed",
+    recoveredText: /recovered a confirmed testnet withdrawal/i,
+    transactionCountKey: "openescrow:test:withdrawal-transaction-writes",
+  });
+
+  const timeoutScenarios = [
+    {
+      flow: "no-claim-timeout-receipt",
+      role: "tenant",
+      timeout: "no_claim_refund",
+      transactionHash: `0x${"3".repeat(64)}`,
+      transactionButton: "Finalize tenant refund",
+      confirmedHeading: "Refund confirmed",
+    },
+    {
+      flow: "no-response-timeout-receipt",
+      role: "landlord",
+      timeout: "no_response_dispute",
+      transactionHash: `0x${"2".repeat(64)}`,
+      transactionButton: "Escalate to dispute",
+      confirmedHeading: "Dispute escalation confirmed",
+    },
+    {
+      flow: "arbiter-timeout-receipt",
+      role: "tenant",
+      timeout: "arbiter_timeout_refund",
+      transactionHash: `0x${"1".repeat(64)}`,
+      transactionButton: "Send disputed funds to tenant",
+      confirmedHeading: "Timeout refund confirmed",
+    },
+  ];
+  for (const scenario of timeoutScenarios) {
+    await exerciseTerminalReceiptRecovery(browser, {
+      ...scenario,
+      actionType: "timeout_executed",
+      retryButton: "Retry saving deadline-action receipt",
+      recoveredText: /recovered a confirmed testnet deadline action/i,
+      transactionCountKey: `openescrow:test:${scenario.flow}-transaction-writes`,
+    });
+  }
+
   process.stdout.write(
-    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, confirmed claims, tenant responses, and arbiter rulings survive private-record outages and reloads without another transaction or stored bearer token, time-sensitive responses remain available, retries restore focus, and delivered email is not repeated by a record-only retry.\n",
+    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, and confirmed claims, tenant responses, arbiter rulings, withdrawals, and every deadline outcome survive private-record outages and reloads without another transaction or stored bearer token; terminal retries remain wallet-scoped, time-sensitive responses remain available, retries restore focus, and delivered email is not repeated by a record-only retry.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

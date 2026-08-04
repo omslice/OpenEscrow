@@ -70,6 +70,12 @@ production custody, or reliance on the compliance research as legal advice.
   submits another blockchain decision. An append-only D1 guard makes transaction-receipt event
   creation atomic under simultaneous retries; the server authorizes the exact tenant or arbiter
   before returning an idempotent result, while preserving existing event history.
+- **Verified:** Withdrawals and the no-claim, no-response, and arbiter-timeout outcomes now retain
+  the same session-only recovery boundary after the testnet transaction confirms. Rendered mobile
+  rehearsals interrupt each private-record save, change accounts, reload the original account,
+  restore focus to the one safe receipt retry, and prove the wallet action count stays at one.
+  Recovery payloads contain no bearer access, and concurrent withdrawal retries return an
+  idempotent result only to the exact invited tenant that recorded the receipt.
 - **Verified:** The Record workspace now leads with plain-language report, private-backup, public-
   proof, and independent-check guidance. Encryption algorithms and raw fingerprints remain
   available in keyboard-accessible collapsed disclosures; the rendered rehearsal still proves

@@ -8866,6 +8866,41 @@ test("transaction receipt retries are atomic and remain bound to the exact parti
   );
   assert.equal(crossRoleReplay.status, 403);
 
+  const tenantWithdrawal = {
+    type: "withdrawal_completed",
+    amount: "465",
+    transactionHash: transactionHash(155),
+  };
+  const concurrentWithdrawals = await Promise.all([
+    act(
+      db,
+      created.record.id,
+      created.access.tenants[0].token,
+      tenantWithdrawal,
+    ),
+    act(
+      db,
+      created.record.id,
+      created.access.tenants[0].token,
+      tenantWithdrawal,
+    ),
+  ]);
+  assert.deepEqual(
+    concurrentWithdrawals.map((response) => response.status),
+    [200, 200],
+  );
+  const crossTenantWithdrawalReplay = await act(
+    db,
+    created.record.id,
+    created.access.tenants[1].token,
+    tenantWithdrawal,
+  );
+  assert.equal(crossTenantWithdrawalReplay.status, 409);
+  assert.match(
+    (await crossTenantWithdrawalReplay.json()).error,
+    /already assigned to another participant action/,
+  );
+
   const record = await jsonResponse(
     await worker.fetch(
       request(
@@ -8887,15 +8922,20 @@ test("transaction receipt retries are atomic and remain bound to the exact parti
     1,
   );
   assert.equal(
+    record.events.filter((event) => event.action === "withdrawal_completed")
+      .length,
+    1,
+  );
+  assert.equal(
     db.database
       .prepare(
         `SELECT COUNT(*) AS count
          FROM negotiation_receipt_guards
          WHERE negotiation_id = ?
-           AND action IN ('claim_response_submitted', 'arbiter_ruling_submitted')`,
+           AND action IN ('claim_response_submitted', 'arbiter_ruling_submitted', 'withdrawal_completed')`,
       )
       .get(created.record.id).count,
-    3,
+    4,
   );
 });
 
