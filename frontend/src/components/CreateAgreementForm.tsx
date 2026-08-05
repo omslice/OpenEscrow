@@ -8,8 +8,14 @@ import {
 } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { decodeEventLog, isAddress } from "viem";
-import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import {
+  useAccount,
+  usePublicClient,
+  useWaitForTransactionReceipt,
+  useWriteContract,
+} from "wagmi";
+import {
+  DEPLOYMENT_BLOCK,
   MAX_CLAIM_WINDOW_OFFSET_SECONDS,
   MAX_PERIOD_SECONDS,
   MIN_PERIOD_SECONDS,
@@ -39,7 +45,7 @@ import {
 } from "../lib/jurisdictions";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import {
-  clearRecoveryValue,
+  clearRecoveryJsonIf,
   isTransactionHash,
   readRecoveryJson,
   writeRecoveryJson,
@@ -51,6 +57,11 @@ import {
 } from "../lib/browserActions";
 import { preferredScrollBehavior } from "../lib/accessibility";
 import { createAsyncOperationScope } from "../lib/asyncOperationScope";
+import {
+  finalizationRecoveryKey,
+  findAgreementFinalizationTransaction,
+  type FinalizationRecoveryClient,
+} from "../lib/finalizationTransaction";
 import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
 import type { InviteRole } from "../lib/inviteContext";
 import {
@@ -94,6 +105,33 @@ const DAY = 24 * 60 * 60;
 const MAX_PERIOD_DAYS = MAX_PERIOD_SECONDS / DAY;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
+
+type PendingFinalization = {
+  agreementId: string;
+  transactionHash: `0x${string}`;
+};
+
+function isPendingFinalization(value: unknown): value is PendingFinalization {
+  if (!value || typeof value !== "object") return false;
+  const candidate = value as Record<string, unknown>;
+  return (
+    typeof candidate.agreementId === "string" &&
+    /^\d+$/.test(candidate.agreementId) &&
+    isTransactionHash(candidate.transactionHash)
+  );
+}
+
+function samePendingFinalization(
+  value: unknown,
+  expected: PendingFinalization,
+) {
+  return (
+    isPendingFinalization(value) &&
+    value.agreementId === expected.agreementId &&
+    value.transactionHash.toLowerCase() ===
+      expected.transactionHash.toLowerCase()
+  );
+}
 
 type ProposalField =
   | "tenantName"
@@ -336,6 +374,7 @@ function AgreementForm({
   onTrackAgreement: (id: bigint) => void;
 }) {
   const { address, isConnected } = useAccount();
+  const publicClient = usePublicClient();
   const builderRef = useRef<HTMLElement>(null);
 
   useEffect(() => {
@@ -401,11 +440,11 @@ function AgreementForm({
   const [accessBundle, setAccessBundle] = useState<CreatedNegotiation["access"] | null>(null);
   const [revisionSummary, setRevisionSummary] = useState("");
   const [createdId, setCreatedId] = useState<bigint | null>(null);
-  const [pendingFinalization, setPendingFinalization] = useState<{
-    agreementId: string;
-    transactionHash: `0x${string}`;
-  } | null>(null);
+  const [pendingFinalization, setPendingFinalization] =
+    useState<PendingFinalization | null>(null);
   const [finalizationRecordError, setFinalizationRecordError] = useState<string | null>(null);
+  const [isSavingFinalizationRecord, setIsSavingFinalizationRecord] =
+    useState(false);
   const [formError, setFormError] = useState<string | null>(null);
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [invalidField, setInvalidField] = useState<ProposalField | null>(null);
@@ -417,6 +456,8 @@ function AgreementForm({
   const [proposalStep, setProposalStep] = useState<ProposalStep>("participants");
   const submittedJurisdiction = useRef<JurisdictionCode>(GENERIC_TEST_POLICY.jurisdiction);
   const handledReceipt = useRef<`0x${string}` | null>(null);
+  const finalizationRetryButton = useRef<HTMLButtonElement>(null);
+  const pendingFinalizationStored = useRef(true);
 
   function confirmProposalChange(message: string) {
     setFormError(null);
@@ -502,59 +543,132 @@ function AgreementForm({
         : null,
     [draft, accessBundle],
   );
-  const pendingFinalizationKey = landlordAccess
-    ? `openescrow:pending-finalization:${landlordAccess.proposalId}`
-    : null;
+  const pendingFinalizationKey =
+    landlordAccess && address
+      ? finalizationRecoveryKey({
+          proposalId: landlordAccess.proposalId,
+          role: "landlord",
+          address,
+        })
+      : null;
+  const finalizationScopeKey = JSON.stringify([
+    landlordAccess?.proposalId || null,
+    landlordAccess?.role || null,
+    address?.toLowerCase() || null,
+  ]);
+  const finalizationScope = useMemo(
+    () => createAsyncOperationScope(finalizationScopeKey),
+    [finalizationScopeKey],
+  );
+
+  useEffect(() => {
+    finalizationScope.open();
+    setIsSavingFinalizationRecord(false);
+    setIsPreflightingFinalization(false);
+    return () => finalizationScope.close();
+  }, [finalizationScope]);
 
   const saveFinalizationRecord = useCallback(
     async (agreementId: string, transactionHash: `0x${string}`) => {
       if (!landlordAccess) return;
+      const operationId = finalizationScope.start();
       setFinalizationRecordError(null);
+      setIsSavingFinalizationRecord(true);
+      const expected: PendingFinalization = {
+        agreementId,
+        transactionHash,
+      };
       try {
         const updated = await negotiationAction(landlordAccess, {
           type: "finalize",
           agreementId,
           transactionHash,
         });
+        if (!finalizationScope.isCurrent(operationId)) return;
         setDraft(updated);
-        setPendingFinalization(null);
         if (pendingFinalizationKey) {
-          clearRecoveryValue(pendingFinalizationKey);
+          clearRecoveryJsonIf(
+            pendingFinalizationKey,
+            (value) => samePendingFinalization(value, expected),
+          );
         }
-      } catch (cause) {
-        setFinalizationRecordError(
-          cause instanceof Error
-            ? `${agreementReference(agreementId)} was created on the test network, but its finalization still needs to be added to the Record: ${cause.message}`
-            : `${agreementReference(agreementId)} was created on the test network, but its finalization still needs to be added to the Record.`,
+        setPendingFinalization((current) =>
+          samePendingFinalization(current, expected) ? null : current,
         );
+      } catch (cause) {
+        if (!finalizationScope.isCurrent(operationId)) return;
+        const reloadWarning = pendingFinalizationStored.current
+          ? " This safe retry is stored only for this proposal, landlord role, and wallet."
+          : " This browser could not keep a reload-recovery copy, so keep this page open and retry now.";
+        const failureDetail =
+          cause instanceof Error
+            ? `: ${cause.message.replace(/[.\s]+$/, "")}.`
+            : ".";
+        setFinalizationRecordError(
+          `${agreementReference(agreementId)} was created on the test network, but its finalization still needs to be added to the Record${failureDetail}${reloadWarning}`,
+        );
+      } finally {
+        if (finalizationScope.isCurrent(operationId)) {
+          setIsSavingFinalizationRecord(false);
+        }
       }
     },
-    [landlordAccess, pendingFinalizationKey],
+    [finalizationScope, landlordAccess, pendingFinalizationKey],
   );
 
   useEffect(() => {
     if (!landlordAccess || !pendingFinalizationKey) return;
     const stored = readRecoveryJson(
       pendingFinalizationKey,
-      (
-        value,
-      ): value is {
-        agreementId: string;
-        transactionHash: `0x${string}`;
-      } => {
-        if (!value || typeof value !== "object") return false;
-        const candidate = value as Record<string, unknown>;
-        return (
-          typeof candidate.agreementId === "string" &&
-          isTransactionHash(candidate.transactionHash)
-        );
-      },
+      isPendingFinalization,
     );
     if (stored) {
+      pendingFinalizationStored.current = true;
       setPendingFinalization(stored);
       void saveFinalizationRecord(stored.agreementId, stored.transactionHash);
     }
-  }, [landlordAccess, pendingFinalizationKey, saveFinalizationRecord]);
+  }, [
+    landlordAccess,
+    pendingFinalizationKey,
+    saveFinalizationRecord,
+  ]);
+
+  useEffect(() => {
+    if (
+      pendingFinalization &&
+      finalizationRecordError &&
+      !isSavingFinalizationRecord
+    ) {
+      finalizationRetryButton.current?.focus({ preventScroll: true });
+    }
+  }, [
+    finalizationRecordError,
+    isSavingFinalizationRecord,
+    pendingFinalization,
+  ]);
+
+  const queueFinalizationRecord = useCallback(
+    (
+      agreementId: bigint,
+      transactionHash: `0x${string}`,
+      jurisdiction: JurisdictionCode,
+    ) => {
+      const pending: PendingFinalization = {
+        agreementId: agreementId.toString(),
+        transactionHash,
+      };
+      setCreatedId(agreementId);
+      rememberJurisdiction(agreementId, jurisdiction);
+      onTrackAgreement(agreementId);
+      setPendingFinalization(pending);
+      pendingFinalizationStored.current = Boolean(
+        pendingFinalizationKey &&
+          writeRecoveryJson(pendingFinalizationKey, pending),
+      );
+      void saveFinalizationRecord(pending.agreementId, transactionHash);
+    },
+    [onTrackAgreement, pendingFinalizationKey, saveFinalizationRecord],
+  );
 
   function applyTerms(record: NegotiationRecord) {
     const isLegacyCalifornia =
@@ -634,19 +748,12 @@ function AgreementForm({
         const decoded = decodeEventLog({ abi: OpenEscrowABI, data: log.data, topics: log.topics });
         if (decoded.eventName === "AgreementProposed") {
           const id = (decoded.args as unknown as { id: bigint }).id;
-          setCreatedId(id);
-          rememberJurisdiction(id, submittedJurisdiction.current);
-          onTrackAgreement(id);
           if (landlordAccess) {
-            const pending = {
-              agreementId: id.toString(),
-              transactionHash: receipt.transactionHash,
-            };
-            setPendingFinalization(pending);
-            if (pendingFinalizationKey) {
-              writeRecoveryJson(pendingFinalizationKey, pending);
-            }
-            void saveFinalizationRecord(pending.agreementId, pending.transactionHash);
+            queueFinalizationRecord(
+              id,
+              receipt.transactionHash,
+              submittedJurisdiction.current,
+            );
           }
           break;
         }
@@ -656,10 +763,8 @@ function AgreementForm({
     }
   }, [
     receipt,
-    onTrackAgreement,
     landlordAccess,
-    pendingFinalizationKey,
-    saveFinalizationRecord,
+    queueFinalizationRecord,
   ]);
 
   function currentTerms(): AgreementTerms {
@@ -1511,10 +1616,20 @@ function AgreementForm({
   async function finalizeOnchain() {
     setFormError(null);
     setCreatedId(null);
+    if (pendingFinalization) {
+      return setFormError(
+        "This agreement was already created on the test network. Finish its safe Record update instead of creating another agreement.",
+      );
+    }
     if (!draft || draft.status !== "ready") {
       return setFormError("Every tenant and the optional arbiter must approve the current revision first.");
     }
     if (!address) return setFormError("Connect the landlord wallet before finalizing.");
+    if (!publicClient) {
+      return setFormError(
+        "OpenEscrow cannot safely check for an earlier finalization right now. Reconnect to Base Sepolia and try again before creating an agreement.",
+      );
+    }
     const approvedCaliforniaPolicy =
       draft.terms.policyVersion === CALIFORNIA_POLICY.version &&
       draft.terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
@@ -1579,20 +1694,92 @@ function AgreementForm({
       return setFormError("The expected possession-return date is too far in the future.");
     }
     if (!landlordAccess || isPreflightingFinalization) return;
+    const operationId = finalizationScope.start();
+    const priorPreflightAt = [...draft.events]
+      .reverse()
+      .find(
+        (event) =>
+          event.action === "finalization_preflight_passed" &&
+          event.revision === draft.revision,
+      )?.createdAt;
     setIsPreflightingFinalization(true);
+    let preflightRecord: NegotiationRecord;
     try {
-      await negotiationAction(landlordAccess, {
+      preflightRecord = await negotiationAction(landlordAccess, {
         type: "preflight_finalize",
       });
+      if (!finalizationScope.isCurrent(operationId)) return;
+      setDraft(preflightRecord);
     } catch (cause) {
+      if (!finalizationScope.isCurrent(operationId)) return;
       setFormError(
         cause instanceof Error
           ? cause.message
           : "OpenEscrow could not validate this proposal for finalization.",
       );
-      return;
-    } finally {
       setIsPreflightingFinalization(false);
+      return;
+    }
+
+    let existingFinalization;
+    try {
+      const recoverySearchStartedAt =
+        priorPreflightAt ||
+        [...preflightRecord.events]
+          .reverse()
+          .find(
+            (event) =>
+              event.action === "finalization_preflight_passed" &&
+              event.revision === draft.revision,
+          )?.createdAt;
+      if (!recoverySearchStartedAt) {
+        throw new Error("The finalization check time is unavailable.");
+      }
+      const fundingTenant =
+        draft.tenants.find((tenant) => tenant.isFundingTenant) ||
+        draft.tenants[0];
+      if (!fundingTenant?.wallet || !isAddress(fundingTenant.wallet)) {
+        throw new Error("The funding tenant wallet is unavailable.");
+      }
+      existingFinalization = await findAgreementFinalizationTransaction(
+        publicClient as unknown as FinalizationRecoveryClient,
+        {
+          deploymentBlock: DEPLOYMENT_BLOCK,
+          contractAddress: OPEN_ESCROW_ADDRESS,
+          abi: OpenEscrowABI,
+          readyAt: recoverySearchStartedAt,
+          landlord: address,
+          fundingTenant: fundingTenant.wallet,
+          arbiter: hasArbiter
+            ? (arbiterWallet as `0x${string}`)
+            : ZERO_ADDRESS,
+          agreedAmount: parseUSDC(draft.terms.deposit),
+          claimWindowStart: BigInt(startSec),
+          claimPeriod: BigInt(Number(draft.terms.claimDays) * DAY),
+          responsePeriod: BigInt(Number(draft.terms.responseDays) * DAY),
+          arbiterRulingPeriod: BigInt(Number(draft.terms.arbiterDays) * DAY),
+        },
+      );
+      if (!finalizationScope.isCurrent(operationId)) return;
+    } catch {
+      if (!finalizationScope.isCurrent(operationId)) return;
+      setIsPreflightingFinalization(false);
+      setFormError(
+        "OpenEscrow could not safely check whether this proposal was already finalized. Try again before creating another agreement.",
+      );
+      return;
+    }
+    setIsPreflightingFinalization(false);
+
+    if (existingFinalization) {
+      queueFinalizationRecord(
+        existingFinalization.agreementId,
+        existingFinalization.transactionHash,
+        isJurisdictionCode(draft.terms.jurisdiction)
+          ? draft.terms.jurisdiction
+          : GENERIC_TEST_POLICY.jurisdiction,
+      );
+      return;
     }
 
     submittedJurisdiction.current = isJurisdictionCode(draft.terms.jurisdiction)
@@ -2918,13 +3105,17 @@ function AgreementForm({
             disabled={
               !isConnected ||
               isPreflightingFinalization ||
+              Boolean(pendingFinalization) ||
+              isSavingFinalizationRecord ||
               isPending ||
               isMining
             }
             onClick={() => void finalizeOnchain()}
           >
             {isPreflightingFinalization
-              ? "Checking compliance sources..."
+              ? "Checking the approved proposal..."
+              : pendingFinalization || isSavingFinalizationRecord
+                ? "Finalization confirmed—updating Record..."
               : isPending
               ? "Confirm in wallet..."
               : isMining
@@ -3242,21 +3433,39 @@ function AgreementForm({
           {(error || receiptError)?.message.split("\n")[0]}
         </p>
       )}
-      {pendingFinalization && finalizationRecordError && (
-        <div className="receipt-recovery">
-          <p className="tx-error" role="alert">{finalizationRecordError}</p>
-          <button
-            className="btn btn-ghost small"
-            type="button"
-            onClick={() =>
-              void saveFinalizationRecord(
-                pendingFinalization.agreementId,
-                pendingFinalization.transactionHash,
-              )
-            }
-          >
-            Finish adding finalization to Record
-          </button>
+      {pendingFinalization && (
+        <div
+          className="receipt-recovery"
+          aria-busy={isSavingFinalizationRecord}
+        >
+          {finalizationRecordError && (
+            <p className="tx-error" role="alert">
+              {finalizationRecordError}
+            </p>
+          )}
+          {isSavingFinalizationRecord && (
+            <p className="hint" role="status" aria-live="polite">
+              Adding the confirmed finalization to the private Record...
+            </p>
+          )}
+          {finalizationRecordError && (
+            <button
+              ref={finalizationRetryButton}
+              className="btn btn-ghost small"
+              type="button"
+              disabled={isSavingFinalizationRecord}
+              onClick={() =>
+                void saveFinalizationRecord(
+                  pendingFinalization.agreementId,
+                  pendingFinalization.transactionHash,
+                )
+              }
+            >
+              {isSavingFinalizationRecord
+                ? "Adding finalization to Record..."
+                : "Finish adding finalization to Record"}
+            </button>
+          )}
         </div>
       )}
       {createdId !== null && (

@@ -3,6 +3,7 @@ import { createRoot } from "react-dom/client";
 import { ActivityProofVerifier } from "../components/ActivityProofVerifier";
 import { ArbiterReplacementSection } from "../components/ArbiterReplacementSection";
 import { ClaimSection } from "../components/ClaimSection";
+import { CreateAgreementForm } from "../components/CreateAgreementForm";
 import { DisputeResolutionSection } from "../components/DisputeResolutionSection";
 import { PrivateActivityPublisher } from "../components/PrivateActivityPublisher";
 import { ProposalActions } from "../components/ProposalActions";
@@ -186,6 +187,11 @@ createRoot(document.getElementById("root")!).render(
           id={agreementId}
           agreement={agreement}
           negotiationAccess={access}
+        />
+      ) : flow === "finalization-discovery" ? (
+        <CreateAgreementForm
+          initialAccess={access}
+          onTrackAgreement={() => undefined}
         />
       ) : flow?.endsWith("timeout-receipt") ? (
         <TimeoutSection

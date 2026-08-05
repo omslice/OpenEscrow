@@ -16,11 +16,16 @@ const ACTIVITY_TRANSACTION_HASH = `0x${"7".repeat(64)}` as const;
 const ARBITER_REPLACEMENT_TRANSACTION_HASH = `0x${"d".repeat(64)}` as const;
 const PROPOSAL_CANCELLATION_TRANSACTION_HASH = `0x${"f".repeat(64)}` as const;
 const PROPOSAL_CANCELLATION_DISCOVERY_HASH = `0x${"e".repeat(64)}` as const;
+const FINALIZATION_DISCOVERY_HASH = `0x${"a".repeat(64)}` as const;
 const REPLACEMENT_ARBITER = "0x5555555555555555555555555555555555555555" as const;
 const ARBITER_REPLACEMENT_SEARCH_COUNT_KEY =
   "openescrow:test:arbiter-replacement-searches";
 const PROPOSAL_CANCELLATION_SEARCH_COUNT_KEY =
   "openescrow:test:proposal-cancellation-searches";
+const FINALIZATION_SEARCH_COUNT_KEY =
+  "openescrow:test:finalization-searches";
+const FINALIZATION_TRANSACTION_COUNT_KEY =
+  "openescrow:test:finalization-transaction-writes";
 const CLAIM_TRANSACTION_COUNT_KEY = "openescrow:test:claim-transaction-writes";
 const RESPONSE_TRANSACTION_COUNT_KEY =
   "openescrow:test:response-transaction-writes";
@@ -50,10 +55,60 @@ function currentFlow() {
 }
 
 export function useAccount() {
-  return { address: selectedAddress() };
+  return { address: selectedAddress(), isConnected: true };
 }
 
 export function usePublicClient() {
+  if (currentFlow() === "finalization-discovery") {
+    const readyTimestamp = BigInt(
+      Math.floor(Date.parse("2026-07-31T00:00:00.000Z") / 1000),
+    );
+    const claimWindowStart = BigInt(
+      Math.floor(Date.parse("2027-07-25T18:10:00.000Z") / 1000),
+    );
+    const eventBlock = DEPLOYMENT_BLOCK + 4_000n;
+    return {
+      getBlockNumber: async () => {
+        recordTransaction(FINALIZATION_SEARCH_COUNT_KEY);
+        return DEPLOYMENT_BLOCK + 5_000n;
+      },
+      getBlock: async ({ blockNumber }: { blockNumber: bigint }) => ({
+        timestamp:
+          readyTimestamp -
+          7_200n +
+          (blockNumber - DEPLOYMENT_BLOCK) * 2n,
+      }),
+      getContractEvents: async ({
+        fromBlock,
+        toBlock,
+      }: {
+        fromBlock: bigint;
+        toBlock: bigint;
+      }) => {
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        if (eventBlock < fromBlock || eventBlock > toBlock) return [];
+        return [
+          {
+            eventName: "AgreementProposed" as const,
+            args: {
+              id: 43n,
+              landlord: LANDLORD,
+              tenant: TENANT,
+              arbiter: "0x0000000000000000000000000000000000000000",
+              agreedAmount: 1_000_000n,
+              claimWindowStart,
+              claimPeriod: 2_592_000n,
+              responsePeriod: 604_800n,
+              arbiterRulingPeriod: 604_800n,
+            },
+            transactionHash: FINALIZATION_DISCOVERY_HASH,
+            blockNumber: eventBlock,
+            logIndex: 1,
+          },
+        ];
+      },
+    };
+  }
   if (currentFlow() === "proposal-cancellation-discovery") {
     const finalizedTimestamp = BigInt(
       Math.floor(Date.parse("2026-07-31T00:00:00.000Z") / 1000),
@@ -204,9 +259,18 @@ export function useReadContract(parameters: { functionName?: string }) {
 export function useWriteContract() {
   const [data, setData] = useState<`0x${string}` | undefined>();
   return {
-    writeContract: (request?: { args?: readonly unknown[] }) => {
+    writeContract: (request?: {
+      args?: readonly unknown[];
+      functionName?: string;
+    }) => {
       const transaction = new URLSearchParams(window.location.search).get("tx");
-      if (transaction === "claim-success") {
+      if (
+        currentFlow() === "finalization-discovery" &&
+        request?.functionName === "createMultiTenantAgreementWithToken"
+      ) {
+        recordTransaction(FINALIZATION_TRANSACTION_COUNT_KEY);
+        setData(`0x${"b".repeat(64)}`);
+      } else if (transaction === "claim-success") {
         recordTransaction(CLAIM_TRANSACTION_COUNT_KEY);
         setData(CLAIM_TRANSACTION_HASH);
       } else if (transaction === "response-success") {

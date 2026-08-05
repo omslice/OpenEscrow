@@ -334,6 +334,66 @@ test("the receipt guard migration preserves and backfills historical duplicate e
       .get().count,
     4,
   );
+
+  const insertNegotiation = database.prepare(
+    `INSERT INTO agreement_negotiations
+     (id, created_at, updated_at, status, revision, terms_json,
+      landlord_email, tenant_email, landlord_token_hash, tenant_token_hash)
+     VALUES (?, ?, ?, 'ready', 1, '{}', ?, ?, ?, ?)`,
+  );
+  for (const suffix of ["TWO", "THREE"]) {
+    insertNegotiation.run(
+      `OE-P-HISTORY-${suffix}`,
+      "2026-08-01T00:00:00.000Z",
+      "2026-08-01T00:00:00.000Z",
+      `landlord-${suffix.toLowerCase()}@example.test`,
+      `tenant-${suffix.toLowerCase()}@example.test`,
+      `landlord-hash-${suffix.toLowerCase()}`,
+      `tenant-hash-${suffix.toLowerCase()}`,
+    );
+  }
+  const finalizationReceipt = JSON.stringify({
+    agreementId: "42",
+    transactionHash: `0x${"c".repeat(64)}`,
+  });
+  const insertFinalizationEvent = database.prepare(
+    `INSERT INTO negotiation_events
+     (negotiation_id, created_at, actor_role, action, summary, revision,
+      metadata_json)
+     VALUES (?, ?, 'landlord', 'posted_onchain', 'Historical finalization.',
+             1, ?)`,
+  );
+  insertFinalizationEvent.run(
+    "OE-P-HISTORY",
+    "2026-08-01T00:07:00.000Z",
+    finalizationReceipt,
+  );
+  insertFinalizationEvent.run(
+    "OE-P-HISTORY-TWO",
+    "2026-08-01T00:08:00.000Z",
+    finalizationReceipt,
+  );
+  applyMigration("0018_finalization_receipt_assignment_guard.sql");
+  assert.equal(
+    database
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM negotiation_receipt_guards
+         WHERE action = 'posted_onchain'
+           AND transaction_hash = ?`,
+      )
+      .get(`0x${"c".repeat(64)}`).count,
+    2,
+  );
+  assert.throws(
+    () =>
+      insertFinalizationEvent.run(
+        "OE-P-HISTORY-THREE",
+        "2026-08-01T00:09:00.000Z",
+        finalizationReceipt,
+      ),
+    /finalization receipt already assigned/i,
+  );
 });
 
 class Statement {
@@ -2094,7 +2154,19 @@ test("sandbox funding checkout endpoints enforce tenant, amount, origin, and ret
   const created = await create(db);
   await finalizeWithoutArbiter(db, created);
   const otherAgreement = await create(db);
-  await finalizeWithoutArbiter(db, otherAgreement);
+  await jsonResponse(
+    await act(db, otherAgreement.record.id, otherAgreement.access.tenant, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+  await jsonResponse(
+    await act(db, otherAgreement.record.id, otherAgreement.access.landlord, {
+      type: "finalize",
+      agreementId: "43",
+      transactionHash: `0x${"b".repeat(64)}`,
+    }),
+  );
   const intent = sandboxFundingIntent();
 
   const landlordAttempt = await fundingCheckoutRequest(
@@ -8827,6 +8899,57 @@ test("claim response notices bind to the exact recorded tenant decision", async 
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("one finalization receipt cannot be assigned to two proposal records", async () => {
+  const db = new TestD1();
+  const first = await create(db);
+  const second = await create(db);
+  await jsonResponse(
+    await act(db, first.record.id, first.access.tenant, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+  await jsonResponse(
+    await act(db, second.record.id, second.access.tenant, {
+      type: "approve",
+      wallet: "0x1111111111111111111111111111111111111111",
+    }),
+  );
+  const transactionHash = `0x${"a".repeat(64)}`;
+  await jsonResponse(
+    await act(db, first.record.id, first.access.landlord, {
+      type: "finalize",
+      agreementId: "42",
+      transactionHash,
+    }),
+  );
+
+  const duplicate = await act(
+    db,
+    second.record.id,
+    second.access.landlord,
+    {
+      type: "finalize",
+      agreementId: "42",
+      transactionHash,
+    },
+  );
+  assert.equal(duplicate.status, 409);
+  assert.match(
+    (await duplicate.json()).error,
+    /already assigned to another proposal record/i,
+  );
+
+  const independentlyFinalized = await jsonResponse(
+    await act(db, second.record.id, second.access.landlord, {
+      type: "finalize",
+      agreementId: "43",
+      transactionHash: `0x${"b".repeat(64)}`,
+    }),
+  );
+  assert.equal(independentlyFinalized.onchainAgreementId, "43");
 });
 
 test("pilot rehearsal: record export and proof include claim, decision, and receipts", async () => {

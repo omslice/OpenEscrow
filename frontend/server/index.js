@@ -158,6 +158,22 @@ BEGIN
   );
 END`;
 
+const FINALIZATION_RECEIPT_ASSIGNMENT_GUARD = `
+CREATE TRIGGER IF NOT EXISTS negotiation_receipt_guards_unique_finalization
+BEFORE INSERT ON negotiation_receipt_guards
+FOR EACH ROW
+WHEN NEW.action = 'posted_onchain'
+AND EXISTS (
+  SELECT 1
+  FROM negotiation_receipt_guards
+  WHERE action = 'posted_onchain'
+    AND transaction_hash = lower(NEW.transaction_hash)
+    AND negotiation_id <> NEW.negotiation_id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'finalization receipt already assigned');
+END`;
+
 const ACCOUNT_ACCESS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS negotiation_account_access (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2594,6 +2610,7 @@ async function initialize(db) {
     db.prepare(EVENTS_INDEX),
     db.prepare(RECEIPT_GUARDS_SCHEMA),
     db.prepare(RECEIPT_GUARDS_BACKFILL),
+    db.prepare(FINALIZATION_RECEIPT_ASSIGNMENT_GUARD),
     db.prepare(RECEIPT_GUARDS_TRIGGER),
     db.prepare(ACCOUNT_ACCESS_SCHEMA),
     db.prepare(ACCOUNT_ACCESS_INDEX),
@@ -5907,6 +5924,26 @@ async function runNotificationJob(env, now = new Date()) {
   await runScheduledNotifications(env, now);
 }
 
+async function finalizationReceiptAssignedElsewhere(
+  db,
+  negotiationId,
+  transactionHash,
+) {
+  if (!/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) return false;
+  const assigned = await db
+    .prepare(
+      `SELECT negotiation_id
+       FROM negotiation_receipt_guards
+       WHERE action = 'posted_onchain'
+         AND transaction_hash = ?
+         AND negotiation_id <> ?
+       LIMIT 1`,
+    )
+    .bind(transactionHash.toLowerCase(), negotiationId)
+    .first();
+  return Boolean(assigned?.negotiation_id);
+}
+
 async function authorizedReceiptReplay({
   db,
   id,
@@ -6437,6 +6474,21 @@ async function applyAction(request, env, id) {
     const transactionHash = cleanText(body.transactionHash, 100);
     if (!agreementId || !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
       return json({ error: "The onchain agreement details are invalid." }, 400);
+    }
+    if (
+      await finalizationReceiptAssignedElsewhere(
+        db,
+        id,
+        transactionHash,
+      )
+    ) {
+      return json(
+        {
+          error:
+            "This finalization receipt is already assigned to another proposal record.",
+        },
+        409,
+      );
     }
     statements.push(
       db
@@ -7878,6 +7930,22 @@ async function applyAction(request, env, id) {
     await db.batch(statements);
   } catch (cause) {
     if (expectedEvent && /^0x[a-fA-F0-9]{64}$/.test(incomingTransactionHash)) {
+      if (
+        body.type === "finalize" &&
+        (await finalizationReceiptAssignedElsewhere(
+          db,
+          id,
+          incomingTransactionHash,
+        ))
+      ) {
+        return json(
+          {
+            error:
+              "This finalization receipt is already assigned to another proposal record.",
+          },
+          409,
+        );
+      }
       const latestRow = await rowFor(db, id);
       const latestEvents = await eventsFor(db, id);
       const replayIsAuthorized = await authorizedReceiptReplay({

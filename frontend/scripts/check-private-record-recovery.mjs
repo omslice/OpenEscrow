@@ -61,6 +61,59 @@ const negotiationRecord = {
   events: [],
 };
 
+const finalizationRecord = {
+  ...negotiationRecord,
+  status: "ready",
+  createdAt: "2026-07-30T00:00:00.000Z",
+  updatedAt: "2026-07-31T00:00:00.000Z",
+  landlordName: "Test Landlord",
+  landlordEmail: "landlord@example.test",
+  tenantName: "Test Tenant",
+  tenantEmail: "tenant@example.test",
+  tenants: [
+    {
+      id: "tenant-1",
+      name: "Test Tenant",
+      email: "tenant@example.test",
+      approved: true,
+      wallet: "0x2222222222222222222222222222222222222222",
+      isFundingTenant: true,
+      acceptedAt: "2026-07-31T00:00:00.000Z",
+      depositShareBps: 10_000,
+    },
+  ],
+  terms: {
+    jurisdiction: "testnet-generic",
+    policyVersion: "generic-test-v1",
+    propertyAddress: "Synthetic test address",
+    tokenChoice: "plain",
+    deposit: "1",
+    operationsReserve: "5",
+    monthlyRent: "1",
+    claimWindowStart: "2027-07-25T18:10:00.000Z",
+    claimDays: "30",
+    responseDays: "7",
+    arbiterDays: "7",
+  },
+  tenantApproved: true,
+  arbiterApproved: false,
+  tenantWallet: "0x2222222222222222222222222222222222222222",
+  arbiterWallet: null,
+  onchainAgreementId: null,
+  onchainTxHash: null,
+  events: [
+    {
+      id: 1,
+      createdAt: "2026-07-31T00:00:00.000Z",
+      actorRole: "system",
+      action: "proposal_ready",
+      summary: "All required parties approved revision 1.",
+      revision: 1,
+      metadata: null,
+    },
+  ],
+};
+
 async function waitForServer() {
   const deadline = Date.now() + 20_000;
   while (Date.now() < deadline) {
@@ -195,6 +248,91 @@ async function routeDecisionReceiptRecovery(
   return () => attempts;
 }
 
+async function routeFinalizationRecovery(page) {
+  let preflightAttempts = 0;
+  let finalizationAttempts = 0;
+  await page.route(
+    /\/api\/negotiations\/OE-P-RECOVERY(?:\/actions)?$/,
+    async (route) => {
+      const request = route.request();
+      const requestUrl = new URL(request.url());
+      assert.equal(
+        requestUrl.searchParams.has("token"),
+        false,
+        "Finalization recovery must keep agreement access out of the URL.",
+      );
+      if (request.method() === "GET") {
+        assert.equal(
+          request.headers().authorization,
+          "Bearer synthetic-private-record-recovery-token",
+        );
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(finalizationRecord),
+        });
+        return;
+      }
+
+      const body = JSON.parse(request.postData() || "{}");
+      assert.equal(
+        body.token,
+        "synthetic-private-record-recovery-token",
+        "Finalization recovery must use the exact landlord access in memory.",
+      );
+      if (body.type === "preflight_finalize") {
+        preflightAttempts += 1;
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            ...finalizationRecord,
+            events: [
+              ...finalizationRecord.events,
+              {
+                id: 2,
+                createdAt: "2026-07-31T00:00:00.000Z",
+                actorRole: "landlord",
+                action: "finalization_preflight_passed",
+                summary: "Validated revision 1 for onchain finalization.",
+                revision: 1,
+                metadata: null,
+              },
+            ],
+          }),
+        });
+        return;
+      }
+      assert.equal(body.type, "finalize");
+      assert.equal(body.agreementId, "43");
+      assert.equal(body.transactionHash, `0x${"a".repeat(64)}`);
+      finalizationAttempts += 1;
+      if (finalizationAttempts === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Simulated finalization Record outage" }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...finalizationRecord,
+          status: "finalized",
+          onchainAgreementId: "43",
+          onchainTxHash: `0x${"a".repeat(64)}`,
+        }),
+      });
+    },
+  );
+  return {
+    preflightAttempts: () => preflightAttempts,
+    finalizationAttempts: () => finalizationAttempts,
+  };
+}
+
 async function routeActivityReceiptRecovery(page) {
   let attempts = 0;
   await page.route(
@@ -279,6 +417,24 @@ async function pendingTerminalRecoveryEntries(page) {
       const key = window.sessionStorage.key(index);
       if (key?.startsWith("openescrow:pending-terminal-receipt:")) {
         entries.push([key, window.sessionStorage.getItem(key)]);
+      }
+    }
+    return entries;
+  });
+}
+
+async function pendingFinalizationRecoveryEntries(page) {
+  return page.evaluate(() => {
+    const entries = [];
+    for (const [kind, storage] of [
+      ["local", window.localStorage],
+      ["session", window.sessionStorage],
+    ]) {
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index);
+        if (key?.startsWith("openescrow:pending-finalization:")) {
+          entries.push([kind, key, storage.getItem(key)]);
+        }
       }
     }
     return entries;
@@ -450,6 +606,141 @@ let releaseClaimNotification;
 try {
   await waitForServer();
   browser = await chromium.launch({ headless: true });
+
+  const finalizationPage = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+  });
+  const finalizationRecovery = await routeFinalizationRecovery(
+    finalizationPage,
+  );
+  const finalizationUrl = `${baseUrl}/testing/private-record-recovery.html?role=landlord&flow=finalization-discovery`;
+  await finalizationPage.goto(finalizationUrl, { waitUntil: "networkidle" });
+  const finalizeProposal = finalizationPage.getByRole("button", {
+    name: "Finalize approved proposal onchain",
+  });
+  await finalizeProposal.waitFor({ state: "visible" });
+  const finalizeProposalBox = await finalizeProposal.boundingBox();
+  assert.equal(
+    Boolean(finalizeProposalBox && finalizeProposalBox.height >= 44),
+    true,
+    "The guarded finalization action must remain a 44px mobile touch target.",
+  );
+  await finalizeProposal.focus();
+  await finalizeProposal.press("Enter");
+  await finalizationPage
+    .getByRole("button", { name: "Checking the approved proposal..." })
+    .waitFor({ state: "visible" });
+  const finalizationRetry = finalizationPage.getByRole("button", {
+    name: "Finish adding finalization to Record",
+  });
+  await finalizationRetry.waitFor({ state: "visible" });
+  assert.equal(
+    await finalizationRetry.evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+    "A failed recovered-finalization save should focus its Record-only retry.",
+  );
+  const finalizationRetryBox = await finalizationRetry.boundingBox();
+  assert.equal(
+    Boolean(finalizationRetryBox && finalizationRetryBox.height >= 44),
+    true,
+    "The finalization Record retry must remain a 44px mobile touch target.",
+  );
+  const confirmedFinalizationButton = finalizationPage.getByRole("button", {
+    name: "Finalization confirmed—updating Record...",
+  });
+  assert.equal(
+    await confirmedFinalizationButton.isDisabled(),
+    true,
+    "A discovered finalization must disable the control that could create a duplicate agreement.",
+  );
+  assert.equal(finalizationRecovery.preflightAttempts(), 1);
+  assert.equal(finalizationRecovery.finalizationAttempts(), 1);
+  assert.equal(
+    await finalizationPage.evaluate(() =>
+      window.sessionStorage.getItem(
+        "openescrow:test:finalization-searches",
+      ),
+    ),
+    "1",
+  );
+  assert.equal(
+    await finalizationPage.evaluate(() =>
+      window.sessionStorage.getItem(
+        "openescrow:test:finalization-transaction-writes",
+      ),
+    ),
+    null,
+    "Recovering an existing finalization must not create another agreement.",
+  );
+  const pendingFinalizationEntries =
+    await pendingFinalizationRecoveryEntries(finalizationPage);
+  assert.equal(pendingFinalizationEntries.length, 1);
+  assert.match(
+    pendingFinalizationEntries[0][1],
+    /:OE-P-RECOVERY:landlord:0x1111111111111111111111111111111111111111$/,
+    "Finalization recovery must remain scoped to the proposal, role, and wallet.",
+  );
+  assert.doesNotMatch(
+    JSON.stringify(pendingFinalizationEntries),
+    /synthetic-private-record-recovery-token/,
+    "Finalization recovery must not persist its agreement bearer.",
+  );
+
+  await finalizationPage.goto(
+    `${baseUrl}/testing/private-record-recovery.html?role=tenant&flow=finalization-discovery`,
+    { waitUntil: "networkidle" },
+  );
+  assert.equal(
+    await finalizationPage
+      .getByRole("button", { name: "Finish adding finalization to Record" })
+      .count(),
+    0,
+    "A tenant wallet must not inherit the landlord's pending finalization receipt.",
+  );
+  assert.equal(
+    finalizationRecovery.finalizationAttempts(),
+    1,
+    "A role change must not submit another private Record action.",
+  );
+
+  await finalizationPage.goto(finalizationUrl, { waitUntil: "networkidle" });
+  await finalizationPage
+    .getByText(/This proposal is finalized as/i)
+    .waitFor({ state: "visible" });
+  assert.equal(finalizationRecovery.finalizationAttempts(), 2);
+  assert.equal(
+    (await pendingFinalizationRecoveryEntries(finalizationPage)).length,
+    0,
+    "A successful recovered finalization should clear only its scoped receipt.",
+  );
+  assert.equal(
+    await finalizationPage.evaluate(() =>
+      window.sessionStorage.getItem(
+        "openescrow:test:finalization-searches",
+      ),
+    ),
+    "1",
+    "Reload recovery must reuse the saved receipt without another public search.",
+  );
+  assert.equal(
+    await finalizationPage.evaluate(() =>
+      window.sessionStorage.getItem(
+        "openescrow:test:finalization-transaction-writes",
+      ),
+    ),
+    null,
+    "A Record-only retry must never create another agreement.",
+  );
+  assert.equal(
+    await finalizationPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "Finalization recovery should not overflow a mobile viewport.",
+  );
+  await finalizationPage.context().close();
 
   const claimPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await routePrivateRecord(claimPage, new Set([1, 2, 4]));
@@ -1545,7 +1836,7 @@ try {
   await activityReceiptPage.context().close();
 
   process.stdout.write(
-    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, notification failures use error semantics and focus 44px retry/fallback actions, interrupted arbiter access rotation and stale proposal cancellations use automatic bounded confirmation lookup, and confirmed cancellations, claims, tenant responses, arbiter rulings, withdrawals, activity proofs, and every deadline outcome survive private-record outages and reloads without another transaction or stored bearer token; terminal retries remain wallet- and agreement-scoped, time-sensitive responses remain available, and delivered email is not repeated by a record-only retry.\n",
+    "Private-record recovery browser check passed: proposal finalization checks for and recovers one unambiguous exact existing agreement before any new write, claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, notification failures use error semantics and focus 44px retry/fallback actions, interrupted arbiter access rotation and stale proposal cancellations use automatic bounded confirmation lookup, and confirmed finalizations, cancellations, claims, tenant responses, arbiter rulings, withdrawals, activity proofs, and every deadline outcome survive private-record outages and reloads without another transaction or stored bearer token; retries remain role-, wallet-, and agreement-scoped, time-sensitive responses remain available, and delivered email is not repeated by a record-only retry.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

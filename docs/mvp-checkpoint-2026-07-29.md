@@ -579,6 +579,17 @@ detailed validation ledger.
   before receipt finalization. The preflight remains an audit event, but carries no temporary
   waiver. A focused regression changes a required source after preflight and proves the proposal
   stays unfinalized.
+- **Verified:** A ready proposal now searches bounded public event ranges after its saved
+  finalization preflight for one unambiguous exact existing finalization before any new agreement
+  transaction can be submitted. The browser candidate must
+  match the connected landlord, approved funding tenant, arbiter, deposit amount, possession-
+  return date, and timing periods; the server still verifies the exact receipt, deployed contract,
+  token, every tenant share, sender, and exclusive proposal assignment. Multiple exact public
+  candidates, an RPC failure, or a receipt already assigned to another proposal all fail closed. A
+  found receipt disables duplicate creation and is stored without a bearer under the exact
+  proposal, role, and wallet until its private Record save succeeds. A rendered 390-pixel rehearsal
+  proves failure focus, role isolation, reload recovery, local cleanup, and zero new contract
+  writes.
 - **Verified:** Versioned compliance snapshots now validate their stored collection, source,
   fact, deposit-cap, overlay, and claim-policy shapes before use. Malformed D1-decoded snapshots
   fail closed without throwing or falling back to current rules, while valid evaluations are

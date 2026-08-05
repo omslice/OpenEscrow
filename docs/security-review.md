@@ -294,6 +294,20 @@ not deployed until a new version-matched registry is broadcast and validated.
   finalization receipt, exact approved terms and participants, selected token, and creating
   landlord before accepting another landlord receipt. The recovered wallet is preserved in the
   audit trail for later checks; an unavailable or mismatched original receipt fails closed.
+- A ready proposal now checks bounded Base Sepolia event ranges after its saved preflight for one
+  unambiguous exact prior `AgreementProposed` event before the UI may submit a new finalization.
+  Discovery is scoped to the connected landlord wallet and matches the approved funding tenant,
+  arbiter, amount, possession-return date, and all three periods. Any candidate still passes
+  through the hosted verifier for the successful receipt, deployed contract, selected token,
+  every tenant share, creating sender, and exclusive proposal assignment. The database trigger
+  atomically rejects reuse of a finalization receipt across proposal records. A found receipt
+  disables the contract-write control and uses a proposal-, role-, and wallet-scoped Record-only
+  recovery entry with no bearer; save failures survive reload without a second agreement. Multiple
+  exact candidates or an RPC failure block a new write rather than weakening duplicate checks.
+  The currently deployed event does not include the private proposal id, so one matching candidate
+  is a strong recovery signal rather than a cryptographic proposal binding. A production contract
+  should emit a blinded proposal reference; until then, ambiguous recovery requires operator
+  review and never auto-attaches a receipt.
 - Arbiter replacement is now mirrored through verified proposal, confirmation, cancellation, and
   acceptance receipts. A nominee's private-record link remains fail-closed until both agreement
   parties confirm; acceptance atomically changes the saved exact wallet and email, rotates the

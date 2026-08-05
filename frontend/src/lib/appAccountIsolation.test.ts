@@ -79,7 +79,11 @@ test("newly finalized agreement ids are persisted by the account-scoped workspac
   );
   assert.match(
     createAgreementFormSource,
-    /rememberJurisdiction\(id, submittedJurisdiction\.current\);\s*onTrackAgreement\(id\);/,
+    /rememberJurisdiction\(agreementId, jurisdiction\);\s*onTrackAgreement\(agreementId\);/,
+  );
+  assert.match(
+    createAgreementFormSource,
+    /queueFinalizationRecord\(\s*id,\s*receipt\.transactionHash,\s*submittedJurisdiction\.current,/s,
   );
   assert.match(
     appSource,
