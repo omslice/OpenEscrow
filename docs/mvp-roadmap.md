@@ -121,13 +121,15 @@ production custody, or reliance on the compliance research as legal advice.
   conditional/business-day deadline regression coverage and fail-closed official-source gates.
   Wallet preflight is an audited readiness check, not a waiver: finalization rechecks the exact
   source set and blocks any later changed, stale, pending, or incomplete source state. Stored
-  snapshot collection shapes, HTTPS source records, facts, deposit caps, overlays, and v4 claim
-  policies are validated before use; a malformed saved snapshot is shown as needing review rather
-  than being evaluated or silently replaced with today's rules. Valid parsed evaluations are
+  snapshot collection shapes, exact canonical address/provider fields, HTTPS source records,
+  facts, deposit caps, overlays, and v4 claim policies are validated before use; a malformed saved
+  snapshot is shown as needing review rather than being evaluated or silently replaced with
+  today's rules. Valid parsed evaluations are
   recursively copied and frozen. This is a best-effort research aid, not an assertion that every
   legal rule is complete.
 - **Verified:** A manual official-source recheck accepts only the selected profile's exact version,
-  citation, and URL. Unreachable sources are shown as needing attention, a failed retry cannot
+  citation, URL, status/review pairing, and chronological canonical timestamps. Unreachable
+  sources are shown as needing attention, a failed retry cannot
   leave a stale green result beside its error, simultaneous requests share one bounded check, and
   an older late completion cannot overwrite a newer durable result. No rule content is rewritten.
 - **Verified:** Compliance event inputs now reject impossible dates and timestamps without an

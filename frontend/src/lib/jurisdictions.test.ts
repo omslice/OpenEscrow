@@ -4,12 +4,15 @@ import {
   US_JURISDICTION_PROFILES,
   addressResolutionMatchesProfile,
   buildComplianceSnapshot,
+  evaluateSnapshotCompliance,
+  isVersionedComplianceSnapshot,
   jurisdictionProfile,
   jurisdictionProfileForPostalCode,
   normalizeAddressResolution,
   readJurisdiction,
   rememberJurisdiction,
   type AddressResolution,
+  type ComplianceSnapshot,
   type USJurisdictionProfile,
 } from "./jurisdictions.ts";
 
@@ -115,6 +118,39 @@ test("every jurisdiction snapshot detaches its address and nested rule inputs", 
     assert.equal(Object.isFrozen(snapshot.deadlines), true);
     assert.equal(Object.isFrozen(snapshot.claimPolicy), true);
     assert.equal(Object.isFrozen(snapshot.overlays), true);
+  }
+});
+
+test("stored jurisdiction snapshots require the exact canonical validated address", () => {
+  const profile = US_JURISDICTION_PROFILES.find(
+    (candidate) => candidate.postalCode === "ME",
+  );
+  assert.ok(profile);
+  const snapshot = buildComplianceSnapshot(profile, addressFor(profile));
+  assert.ok(snapshot);
+
+  for (const [label, mutate] of [
+    ["missing provider", (candidate: Record<string, unknown>) => {
+      delete (candidate.address as Record<string, unknown>).provider;
+    }],
+    ["spoofed provider", (candidate: Record<string, unknown>) => {
+      (candidate.address as Record<string, unknown>).provider = "manual-entry";
+    }],
+    ["lowercase state", (candidate: Record<string, unknown>) => {
+      (candidate.address as Record<string, unknown>).stateCode = "me";
+    }],
+    ["unclean locality", (candidate: Record<string, unknown>) => {
+      (candidate.address as Record<string, unknown>).city = " Test City ";
+    }],
+  ] as const) {
+    const candidate = structuredClone(snapshot) as unknown as Record<string, unknown>;
+    mutate(candidate);
+    assert.equal(isVersionedComplianceSnapshot(candidate), false, label);
+    assert.equal(
+      evaluateSnapshotCompliance(candidate as unknown as ComplianceSnapshot, {}),
+      null,
+      label,
+    );
   }
 });
 

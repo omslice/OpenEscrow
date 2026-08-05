@@ -76,14 +76,18 @@ detailed validation ledger.
   legal rule.
 - **Verified:** The frontend address bridge now runs an all-51 matrix proving each validated state
   code selects the exact versioned statewide profile. Foreign, unknown, and state-mismatched
-  addresses fail closed; every generated snapshot remains detached after its source address and
-  nested rules are edited, and current-page routing survives blocked browser storage.
+  addresses fail closed; a parsed snapshot must retain its exact canonical validated provider and
+  address fields instead of normalizing a missing, spoofed, or unclean stored identity. Every
+  generated snapshot remains detached after its source address and nested rules are edited, and
+  current-page routing survives blocked browser storage.
 - **Verified:** A validated statewide profile now shows its research date and official source
   link. A rate-limited, version-pinned recheck reports when that source was checked and flags
   possible changes without silently rewriting the reviewed profile or a finalized agreement.
 - **Verified:** Source recheck responses must match the selected profile version, citation, and
-  URL before the client displays them. Unreachable sources require attention rather than receiving
-  success styling; failed retries clear the prior green result and remain retryable. Same-source
+  URL before the client displays them. Status and review flags must agree; impossible timestamp
+  strings, reversed verification chronology, and incomplete changed/unreachable checks fail
+  closed. Unreachable sources require attention rather than receiving success styling; failed
+  retries clear the prior green result and remain retryable. Same-source
   requests share one in-flight fetch per runtime, while timestamp and version guards prevent an
   older or superseded completion from overwriting a newer D1 result across runtimes.
 - **Verified:** The compliance source registry is immutable, uniquely keyed, HTTPS-only, and

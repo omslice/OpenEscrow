@@ -180,8 +180,31 @@ export function normalizeAddressResolution(value) {
   });
 }
 
+function isCanonicalAddressResolution(value) {
+  if (!isRecord(value)) return false;
+  const normalized = normalizeAddressResolution(value);
+  if (!normalized) return false;
+  return [
+    "provider",
+    "providerFeatureId",
+    "label",
+    "countryCode",
+    "stateCode",
+    "city",
+    "county",
+    "postalCode",
+    "latitude",
+    "longitude",
+    "attestation",
+  ].every(
+    (field) =>
+      Object.prototype.hasOwnProperty.call(value, field) &&
+      Object.is(value[field], normalized[field]),
+  );
+}
+
 export function isVersionedComplianceSnapshot(value) {
-  const address = isRecord(value)
+  const address = isRecord(value) && isCanonicalAddressResolution(value.address)
     ? normalizeAddressResolution(value.address)
     : null;
   if (

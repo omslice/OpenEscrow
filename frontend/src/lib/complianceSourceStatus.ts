@@ -22,7 +22,41 @@ const INVALID_SOURCE_RESPONSE =
   "OpenEscrow could not verify that this source check matches the selected compliance profile. Try again.";
 
 function isNullableTimestamp(value: unknown): value is string | null {
-  return value === null || (typeof value === "string" && Number.isFinite(Date.parse(value)));
+  if (value === null) return true;
+  if (typeof value !== "string") return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+}
+
+function isConsistentSourceState(
+  source: ComplianceSourceStatus["source"],
+): boolean {
+  const lastCheckedAt = source.lastCheckedAt
+    ? Date.parse(source.lastCheckedAt)
+    : null;
+  const lastVerifiedAt = source.lastVerifiedAt
+    ? Date.parse(source.lastVerifiedAt)
+    : null;
+  if (source.requiresReview !== (source.status !== "unchanged")) return false;
+  if (lastVerifiedAt !== null && lastCheckedAt === null) return false;
+  if (
+    lastCheckedAt !== null &&
+    lastVerifiedAt !== null &&
+    lastVerifiedAt > lastCheckedAt
+  ) {
+    return false;
+  }
+  if (source.status === "unchanged") {
+    return (
+      lastCheckedAt !== null &&
+      lastVerifiedAt !== null &&
+      lastCheckedAt === lastVerifiedAt
+    );
+  }
+  if (source.status === "changed" || source.status === "unreachable") {
+    return lastCheckedAt !== null;
+  }
+  return true;
 }
 
 function isExactComplianceSourceStatus(
@@ -45,7 +79,8 @@ function isExactComplianceSourceStatus(
       SOURCE_STATUSES.has(source.status) &&
       isNullableTimestamp(source.lastCheckedAt) &&
       isNullableTimestamp(source.lastVerifiedAt) &&
-      typeof source.requiresReview === "boolean",
+      typeof source.requiresReview === "boolean" &&
+      isConsistentSourceState(source),
   );
 }
 

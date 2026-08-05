@@ -1010,6 +1010,10 @@ test("versioned compliance snapshots reject malformed stored shapes and detach e
     ["a recorded source is not HTTPS", (candidate) => { candidate.source.url = "http://example.test/rule"; }],
     ["recorded facts contain a nested value", (candidate) => { candidate.facts.ownerOccupied = { forged: true }; }],
     ["the address conflicts with the jurisdiction", (candidate) => { candidate.jurisdiction = "us-nv"; }],
+    ["the address provider is missing", (candidate) => { delete candidate.address.provider; }],
+    ["the address provider is spoofed", (candidate) => { candidate.address.provider = "manual-entry"; }],
+    ["the address state is not canonical", (candidate) => { candidate.address.stateCode = "me"; }],
+    ["the address locality is not canonical", (candidate) => { candidate.address.city = " Portland "; }],
     ["local coverage is unknown", (candidate) => { candidate.localCoverage = "assumed-covered"; }],
     ["the deposit cap is malformed", (candidate) => { candidate.depositCap.months = -1; }],
   ];
