@@ -22,6 +22,16 @@ const expectedScenarios = [
     ],
   },
   {
+    id: "evidence-url-bearer-denial",
+    name: "private evidence retrieval is party-only and rejects bearer tokens in URLs",
+    covers: [
+      "party-only evidence access",
+      "URL bearer denial",
+      "browser-history privacy",
+      "token-free storage references",
+    ],
+  },
+  {
     id: "session-containment",
     name: "pilot rehearsal: a verified account can contain its record sessions without affecting other parties",
     covers: [

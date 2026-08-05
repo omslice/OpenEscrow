@@ -5863,7 +5863,7 @@ test("homepage traffic safely advances an enabled compliance-source baseline", a
   }
 });
 
-test("private evidence is stored in R2 and only an agreement party can retrieve it", async () => {
+test("private evidence retrieval is party-only and rejects bearer tokens in URLs", async () => {
   const db = new TestD1();
   const evidence = new TestR2();
   const created = await create(db);
@@ -5912,14 +5912,34 @@ test("private evidence is stored in R2 and only an agreement party can retrieve 
     authorized.headers.get("cross-origin-resource-policy"),
     "same-origin",
   );
-  const legacyAuthorized = await worker.fetch(
+  const legacyUrlDenied = await worker.fetch(
     new Request(
       `https://openescrow.example${uploaded.gatewayUrl}?token=${encodeURIComponent(created.access.landlord)}`,
     ),
     { DB: db, EVIDENCE: evidence },
   );
-  assert.equal(legacyAuthorized.status, 200);
-  assert.equal(await legacyAuthorized.text(), "%PDF-1.7\ntest invoice");
+  assert.equal(legacyUrlDenied.status, 405);
+  assert.deepEqual(await legacyUrlDenied.json(), {
+    error:
+      "Open this supporting file from its agreement. Private file access is not accepted in a URL.",
+  });
+  assert.equal(legacyUrlDenied.headers.get("cache-control"), "no-store");
+  assert.equal(legacyUrlDenied.headers.get("referrer-policy"), "no-referrer");
+  const storageTripwire = {
+    prepare() {
+      throw new Error("A rejected evidence URL must not read D1.");
+    },
+    async get() {
+      throw new Error("A rejected evidence URL must not read R2.");
+    },
+  };
+  const rejectedBeforeStorage = await worker.fetch(
+    new Request(
+      `https://openescrow.example${uploaded.gatewayUrl}?token=retired-url-secret`,
+    ),
+    { DB: storageTripwire, EVIDENCE: storageTripwire },
+  );
+  assert.equal(rejectedBeforeStorage.status, 405);
 
   const tenantAuthorized = await worker.fetch(
     evidenceDownloadRequest(uploaded.gatewayUrl, created.access.tenant),
@@ -5982,9 +6002,6 @@ test("sensitive authorized reads reject cross-site browser requests without an O
       created.access.landlord,
       { "sec-fetch-site": "cross-site" },
     ),
-    new Request(`https://openescrow.example${uploaded.gatewayUrl}`, {
-      headers: { "sec-fetch-site": "cross-site" },
-    }),
   ];
   for (const sensitiveRequest of sensitiveRequests) {
     const response = await worker.fetch(sensitiveRequest, {
@@ -6006,6 +6023,15 @@ test("sensitive authorized reads reject cross-site browser requests without an O
     { DB: db },
   );
   assert.equal(sameOriginRecord.status, 200);
+  const evidenceGet = await worker.fetch(
+    new Request(`https://openescrow.example${uploaded.gatewayUrl}`),
+    { DB: db, EVIDENCE: evidence },
+  );
+  assert.equal(evidenceGet.status, 405);
+  assert.deepEqual(await evidenceGet.json(), {
+    error:
+      "Open this supporting file from its agreement. Private file access is not accepted in a URL.",
+  });
   const crossSiteEvidencePost = await worker.fetch(
     evidenceDownloadRequest(uploaded.gatewayUrl, created.access.landlord, {
       "sec-fetch-site": "cross-site",

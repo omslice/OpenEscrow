@@ -8260,15 +8260,11 @@ async function downloadEvidence(request, env, evidenceId) {
   }
   const row = await rowFor(env.DB, metadata.negotiation_id);
   let token;
-  if (request.method === "POST") {
-    try {
-      const form = await request.formData();
-      token = cleanText(form.get("token"), 200);
-    } catch {
-      return json({ error: "The evidence access request is invalid." }, 400);
-    }
-  } else {
-    token = cleanText(new URL(request.url).searchParams.get("token"), 200);
+  try {
+    const form = await request.formData();
+    token = cleanText(form.get("token"), 200);
+  } catch {
+    return json({ error: "The evidence access request is invalid." }, 400);
   }
   const role = await authorize(env.DB, row, token);
   if (!role) return json({ error: "This evidence link is invalid or no longer available." }, 403);
@@ -9290,24 +9286,18 @@ const worker = {
       return uploadEvidence(request, env);
     }
     const evidenceMatch = url.pathname.match(/^\/api\/evidence\/([a-fA-F0-9-]+)$/);
-    if (
-      evidenceMatch &&
-      (request.method === "GET" || request.method === "POST")
-    ) {
-      const sameOrigin =
-        request.method === "POST"
-          ? sameOriginPost(request)
-          : sameOriginGet(request);
-      if (!sameOrigin) {
-        return json(
-          {
-            error:
-              request.method === "POST"
-                ? "Cross-origin writes are not allowed."
-                : "Cross-origin reads are not allowed.",
-          },
-          403,
-        );
+    if (evidenceMatch && request.method !== "POST") {
+      return json(
+        {
+          error:
+            "Open this supporting file from its agreement. Private file access is not accepted in a URL.",
+        },
+        405,
+      );
+    }
+    if (evidenceMatch && request.method === "POST") {
+      if (!sameOriginPost(request)) {
+        return json({ error: "Cross-origin writes are not allowed." }, 403);
       }
       if (env.DB) await initialize(env.DB);
       return downloadEvidence(request, env, evidenceMatch[1]);

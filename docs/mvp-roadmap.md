@@ -38,7 +38,9 @@ production custody, or reliance on the compliance research as legal advice.
   retained for later checks. Routine agreement, report, and canonical-snapshot reads now keep the
   bearer out of current-client URLs by using a strict authorization header; authenticated report
   downloads remain usable, and missing, malformed, or wrong authorization headers fail closed
-  without accepting an agreement bearer from a query string.
+  without accepting an agreement bearer from a query string. Private supporting files likewise
+  require a same-origin form POST: the former evidence `?token=` URL is rejected before D1 or R2
+  access, so an agreement secret is not accepted from browser history, logs, or referrers.
 - **Verified:** The release dependency audit blocks every high/critical finding and every unknown
   moderate advisory. The former transitive `uuid` advisory is removed from the locked
   wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector

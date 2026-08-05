@@ -40,11 +40,11 @@ detailed validation ledger.
   activity receipt, proves another agreement cannot inherit it, restores keyboard focus to its
   mobile-size retry after reload, and completes the record without another onchain publication.
   Production funding remains disabled outside these deterministic tests.
-- **Verified:** A separate 15-scenario incident-response rehearsal passes for identity forgery,
-  cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
-  invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,
-  R2/encrypted-IPFS cleanup after metadata failure, outages, notification recovery, receipt
-  spoofing, and RPC fallback.
+- **Verified:** A separate 17-scenario incident-response rehearsal passes for identity forgery,
+  cross-account isolation, cross-site read isolation, evidence URL-bearer denial, account-session
+  containment, lost-tenant invitation recovery, privacy inventory, evidence tamper, retained-key
+  loss/restoration, R2/encrypted-IPFS cleanup after metadata failure, outages, notification
+  recovery, legacy-landlord receipt recovery, receipt spoofing, and RPC fallback.
 - **Verified:** The full repository release check passes the complete server and client-logic
   suites, lint, browser account-switch, funding-recovery, record-verification,
   accessibility/mobile, landing-budget, and load-recovery checks, plus the production build.
@@ -316,6 +316,10 @@ detailed validation ledger.
   success, and error states, restore keyboard focus only after the completed upload state is
   committed, and reject a delayed completion after the agreement or access token changes. A
   rendered mobile regression covers this flow.
+- **Verified:** Private supporting-file downloads are now same-origin POST-only. The server rejects
+  the retired `?token=` evidence URL before reading D1 metadata or R2 bytes, returns no-store and
+  no-referrer protections, and retains authorized landlord/tenant access through the token-free
+  agreement UI. The incident rehearsal makes this browser-history and referrer boundary explicit.
 - **Verified:** Confirmed tenant responses and arbiter rulings now preserve a bounded private-
   record retry across a same-tab reload without storing bearer access. Rendered mobile checks
   prove focus restoration, 44-pixel retry controls, matching-payload cleanup, and exactly one
