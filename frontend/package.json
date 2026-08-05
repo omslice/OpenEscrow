@@ -19,6 +19,7 @@
     "test:deposit-list": "node scripts/check-deposit-list.mjs",
     "test:record-list": "node scripts/check-record-list.mjs",
     "test:private-record-recovery": "node scripts/check-private-record-recovery.mjs",
+    "test:private-activity-recovery": "node scripts/check-private-activity-recovery.mjs",
     "test:pilot-lifecycle": "node scripts/check-pilot-lifecycle.mjs",
     "check:bundle": "node scripts/check-bundle-budget.mjs",
     "check:landing-load": "node scripts/check-landing-load.mjs",

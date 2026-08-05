@@ -237,9 +237,9 @@ runServerRehearsal({
     },
     {
       name: "pilot rehearsal: private activity receipt recovery cannot republish a confirmed proof",
-      target: "scripts/check-private-record-recovery.mjs",
+      target: "scripts/check-private-activity-recovery.mjs",
       command: process.execPath,
-      args: ["scripts/check-private-record-recovery.mjs"],
+      args: ["scripts/check-private-activity-recovery.mjs"],
     },
     {
       name: "pilot rehearsal: unverified production funding results stay locked",
