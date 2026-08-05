@@ -4,6 +4,7 @@ import {
   type DepositAssetId,
 } from "../../shared/deposit-assets.js";
 import { createFundingPlan } from "../../shared/funding-routes.js";
+import { depositAssetStatusLabel } from "../lib/depositAssetDisplay";
 
 export function DepositAssetSelector({
   selectedAssetId,
@@ -34,6 +35,7 @@ export function DepositAssetSelector({
         {DEPOSIT_ASSETS.map((asset) => {
           const availability = depositAssetAvailability(asset.id, { countryCode });
           const selected = selectedAssetId === asset.id;
+          const statusLabel = depositAssetStatusLabel(asset, availability);
           return (
             <label
               className={`deposit-asset-option${selected ? " selected" : ""}${
@@ -57,7 +59,7 @@ export function DepositAssetSelector({
                   <small>{asset.badge}</small>
                 </span>
                 <b className={`implementation-badge ${asset.implementationStatus}`}>
-                  {asset.implementationStatus}
+                  {statusLabel}
                 </b>
               </span>
               <dl>

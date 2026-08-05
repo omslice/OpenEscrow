@@ -2229,12 +2229,13 @@
 }
 
 .implementation-badge {
-  padding: 3px 6px;
+  padding: 5px 8px;
   border: 1px solid var(--border);
   border-radius: 999px;
   color: var(--text);
-  font-size: 9px;
-  letter-spacing: 0.06em;
+  font-size: 11px;
+  line-height: 1.2;
+  letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 

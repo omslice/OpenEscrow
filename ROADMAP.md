@@ -102,6 +102,8 @@ the repository; they are not claims of legal approval or production readiness.
   unverified production browser success remains non-retryable across refresh and reload
 - [x] Explain card/bank funding in consumer language while retaining provider and adapter IDs in
   an expandable technical disclosure instead of the primary payment instructions
+- [x] Replace internal deposit-asset implementation statuses with larger, availability-aware
+  consumer labels so restricted options cannot appear production-ready in proposal selection
 - [x] Reserve replay-resistant reconciliation keys and exact payload digests for future trusted
   events, with a global D1 uniqueness gate and no client path for minting trusted provenance
 - [x] Enforce provenance and SHA-256 identity pairing at the D1 insert/update boundary for both

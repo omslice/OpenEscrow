@@ -149,6 +149,9 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** Funding selection and checkout now lead with a plain-language payment path and
   explain that OpenEscrow does not receive card or bank details. Provider and adapter IDs remain
   available in a collapsed technical disclosure and are covered by the rendered funding rehearsal.
+- **Verified:** Deposit-asset cards now use readable, availability-aware labels such as Testnet
+  option, Simulation, and Unavailable rather than exposing internal implementation statuses. The
+  exact status remains in the immutable agreement snapshot for technical review.
 - **Verified:** Sponsored testnet writes now inspect the mined receipt status before continuing.
   A reverted or unknown receipt cannot mark a tenant share funded, claim test tokens, save a
   record proof, publish a private-activity receipt, or create a success-recovery record. The

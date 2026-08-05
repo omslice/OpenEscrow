@@ -313,6 +313,9 @@ detailed validation ledger.
 - **Verified:** Funding explanations now lead with the user-visible payment path, provider-role,
   and payment-data boundary. Raw provider and adapter identifiers remain available only after the
   participant expands technical route details, with rendered regression coverage.
+- **Verified:** Proposal asset cards no longer expose ambiguous internal implementation badges.
+  Larger availability-aware labels distinguish the testnet USDC option, simulated Aave option,
+  and unavailable FRNT/USDY options without changing the versioned asset catalog or snapshots.
 - **Verified:** Browser checkout recovery keys are scoped to the proposal and authorized tenant in
   addition to wallet, asset, amount, and environment. Two agreements or co-tenants using the same
   wallet and amount cannot import each other's local provider result, while a rotated invitation
