@@ -2480,6 +2480,39 @@
   font-size: 12px;
 }
 
+.funding-route-technical {
+  margin-top: 3px;
+}
+
+.funding-route-technical summary {
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.funding-route-technical dl {
+  display: grid;
+  gap: 5px;
+  margin: 8px 0 0;
+}
+
+.funding-route-technical dl > div {
+  display: grid;
+  grid-template-columns: minmax(90px, auto) 1fr;
+  gap: 8px;
+}
+
+.funding-route-technical dt,
+.funding-route-technical dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.funding-route-technical dt {
+  color: var(--muted);
+}
+
 .testnet-funding-fallback {
   display: flex;
   align-items: center;

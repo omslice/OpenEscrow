@@ -218,6 +218,17 @@ try {
     page.getByRole("button", { name: "Preview sandbox checkout" });
 
   await preview().waitFor({ state: "visible" });
+  await page.getByText("How payment would work", { exact: true }).waitFor();
+  await page
+    .getByText(/Privy would show a regulated payment provider available in your region/i)
+    .waitFor();
+  assert.equal(
+    await page.getByText(/privy-brokered-fiat/i).isVisible(),
+    false,
+    "Provider implementation IDs should stay out of the primary consumer explanation.",
+  );
+  await page.getByText("Technical route details", { exact: true }).click();
+  await page.getByText(/privy-brokered-fiat/i).waitFor({ state: "visible" });
   await preview().click();
   await page.waitForFunction(
     () => window.__openEscrowFundingRecoveryTest?.snapshot().callCount === 1,

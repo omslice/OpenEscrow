@@ -798,32 +798,41 @@ function FundingRouteSummary({
 
   return (
     <div className="funding-route-summary">
-      <strong>Planned production route</strong>
-      <span>
-        {routeText}
-      </span>
+      <strong>How payment would work</strong>
+      <span>{routeText}</span>
       <small>
-        On-ramp: {onramp.name} ({onramp.id}) — {onramp.status}
-      </small>
-      {conversion && (
-        <small>
-          Conversion: {conversion.label} ({conversion.id}) — {conversion.status}
-        </small>
-      )}
-      <small>
-        Privy chooses an available regulated on-ramp provider by region. OpenEscrow does not take
-        custody of payment credentials or pool gas funds. Asset conversion remains disabled in
-        this testnet build.
+        Privy would show a regulated payment provider available in your region. OpenEscrow never
+        receives your card or bank details. The provider would send purchased USDC to your wallet
+        before you separately fund the agreement.
       </small>
       {fundingPlan.conversion?.kind !== "none" && (
         <small>
-          {fundingPlan.conversion?.description} This conversion remains disabled in the current
-          application.
+          {fundingPlan.conversion?.description} Any asset conversion remains disabled in this
+          testnet build.
         </small>
       )}
       {(readinessReason || fundingPlan.reason) && (
         <small>{readinessReason || fundingPlan.reason}</small>
       )}
+      <details className="technical-details funding-route-technical">
+        <summary>Technical route details</summary>
+        <dl>
+          <div>
+            <dt>Payment route</dt>
+            <dd>
+              {onramp.name} · {onramp.id} · {onramp.status}
+            </dd>
+          </div>
+          {conversion && (
+            <div>
+              <dt>Asset adapter</dt>
+              <dd>
+                {conversion.label} · {conversion.id} · {conversion.status}
+              </dd>
+            </div>
+          )}
+        </dl>
+      </details>
     </div>
   );
 }

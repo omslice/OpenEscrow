@@ -141,23 +141,30 @@ function FundingRouteSummary({ asset }: { asset: (typeof DEPOSIT_ASSETS)[number]
     onrampEnabled: true,
     environment: "sandbox",
   });
-  const onramp = plan.onramp;
   const conversion = plan.conversion;
   const routeDisplay = plan.routeSteps.join(" → ");
+  const conversionSummary =
+    conversion === null
+      ? "No asset conversion is available."
+      : conversion.kind === "none"
+        ? "No conversion is needed; purchased USDC would remain USDC."
+        : `${conversion.description} This step remains disabled in the testnet app.`;
 
   return (
     <p className="asset-route-summary">
-      Funding path: {routeDisplay || "No active funding path is modeled for this option."}
+      <strong>How funding would work</strong>
       <br />
-      On-ramp: {onramp.name} ({onramp.id}) — {onramp.description}
+      {routeDisplay || "No active funding path is modeled for this option."}
       <br />
-      Conversion:{" "}
-      {conversion === null
-        ? "n/a"
-        : `${conversion.label} (${conversion.id}) — ${conversion.description}`}
+      Privy would show a regulated payment provider available in the user&apos;s region. OpenEscrow
+      would not receive card or bank details. The provider would send purchased USDC to the
+      user&apos;s wallet before a separate escrow funding transaction.
       <br />
-      Settlement destination: {plan.settlementAsset}
-      {!plan.checkoutAvailable ? ` (${plan.reason ?? "Unavailable in this build"})` : ""}
+      {conversionSummary}
+      <br />
+      {plan.checkoutAvailable
+        ? "A no-money checkout preview is available for testing."
+        : plan.reason ?? "No checkout is available in this build."}
     </p>
   );
 }

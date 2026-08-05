@@ -310,6 +310,9 @@ detailed validation ledger.
   are scoped to the tenant access session, proposal, wallet, selected asset, requested amount, and
   environment. A late result may finish saving its original durable attempt, but it cannot replace
   the visible state or refresh callback after any of those boundaries changes.
+- **Verified:** Funding explanations now lead with the user-visible payment path, provider-role,
+  and payment-data boundary. Raw provider and adapter identifiers remain available only after the
+  participant expands technical route details, with rendered regression coverage.
 - **Verified:** Browser checkout recovery keys are scoped to the proposal and authorized tenant in
   addition to wallet, asset, amount, and environment. Two agreements or co-tenants using the same
   wallet and amount cannot import each other's local provider result, while a rotated invitation
