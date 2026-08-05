@@ -371,6 +371,11 @@ async function routeContext(context, role) {
       assert.equal(role, "landlord");
       const body = JSON.parse(request.postData() || "{}");
       assert.equal(body.token, tokens.landlord);
+      assert.deepEqual(Object.keys(body).sort(), [
+        "proposalId",
+        "reviewLinks",
+        "token",
+      ]);
       assert.equal(body.reviewLinks.length, 2);
       for (const tenantRole of ["tenant-one", "tenant-two"]) {
         const link = body.reviewLinks.find(
@@ -406,6 +411,12 @@ async function routeContext(context, role) {
       });
     }
     if (url.pathname === "/api/notifications/claim-response") {
+      const body = JSON.parse(request.postData() || "{}");
+      assert.deepEqual(Object.keys(body).sort(), [
+        "proposalId",
+        "token",
+        "transactionHash",
+      ]);
       return route.fulfill({
         status: 200,
         contentType: "application/json",

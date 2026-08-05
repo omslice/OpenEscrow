@@ -334,12 +334,7 @@ export function ResponseSection({
     setNoticeStatus("Sending the landlord notification...");
     try {
       await sendClaimResponseNotification(negotiationAccess, {
-        agreementId: id.toString(),
-        decision: action.decision,
-        acceptedAmount: action.acceptedAmount,
-        note: action.note,
         transactionHash: action.transactionHash,
-        reviewUrl: landlordReviewUrl(),
       });
       if (responseNotificationScope.isCurrent(operationId)) {
         setNoticeStatus("The landlord was emailed automatically.");

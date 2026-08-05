@@ -8246,6 +8246,25 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
       { DB: db },
     ),
   );
+  for (const [index, tenant] of created.access.tenants.entries()) {
+    await jsonResponse(
+      await act(db, created.record.id, tenant.token, {
+        type: "approve",
+        wallet:
+          index === 0
+            ? "0x1111111111111111111111111111111111111111"
+            : "0x2222222222222222222222222222222222222222",
+      }),
+    );
+  }
+  await jsonResponse(
+    await act(db, created.record.id, created.access.landlord, {
+      type: "finalize",
+      agreementId: "42",
+      transactionHash: `0x${"a".repeat(64)}`,
+    }),
+  );
+  await submitStandardClaim(db, created);
   const originalFetch = globalThis.fetch;
   const sentEmails = [];
   globalThis.fetch = async (url, init) => {
@@ -8261,17 +8280,9 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
     const notificationInput = {
       proposalId: created.record.id,
       token: created.access.landlord,
-      agreementId: "42",
-      amount: "100",
-      items: [
-        {
-          category: "Damage beyond ordinary wear",
-          description: "Documented repair",
-          amount: "100",
-        },
-      ],
-      note: "",
-      evidenceUri: "openescrow://evidence/test",
+      agreementId: "999",
+      amount: "999",
+      note: "Injected claim text",
     };
     const unauthorizedNotice = await worker.fetch(
       request("/api/notifications/claim", "POST", {
@@ -8348,6 +8359,9 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
         }
       }
       assert.match(sent.idempotencyKey, new RegExp(tenant.id));
+      assert.match(sent.body.subject, /agreement #42/);
+      assert.match(sent.body.text, /claim of 100 shares/);
+      assert.doesNotMatch(sent.body.text, /999|Injected claim text/);
     }
     const delivered = await response.json();
     assert.equal(delivered.duplicate, false);
@@ -8377,6 +8391,16 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
       duplicate: true,
     });
     assert.equal(sentEmails.length, 2);
+    const recordedDelivery = await db
+      .prepare(
+        "SELECT metadata_json FROM negotiation_events WHERE negotiation_id = ? AND action = 'claim_notification_sent'",
+      )
+      .bind(created.record.id)
+      .first();
+    assert.equal(
+      JSON.parse(recordedDelivery.metadata_json).claimTransactionHash,
+      `0x${"c".repeat(64)}`,
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -8385,21 +8409,12 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
 test("pilot rehearsal: a notification outage is retryable without a phantom delivery", async () => {
   const db = new TestD1();
   const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  await submitStandardClaim(db, created);
   const payload = {
     proposalId: created.record.id,
     token: created.access.landlord,
     reviewLinks: claimReviewLinks(created),
-    agreementId: "42",
-    amount: "100",
-    items: [
-      {
-        category: "Damage beyond ordinary wear",
-        description: "Documented repair",
-        amount: "100",
-      },
-    ],
-    note: "",
-    evidenceUri: "openescrow://evidence/test",
   };
   const notificationEnv = {
     DB: db,
@@ -8460,7 +8475,7 @@ test("pilot rehearsal: a notification outage is retryable without a phantom deli
   }
 });
 
-test("each invited tenant can record a claim decision and notify the landlord", async () => {
+test("claim response notices bind to the exact recorded tenant decision", async () => {
   const db = new TestD1();
   const created = await jsonResponse(
     await worker.fetch(
@@ -8524,13 +8539,21 @@ test("each invited tenant can record a claim decision and notify the landlord", 
   const payload = {
     proposalId: created.record.id,
     token: secondTenant.token,
-    agreementId: "77",
-    decision: "dispute",
-    acceptedAmount: "0",
-    note: "This charge belongs to a different unit.",
+    agreementId: "999",
+    decision: "approve",
+    acceptedAmount: "999",
+    note: "Injected response text",
     transactionHash: `0x${"b".repeat(64)}`,
-    reviewUrl: "https://openescrow.example/?id=77",
+    reviewUrl: "https://openescrow.example/?id=999&token=injected",
   };
+  const unauthorized = await worker.fetch(
+    request("/api/notifications/claim-response", "POST", {
+      ...payload,
+      token: created.access.landlord,
+    }),
+    { DB: db },
+  );
+  assert.equal(unauthorized.status, 403);
   const unavailable = await worker.fetch(
     request("/api/notifications/claim-response", "POST", payload),
     { DB: db },
@@ -8552,6 +8575,16 @@ test("each invited tenant can record a claim decision and notify the landlord", 
       RESEND_API_KEY: "test-resend-key",
       NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
     };
+    const unrecordedResponse = await worker.fetch(
+      request("/api/notifications/claim-response", "POST", {
+        ...payload,
+        transactionHash: `0x${"e".repeat(64)}`,
+      }),
+      notificationEnv,
+    );
+    assert.equal(unrecordedResponse.status, 409);
+    assert.match((await unrecordedResponse.json()).error, /exact claim response/i);
+    assert.equal(deliveryCount, 0);
     const first = await jsonResponse(
       await worker.fetch(
         request("/api/notifications/claim-response", "POST", payload),
@@ -8570,6 +8603,19 @@ test("each invited tenant can record a claim decision and notify the landlord", 
     assert.deepEqual(sentEmail.to, ["landlord@example.com"]);
     assert.match(sentEmail.text, /Casey Tenant/);
     assert.match(sentEmail.text, /different unit/);
+    assert.match(sentEmail.subject, /agreement #77/);
+    assert.match(sentEmail.text, /\?id=77/);
+    assert.doesNotMatch(sentEmail.text, /999|Injected response text|token=injected/);
+    const recordedDelivery = await db
+      .prepare(
+        "SELECT metadata_json FROM negotiation_events WHERE negotiation_id = ? AND action = 'claim_response_notification_sent'",
+      )
+      .bind(created.record.id)
+      .first();
+    assert.equal(
+      JSON.parse(recordedDelivery.metadata_json).responseTransactionHash,
+      `0x${"b".repeat(64)}`,
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

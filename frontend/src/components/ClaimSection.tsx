@@ -775,11 +775,6 @@ export function ClaimSection({
             email: notice.email,
             reviewUrl: notice.reviewUrl,
           })),
-          agreementId: id.toString(),
-          amount: amount || formatUSDC(agreement.claimedAmount),
-          items,
-          note: note.trim(),
-          evidenceUri: uri,
         });
       } catch (emailError) {
         if (!tenantNotificationScope.isCurrent(operationId)) return;

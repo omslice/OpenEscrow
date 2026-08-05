@@ -45,7 +45,10 @@ production custody, or reliance on the compliance research as legal advice.
   client-only URL fragment while legacy query links remain one-time readable and immediately
   scrubbed. Conflicting or malformed credentials fail closed. Multi-tenant deduction notices are
   generated, validated, and delivered separately for each exact tenant; a missing, duplicated,
-  query-based, or cross-tenant link blocks the entire notice request.
+  query-based, or cross-tenant link blocks the entire notice request. Automatic claim and response
+  email content is derived from the saved agreement events: the latest claim controls every
+  tenant message, while a response notice must match the exact tenant and saved transaction. The
+  server constructs the landlord dashboard link rather than accepting client-supplied copy.
 - **Verified:** The release dependency audit blocks every high/critical finding and every unknown
   moderate advisory. The former transitive `uuid` advisory is removed from the locked
   wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector

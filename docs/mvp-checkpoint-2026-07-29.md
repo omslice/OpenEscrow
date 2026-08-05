@@ -40,12 +40,12 @@ detailed validation ledger.
   activity receipt, proves another agreement cannot inherit it, restores keyboard focus to its
   mobile-size retry after reload, and completes the record without another onchain publication.
   Production funding remains disabled outside these deterministic tests.
-- **Verified:** A separate 18-scenario incident-response rehearsal passes for identity forgery,
+- **Verified:** A separate 19-scenario incident-response rehearsal passes for identity forgery,
   cross-account isolation, cross-site read isolation, evidence URL-bearer denial, account-session
-  containment, lost-tenant invitation recovery, multi-tenant notice isolation, privacy inventory,
-  evidence tamper, retained-key loss/restoration, R2/encrypted-IPFS cleanup after metadata
-  failure, outages, notification recovery, legacy-landlord receipt recovery, receipt spoofing,
-  and RPC fallback.
+  containment, lost-tenant invitation recovery, multi-tenant notice isolation, recorded-response
+  notice integrity, privacy inventory, evidence tamper, retained-key loss/restoration,
+  R2/encrypted-IPFS cleanup after metadata failure, outages, notification recovery,
+  legacy-landlord receipt recovery, receipt spoofing, and RPC fallback.
 - **Verified:** The full repository release check passes the complete server and client-logic
   suites, lint, browser account-switch, funding-recovery, record-verification,
   accessibility/mobile, landing-budget, and load-recovery checks, plus the production build.
@@ -121,6 +121,11 @@ detailed validation ledger.
   relabeled, and cross-tenant links fail before delivery. The rendered mobile rehearsal shows two
   separately named 44-pixel email/copy actions and verifies the automatic request contains neither
   a query credential nor another tenant's credential.
+- **Verified:** Automatic claim and response notices no longer trust repeated client-supplied
+  agreement, amount, itemization, decision, note, or dashboard-link text. The Worker derives the
+  claim from the latest saved claim event, binds a tenant response to that tenant's exact saved
+  transaction, and creates the canonical signed-in landlord link. Forged response receipts and
+  injected notification copy fail closed or are ignored before provider delivery.
   If local and session storage are blocked, the invitation, proposal bundle, jurisdiction,
   tracked-agreement, preference, and notification caches degrade to current-page state instead
   of blanking the page or making a completed action look failed. Worker authorization remains

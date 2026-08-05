@@ -1321,11 +1321,6 @@ export async function sendClaimNotification(
       email: string;
       reviewUrl: string;
     }>;
-    agreementId: string;
-    amount: string;
-    items: DeductionLineItem[];
-    note: string;
-    evidenceUri: string;
   },
 ) {
   return request<{ messageId: string }>("/api/notifications/claim", {
@@ -1337,12 +1332,7 @@ export async function sendClaimNotification(
 export async function sendClaimResponseNotification(
   access: NegotiationAccess,
   input: {
-    agreementId: string;
-    decision: "approve" | "partial" | "dispute";
-    acceptedAmount: string;
-    note: string;
     transactionHash: string;
-    reviewUrl: string;
   },
 ) {
   return request<{ messageId: string; duplicate?: boolean }>(

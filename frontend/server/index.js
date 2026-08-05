@@ -8404,6 +8404,30 @@ async function sendClaimNotification(request, env) {
   if (role !== "landlord") {
     return json({ error: "Only the landlord may send a deduction-claim notice." }, 403);
   }
+  if (row.status !== "finalized" || !row.onchain_agreement_id) {
+    return json({ error: "The agreement must be finalized before a claim notice." }, 409);
+  }
+  const existingRecord = await serialize(env.DB, row);
+  const claimEvent = latestClaimEvent(existingRecord.events);
+  const agreementId = cleanText(row.onchain_agreement_id, 80);
+  const amount = cleanText(claimEvent?.metadata?.amount, 80);
+  const items = cleanDeductionItems(claimEvent?.metadata?.items);
+  const note = cleanText(claimEvent?.metadata?.note, 1000);
+  const evidenceUri = cleanText(claimEvent?.metadata?.evidenceUri, 500);
+  const claimTransactionHash = cleanText(
+    claimEvent?.metadata?.transactionHash,
+    100,
+  );
+  if (
+    !claimEvent ||
+    !agreementId ||
+    !amount ||
+    !items ||
+    !deductionItemsMatchAmount(items, amount) ||
+    !/^0x[a-fA-F0-9]{64}$/.test(claimTransactionHash)
+  ) {
+    return json({ error: "Record the complete deduction claim before sending its notice." }, 409);
+  }
   if (!emailProvider(env)) {
     return json(
       {
@@ -8467,15 +8491,6 @@ async function sendClaimNotification(request, env) {
       credentialHash: reviewTokenHash,
     });
   }
-  const agreementId = cleanText(body.agreementId, 80);
-  const amount = cleanText(body.amount, 80);
-  const items = cleanDeductionItems(body.items);
-  const note = cleanText(body.note, 1000);
-  const evidenceUri = cleanText(body.evidenceUri, 500);
-  if (!agreementId || !amount || !items || !deductionItemsMatchAmount(items, amount)) {
-    return json({ error: "The claim notice is incomplete." }, 400);
-  }
-
   const subject = `OpenEscrow deduction claim for agreement #${agreementId}`;
   const itemSummary = items
     .map(
@@ -8492,6 +8507,7 @@ async function sendClaimNotification(request, env) {
         items,
         note,
         evidenceUri,
+        claimTransactionHash,
         reviewCredentials: reviewLinks.map((link) => ({
           tenantId: link.tenantId,
           credentialHash: link.credentialHash,
@@ -8499,7 +8515,6 @@ async function sendClaimNotification(request, env) {
       }),
     )
   ).slice(0, 32);
-  const existingRecord = await serialize(env.DB, row);
   const existingDelivery = existingRecord.events.find(
     (event) =>
       event.action === "claim_notification_sent" &&
@@ -8563,6 +8578,7 @@ async function sendClaimNotification(request, env) {
         messageIds: deliveries.map((delivery) => delivery.id),
         deliveryKey,
         recipientCount: reviewLinks.length,
+        claimTransactionHash,
       },
     ),
   ]);
@@ -8575,15 +8591,6 @@ async function sendClaimNotification(request, env) {
 
 async function sendClaimResponseNotification(request, env) {
   if (!env.DB) return json({ error: "Agreement record storage is not available." }, 503);
-  if (!emailProvider(env)) {
-    return json(
-      {
-        error:
-          "Automatic email delivery is not configured yet. Use the Gmail or copy-email fallback.",
-      },
-      503,
-    );
-  }
   const body = await request.json();
   const proposalId = cleanText(body.proposalId, 80);
   const row = await rowFor(env.DB, proposalId);
@@ -8594,39 +8601,53 @@ async function sendClaimResponseNotification(request, env) {
   if (!tenant) {
     return json({ error: "Only an invited tenant may notify the landlord." }, 403);
   }
-  if (row.status !== "finalized") {
+  if (row.status !== "finalized" || !row.onchain_agreement_id) {
     return json({ error: "The agreement must be finalized before a claim response." }, 409);
   }
 
-  const agreementId = cleanText(body.agreementId, 80);
-  const decision = cleanText(body.decision, 20);
-  const acceptedAmount = cleanText(body.acceptedAmount, 80);
-  const note = cleanText(body.note, 1000);
+  const agreementId = cleanText(row.onchain_agreement_id, 80);
   const transactionHash = cleanText(body.transactionHash, 100);
-  let reviewUrl;
-  try {
-    reviewUrl = new URL(body.reviewUrl);
-  } catch {
-    return json({ error: "The landlord review link is invalid." }, 400);
+  if (!agreementId || !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+    return json({ error: "The claim response notice is incomplete." }, 400);
   }
-  const requestOrigin = new URL(request.url).origin;
+  const tenantRows = await tenantsFor(env.DB, proposalId);
+  const existingRecord = await serialize(env.DB, row, tenant.id);
+  const responseEvent = [...existingRecord.events]
+    .reverse()
+    .find(
+      (event) =>
+        event.action === "claim_response_submitted" &&
+        eventBelongsToTenant(event, tenant, tenantRows) &&
+        cleanText(event.metadata?.transactionHash, 100).toLowerCase() ===
+          transactionHash.toLowerCase(),
+    );
+  const decision = cleanText(responseEvent?.metadata?.decision, 20);
+  const acceptedAmount = cleanText(responseEvent?.metadata?.acceptedAmount, 80);
+  const note = cleanText(responseEvent?.metadata?.note, 1000);
   if (
-    reviewUrl.origin !== requestOrigin ||
-    reviewUrl.searchParams.get("id") !== agreementId
-  ) {
-    return json({ error: "The landlord review link is invalid." }, 400);
-  }
-  if (
-    !agreementId ||
+    !responseEvent ||
     !["approve", "partial", "dispute"].includes(decision) ||
     tokenMicros(acceptedAmount) === null ||
     (decision === "dispute" && tokenMicros(acceptedAmount) !== 0n) ||
     (decision !== "dispute" && tokenMicros(acceptedAmount) === 0n) ||
-    ((decision === "partial" || decision === "dispute") && !note) ||
-    !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)
+    ((decision === "partial" || decision === "dispute") && !note)
   ) {
-    return json({ error: "The claim response notice is incomplete." }, 400);
+    return json(
+      { error: "Record this tenant's exact claim response before sending its notice." },
+      409,
+    );
   }
+  if (!emailProvider(env)) {
+    return json(
+      {
+        error:
+          "Automatic email delivery is not configured yet. Use the Gmail or copy-email fallback.",
+      },
+      503,
+    );
+  }
+  const reviewUrl = new URL(new URL(request.url).origin);
+  reviewUrl.searchParams.set("id", agreementId);
 
   const decisionSummary =
     decision === "approve"
@@ -8649,7 +8670,6 @@ async function sendClaimResponseNotification(request, env) {
       }),
     )
   ).slice(0, 32);
-  const existingRecord = await serialize(env.DB, row, tenant.id);
   const existingDelivery = existingRecord.events.find(
     (event) =>
       event.action === "claim_response_notification_sent" &&
@@ -8695,7 +8715,12 @@ async function sendClaimResponseNotification(request, env) {
       "claim_response_notification_sent",
       `${tenantLabel} sent the claim response notice to ${normalizeEmail(row.landlord_email)}.`,
       row.revision,
-      { tenantId: tenant.id, messageId: delivered.id, deliveryKey },
+      {
+        tenantId: tenant.id,
+        messageId: delivered.id,
+        deliveryKey,
+        responseTransactionHash: transactionHash,
+      },
     ),
   ]);
   return json({ messageId: delivered.id, duplicate: false });

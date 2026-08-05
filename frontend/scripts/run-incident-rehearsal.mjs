@@ -62,6 +62,16 @@ const expectedScenarios = [
     ],
   },
   {
+    id: "claim-response-notice-integrity",
+    name: "claim response notices bind to the exact recorded tenant decision",
+    covers: [
+      "recorded response binding",
+      "cross-tenant receipt denial",
+      "canonical landlord dashboard link",
+      "client-payload tamper resistance",
+    ],
+  },
+  {
     id: "privacy-inventory",
     name: "pilot rehearsal: account data inventory is role-isolated and contains no access secrets",
     covers: [

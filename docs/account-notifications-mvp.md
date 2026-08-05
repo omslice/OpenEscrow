@@ -39,7 +39,11 @@ production identity, custody, privacy, or communications design.
 
 Invitation and deduction-claim email delivery is available when the server-side email provider is
 configured; Gmail and copy-email fallbacks remain available without it. Repeated identical claim
-notices are deduplicated before provider delivery. Users who explicitly enable agreement-activity
+notices are deduplicated before provider delivery. Automatic claim messages are generated from the
+latest saved claim event rather than repeated claim copy from the browser, and each tenant gets
+only their own validated review link. Automatic response messages must match that tenant's exact
+saved response transaction; the Worker derives the decision and canonical landlord dashboard link
+instead of accepting them from the browser. Users who explicitly enable agreement-activity
 email also receive privacy-minimal notices for finalization, funding, claim amendments, tenant
 responses, and arbiter rulings. These messages omit evidence pointers, tenancy details, amounts,
 and private notes. The hosted worker also has idempotent reminder checks for the landlord claim
