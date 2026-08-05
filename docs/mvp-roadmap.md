@@ -176,7 +176,9 @@ production custody, or reliance on the compliance research as legal advice.
   ordinary participant find a transaction hash. The client searches only bounded Base Sepolia
   ranges near the saved proposal, rejects removed, malformed, wrong-agreement, and wrong-nominee
   events, and sends the latest candidate through the existing exact server receipt verifier. Raw
-  hash entry remains available only in a collapsed technical recovery disclosure.
+  hash entry remains available only in a collapsed technical recovery disclosure. A rendered
+  mobile rehearsal proves lookup failure and retry, keyboard-focus restoration, 44-pixel summary
+  and action targets, no overflow, and the successful server-authorized Record update.
 - **Verified:** A durable active sandbox attempt now reports whether it matches the currently
   requested wallet, asset, and amount, and the browser independently confirms that binding. A
   mismatch stays locked, is not copied into the new intent's local recovery key, and offers a

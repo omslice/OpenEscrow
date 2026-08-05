@@ -214,7 +214,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Recover interrupted arbiter acceptance or cancellation without asking consumers for a
   transaction hash: search bounded Base Sepolia event ranges from the saved proposal window,
   submit the discovered receipt through the existing exact server verifier, and keep manual hash
-  entry inside a collapsed technical fallback
+  entry inside a collapsed technical fallback; rendered mobile coverage proves keyboard retry
+  focus, 44-pixel automatic/technical controls, failure feedback, and the successful handoff
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a
   shared deadline clock
 - [x] Proposal-review polling is isolated from user actions: stale refreshes cannot replace a

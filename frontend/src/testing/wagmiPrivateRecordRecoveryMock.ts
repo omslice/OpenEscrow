@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AGREEMENT_ACTIVITY_REGISTRY_ADDRESS } from "../contracts/activityRegistryConfig";
+import { DEPLOYMENT_BLOCK } from "../contracts/config";
 
 const LANDLORD = "0x1111111111111111111111111111111111111111" as const;
 const TENANT = "0x2222222222222222222222222222222222222222" as const;
@@ -12,6 +13,10 @@ const NO_CLAIM_TIMEOUT_TRANSACTION_HASH = `0x${"3".repeat(64)}` as const;
 const NO_RESPONSE_TIMEOUT_TRANSACTION_HASH = `0x${"2".repeat(64)}` as const;
 const ARBITER_TIMEOUT_TRANSACTION_HASH = `0x${"1".repeat(64)}` as const;
 const ACTIVITY_TRANSACTION_HASH = `0x${"7".repeat(64)}` as const;
+const ARBITER_REPLACEMENT_TRANSACTION_HASH = `0x${"d".repeat(64)}` as const;
+const REPLACEMENT_ARBITER = "0x5555555555555555555555555555555555555555" as const;
+const ARBITER_REPLACEMENT_SEARCH_COUNT_KEY =
+  "openescrow:test:arbiter-replacement-searches";
 const CLAIM_TRANSACTION_COUNT_KEY = "openescrow:test:claim-transaction-writes";
 const RESPONSE_TRANSACTION_COUNT_KEY =
   "openescrow:test:response-transaction-writes";
@@ -45,6 +50,51 @@ export function useAccount() {
 }
 
 export function usePublicClient() {
+  if (currentFlow() === "arbiter-replacement-recovery") {
+    const proposalTimestamp = BigInt(
+      Math.floor(Date.parse("2026-07-31T00:00:00.000Z") / 1000),
+    );
+    const eventBlock = DEPLOYMENT_BLOCK + 2_500n;
+    return {
+      getBlockNumber: async () => {
+        const searches = transactionCount(ARBITER_REPLACEMENT_SEARCH_COUNT_KEY) + 1;
+        window.sessionStorage.setItem(
+          ARBITER_REPLACEMENT_SEARCH_COUNT_KEY,
+          String(searches),
+        );
+        return DEPLOYMENT_BLOCK + 5_000n;
+      },
+      getBlock: async ({ blockNumber }: { blockNumber: bigint }) => ({
+        timestamp:
+          proposalTimestamp - 7_200n + (blockNumber - DEPLOYMENT_BLOCK) * 2n,
+      }),
+      getContractEvents: async ({
+        fromBlock,
+        toBlock,
+      }: {
+        fromBlock: bigint;
+        toBlock: bigint;
+      }) => {
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        if (
+          transactionCount(ARBITER_REPLACEMENT_SEARCH_COUNT_KEY) === 1 ||
+          eventBlock < fromBlock ||
+          eventBlock > toBlock
+        ) {
+          return [];
+        }
+        return [
+          {
+            eventName: "ArbiterReplaced" as const,
+            args: { id: 43n, newArbiter: REPLACEMENT_ARBITER },
+            transactionHash: ARBITER_REPLACEMENT_TRANSACTION_HASH,
+            blockNumber: eventBlock,
+            logIndex: 1,
+          },
+        ];
+      },
+    };
+  }
   if (currentFlow() !== "activity-receipt") return undefined;
   return {
     getTransactionReceipt: async () => ({

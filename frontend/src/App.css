@@ -4067,6 +4067,16 @@ a.btn.disabled {
 }
 
 @media (max-width: 680px) {
+  .technical-details > summary,
+  .technical-details .btn {
+    min-height: 44px;
+  }
+
+  .technical-details > summary {
+    display: flex;
+    align-items: center;
+  }
+
   .claim-response-step .button-row,
   .claim-response-step .btn {
     width: 100%;

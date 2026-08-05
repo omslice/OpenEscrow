@@ -1,6 +1,7 @@
 /* oxlint-disable react/only-export-components -- This test-only entry mounts one deterministic browser harness. */
 import { createRoot } from "react-dom/client";
 import { ActivityProofVerifier } from "../components/ActivityProofVerifier";
+import { ArbiterReplacementSection } from "../components/ArbiterReplacementSection";
 import { ClaimSection } from "../components/ClaimSection";
 import { DisputeResolutionSection } from "../components/DisputeResolutionSection";
 import { PrivateActivityPublisher } from "../components/PrivateActivityPublisher";
@@ -12,6 +13,7 @@ import {
   rememberLandlordBundle,
   type CreatedNegotiation,
   type NegotiationAccess,
+  type NegotiationRecord,
 } from "../lib/negotiations";
 import type { Agreement } from "../lib/useAgreement";
 import "../index.css";
@@ -20,6 +22,7 @@ import "../App.css";
 const LANDLORD = "0x1111111111111111111111111111111111111111" as const;
 const TENANT = "0x2222222222222222222222222222222222222222" as const;
 const ARBITER = "0x4444444444444444444444444444444444444444" as const;
+const REPLACEMENT_ARBITER = "0x5555555555555555555555555555555555555555" as const;
 const search = new URLSearchParams(window.location.search);
 const role = search.get("role");
 const flow = search.get("flow");
@@ -81,7 +84,12 @@ const agreement: Agreement = {
   tenant: TENANT,
   phase: agreementPhase(),
   closeReason: 0,
-  arbiter: role === "arbiter" ? ARBITER : ZERO_ADDRESS,
+  arbiter:
+    flow === "arbiter-replacement-recovery"
+      ? REPLACEMENT_ARBITER
+      : role === "arbiter"
+        ? ARBITER
+        : ZERO_ADDRESS,
   pendingArbiter: ZERO_ADDRESS,
   pendingArbiterProposer: ZERO_ADDRESS,
   token: "0x3333333333333333333333333333333333333333",
@@ -112,6 +120,20 @@ const access: NegotiationAccess = {
   token: "synthetic-private-record-recovery-token",
   source: "invite",
 };
+
+const arbiterReplacementParticipantRecord = {
+  id: access.proposalId,
+  status: "finalized",
+  revision: 1,
+  arbiterReplacement: {
+    email: "replacement-arbiter@example.test",
+    wallet: REPLACEMENT_ARBITER,
+    status: "confirmed",
+    proposedByRole: "landlord",
+    proposedAt: "2026-07-31T00:00:00.000Z",
+    confirmedAt: "2026-07-31T00:05:00.000Z",
+  },
+} as unknown as NegotiationRecord;
 
 if (role !== "tenant" && role !== "arbiter") {
   rememberLandlordBundle({
@@ -149,6 +171,13 @@ createRoot(document.getElementById("root")!).render(
           />
           <ActivityProofVerifier agreementId={agreementId} />
         </>
+      ) : flow === "arbiter-replacement-recovery" ? (
+        <ArbiterReplacementSection
+          id={agreementId}
+          agreement={agreement}
+          negotiationAccess={access}
+          participantRecord={arbiterReplacementParticipantRecord}
+        />
       ) : role === "tenant" ? (
         <ResponseSection
           id={agreementId}

@@ -465,6 +465,8 @@ detailed validation ledger.
   ranges from the saved proposal window and submits the matching confirmation to the exact
   receipt-verified access update. Removed, malformed, wrong-agreement, and wrong-nominee events
   are ignored, while manual transaction-hash entry remains in a collapsed technical fallback.
+  The rendered 390-pixel rehearsal proves lookup failure and retry, keyboard-focus restoration,
+  44-pixel automatic and technical controls, no overflow, and one successful Record update.
   The server suite covers wrong nominees, parties, senders, old/new arbiter fields, lost-link
   rotation, cancellation, signed-in
   discovery, terminal expiry, recovery by an authorized participant, and post-acceptance access

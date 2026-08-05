@@ -230,6 +230,35 @@ async function routeActivityReceiptRecovery(page) {
   return () => attempts;
 }
 
+async function routeArbiterReplacementRecovery(page) {
+  let attempts = 0;
+  await page.route(
+    /\/api\/negotiations\/OE-P-RECOVERY\/actions$/,
+    async (route) => {
+      attempts += 1;
+      const body = JSON.parse(route.request().postData() || "{}");
+      assert.equal(
+        body.token,
+        "synthetic-private-record-recovery-token",
+        "Arbiter recovery must remain bound to the current private-record access.",
+      );
+      assert.equal(body.type, "arbiter_replacement_accepted");
+      assert.equal(body.transactionHash, `0x${"d".repeat(64)}`);
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          ...negotiationRecord,
+          arbiterEmail: "replacement-arbiter@example.test",
+          arbiterWallet: "0x5555555555555555555555555555555555555555",
+          arbiterReplacement: null,
+        }),
+      });
+    },
+  );
+  return () => attempts;
+}
+
 async function pendingDecisionRecoveryEntries(page) {
   return page.evaluate(() => {
     const entries = [];
@@ -1122,6 +1151,106 @@ try {
     });
   }
 
+  const arbiterReplacementPage = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+  });
+  const arbiterReplacementAttempts = await routeArbiterReplacementRecovery(
+    arbiterReplacementPage,
+  );
+  await arbiterReplacementPage.goto(
+    `${baseUrl}/testing/private-record-recovery.html?role=landlord&flow=arbiter-replacement-recovery&agreement=43`,
+    { waitUntil: "networkidle" },
+  );
+  await arbiterReplacementPage
+    .getByRole("heading", { name: "Replace the arbiter (mutual consent)" })
+    .waitFor({ state: "visible" });
+  const automaticArbiterRecovery = arbiterReplacementPage.getByRole("button", {
+    name: "Find confirmation and finish Record update",
+  });
+  const automaticRecoveryBox = await automaticArbiterRecovery.boundingBox();
+  assert.equal(
+    Boolean(automaticRecoveryBox && automaticRecoveryBox.height >= 44),
+    true,
+    "Automatic arbiter recovery must remain a 44px mobile touch target.",
+  );
+  const technicalRecovery = arbiterReplacementPage.locator("details", {
+    hasText: "Technical recovery",
+  });
+  const technicalHashInput = arbiterReplacementPage.getByLabel(
+    "Acceptance transaction hash",
+  );
+  assert.equal(
+    await technicalHashInput.isVisible(),
+    false,
+    "Raw transaction-hash recovery should be collapsed by default.",
+  );
+  const technicalSummary = technicalRecovery.locator("summary");
+  const technicalSummaryBox = await technicalSummary.boundingBox();
+  assert.equal(
+    Boolean(technicalSummaryBox && technicalSummaryBox.height >= 44),
+    true,
+    "The collapsed technical recovery summary must remain a 44px mobile touch target.",
+  );
+  await technicalSummary.focus();
+  await technicalSummary.press("Enter");
+  await technicalHashInput.waitFor({ state: "visible" });
+  const technicalRecoveryButton = arbiterReplacementPage.getByRole("button", {
+    name: "Use transaction hash to finish Record update",
+  });
+  const technicalRecoveryBox = await technicalRecoveryButton.boundingBox();
+  assert.equal(
+    Boolean(technicalRecoveryBox && technicalRecoveryBox.height >= 44),
+    true,
+    "The technical arbiter fallback must remain a 44px mobile touch target.",
+  );
+  await technicalSummary.press("Enter");
+  await automaticArbiterRecovery.focus();
+  await automaticArbiterRecovery.press("Enter");
+  await arbiterReplacementPage
+    .getByRole("button", { name: "Finding and verifying confirmation..." })
+    .waitFor({ state: "visible" });
+  const missingConfirmation = arbiterReplacementPage.getByRole("alert").filter({
+    hasText: "could not find the matching test-network confirmation",
+  });
+  await missingConfirmation.waitFor({ state: "visible" });
+  assert.equal(
+    await automaticArbiterRecovery.evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+    "A failed automatic lookup should keep focus on its safe retry.",
+  );
+  await automaticArbiterRecovery.press("Enter");
+  await arbiterReplacementPage
+    .getByRole("button", { name: "Finding and verifying confirmation..." })
+    .waitFor({ state: "visible" });
+  await arbiterReplacementPage
+    .getByRole("status")
+    .filter({ hasText: "The new arbiter now has record access" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    arbiterReplacementAttempts(),
+    1,
+    "Only the discovered, server-verified arbiter confirmation should update the Record.",
+  );
+  assert.equal(
+    await arbiterReplacementPage.evaluate(() =>
+      window.sessionStorage.getItem(
+        "openescrow:test:arbiter-replacement-searches",
+      ),
+    ),
+    "2",
+    "The failed lookup and its explicit retry should remain separate searches.",
+  );
+  assert.equal(
+    await arbiterReplacementPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "Arbiter replacement recovery should not overflow a mobile viewport.",
+  );
+  await arbiterReplacementPage.context().close();
+
   const activityReceiptPage = await browser.newPage({
     viewport: { width: 390, height: 844 },
   });
@@ -1244,7 +1373,7 @@ try {
   await activityReceiptPage.context().close();
 
   process.stdout.write(
-    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, notification failures use error semantics and focus 44px retry/fallback actions, and confirmed claims, tenant responses, arbiter rulings, withdrawals, activity proofs, and every deadline outcome survive private-record outages and reloads without another transaction or stored bearer token; terminal retries remain wallet-scoped, time-sensitive responses remain available, and delivered email is not repeated by a record-only retry.\n",
+    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, notification failures use error semantics and focus 44px retry/fallback actions, interrupted arbiter access rotation uses automatic bounded confirmation lookup with a collapsed technical fallback, and confirmed claims, tenant responses, arbiter rulings, withdrawals, activity proofs, and every deadline outcome survive private-record outages and reloads without another transaction or stored bearer token; terminal retries remain wallet-scoped, time-sensitive responses remain available, and delivered email is not repeated by a record-only retry.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

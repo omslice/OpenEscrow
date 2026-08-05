@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isAddress } from "viem";
 import { useAccount, usePublicClient } from "wagmi";
 import {
@@ -60,10 +60,19 @@ export function ArbiterReplacementSection({
   );
   const [isSavingRecord, setIsSavingRecord] = useState(false);
   const [isRecoveringConfirmation, setIsRecoveringConfirmation] = useState(false);
+  const [shouldFocusRecoveryRetry, setShouldFocusRecoveryRetry] = useState(false);
+  const recoveryButtonRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     setReplacementRecord(participantRecord?.arbiterReplacement || null);
   }, [participantRecord?.arbiterReplacement]);
+
+  useEffect(() => {
+    if (!isRecoveringConfirmation && shouldFocusRecoveryRetry) {
+      recoveryButtonRef.current?.focus();
+      setShouldFocusRecoveryRetry(false);
+    }
+  }, [isRecoveringConfirmation, shouldFocusRecoveryRetry]);
 
   if (!REPLACEABLE.has(agreement.phase)) return null;
 
@@ -187,6 +196,7 @@ export function ArbiterReplacementSection({
         setRecordError(
           "OpenEscrow could not find the matching test-network confirmation. Try again, or open Technical recovery below if you have the transaction hash.",
         );
+        setShouldFocusRecoveryRetry(true);
         return;
       }
       setRecoveryTransactionHash(transactionHash);
@@ -197,10 +207,12 @@ export function ArbiterReplacementSection({
         transactionHash,
       });
       if (saved) setRecoveryTransactionHash("");
+      else setShouldFocusRecoveryRetry(true);
     } catch {
       setRecordError(
         "OpenEscrow could not search the test network right now. Try again, or use Technical recovery below if you have the transaction hash.",
       );
+      setShouldFocusRecoveryRetry(true);
     } finally {
       setIsRecoveringConfirmation(false);
     }
@@ -416,6 +428,7 @@ export function ArbiterReplacementSection({
               </p>
             )}
           <button
+            ref={recoveryButtonRef}
             type="button"
             className="btn btn-secondary small"
             disabled={
