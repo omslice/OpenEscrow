@@ -2,7 +2,11 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 import { DatabaseSync } from "node:sqlite";
-import worker from "./index.js";
+import worker, {
+  apiRateLimitPolicy,
+  applyApiAbuseControls,
+  requestBodyLimitResponse,
+} from "./index.js";
 import { US_JURISDICTION_PROFILES } from "../shared/us-jurisdiction-profiles.js";
 import {
   buildComplianceSnapshot,
@@ -67,6 +71,8 @@ test("the packaged D1 migration applies cleanly", () => {
     "0015_arbiter_replacement_access.sql",
     "0016_transaction_receipt_guards.sql",
     "0017_onchain_cancellation_receipt_guard.sql",
+    "0018_finalization_receipt_assignment_guard.sql",
+    "0019_api_rate_limits.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -90,6 +96,18 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.ok(tables.includes("arbiter_replacement_access"));
   assert.ok(tables.includes("arbiter_replacement_account_access"));
   assert.ok(tables.includes("negotiation_receipt_guards"));
+  assert.ok(tables.includes("api_rate_limits"));
+  const rateLimitIndexes = database
+    .prepare("PRAGMA index_list(api_rate_limits)")
+    .all()
+    .map((row) => row.name);
+  assert.equal(rateLimitIndexes.includes("api_rate_limits_updated_idx"), true);
+  const cleanupPlan = database
+    .prepare("EXPLAIN QUERY PLAN DELETE FROM api_rate_limits WHERE updated_at < ?")
+    .all("2026-08-01T00:00:00.000Z")
+    .map((row) => row.detail)
+    .join(" ");
+  assert.match(cleanupPlan, /USING INDEX api_rate_limits_updated_idx/);
   const fundingEventColumns = database
     .prepare("PRAGMA table_info(funding_checkout_events)")
     .all()
@@ -1500,6 +1518,160 @@ function evidenceDownloadRequest(path, token, headers) {
   });
 }
 
+test("API abuse controls bound request bodies and persist hashed edge rate limits", async () => {
+  const db = new TestD1();
+  const env = { DB: db, API_RATE_LIMIT_ENABLED: "true" };
+  const url = new URL("https://openescrow.example/api/compliance/source-status");
+  const clientRequest = (ip = "203.0.113.8", authorization) =>
+    new Request(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "cf-connecting-ip": ip,
+        ...(authorization ? { authorization } : {}),
+      },
+      body: "{}",
+    });
+
+  assert.equal(apiRateLimitPolicy(clientRequest(), url), "compliance-refresh");
+  const start = Date.parse("2026-08-05T12:00:00.000Z");
+  for (let index = 0; index < 6; index += 1) {
+    assert.equal(await applyApiAbuseControls(clientRequest(), env, url, start), null);
+  }
+  const blocked = await applyApiAbuseControls(clientRequest(), env, url, start);
+  assert.equal(blocked.status, 429);
+  assert.equal(blocked.headers.get("retry-after"), "300");
+  assert.equal((await blocked.json()).code, "rate-limited");
+  const variedCredentialBlocked = await applyApiAbuseControls(
+    clientRequest("203.0.113.8", "Bearer attacker-controlled-variation"),
+    env,
+    url,
+    start,
+  );
+  assert.equal(variedCredentialBlocked.status, 429);
+  assert.equal(
+    db.database
+      .prepare("SELECT COUNT(*) AS count FROM api_rate_limits WHERE subject_hash = ?")
+      .get("203.0.113.8").count,
+    0,
+  );
+  assert.equal(
+    await applyApiAbuseControls(clientRequest("203.0.113.9"), env, url, start),
+    null,
+  );
+  assert.equal(
+    await applyApiAbuseControls(clientRequest(), env, url, start + 5 * 60_000),
+    null,
+  );
+
+  const oversized = new Request("https://openescrow.example/api/negotiations", {
+    method: "POST",
+    headers: { "content-length": String(512 * 1024 + 1) },
+  });
+  const sizeResponse = await requestBodyLimitResponse(oversized);
+  assert.equal(sizeResponse.status, 413);
+  assert.equal((await sizeResponse.json()).code, "request-too-large");
+
+  const streamedOversized = new Request("https://openescrow.example/api/negotiations", {
+    method: "POST",
+    body: new Uint8Array(512 * 1024 + 1),
+  });
+  const streamedSizeResponse = await requestBodyLimitResponse(streamedOversized);
+  assert.equal(streamedSizeResponse.status, 413);
+  assert.equal((await streamedSizeResponse.json()).code, "request-too-large");
+
+  const streamedGateResponse = await applyApiAbuseControls(
+    new Request("https://openescrow.example/api/negotiations", {
+      method: "POST",
+      headers: { "cf-connecting-ip": "203.0.113.11" },
+      body: new Uint8Array(512 * 1024 + 1),
+    }),
+    env,
+    undefined,
+    start,
+  );
+  assert.equal(streamedGateResponse.status, 413);
+  assert.equal(
+    db.database
+      .prepare(
+        "SELECT request_count FROM api_rate_limits WHERE bucket = 'negotiation-write'",
+      )
+      .get().request_count,
+    1,
+  );
+
+  const failingRateDb = {
+    batch(statements) {
+      return db.batch(statements);
+    },
+    prepare(sql) {
+      if (sql.includes("INSERT INTO api_rate_limits")) {
+        throw new Error("simulated rate-limit storage outage");
+      }
+      return db.prepare(sql);
+    },
+  };
+  const unavailable = await applyApiAbuseControls(
+    clientRequest("203.0.113.10"),
+    { DB: failingRateDb, API_RATE_LIMIT_ENABLED: "true" },
+    url,
+    start,
+  );
+  assert.equal(unavailable.status, 503);
+  assert.equal((await unavailable.json()).code, "rate-limit-unavailable");
+});
+
+test("unexpected API failures return a traceable response without logging credentials", async () => {
+  const logged = [];
+  const originalConsoleError = console.error;
+  console.error = (...values) => logged.push(values.join(" "));
+  const secret = "never-log-this-bearer-token";
+  try {
+    const response = await worker.fetch(
+      new Request(
+        `https://openescrow.example/api/negotiations?token=${secret}`,
+        { headers: { authorization: `Bearer ${secret}` } },
+      ),
+      {
+        DB: {
+          batch() {
+            throw new Error(`database failed with ${secret}`);
+          },
+          prepare() {
+            return {};
+          },
+        },
+      },
+    );
+    assert.equal(response.status, 500);
+    const payload = await response.json();
+    assert.equal(payload.code, "request-failed");
+    assert.equal(payload.error.includes(secret), false);
+    assert.equal(response.headers.get("x-openescrow-request-id"), payload.requestId);
+    assert.equal(logged.length, 1);
+    assert.equal(logged[0].includes(secret), false);
+    assert.equal(logged[0].includes("?token="), false);
+    assert.equal(JSON.parse(logged[0]).path, "/api/negotiations");
+  } finally {
+    console.error = originalConsoleError;
+  }
+});
+
+test("malformed multipart evidence uploads fail safely", async () => {
+  const response = await worker.fetch(
+    new Request("https://openescrow.example/api/evidence", {
+      method: "POST",
+      headers: { "content-type": "multipart/form-data; boundary=broken" },
+      body: "not-a-valid-multipart-body",
+    }),
+    { DB: new TestD1(), EVIDENCE: new TestR2() },
+  );
+  assert.equal(response.status, 400);
+  assert.deepEqual(await response.json(), {
+    error: "Choose a valid supporting file upload.",
+  });
+});
+
 function negotiationReadRequest(path, token, headers = {}) {
   return new Request(`https://openescrow.example${path}`, {
     headers: {
@@ -1609,6 +1781,7 @@ async function identityTokenFor(privateKey, appId, kid, email, options = {}) {
     aud: options.aud || appId,
     iat: options.iat ?? now,
     exp: options.exp ?? now + 3600,
+    ...(options.nbf !== undefined ? { nbf: options.nbf } : {}),
     linked_accounts: JSON.stringify([{ type: "google_oauth", email }]),
   });
   const signature = await crypto.subtle.sign(
@@ -4280,7 +4453,9 @@ test("verified Privy accounts discover finalized landlord and tenant agreements"
     "tenant@example.com",
   );
   const originalFetch = globalThis.fetch;
+  let jwksFetchCount = 0;
   globalThis.fetch = async (input) => {
+    jwksFetchCount += 1;
     assert.equal(
       String(input),
       `https://auth.privy.io/api/v1/apps/${appId}/jwks.json`,
@@ -4510,6 +4685,7 @@ test("verified Privy accounts discover finalized landlord and tenant agreements"
     );
     assert.equal(restoredPreferences.deadlineReminders, true);
     assert.equal(restoredPreferences.consentedAt, savedPreferences.consentedAt);
+    assert.equal(jwksFetchCount, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -5269,7 +5445,7 @@ test("pilot rehearsal: account data inventory is role-isolated and contains no a
   }
 });
 
-test("signed-in discovery rejects expired, wrong-audience, and forged identity tokens", async () => {
+test("signed-in discovery rejects expired, future-dated, overly long-lived, wrong-audience, and forged identity tokens", async () => {
   const db = new TestD1();
   const created = await create(db);
   const appId = "test-privy-rejection-app";
@@ -5307,6 +5483,27 @@ test("signed-in discovery rejects expired, wrong-audience, and forged identity t
       kid,
       "landlord@example.com",
     ),
+    await identityTokenFor(
+      keyPair.privateKey,
+      appId,
+      kid,
+      "landlord@example.com",
+      { exp: now + 24 * 60 * 60 + 1 },
+    ),
+    await identityTokenFor(
+      keyPair.privateKey,
+      appId,
+      kid,
+      "landlord@example.com",
+      { iat: now + 120 },
+    ),
+    await identityTokenFor(
+      keyPair.privateKey,
+      appId,
+      kid,
+      "landlord@example.com",
+      { nbf: now + 120 },
+    ),
   ];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input) => {
@@ -5339,6 +5536,51 @@ test("signed-in discovery rejects expired, wrong-audience, and forged identity t
           "SELECT COUNT(*) AS count FROM negotiation_account_access WHERE negotiation_id = ?",
         )
         .get(created.record.id).count,
+      0,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("Privy key discovery rejects an oversized streamed response", async () => {
+  const db = new TestD1();
+  const appId = "test-privy-oversized-jwks-app";
+  const kid = "test-oversized-jwks-key";
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const identityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "landlord@example.com",
+  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    new Response(JSON.stringify({ keys: [], padding: "x".repeat(128 * 1024) }), {
+      headers: { "content-type": "application/json" },
+    });
+  try {
+    const response = await worker.fetch(
+      new Request("https://openescrow.example/api/negotiations/discover", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "privy-id-token": identityToken,
+        },
+        body: JSON.stringify({ role: "landlord" }),
+      }),
+      { DB: db, PRIVY_APP_ID: appId },
+    );
+    assert.equal(response.status, 401);
+    assert.match((await response.json()).error, /temporarily unavailable/);
+    assert.equal(
+      db.database
+        .prepare("SELECT COUNT(*) AS count FROM negotiation_account_access")
+        .get().count,
       0,
     );
   } finally {

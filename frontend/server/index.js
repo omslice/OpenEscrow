@@ -508,6 +508,22 @@ const COMPLIANCE_SOURCE_CHECKS_INDEX = `
 CREATE INDEX IF NOT EXISTS compliance_source_checks_status_idx
 ON compliance_source_checks (status, last_checked_at)`;
 
+const API_RATE_LIMITS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS api_rate_limits (
+  bucket TEXT NOT NULL,
+  subject_hash TEXT NOT NULL,
+  window_started_at INTEGER NOT NULL,
+  request_count INTEGER NOT NULL,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (bucket, subject_hash, window_started_at)
+)`;
+
+const API_RATE_LIMITS_UPDATED_INDEX = `
+CREATE INDEX IF NOT EXISTS api_rate_limits_updated_idx
+ON api_rate_limits (updated_at)`;
+
+const SQLITE_OPTIMIZE = "PRAGMA optimize";
+
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const WALLET_PATTERN = /^0x[a-fA-F0-9]{40}$/;
 const DEDUCTION_CATEGORY_LABEL = {
@@ -529,6 +545,13 @@ const DEFAULT_GEOCODER_BASE_URL = "https://photon.komoot.io";
 const ADDRESS_SUGGESTION_CACHE_TTL_MS = 10 * 60 * 1000;
 const ADDRESS_SUGGESTION_CACHE_LIMIT = 200;
 const ADDRESS_GEOCODER_TIMEOUT_MS = 3_000;
+const DEFAULT_API_BODY_LIMIT_BYTES = 512 * 1024;
+const EVIDENCE_UPLOAD_BODY_LIMIT_BYTES = 11 * 1024 * 1024;
+const EVIDENCE_DOWNLOAD_BODY_LIMIT_BYTES = 16 * 1024;
+const PRIVY_JWKS_CACHE_TTL_MS = 5 * 60 * 1000;
+const PRIVY_JWKS_UNKNOWN_KEY_REFRESH_MS = 60 * 1000;
+const PRIVY_JWKS_TIMEOUT_MS = 3_000;
+const PRIVY_JWKS_CACHE_LIMIT = 8;
 const COMPLIANCE_SOURCE_FRESHNESS_MS = 21 * 24 * 60 * 60 * 1000;
 const DEFAULT_BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org";
 const FALLBACK_BASE_SEPOLIA_RPC_URL = "https://base-sepolia-rpc.publicnode.com";
@@ -598,6 +621,9 @@ const ADDRESS_ATTRIBUTION = Object.freeze({
 const addressSuggestionCache = new Map();
 const activityRegistryReadinessCache = new Map();
 const complianceSourceChecksInFlight = new WeakMap();
+const databaseInitializationPromises = new WeakMap();
+const privyJwksCache = new Map();
+const privyJwksRequestsInFlight = new Map();
 const COMPLIANCE_SOURCE_STATUS_VALUES = new Set([
   "pending",
   "unchanged",
@@ -617,6 +643,193 @@ function json(data, status = 200) {
       "x-content-type-options": "nosniff",
     },
   });
+}
+
+function requestBodyLimitBytes(url) {
+  if (url.pathname === "/api/evidence") return EVIDENCE_UPLOAD_BODY_LIMIT_BYTES;
+  if (/^\/api\/evidence\/[a-fA-F0-9-]+$/.test(url.pathname)) {
+    return EVIDENCE_DOWNLOAD_BODY_LIMIT_BYTES;
+  }
+  return DEFAULT_API_BODY_LIMIT_BYTES;
+}
+
+function requestTooLargeResponse(url, limit) {
+  return json(
+    {
+      error:
+        url.pathname === "/api/evidence"
+          ? "This upload is too large. Choose a supported file no larger than 10 MB."
+          : "This request is too large. Reduce it and try again.",
+      code: "request-too-large",
+      maximumBytes: limit,
+    },
+    413,
+  );
+}
+
+export async function requestBodyLimitResponse(request, url = new URL(request.url)) {
+  if (request.method === "GET" || request.method === "HEAD") return null;
+  const declaredLimit = declaredRequestBodyLimitResponse(request, url);
+  if (declaredLimit) return declaredLimit;
+  return streamedRequestBodyLimitResponse(request, url);
+}
+
+function declaredRequestBodyLimitResponse(request, url) {
+  const contentLength = request.headers.get("content-length");
+  if (contentLength !== null && !/^\d+$/.test(contentLength)) {
+    return json(
+      { error: "The request size could not be verified.", code: "invalid-content-length" },
+      400,
+    );
+  }
+  const limit = requestBodyLimitBytes(url);
+  if (contentLength !== null && Number(contentLength) > limit) {
+    return requestTooLargeResponse(url, limit);
+  }
+  return null;
+}
+
+async function streamedRequestBodyLimitResponse(request, url) {
+  if (!request.body) return null;
+  const limit = requestBodyLimitBytes(url);
+
+  let reader;
+  try {
+    reader = request.clone().body.getReader();
+    let bytesRead = 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) return null;
+      bytesRead += value.byteLength;
+      if (bytesRead > limit) {
+        return requestTooLargeResponse(url, limit);
+      }
+    }
+  } catch {
+    return json(
+      { error: "The request body could not be read safely.", code: "invalid-request-body" },
+      400,
+    );
+  } finally {
+    reader?.releaseLock();
+  }
+}
+
+const API_RATE_LIMIT_POLICIES = Object.freeze({
+  "address-lookup": Object.freeze({ limit: 60, windowMs: 60_000 }),
+  "compliance-refresh": Object.freeze({ limit: 6, windowMs: 5 * 60_000 }),
+  "evidence-upload": Object.freeze({ limit: 12, windowMs: 10 * 60_000 }),
+  "evidence-download": Object.freeze({ limit: 120, windowMs: 60_000 }),
+  notification: Object.freeze({ limit: 20, windowMs: 60_000 }),
+  profile: Object.freeze({ limit: 120, windowMs: 60_000 }),
+  "negotiation-write": Object.freeze({ limit: 180, windowMs: 60_000 }),
+  "negotiation-read": Object.freeze({ limit: 300, windowMs: 60_000 }),
+  "system-read": Object.freeze({ limit: 120, windowMs: 60_000 }),
+});
+
+export function apiRateLimitPolicy(request, url = new URL(request.url)) {
+  if (url.pathname === "/api/address-suggestions") return "address-lookup";
+  if (url.pathname === "/api/compliance/source-status") return "compliance-refresh";
+  if (url.pathname === "/api/evidence") return "evidence-upload";
+  if (/^\/api\/evidence\/[a-fA-F0-9-]+$/.test(url.pathname)) {
+    return "evidence-download";
+  }
+  if (url.pathname.startsWith("/api/notifications/")) return "notification";
+  if (url.pathname.startsWith("/api/profile/")) return "profile";
+  if (url.pathname.startsWith("/api/negotiations")) {
+    return request.method === "GET" ? "negotiation-read" : "negotiation-write";
+  }
+  if (url.pathname === "/api/system/readiness") return "system-read";
+  return null;
+}
+
+function apiRateLimitEnabled(request, env) {
+  const configured = cleanText(env.API_RATE_LIMIT_ENABLED, 20).toLowerCase();
+  if (configured === "false") return false;
+  if (configured === "true") return true;
+  return Boolean(request.headers.get("cf-connecting-ip"));
+}
+
+async function apiRateLimitSubject(request) {
+  const clientIp = cleanText(request.headers.get("cf-connecting-ip"), 80) || "missing-client-ip";
+  return hashToken(clientIp);
+}
+
+async function enforceApiRateLimit(request, env, url, nowMs) {
+  const bucket = apiRateLimitPolicy(request, url);
+  if (!bucket || !env.DB || !apiRateLimitEnabled(request, env)) return null;
+  const policy = API_RATE_LIMIT_POLICIES[bucket];
+  const windowStartedAt = Math.floor(nowMs / policy.windowMs) * policy.windowMs;
+  const subjectHash = await apiRateLimitSubject(request);
+  let row;
+  try {
+    row = await env.DB
+      .prepare(
+        `INSERT INTO api_rate_limits
+         (bucket, subject_hash, window_started_at, request_count, updated_at)
+         VALUES (?, ?, ?, 1, ?)
+         ON CONFLICT(bucket, subject_hash, window_started_at) DO UPDATE SET
+           request_count = api_rate_limits.request_count + 1,
+           updated_at = excluded.updated_at
+         RETURNING request_count`,
+      )
+      .bind(bucket, subjectHash, windowStartedAt, new Date(nowMs).toISOString())
+      .first();
+  } catch {
+    return json(
+      {
+        error: "OpenEscrow could not safely check the request limit. Try again shortly.",
+        code: "rate-limit-unavailable",
+      },
+      503,
+    );
+  }
+  const requestCount = Number(row?.request_count || 0);
+  if (requestCount <= policy.limit) return null;
+  const retryAfter = Math.max(
+    1,
+    Math.ceil((windowStartedAt + policy.windowMs - nowMs) / 1000),
+  );
+  const response = json(
+    {
+      error: "Too many requests were made from this connection. Wait a moment and try again.",
+      code: "rate-limited",
+      retryAfterSeconds: retryAfter,
+    },
+    429,
+  );
+  response.headers.set("retry-after", String(retryAfter));
+  response.headers.set("x-ratelimit-limit", String(policy.limit));
+  response.headers.set("x-ratelimit-remaining", "0");
+  return response;
+}
+
+export async function applyApiAbuseControls(
+  request,
+  env,
+  url = new URL(request.url),
+  nowMs = Date.now(),
+) {
+  if (!url.pathname.startsWith("/api/")) return null;
+  if (
+    request.method !== "GET" &&
+    request.method !== "HEAD" &&
+    !sameOriginPost(request)
+  ) {
+    return json({ error: "Cross-origin writes are not allowed." }, 403);
+  }
+  const declaredBodyLimit = declaredRequestBodyLimitResponse(request, url);
+  if (declaredBodyLimit) return declaredBodyLimit;
+  if (
+    env.DB &&
+    apiRateLimitPolicy(request, url) &&
+    apiRateLimitEnabled(request, env)
+  ) {
+    await initialize(env.DB);
+    const rateLimit = await enforceApiRateLimit(request, env, url, nowMs);
+    if (rateLimit) return rateLimit;
+  }
+  return streamedRequestBodyLimitResponse(request, url);
 }
 
 const VERSIONED_STATIC_ASSET_PATH = /^\/assets\/.+-[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9]+$/;
@@ -2531,6 +2744,102 @@ function decodeJwtBytes(segment) {
   return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
 }
 
+function usablePrivyJwk(candidate) {
+  return (
+    candidate?.kty === "EC" &&
+    candidate?.crv === "P-256" &&
+    (candidate.alg === undefined || candidate.alg === "ES256") &&
+    (candidate.use === undefined || candidate.use === "sig") &&
+    typeof candidate.kid === "string" &&
+    candidate.kid.length > 0 &&
+    candidate.kid.length <= 200
+  );
+}
+
+async function readBoundedJsonResponse(response, maximumBytes) {
+  const declaredLength = response.headers.get("content-length");
+  if (
+    declaredLength !== null &&
+    (!/^\d+$/.test(declaredLength) || Number(declaredLength) > maximumBytes)
+  ) {
+    throw new Error("Remote identity response exceeded its safety limit.");
+  }
+  if (!response.body) throw new Error("Remote identity response was empty.");
+
+  const reader = response.body.getReader();
+  const chunks = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > maximumBytes) {
+        throw new Error("Remote identity response exceeded its safety limit.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+}
+
+async function fetchPrivyJwks(appId, forceRefresh = false) {
+  const now = Date.now();
+  const cached = privyJwksCache.get(appId);
+  if (!forceRefresh && cached && now - cached.fetchedAt < PRIVY_JWKS_CACHE_TTL_MS) {
+    return cached;
+  }
+  const inFlight = privyJwksRequestsInFlight.get(appId);
+  if (inFlight) return inFlight;
+
+  const request = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), PRIVY_JWKS_TIMEOUT_MS);
+    try {
+      const response = await fetch(
+        `https://auth.privy.io/api/v1/apps/${encodeURIComponent(appId)}/jwks.json`,
+        {
+          headers: { accept: "application/json", "user-agent": "OpenEscrow/1.0" },
+          signal: controller.signal,
+        },
+      );
+      if (!response.ok) throw new Error("Account verification is temporarily unavailable.");
+      const jwks = await readBoundedJsonResponse(response, 128 * 1024);
+      const keys = Array.isArray(jwks?.keys) ? jwks.keys.filter(usablePrivyJwk) : [];
+      if (keys.length === 0 || keys.length > 20) {
+        throw new Error("Account verification is temporarily unavailable.");
+      }
+      const entry = { fetchedAt: Date.now(), keys };
+      if (privyJwksCache.size >= PRIVY_JWKS_CACHE_LIMIT && !privyJwksCache.has(appId)) {
+        privyJwksCache.delete(privyJwksCache.keys().next().value);
+      }
+      privyJwksCache.set(appId, entry);
+      return entry;
+    } catch {
+      throw new Error("Account verification is temporarily unavailable.");
+    } finally {
+      clearTimeout(timeout);
+    }
+  })();
+  privyJwksRequestsInFlight.set(appId, request);
+  try {
+    return await request;
+  } finally {
+    if (privyJwksRequestsInFlight.get(appId) === request) {
+      privyJwksRequestsInFlight.delete(appId);
+    }
+  }
+}
+
 async function verifyPrivyIdentity(request, env) {
   const token = cleanText(request.headers.get("privy-id-token"), 20_000);
   const segments = token.split(".");
@@ -2545,24 +2854,39 @@ async function verifyPrivyIdentity(request, env) {
     payload.aud === appId || (Array.isArray(payload.aud) && payload.aud.includes(appId));
   if (
     header.alg !== "ES256" ||
-    !header.kid ||
+    typeof header.kid !== "string" ||
+    header.kid.length === 0 ||
+    header.kid.length > 200 ||
     payload.iss !== "privy.io" ||
     !audienceMatches ||
     typeof payload.sub !== "string" ||
+    payload.sub.length === 0 ||
+    payload.sub.length > 500 ||
     typeof payload.exp !== "number" ||
-    payload.exp <= now
+    !Number.isFinite(payload.exp) ||
+    payload.exp <= now ||
+    payload.exp > now + 24 * 60 * 60 ||
+    (payload.nbf !== undefined &&
+      (typeof payload.nbf !== "number" ||
+        !Number.isFinite(payload.nbf) ||
+        payload.nbf > now + 60)) ||
+    (payload.iat !== undefined &&
+      (typeof payload.iat !== "number" ||
+        !Number.isFinite(payload.iat) ||
+        payload.iat > now + 60))
   ) {
     throw new Error("The signed-in account could not be verified.");
   }
 
-  const jwksResponse = await fetch(`https://auth.privy.io/api/v1/apps/${appId}/jwks.json`, {
-    headers: { accept: "application/json", "user-agent": "OpenEscrow/1.0" },
-  });
-  if (!jwksResponse.ok) throw new Error("Account verification is temporarily unavailable.");
-  const jwks = await jwksResponse.json();
-  const jwk = Array.isArray(jwks.keys)
-    ? jwks.keys.find((candidate) => candidate.kid === header.kid && candidate.kty === "EC")
-    : null;
+  let jwks = await fetchPrivyJwks(appId);
+  let jwk = jwks.keys.find((candidate) => candidate.kid === header.kid);
+  if (
+    !jwk &&
+    Date.now() - jwks.fetchedAt >= PRIVY_JWKS_UNKNOWN_KEY_REFRESH_MS
+  ) {
+    jwks = await fetchPrivyJwks(appId, true);
+    jwk = jwks.keys.find((candidate) => candidate.kid === header.kid);
+  }
   if (!jwk) throw new Error("The signed-in account uses an unknown verification key.");
 
   const publicKey = await crypto.subtle.importKey(
@@ -2604,7 +2928,9 @@ async function verifyPrivyIdentity(request, env) {
 }
 
 async function initialize(db) {
-  await db.batch([
+  const existing = databaseInitializationPromises.get(db);
+  if (existing) return existing;
+  const initialization = db.batch([
     db.prepare(AGREEMENTS_SCHEMA),
     db.prepare(EVENTS_SCHEMA),
     db.prepare(EVENTS_INDEX),
@@ -2641,7 +2967,17 @@ async function initialize(db) {
     db.prepare(SCHEDULED_JOB_RUNS_SCHEMA),
     db.prepare(COMPLIANCE_SOURCE_CHECKS_SCHEMA),
     db.prepare(COMPLIANCE_SOURCE_CHECKS_INDEX),
+    db.prepare(API_RATE_LIMITS_SCHEMA),
+    db.prepare(API_RATE_LIMITS_UPDATED_INDEX),
+    db.prepare(SQLITE_OPTIMIZE),
   ]);
+  databaseInitializationPromises.set(db, initialization);
+  try {
+    await initialization;
+  } catch (error) {
+    databaseInitializationPromises.delete(db);
+    throw error;
+  }
 }
 
 async function ensureUnsubscribeToken(db, userId) {
@@ -5924,6 +6260,31 @@ async function runNotificationJob(env, now = new Date()) {
   await runScheduledNotifications(env, now);
 }
 
+async function runApiRateLimitCleanup(env, now = new Date()) {
+  if (!env.DB) return;
+  await initialize(env.DB);
+  const prior = await env.DB
+    .prepare("SELECT last_started_at FROM scheduled_job_runs WHERE name = ?")
+    .bind("api-rate-limit-cleanup")
+    .first();
+  const lastStarted = prior?.last_started_at
+    ? new Date(prior.last_started_at).getTime()
+    : 0;
+  if (now.getTime() - lastStarted < 24 * 60 * 60 * 1000) return;
+  await env.DB.batch([
+    env.DB
+      .prepare(
+        `INSERT INTO scheduled_job_runs (name, last_started_at)
+         VALUES (?, ?)
+         ON CONFLICT(name) DO UPDATE SET last_started_at = excluded.last_started_at`,
+      )
+      .bind("api-rate-limit-cleanup", now.toISOString()),
+    env.DB
+      .prepare("DELETE FROM api_rate_limits WHERE updated_at < ?")
+      .bind(new Date(now.getTime() - 48 * 60 * 60 * 1000).toISOString()),
+  ]);
+}
+
 async function finalizationReceiptAssignedElsewhere(
   db,
   negotiationId,
@@ -8095,7 +8456,12 @@ async function uploadEvidence(request, env) {
       503,
     );
   }
-  const form = await request.formData();
+  let form;
+  try {
+    form = await request.formData();
+  } catch {
+    return json({ error: "Choose a valid supporting file upload." }, 400);
+  }
   const proposalId = cleanText(form.get("proposalId"), 80);
   const token = cleanText(form.get("token"), 200);
   const file = form.get("file");
@@ -9412,7 +9778,11 @@ async function addressSuggestions(request, env) {
 
 const worker = {
   async fetch(request, env, context) {
+    const requestId = crypto.randomUUID();
     const url = new URL(request.url);
+    try {
+      const abuseResponse = await applyApiAbuseControls(request, env, url);
+      if (abuseResponse) return abuseResponse;
     if (
       request.method === "GET" &&
       (url.pathname === "/" || url.pathname === "/index.html") &&
@@ -9422,6 +9792,7 @@ const worker = {
         Promise.all([
           runNotificationJob(env),
           runComplianceSourceAudit(env),
+          runApiRateLimitCleanup(env),
         ]),
       );
     }
@@ -9618,11 +9989,32 @@ const worker = {
     const fallback = new URL(request.url);
     fallback.pathname = "/index.html";
     fallback.search = "";
-    return secureResponse(
-      await env.ASSETS.fetch(new Request(fallback, request)),
-      request.url,
-      true,
-    );
+      return secureResponse(
+        await env.ASSETS.fetch(new Request(fallback, request)),
+        request.url,
+        true,
+      );
+    } catch (error) {
+      console.error(
+        JSON.stringify({
+          event: "request_failed",
+          requestId,
+          method: request.method,
+          path: url.pathname,
+          errorType: error instanceof Error ? error.name : "UnknownError",
+        }),
+      );
+      const response = json(
+        {
+          error: "OpenEscrow could not complete this request. Try again shortly.",
+          code: "request-failed",
+          requestId,
+        },
+        500,
+      );
+      response.headers.set("x-openescrow-request-id", requestId);
+      return response;
+    }
   },
   async scheduled(controller, env, context) {
     const scheduledAt = new Date(controller?.scheduledTime || Date.now());
@@ -9630,6 +10022,7 @@ const worker = {
       Promise.all([
         runNotificationJob(env, scheduledAt),
         runComplianceSourceAudit(env, scheduledAt),
+        runApiRateLimitCleanup(env, scheduledAt),
       ]),
     );
   },

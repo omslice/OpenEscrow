@@ -13,7 +13,9 @@ production identity, custody, privacy, or communications design.
 - The existing injected-wallet flow remains available when Privy is not configured.
 - A verified Google/email identity is displayed in the account panel.
 - Privy identity tokens are verified against the app's public JWKS before proposals are discovered
-  by landlord, tenant, or arbiter email across browser sessions.
+  by landlord, tenant, or arbiter email across browser sessions. Key responses and token time
+  claims are bounded, only ES256 P-256 signing keys are accepted, and repeated verification reuses
+  a short-lived shared cache rather than requesting keys for every account action.
 - A verified user can end every derived OpenEscrow record session issued to that account and sign
   out the current device without changing agreements, archive preferences, invitation links, or
   another participant's access. Global local cleanup and provider sign-out are skipped if a

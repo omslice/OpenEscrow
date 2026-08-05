@@ -429,6 +429,32 @@ failures, retires only the old principal, verifies all immutable/runtime binding
 12-field in-memory configuration switch followed by byte-for-byte rollback. The public network
 and currently configured cohort remain unchanged.
 
+## Hosted API abuse-resistance addendum — 2026-08-05
+
+The Worker now rejects oversized bodies before route parsing, including streamed bodies without a
+declared length. Normal JSON actions are limited to 512 KiB, private file retrieval actions to
+16 KiB, and evidence uploads to 11 MiB of multipart data while the existing 10 MiB file ceiling
+remains authoritative. Malformed multipart data returns a bounded user-facing error.
+
+Cloudflare-hosted API traffic is divided into address, compliance-refresh, evidence, notification,
+profile, negotiation-read/write, and readiness buckets. Atomic D1 counters apply route-appropriate
+windows; their subject is a SHA-256 digest of the edge-provided client address, so raw addresses
+are not stored and attacker-controlled bearer variations cannot create new subjects. Old windows are removed
+by the scheduled/opportunistic maintenance path, the cleanup query has a verified index plan, and a
+rate-limit storage failure blocks the request instead of silently disabling the control.
+
+Privy verification accepts only ES256 P-256 signing keys and now bounds key-fetch time, response
+size, key count, cache size, token lifetime, and future `iat`/`nbf` claims. Concurrent and repeated
+verification shares a cached key set; unknown-key refresh is deliberately throttled. Unexpected
+Worker exceptions return a generic correlation ID and emit a structured log containing only the
+HTTP method, pathname, ID, and error class. A regression injects the same secret into a query,
+authorization header, and exception and proves it appears in neither the response nor log.
+
+These controls reduce application-layer abuse; they are not a WAF, bot challenge, provider spend
+limit, or denial-of-service guarantee. Privy sponsorship budgets and alerts remain an operator
+control, and production traffic still requires external application-security review and runtime
+monitoring.
+
 ## Disclaimer
 
 This review was performed by an AI system acting as the project's developer, not by a licensed

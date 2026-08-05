@@ -66,6 +66,11 @@ provider or hosting control that owns the secret.
   only when the corresponding development release is approved for deployment.
 - [ ] **Activate the 15-minute hosted Cron Trigger** and confirm its first
   successful run after the notification/source-monitor release is deployed.
+- [ ] **Set a conservative Privy Base Sepolia sponsorship policy, budget, and alert.** The Worker
+  now limits hosted API traffic, but a wallet can submit sponsored transactions without passing
+  through that API limiter. Keep sponsorship testnet-only, restrict eligible methods/contracts if
+  the dashboard supports it, and choose a spend threshold that stops abuse without affecting the
+  synthetic pilot.
 - [ ] **Let the official-source baseline complete and resolve every blocking
   source alert.** Ask Codex for the deployed readiness report after each
   scheduled batch; a changed source needs a new official-source review and

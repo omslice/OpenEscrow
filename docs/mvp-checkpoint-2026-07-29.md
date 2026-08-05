@@ -48,6 +48,12 @@ detailed validation ledger.
   notice integrity, privacy inventory, evidence tamper, retained-key loss/restoration,
   R2/encrypted-IPFS cleanup after metadata failure, outages, notification recovery,
   legacy-landlord receipt recovery, receipt spoofing, and RPC fallback.
+- **Verified:** The hosted Worker bounds declared and streamed request bodies by route, rejects
+  malformed multipart uploads, applies atomic D1 rate windows without persisting raw client
+  addresses or credentials, and fails closed if that counter cannot be updated. Its indexed daily
+  cleanup, bounded/cached Privy JWKS validation, constrained token time claims, and sanitized
+  correlation-ID error boundary are covered by server regressions, including a forced failure with
+  a sentinel secret in the query, authorization header, and exception.
 - **Verified:** The full repository release check passes the complete server and client-logic
   suites, lint, browser account-switch, funding-recovery, record-verification,
   accessibility/mobile, landing-budget, and load-recovery checks, plus the production build.

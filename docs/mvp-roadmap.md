@@ -49,6 +49,14 @@ production custody, or reliance on the compliance research as legal advice.
   email content is derived from the saved agreement events: the latest claim controls every
   tenant message, while a response notice must match the exact tenant and saved transaction. The
   server constructs the landlord dashboard link rather than accepting client-supplied copy.
+- **Verified:** Hosted API abuse resistance now applies route-specific streamed body ceilings and
+  atomic D1 rate windows for address, compliance, evidence, notification, profile, agreement, and
+  readiness traffic. Limit subjects are one-way digests rather than stored client addresses or
+  credentials; cleanup is indexed, and a counter-store outage fails closed. Privy key discovery is
+  timeout-, size-, count-, cache-, and algorithm-bounded, while token lifetime and future-time
+  claims are constrained. Unexpected errors return a correlation ID without exposing query,
+  authorization, body, or exception content. These controls do not replace edge bot protection or
+  operator-configured Privy sponsorship budgets.
 - **Verified:** The core escrow, operations reserve, and activity registry now share a documented
   secondary-contract security review. Atomic funding records effects before its external calls,
   every public lifecycle mutation uses one cross-function reentrancy guard, and an adversarial
