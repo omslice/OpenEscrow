@@ -3,7 +3,7 @@ import { runServerRehearsal } from "./rehearsal-runner.mjs";
 const expectedScenarios = [
   {
     id: "identity-forgery",
-    name: "signed-in discovery rejects expired, wrong-audience, and forged identity tokens",
+    name: "signed-in discovery rejects expired, future-dated, overly long-lived, wrong-audience, and forged identity tokens",
     covers: ["identity verification", "session denial", "no phantom sessions"],
   },
   {
