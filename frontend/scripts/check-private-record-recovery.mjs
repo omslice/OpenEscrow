@@ -1128,6 +1128,165 @@ try {
       "openescrow:test:proposal-cancellation-transaction-writes",
   });
 
+  const cancellationDiscoveryPage = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+  });
+  const cancellationDiscoveryAttempts = await routeDecisionReceiptRecovery(
+    cancellationDiscoveryPage,
+    {
+      type: "onchain_proposal_cancelled",
+      transactionHash: `0x${"e".repeat(64)}`,
+    },
+  );
+  const cancellationDiscoveryUrl = `${baseUrl}/testing/private-record-recovery.html?role=landlord&flow=proposal-cancellation-discovery&agreement=43`;
+  await cancellationDiscoveryPage.goto(cancellationDiscoveryUrl, {
+    waitUntil: "networkidle",
+  });
+  await cancellationDiscoveryPage
+    .getByRole("heading", { name: "Proposal cancellation confirmed" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await cancellationDiscoveryPage
+      .getByRole("button", { name: "Cancel proposal" })
+      .count(),
+    0,
+    "A cancelled agreement with a stale Record must never offer another cancellation transaction.",
+  );
+  const findCancellation = cancellationDiscoveryPage.getByRole("button", {
+    name: "Find cancellation and finish Record update",
+  });
+  const findCancellationBox = await findCancellation.boundingBox();
+  assert.equal(
+    Boolean(findCancellationBox && findCancellationBox.height >= 44),
+    true,
+    "Automatic cancellation recovery must remain a 44px mobile touch target.",
+  );
+  await findCancellation.focus();
+  await findCancellation.press("Enter");
+  await cancellationDiscoveryPage
+    .getByRole("button", { name: "Finding cancellation..." })
+    .waitFor({ state: "visible" });
+  await cancellationDiscoveryPage
+    .getByRole("alert")
+    .filter({ hasText: "could not find the matching test-network cancellation" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await findCancellation.evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+    "A failed cancellation lookup should return focus to its safe retry.",
+  );
+
+  await findCancellation.press("Enter");
+  await cancellationDiscoveryPage
+    .getByRole("button", { name: "Finding cancellation..." })
+    .waitFor({ state: "visible" });
+  const cancellationRecordRetry = cancellationDiscoveryPage.getByRole(
+    "button",
+    { name: "Finish adding cancellation to Record" },
+  );
+  await cancellationRecordRetry.waitFor({ state: "visible" });
+  assert.equal(
+    await cancellationRecordRetry.evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+    "A failed save after automatic discovery should focus the record-only retry.",
+  );
+  const cancellationRecordRetryBox =
+    await cancellationRecordRetry.boundingBox();
+  assert.equal(
+    Boolean(
+      cancellationRecordRetryBox && cancellationRecordRetryBox.height >= 44,
+    ),
+    true,
+    "The discovered cancellation's Record retry must remain a 44px mobile touch target.",
+  );
+  assert.equal(cancellationDiscoveryAttempts(), 1);
+  assert.equal(
+    await cancellationDiscoveryPage.evaluate(() =>
+      window.sessionStorage.getItem(
+        "openescrow:test:proposal-cancellation-searches",
+      ),
+    ),
+    "2",
+    "The failed cancellation lookup and its explicit retry should remain separate searches.",
+  );
+  assert.equal(
+    await cancellationDiscoveryPage.evaluate(() =>
+      window.sessionStorage.getItem(
+        "openescrow:test:proposal-cancellation-transaction-writes",
+      ),
+    ),
+    null,
+    "Discovering a cancellation must never submit a new cancellation transaction.",
+  );
+  const discoveredCancellationEntries =
+    await pendingTerminalRecoveryEntries(cancellationDiscoveryPage);
+  assert.equal(discoveredCancellationEntries.length, 1);
+  assert.doesNotMatch(
+    JSON.stringify(discoveredCancellationEntries),
+    /synthetic-private-record-recovery-token/,
+    "The discovered cancellation retry must not persist its bearer token.",
+  );
+
+  await cancellationDiscoveryPage.goto(
+    `${baseUrl}/testing/private-record-recovery.html?role=landlord&flow=proposal-cancellation-discovery&agreement=44`,
+    { waitUntil: "networkidle" },
+  );
+  assert.equal(
+    await cancellationDiscoveryPage
+      .getByRole("button", { name: "Finish adding cancellation to Record" })
+      .count(),
+    0,
+    "A different agreement must not inherit a discovered cancellation receipt.",
+  );
+
+  await cancellationDiscoveryPage.goto(cancellationDiscoveryUrl, {
+    waitUntil: "networkidle",
+  });
+  const recoveredDiscoveredCancellation =
+    cancellationDiscoveryPage.getByRole("button", {
+      name: "Finish adding cancellation to Record",
+    });
+  await recoveredDiscoveredCancellation.waitFor({ state: "visible" });
+  await cancellationDiscoveryPage
+    .getByText(/recovered a confirmed testnet cancellation/i)
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await recoveredDiscoveredCancellation.evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+    "Reload recovery should focus the discovered cancellation's record-only retry.",
+  );
+  await recoveredDiscoveredCancellation.press("Enter");
+  await recoveredDiscoveredCancellation.waitFor({ state: "detached" });
+  assert.equal(cancellationDiscoveryAttempts(), 2);
+  assert.equal(
+    (await pendingTerminalRecoveryEntries(cancellationDiscoveryPage)).length,
+    0,
+    "A saved discovered cancellation should clear its exact recovery payload.",
+  );
+  assert.equal(
+    await cancellationDiscoveryPage.evaluate(() =>
+      window.sessionStorage.getItem(
+        "openescrow:test:proposal-cancellation-searches",
+      ),
+    ),
+    "2",
+    "A Record-only retry must reuse the discovered receipt without searching again.",
+  );
+  assert.equal(
+    await cancellationDiscoveryPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "Automatic cancellation recovery should not overflow a mobile viewport.",
+  );
+  await cancellationDiscoveryPage.context().close();
+
   const timeoutScenarios = [
     {
       flow: "no-claim-timeout-receipt",
@@ -1386,7 +1545,7 @@ try {
   await activityReceiptPage.context().close();
 
   process.stdout.write(
-    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, notification failures use error semantics and focus 44px retry/fallback actions, interrupted arbiter access rotation uses automatic bounded confirmation lookup with a collapsed technical fallback, and confirmed proposal cancellations, claims, tenant responses, arbiter rulings, withdrawals, activity proofs, and every deadline outcome survive private-record outages and reloads without another transaction or stored bearer token; terminal retries remain wallet-scoped, time-sensitive responses remain available, and delivered email is not repeated by a record-only retry.\n",
+    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, notification failures use error semantics and focus 44px retry/fallback actions, interrupted arbiter access rotation and stale proposal cancellations use automatic bounded confirmation lookup, and confirmed cancellations, claims, tenant responses, arbiter rulings, withdrawals, activity proofs, and every deadline outcome survive private-record outages and reloads without another transaction or stored bearer token; terminal retries remain wallet- and agreement-scoped, time-sensitive responses remain available, and delivered email is not repeated by a record-only retry.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

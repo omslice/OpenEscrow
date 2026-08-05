@@ -15,9 +15,12 @@ const ARBITER_TIMEOUT_TRANSACTION_HASH = `0x${"1".repeat(64)}` as const;
 const ACTIVITY_TRANSACTION_HASH = `0x${"7".repeat(64)}` as const;
 const ARBITER_REPLACEMENT_TRANSACTION_HASH = `0x${"d".repeat(64)}` as const;
 const PROPOSAL_CANCELLATION_TRANSACTION_HASH = `0x${"f".repeat(64)}` as const;
+const PROPOSAL_CANCELLATION_DISCOVERY_HASH = `0x${"e".repeat(64)}` as const;
 const REPLACEMENT_ARBITER = "0x5555555555555555555555555555555555555555" as const;
 const ARBITER_REPLACEMENT_SEARCH_COUNT_KEY =
   "openescrow:test:arbiter-replacement-searches";
+const PROPOSAL_CANCELLATION_SEARCH_COUNT_KEY =
+  "openescrow:test:proposal-cancellation-searches";
 const CLAIM_TRANSACTION_COUNT_KEY = "openescrow:test:claim-transaction-writes";
 const RESPONSE_TRANSACTION_COUNT_KEY =
   "openescrow:test:response-transaction-writes";
@@ -51,6 +54,54 @@ export function useAccount() {
 }
 
 export function usePublicClient() {
+  if (currentFlow() === "proposal-cancellation-discovery") {
+    const finalizedTimestamp = BigInt(
+      Math.floor(Date.parse("2026-07-31T00:00:00.000Z") / 1000),
+    );
+    const eventBlock = DEPLOYMENT_BLOCK + 2_500n;
+    return {
+      getBlockNumber: async () => {
+        const searches =
+          transactionCount(PROPOSAL_CANCELLATION_SEARCH_COUNT_KEY) + 1;
+        window.sessionStorage.setItem(
+          PROPOSAL_CANCELLATION_SEARCH_COUNT_KEY,
+          String(searches),
+        );
+        return DEPLOYMENT_BLOCK + 5_000n;
+      },
+      getBlock: async ({ blockNumber }: { blockNumber: bigint }) => ({
+        timestamp:
+          finalizedTimestamp -
+          7_200n +
+          (blockNumber - DEPLOYMENT_BLOCK) * 2n,
+      }),
+      getContractEvents: async ({
+        fromBlock,
+        toBlock,
+      }: {
+        fromBlock: bigint;
+        toBlock: bigint;
+      }) => {
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        if (
+          transactionCount(PROPOSAL_CANCELLATION_SEARCH_COUNT_KEY) === 1 ||
+          eventBlock < fromBlock ||
+          eventBlock > toBlock
+        ) {
+          return [];
+        }
+        return [
+          {
+            eventName: "ProposalCancelled" as const,
+            args: { id: 43n },
+            transactionHash: PROPOSAL_CANCELLATION_DISCOVERY_HASH,
+            blockNumber: eventBlock,
+            logIndex: 1,
+          },
+        ];
+      },
+    };
+  }
   if (currentFlow() === "arbiter-replacement-recovery") {
     const proposalTimestamp = BigInt(
       Math.floor(Date.parse("2026-07-31T00:00:00.000Z") / 1000),

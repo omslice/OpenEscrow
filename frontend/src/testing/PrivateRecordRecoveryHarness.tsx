@@ -82,6 +82,9 @@ function agreementPhase() {
       ? Phase.Proposed
       : Phase.Cancelled;
   }
+  if (flow === "proposal-cancellation-discovery") {
+    return Phase.Cancelled;
+  }
   return Phase.ClaimOpen;
 }
 
@@ -149,6 +152,18 @@ const finalizedParticipantRecord = {
   id: access.proposalId,
   status: "finalized",
   revision: 1,
+  createdAt: "2026-07-30T00:00:00.000Z",
+  updatedAt: "2026-07-31T00:00:00.000Z",
+  events: [
+    {
+      id: 1,
+      action: "posted_onchain",
+      createdAt: "2026-07-31T00:00:00.000Z",
+      actorRole: "landlord",
+      summary: "Finalized on the test network.",
+      revision: 1,
+    },
+  ],
 } as unknown as NegotiationRecord;
 
 if (role !== "tenant" && role !== "arbiter") {
@@ -178,7 +193,8 @@ createRoot(document.getElementById("root")!).render(
           agreement={agreement}
           negotiationAccess={access}
         />
-      ) : flow === "proposal-cancellation-receipt" ? (
+      ) : flow === "proposal-cancellation-receipt" ||
+        flow === "proposal-cancellation-discovery" ? (
         <ProposalActions
           id={agreementId}
           agreement={agreement}

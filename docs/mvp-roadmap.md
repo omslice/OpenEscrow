@@ -187,6 +187,10 @@ production custody, or reliance on the compliance research as legal advice.
   arbiter access is revoked, and the timestamped report remains available. If the private save is
   interrupted, a wallet-, role-, agreement-, and proposal-scoped browser-tab recovery restores a
   focused 44-pixel Record-only retry without storing the bearer or submitting another transaction.
+  If that tab is gone, matching landlord access can find the public confirmation through bounded
+  backward event ranges and send it through the same server verifier. A rendered mobile rehearsal
+  proves lookup failure and retry, agreement isolation, reload recovery after a save outage, no
+  stored bearer, no raw-hash prompt, and no second contract write.
 - **Verified:** A durable active sandbox attempt now reports whether it matches the currently
   requested wallet, asset, and amount, and the browser independently confirms that binding. A
   mismatch stays locked, is not copied into the new intent's local recovery key, and offers a

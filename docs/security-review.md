@@ -311,8 +311,13 @@ not deployed until a new version-matched registry is broadcast and validated.
   proposal/deposit discovery while the append-only event history and report remain available.
   Receipt verification is mandatory for this state change, exact retries are idempotent, and the
   browser keeps an interrupted Record-only retry in the exact tab without a bearer credential or
-  a second contract write. If that browser-tab recovery is unavailable, the contract remains the
-  authority and the stale hosted Record must be reconciled before it is relied upon.
+  a second contract write. If that browser-tab recovery is unavailable, matching landlord access
+  can search bounded Base Sepolia ranges backward from the current block to the saved finalization
+  time, then submit the discovered candidate through the same exact server verifier. Removed,
+  malformed, wrong-event, and wrong-agreement logs are rejected; lookup and Record-save failures
+  remain explicit retries and never expose a second cancellation control or require a raw hash.
+  Until reconciliation succeeds, the contract remains the authority and the stale hosted Record
+  must not be relied upon.
 - Invitation URLs are bearer credentials. A landlord can reset a tenant or optional-arbiter link
   without changing approved terms; the reset invalidates the prior direct link and the affected
   account-discovery sessions, while the matching verified email can discover a fresh session.

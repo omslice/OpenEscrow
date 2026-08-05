@@ -590,7 +590,12 @@ detailed validation ledger.
   without deleting historical duplicates. The readable report remains available after the status
   becomes cancelled, while the active proposal/deposit lists update immediately. A rendered mobile
   outage rehearsal proves reload recovery is bearer-free, wallet-scoped, keyboard-focused,
-  44 pixels high, and incapable of submitting the cancellation twice.
+  44 pixels high, and incapable of submitting the cancellation twice. If the original tab is no
+  longer available, matching landlord access now searches bounded public event ranges from the
+  current block back to the saved finalization time, rejects unrelated or malformed logs, and sends
+  only the discovered candidate through the same exact server receipt verifier. The rendered
+  recovery path proves lookup retry, agreement isolation, a second Record-save retry after reload,
+  no stored bearer or raw-hash prompt, and no new cancellation transaction.
 
 ## Remaining
 
