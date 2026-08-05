@@ -102,6 +102,11 @@ all approvals. Each approved wallet funds its exact onchain share and the agreem
 after the full amount is received. The optional arbiter workflow remains implemented but is
 feature-flagged out of the normal pilot UI. The D1 negotiation registry verifies Privy identity
 tokens and restores role-scoped proposal access by verified email across browser sessions.
+Its email-led discovery, session cleanup, notification-consent, and finalized-agreement scheduler
+queries have migration-backed indexes with checked query plans. A visible account workspace
+rechecks membership every five minutes, refreshes saved records every 30 seconds, and limits
+record reads to six at a time; larger session sets are written in bounded D1 batches rather than
+one remote batch per agreement.
 Participant wallet addresses are recorded when the invited parties approve the current revision.
 
 Not implemented: a production onchain event indexer, production evidence retention controls, or a

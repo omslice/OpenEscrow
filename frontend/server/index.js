@@ -58,6 +58,18 @@ CREATE TABLE IF NOT EXISTS agreement_negotiations (
   onchain_tx_hash TEXT
 )`;
 
+const AGREEMENT_LANDLORD_DISCOVERY_INDEX = `
+CREATE INDEX IF NOT EXISTS agreement_negotiations_landlord_discovery_idx
+ON agreement_negotiations (lower(landlord_email), updated_at DESC)`;
+
+const AGREEMENT_ARBITER_DISCOVERY_INDEX = `
+CREATE INDEX IF NOT EXISTS agreement_negotiations_arbiter_discovery_idx
+ON agreement_negotiations (lower(arbiter_email), updated_at DESC)`;
+
+const AGREEMENT_STATUS_UPDATED_INDEX = `
+CREATE INDEX IF NOT EXISTS agreement_negotiations_status_updated_idx
+ON agreement_negotiations (status, updated_at)`;
+
 const EVENTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS negotiation_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -190,6 +202,19 @@ const ACCOUNT_ACCESS_INDEX = `
 CREATE INDEX IF NOT EXISTS negotiation_account_access_lookup_idx
 ON negotiation_account_access (negotiation_id, token_hash, expires_at)`;
 
+const ACCOUNT_ACCESS_EXPIRES_INDEX = `
+CREATE INDEX IF NOT EXISTS negotiation_account_access_expires_idx
+ON negotiation_account_access (expires_at)`;
+
+const ACCOUNT_ACCESS_SESSION_INDEX = `
+CREATE INDEX IF NOT EXISTS negotiation_account_access_session_idx
+ON negotiation_account_access
+  (negotiation_id, user_id, role, created_at DESC, id DESC)`;
+
+const ACCOUNT_ACCESS_USER_INDEX = `
+CREATE INDEX IF NOT EXISTS negotiation_account_access_user_idx
+ON negotiation_account_access (user_id, expires_at)`;
+
 const ACCOUNT_RECORD_ARCHIVES_SCHEMA = `
 CREATE TABLE IF NOT EXISTS account_record_archives (
   user_id TEXT NOT NULL,
@@ -213,6 +238,11 @@ CREATE TABLE IF NOT EXISTS notification_preferences (
   consented_at TEXT,
   updated_at TEXT NOT NULL
 )`;
+
+const NOTIFICATION_PREFERENCES_EMAIL_INDEX = `
+CREATE INDEX IF NOT EXISTS notification_preferences_email_consent_idx
+ON notification_preferences (lower(email))
+WHERE consented_at IS NOT NULL`;
 
 const EVIDENCE_FILES_SCHEMA = `
 CREATE TABLE IF NOT EXISTS evidence_files (
@@ -284,6 +314,10 @@ const NEGOTIATION_TENANTS_INDEX = `
 CREATE UNIQUE INDEX IF NOT EXISTS negotiation_tenants_email_idx
 ON negotiation_tenants (negotiation_id, email)`;
 
+const NEGOTIATION_TENANTS_DISCOVERY_INDEX = `
+CREATE INDEX IF NOT EXISTS negotiation_tenants_email_discovery_idx
+ON negotiation_tenants (lower(email), negotiation_id)`;
+
 const ACCOUNT_ACCESS_CONTEXT_SCHEMA = `
 CREATE TABLE IF NOT EXISTS negotiation_account_access_context (
   token_hash TEXT PRIMARY KEY,
@@ -313,6 +347,11 @@ CREATE TABLE IF NOT EXISTS arbiter_replacement_access (
 const ARBITER_REPLACEMENT_ACCESS_INDEX = `
 CREATE INDEX IF NOT EXISTS arbiter_replacement_access_status_idx
 ON arbiter_replacement_access (status, updated_at)`;
+
+const ARBITER_REPLACEMENT_DISCOVERY_INDEX = `
+CREATE INDEX IF NOT EXISTS arbiter_replacement_access_email_discovery_idx
+ON arbiter_replacement_access (lower(email), negotiation_id)
+WHERE status = 'confirmed'`;
 
 const ARBITER_REPLACEMENT_ACCOUNT_ACCESS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS arbiter_replacement_account_access (
@@ -541,6 +580,7 @@ const DEDUCTION_CATEGORY_ID_BY_LABEL = Object.freeze(
 const PRIVY_APP_ID = "cmrzdp7ss00670cju098baqsr";
 const ACCOUNT_ACCESS_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const ACCOUNT_ACCESS_SESSION_LIMIT = 5;
+const ACCOUNT_DISCOVERY_ROWS_PER_BATCH = 20;
 const DEFAULT_GEOCODER_BASE_URL = "https://photon.komoot.io";
 const ADDRESS_SUGGESTION_CACHE_TTL_MS = 10 * 60 * 1000;
 const ADDRESS_SUGGESTION_CACHE_LIMIT = 200;
@@ -3015,6 +3055,9 @@ async function initialize(db) {
   if (existing) return existing;
   const initialization = db.batch([
     db.prepare(AGREEMENTS_SCHEMA),
+    db.prepare(AGREEMENT_LANDLORD_DISCOVERY_INDEX),
+    db.prepare(AGREEMENT_ARBITER_DISCOVERY_INDEX),
+    db.prepare(AGREEMENT_STATUS_UPDATED_INDEX),
     db.prepare(EVENTS_SCHEMA),
     db.prepare(EVENTS_INDEX),
     db.prepare(RECEIPT_GUARDS_SCHEMA),
@@ -3023,9 +3066,13 @@ async function initialize(db) {
     db.prepare(RECEIPT_GUARDS_TRIGGER),
     db.prepare(ACCOUNT_ACCESS_SCHEMA),
     db.prepare(ACCOUNT_ACCESS_INDEX),
+    db.prepare(ACCOUNT_ACCESS_EXPIRES_INDEX),
+    db.prepare(ACCOUNT_ACCESS_SESSION_INDEX),
+    db.prepare(ACCOUNT_ACCESS_USER_INDEX),
     db.prepare(ACCOUNT_RECORD_ARCHIVES_SCHEMA),
     db.prepare(ACCOUNT_RECORD_ARCHIVES_INDEX),
     db.prepare(NOTIFICATION_PREFERENCES_SCHEMA),
+    db.prepare(NOTIFICATION_PREFERENCES_EMAIL_INDEX),
     db.prepare(EVIDENCE_FILES_SCHEMA),
     db.prepare(EVIDENCE_FILES_INDEX),
     db.prepare(NOTIFICATION_UNSUBSCRIBE_SCHEMA),
@@ -3033,9 +3080,11 @@ async function initialize(db) {
     db.prepare(NOTIFICATION_DELIVERIES_INDEX),
     db.prepare(NEGOTIATION_TENANTS_SCHEMA),
     db.prepare(NEGOTIATION_TENANTS_INDEX),
+    db.prepare(NEGOTIATION_TENANTS_DISCOVERY_INDEX),
     db.prepare(ACCOUNT_ACCESS_CONTEXT_SCHEMA),
     db.prepare(ARBITER_REPLACEMENT_ACCESS_SCHEMA),
     db.prepare(ARBITER_REPLACEMENT_ACCESS_INDEX),
+    db.prepare(ARBITER_REPLACEMENT_DISCOVERY_INDEX),
     db.prepare(ARBITER_REPLACEMENT_ACCOUNT_ACCESS_SCHEMA),
     db.prepare(ARBITER_REPLACEMENT_ACCOUNT_ACCESS_INDEX),
     db.prepare(FUNDING_CHECKOUT_ATTEMPTS_SCHEMA),
@@ -3538,13 +3587,23 @@ async function discoverNegotiations(request, env) {
   } else if (role === "arbiter") {
     result = await env.DB
       .prepare(
-        `SELECT negotiation.*, replacement.email AS replacement_email
-         FROM agreement_negotiations negotiation
+        `WITH matching_negotiations AS (
+           SELECT id
+           FROM agreement_negotiations
+           WHERE lower(arbiter_email) IN (${placeholders})
+           UNION
+           SELECT negotiation_id
+           FROM arbiter_replacement_access
+           WHERE status = 'confirmed'
+             AND lower(email) IN (${placeholders})
+         )
+         SELECT negotiation.*, replacement.email AS replacement_email
+         FROM matching_negotiations matching
+         JOIN agreement_negotiations negotiation
+           ON negotiation.id = matching.id
          LEFT JOIN arbiter_replacement_access replacement
            ON replacement.negotiation_id = negotiation.id
           AND replacement.status = 'confirmed'
-         WHERE lower(negotiation.arbiter_email) IN (${placeholders})
-            OR lower(replacement.email) IN (${placeholders})
          ORDER BY negotiation.updated_at DESC`,
       )
       .bind(...identity.emails, ...identity.emails)
@@ -3572,6 +3631,7 @@ async function discoverNegotiations(request, env) {
     .prepare("DELETE FROM negotiation_account_access WHERE expires_at <= ?")
     .bind(now.toISOString())
     .run();
+  const sessionStatementGroups = [];
   for (const row of rows) {
     const token = randomToken();
     const tokenHash = await hashToken(token);
@@ -3646,13 +3706,24 @@ async function discoverNegotiations(request, env) {
           .bind(row.id, identity.userId, role, ACCOUNT_ACCESS_SESSION_LIMIT),
       );
     }
-    await env.DB.batch(statements);
+    sessionStatementGroups.push(statements);
     accesses.push({
       proposalId: row.id,
       role,
       token,
       archived: archivedNegotiationIds.has(row.id),
     });
+  }
+  for (
+    let offset = 0;
+    offset < sessionStatementGroups.length;
+    offset += ACCOUNT_DISCOVERY_ROWS_PER_BATCH
+  ) {
+    await env.DB.batch(
+      sessionStatementGroups
+        .slice(offset, offset + ACCOUNT_DISCOVERY_ROWS_PER_BATCH)
+        .flat(),
+    );
   }
 
   return json({ accesses });

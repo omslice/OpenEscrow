@@ -57,6 +57,14 @@ production custody, or reliance on the compliance research as legal advice.
   claims are constrained. Unexpected errors return a correlation ID without exposing query,
   authorization, body, or exception content. These controls do not replace edge bot protection or
   operator-configured Privy sponsorship budgets.
+- **Verified:** The account-scale hot path now has migration-backed query-plan checks for landlord,
+  tenant, arbiter, replacement-arbiter, expired-session, notification-consent, and finalized-
+  agreement lookups. Replacement-arbiter discovery avoids a cross-table `OR` scan, a 45-agreement
+  portfolio creates sessions in three bounded D1 batches, background discovery is reduced from
+  every 15 seconds to every five minutes, and 30-second record refreshes allow only six concurrent
+  reads. A transient membership or record-read failure retains only the matching last-known record
+  instead of blanking the account view. This improves the hosted MVP path; production onchain
+  wallet discovery still needs an external indexer rather than an unbounded historical log scan.
 - **Verified:** Base Sepolia remote verification now bounds every JSON-RPC body, requires the exact
   protocol/request ID/result envelope, verifies custom endpoints report the expected chain, and
   binds confirmed receipt structure to the submitted transaction hash before matching an event.

@@ -73,10 +73,12 @@ test("the packaged D1 migration applies cleanly", () => {
     "0017_onchain_cancellation_receipt_guard.sql",
     "0018_finalization_receipt_assignment_guard.sql",
     "0019_api_rate_limits.sql",
+    "0020_query_path_indexes.sql",
   ]) {
     applyMigration(migrationName);
   }
   applyMigration("0001_negotiation_account_access.sql");
+  applyMigration("0020_query_path_indexes.sql");
   const tables = database
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
     .all()
@@ -108,6 +110,105 @@ test("the packaged D1 migration applies cleanly", () => {
     .map((row) => row.detail)
     .join(" ");
   assert.match(cleanupPlan, /USING INDEX api_rate_limits_updated_idx/);
+  const queryPlan = (sql, ...params) =>
+    database
+      .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+      .all(...params)
+      .map((row) => row.detail)
+      .join(" ");
+  assert.match(
+    queryPlan(
+      `SELECT * FROM agreement_negotiations
+       WHERE lower(landlord_email) = ?
+       ORDER BY updated_at DESC`,
+      "landlord@example.com",
+    ),
+    /USING INDEX agreement_negotiations_landlord_discovery_idx/,
+  );
+  assert.match(
+    queryPlan(
+      `SELECT negotiation.id
+       FROM agreement_negotiations negotiation
+       JOIN negotiation_tenants tenant ON tenant.negotiation_id = negotiation.id
+       WHERE lower(tenant.email) = ?
+       ORDER BY negotiation.updated_at DESC`,
+      "tenant@example.com",
+    ),
+    /USING (?:COVERING )?INDEX negotiation_tenants_email_discovery_idx/,
+  );
+  const arbiterDiscoveryPlan = queryPlan(
+    `WITH matching_negotiations AS (
+       SELECT id
+       FROM agreement_negotiations
+       WHERE lower(arbiter_email) = ?
+       UNION
+       SELECT negotiation_id
+       FROM arbiter_replacement_access
+       WHERE status = 'confirmed' AND lower(email) = ?
+     )
+     SELECT negotiation.id
+     FROM matching_negotiations matching
+     JOIN agreement_negotiations negotiation ON negotiation.id = matching.id
+     LEFT JOIN arbiter_replacement_access replacement
+       ON replacement.negotiation_id = negotiation.id
+      AND replacement.status = 'confirmed'
+     ORDER BY negotiation.updated_at DESC`,
+    "arbiter@example.com",
+    "arbiter@example.com",
+  );
+  assert.match(
+    arbiterDiscoveryPlan,
+    /USING INDEX agreement_negotiations_arbiter_discovery_idx/,
+  );
+  assert.match(
+    arbiterDiscoveryPlan,
+    /USING INDEX arbiter_replacement_access_email_discovery_idx/,
+  );
+  assert.match(
+    queryPlan(
+      "DELETE FROM negotiation_account_access WHERE expires_at <= ?",
+      "2026-08-01T00:00:00.000Z",
+    ),
+    /USING (?:COVERING )?INDEX negotiation_account_access_expires_idx/,
+  );
+  assert.match(
+    queryPlan(
+      `SELECT id
+       FROM negotiation_account_access
+       WHERE negotiation_id = ? AND user_id = ? AND role = ?
+       ORDER BY created_at DESC, id DESC
+       LIMIT -1 OFFSET 5`,
+      "proposal-1",
+      "user-1",
+      "landlord",
+    ),
+    /USING (?:COVERING )?INDEX negotiation_account_access_session_idx/,
+  );
+  assert.match(
+    queryPlan(
+      "DELETE FROM negotiation_account_access WHERE user_id = ?",
+      "user-1",
+    ),
+    /USING (?:COVERING )?INDEX negotiation_account_access_user_idx/,
+  );
+  assert.match(
+    queryPlan(
+      `SELECT * FROM agreement_negotiations
+       WHERE status = 'finalized'
+       ORDER BY updated_at ASC
+       LIMIT 250`,
+    ),
+    /USING (?:COVERING )?INDEX agreement_negotiations_status_updated_idx/,
+  );
+  assert.match(
+    queryPlan(
+      `SELECT agreement_activity
+       FROM notification_preferences
+       WHERE lower(email) = lower(?) AND consented_at IS NOT NULL`,
+      "tenant@example.com",
+    ),
+    /USING (?:COVERING )?INDEX notification_preferences_email_consent_idx/,
+  );
   const fundingEventColumns = database
     .prepare("PRAGMA table_info(funding_checkout_events)")
     .all()
@@ -450,6 +551,25 @@ class TestD1 {
 
   async batch(statements) {
     return statements.map((statement) => statement.run());
+  }
+}
+
+class CountingTestD1 extends TestD1 {
+  constructor() {
+    super();
+    this.batchCalls = 0;
+    this.maximumBatchSize = 0;
+  }
+
+  async batch(statements) {
+    this.batchCalls += 1;
+    this.maximumBatchSize = Math.max(this.maximumBatchSize, statements.length);
+    return super.batch(statements);
+  }
+
+  resetBatchMetrics() {
+    this.batchCalls = 0;
+    this.maximumBatchSize = 0;
   }
 }
 
@@ -4692,6 +4812,82 @@ test("verified Privy accounts discover finalized landlord and tenant agreements"
     assert.equal(restoredPreferences.deadlineReminders, true);
     assert.equal(restoredPreferences.consentedAt, savedPreferences.consentedAt);
     assert.equal(jwksFetchCount, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("account discovery batches session writes for a larger property portfolio", async () => {
+  const db = new CountingTestD1();
+  const appId = "test-privy-portfolio-app";
+  const kid = "test-portfolio-key";
+  const keyPair = await crypto.subtle.generateKey(
+    { name: "ECDSA", namedCurve: "P-256" },
+    true,
+    ["sign", "verify"],
+  );
+  const publicJwk = await crypto.subtle.exportKey("jwk", keyPair.publicKey);
+  const identityToken = await identityTokenFor(
+    keyPair.privateKey,
+    appId,
+    kid,
+    "portfolio@example.com",
+    { sub: "did:privy:portfolio-landlord" },
+  );
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () =>
+    Response.json({ keys: [{ ...publicJwk, kid, alg: "ES256", use: "sig" }] });
+
+  try {
+    await worker.fetch(request("/api/system/readiness"), {
+      DB: db,
+      PRIVY_APP_ID: appId,
+    });
+    const insert = db.database.prepare(
+      `INSERT INTO agreement_negotiations
+       (id, created_at, updated_at, status, revision, terms_json,
+        landlord_email, tenant_email, landlord_token_hash, tenant_token_hash)
+       VALUES (?, ?, ?, 'finalized', 1, '{}', ?, ?, ?, ?)`,
+    );
+    for (let index = 0; index < 45; index += 1) {
+      const suffix = String(index).padStart(2, "0");
+      insert.run(
+        `portfolio-${suffix}`,
+        `2026-08-01T00:${suffix}:00.000Z`,
+        `2026-08-01T00:${suffix}:00.000Z`,
+        "portfolio@example.com",
+        `tenant-${suffix}@example.com`,
+        `landlord-hash-${suffix}`,
+        `tenant-hash-${suffix}`,
+      );
+    }
+    db.resetBatchMetrics();
+
+    const discovery = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/negotiations/discover", {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            "privy-id-token": identityToken,
+          },
+          body: JSON.stringify({ role: "landlord" }),
+        }),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+
+    assert.equal(discovery.accesses.length, 45);
+    assert.equal(db.batchCalls, 3);
+    assert.equal(db.maximumBatchSize, 40);
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM negotiation_account_access WHERE user_id = ?",
+        )
+        .get("did:privy:portfolio-landlord").count,
+      45,
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }

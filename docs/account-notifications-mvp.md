@@ -16,6 +16,12 @@ production identity, custody, privacy, or communications design.
   by landlord, tenant, or arbiter email across browser sessions. Key responses and token time
   claims are bounded, only ES256 P-256 signing keys are accepted, and repeated verification reuses
   a short-lived shared cache rather than requesting keys for every account action.
+- Verified-email discovery uses migration-backed expression indexes for landlord, tenant, original-
+  arbiter, and confirmed replacement-arbiter lookup. The replacement path uses indexed candidate
+  IDs instead of a cross-table `OR` scan. A 45-agreement regression proves derived sessions are
+  created in three bounded D1 batches; the visible workspace rechecks account membership every
+  five minutes, refreshes records every 30 seconds, permits at most six record reads at once, and
+  retains the matching last-known record through a transient discovery or read failure.
 - A verified user can end every derived OpenEscrow record session issued to that account and sign
   out the current device without changing agreements, archive preferences, invitation links, or
   another participant's access. Global local cleanup and provider sign-out are skipped if a

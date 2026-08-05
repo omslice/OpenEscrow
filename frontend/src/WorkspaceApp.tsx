@@ -34,7 +34,6 @@ import {
   storeNegotiationAccess,
   updateRecordArchivePreference,
   type NegotiationAccess,
-  type NegotiationRecord,
 } from "./lib/negotiations";
 import { agreementReference, proposalReference } from "./lib/displayIds";
 import { ARBITER_UI_ENABLED } from "./lib/featureFlags";
@@ -53,6 +52,16 @@ import {
   activityHasVerificationDetails,
   friendlyActivitySummary,
 } from "./lib/activityDisplay";
+import { mapSettledWithConcurrency } from "./lib/settledPool";
+import {
+  mergeSavedRecordRefresh,
+  type SavedRecord,
+} from "./lib/savedRecordRefresh";
+
+const ACCOUNT_DISCOVERY_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
+const ACCOUNT_DISCOVERY_RETRY_INTERVAL_MS = 60 * 1000;
+const SAVED_RECORD_REFRESH_INTERVAL_MS = 30 * 1000;
+const SAVED_RECORD_LOAD_CONCURRENCY = 6;
 
 const AgreementCard = lazy(() =>
   import("./components/AgreementCard").then((module) => ({
@@ -91,7 +100,7 @@ const TestFunds = lazy(() =>
 );
 
 type WorkspaceTab = "overview" | "proposals" | "agreements" | "record";
-type SavedProposal = { access: NegotiationAccess; record: NegotiationRecord };
+type SavedProposal = SavedRecord;
 const WORKSPACE_TABS: WorkspaceTab[] = [
   "overview",
   "proposals",
@@ -235,6 +244,8 @@ function AppView({
   const [isChangingRole, setIsChangingRole] = useState(false);
   const [savedProposals, setSavedProposals] = useState<SavedProposal[]>([]);
   const [savedRecords, setSavedRecords] = useState<SavedProposal[]>([]);
+  const savedRecordsRef = useRef<SavedProposal[]>(savedRecords);
+  savedRecordsRef.current = savedRecords;
   const [expandedRecordKeys, setExpandedRecordKeys] = useState<Record<string, boolean>>(
     {},
   );
@@ -408,6 +419,7 @@ function AppView({
   }, [inviteRole, workspaceRole]);
 
   useEffect(() => {
+    savedRecordsRef.current = [];
     setSavedProposals([]);
     setSavedRecords([]);
     setExpandedRecordKeys({});
@@ -448,16 +460,36 @@ function AppView({
   useEffect(() => {
     if (!workspaceRole) return;
     let active = true;
+    let nextAccountDiscoveryAt = 0;
 
     async function refreshSavedProposals() {
       try {
         const localAccesses = identityToken
           ? []
           : listNegotiationAccesses(workspaceRole || undefined);
-        const accountAccesses =
-          identityToken && workspaceRole
-            ? await discoverNegotiationsForAccount(workspaceRole, identityToken)
-            : [];
+        let accountAccesses = identityToken
+          ? listNegotiationAccesses(workspaceRole).filter(
+              (access) => access.source === "account",
+            )
+          : [];
+        if (
+          identityToken &&
+          workspaceRole &&
+          (accountAccesses.length === 0 || Date.now() >= nextAccountDiscoveryAt)
+        ) {
+          try {
+            accountAccesses = await discoverNegotiationsForAccount(
+              workspaceRole,
+              identityToken,
+            );
+            nextAccountDiscoveryAt =
+              Date.now() + ACCOUNT_DISCOVERY_REFRESH_INTERVAL_MS;
+          } catch (error) {
+            nextAccountDiscoveryAt =
+              Date.now() + ACCOUNT_DISCOVERY_RETRY_INTERVAL_MS;
+            if (accountAccesses.length === 0) throw error;
+          }
+        }
         const accesses = [...localAccesses, ...accountAccesses].filter(
           (access, index, all) =>
             all.findIndex(
@@ -466,19 +498,21 @@ function AppView({
                 candidate.role === access.role,
             ) === index,
         );
-        const loaded = await Promise.allSettled(
-          accesses.map(async (access) => ({
+        const loaded = await mapSettledWithConcurrency(
+          accesses,
+          SAVED_RECORD_LOAD_CONCURRENCY,
+          async (access) => ({
             access,
             record: await loadNegotiation(access),
-          })),
+          }),
         );
         if (!active) return;
-        const records = loaded
-          .filter(
-            (result): result is PromiseFulfilledResult<SavedProposal> =>
-              result.status === "fulfilled",
-          )
-          .map((result) => result.value);
+        const records = mergeSavedRecordRefresh(
+          accesses,
+          loaded,
+          savedRecordsRef.current,
+        );
+        savedRecordsRef.current = records;
         setSavedRecords(records);
         setSavedProposals(compactActiveProposals(records));
       } catch {
@@ -489,7 +523,7 @@ function AppView({
 
     const stopPolling = startVisibilityAwarePolling({
       callback: refreshSavedProposals,
-      intervalMs: 15_000,
+      intervalMs: SAVED_RECORD_REFRESH_INTERVAL_MS,
       visibilityTarget: document,
       timers: window,
     });
@@ -529,11 +563,13 @@ function AppView({
               candidate.proposalId === access.proposalId && candidate.role === access.role,
           ) === index,
       );
-      const loaded = await Promise.allSettled(
-        accesses.map(async (access) => ({
+      const loaded = await mapSettledWithConcurrency(
+        accesses,
+        SAVED_RECORD_LOAD_CONCURRENCY,
+        async (access) => ({
           access,
           record: await loadNegotiation(access),
-        })),
+        }),
       );
       if (!requestIsCurrent()) return;
       const records = loaded

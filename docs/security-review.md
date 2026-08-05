@@ -455,6 +455,16 @@ limit, or denial-of-service guarantee. Privy sponsorship budgets and alerts rema
 control, and production traffic still requires external application-security review and runtime
 monitoring.
 
+The main account-scale database paths are also explicitly indexed. Migration `0020` covers
+verified-email landlord, tenant, original-arbiter, and confirmed replacement-arbiter discovery;
+expired-session removal; per-account session containment; notification-consent lookup; and the
+finalized-agreement scheduler. Query-plan tests require each intended index. Replacement-arbiter
+discovery uses two indexed candidate queries joined by `UNION`, avoiding the former cross-table
+`OR` scan. Session creation for 45 discovered agreements completes in three bounded D1 batches,
+and the browser limits private-record reads to six concurrent requests. These are scale and
+availability controls, not a claim that the current testnet event-log scanner is a production
+indexer.
+
 The same remote-response boundary now protects Base Sepolia verification. JSON-RPC bodies are
 stream-limited to 512 KiB and must return JSON-RPC 2.0 with the exact request ID and one result.
 Configured custom endpoints must identify Base Sepolia before they can support registry readiness

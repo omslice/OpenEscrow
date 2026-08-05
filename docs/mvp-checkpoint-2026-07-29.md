@@ -54,6 +54,15 @@ detailed validation ledger.
   cleanup, bounded/cached Privy JWKS validation, constrained token time claims, and sanitized
   correlation-ID error boundary are covered by server regressions, including a forced failure with
   a sentinel secret in the query, authorization header, and exception.
+- **Verified:** Migration `0020_query_path_indexes.sql` adds expression and covering indexes for
+  the account-discovery, expired-session cleanup, notification-consent, and finalized-agreement
+  scheduler queries, with `EXPLAIN QUERY PLAN` regressions proving each hot lookup uses its named
+  index. Confirmed replacement-arbiter discovery now builds an indexed candidate-ID set instead
+  of scanning a cross-table `OR`. A 45-agreement regression creates all access sessions in three
+  bounded D1 batches. The visible account workspace rechecks membership every five minutes,
+  refreshes saved records every 30 seconds, and caps record-read concurrency at six while
+  preserving ordered partial-failure handling and the matching last-known record during a
+  transient discovery or read outage.
 - **Verified:** Registry and transaction-receipt verification consume bounded JSON-RPC 2.0
   envelopes with exact response IDs. Custom endpoints must report Base Sepolia, receipt objects
   must identify the submitted transaction and confirmed block before log matching, and concurrent
