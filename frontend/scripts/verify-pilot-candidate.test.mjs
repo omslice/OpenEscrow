@@ -51,7 +51,7 @@ test("candidate verification runs every credential-free gate in dependency order
   assert.equal(evidence.ok, true);
   assert.equal(
     evidence.artifactSchemaVersion,
-    "openescrow-pilot-candidate/v4",
+    "openescrow-pilot-candidate/v5",
   );
   assert.equal(evidence.testnetBoundary.releaseMode, "testnet");
   assert.equal(evidence.testnetBoundary.productionMoneyEnabled, false);
@@ -262,6 +262,43 @@ function candidateArtifactFixture(t) {
   );
   t.after(() => rmSync(repositoryRoot, { recursive: true, force: true }));
   const frontendRoot = path.join(repositoryRoot, "frontend");
+  mkdirSync(frontendRoot, { recursive: true });
+  writeFileSync(
+    path.join(frontendRoot, "package.json"),
+    `${JSON.stringify({
+      name: "frontend",
+      version: "0.0.0",
+      dependencies: { "runtime-package": "^1.0.0" },
+      devDependencies: { "test-package": "^2.0.0" },
+    })}\n`,
+  );
+  writeFileSync(
+    path.join(frontendRoot, "package-lock.json"),
+    `${JSON.stringify({
+      name: "frontend",
+      version: "0.0.0",
+      lockfileVersion: 3,
+      packages: {
+        "": {
+          name: "frontend",
+          version: "0.0.0",
+          dependencies: { "runtime-package": "^1.0.0" },
+          devDependencies: { "test-package": "^2.0.0" },
+        },
+        "node_modules/runtime-package": {
+          version: "1.2.3",
+          integrity: "sha512-runtime",
+          license: "MIT",
+        },
+        "node_modules/test-package": {
+          version: "2.3.4",
+          integrity: "sha512-test",
+          license: "MIT",
+          dev: true,
+        },
+      },
+    })}\n`,
+  );
   mkdirSync(path.join(frontendRoot, ".contract-assurance"), {
     recursive: true,
   });
@@ -273,6 +310,17 @@ function candidateArtifactFixture(t) {
       status: "passed",
       executionMode: "local-credential-free",
       sourceCommit: commitSha,
+      forgeVersion: "forge Version: 1.7.1",
+      profile: {
+        solcVersion: "0.8.26",
+        optimizer: true,
+        optimizerRuns: 200,
+        viaIr: true,
+        storageLayoutOutput: true,
+        fuzzRuns: 512,
+        invariantRuns: 256,
+        invariantDepth: 128,
+      },
       deterministicBuild: { forcedCleanCompile: true, offline: true },
       tests: { total: 2, passed: 1, failed: 0, skipped: 1 },
       contracts: ["OpenEscrow", "OperationsReserve", "AgreementActivityRegistry"].map(
@@ -357,8 +405,21 @@ test("candidate artifacts bind both rehearsals and every packaged Sites byte", (
   assert.equal(first.contractAssurance.sourceCommit, commitSha);
   assert.equal(first.contractAssurance.contracts.length, 3);
   assert.equal(first.contractAssurance.dependencies.length, 2);
+  assert.equal(first.contractAssurance.toolchain.solc, "0.8.26");
+  assert.equal(first.contractAssurance.profile.invariantDepth, 128);
   assert.equal(first.deploymentRehearsal.retiredCohortIsolationVerified, true);
   assert.equal(first.deploymentRehearsal.configSwitch.rollbackVerified, true);
+  assert.equal(
+    first.softwareInventory.schema,
+    "openescrow.software-inventory/v1",
+  );
+  assert.equal(first.softwareInventory.sourceCommit, commitSha);
+  assert.equal(first.softwareInventory.componentCount, 1);
+  assert.deepEqual(
+    first.softwareInventory.components.map((component) => component.name),
+    ["runtime-package"],
+  );
+  assert.match(first.softwareInventory.sha256, /^sha256:[0-9a-f]{64}$/);
   assert.deepEqual(first.pilotRehearsal.testTargets, [
     "server/index.test.mjs",
     "scripts/check-record-verification.mjs",
@@ -436,6 +497,23 @@ test("candidate artifacts reject a contract with insufficient bytecode margin", 
   );
 });
 
+test("candidate artifacts reject compiler or invariant profile drift", (t) => {
+  const fixture = candidateArtifactFixture(t);
+  const summaryPath = path.join(
+    fixture.frontendRoot,
+    ".contract-assurance",
+    "latest.json",
+  );
+  const summary = JSON.parse(readFileSync(summaryPath, "utf8"));
+  summary.profile.solcVersion = "0.8.27";
+  writeFileSync(summaryPath, `${JSON.stringify(summary)}\n`);
+
+  assert.throws(
+    () => collectCandidateArtifacts({ ...fixture, commitSha }),
+    /unexpected compiler or test toolchain/i,
+  );
+});
+
 test("candidate artifacts reject a deployment rehearsal without exact rollback", (t) => {
   const fixture = candidateArtifactFixture(t);
   const summaryPath = path.join(
@@ -450,5 +528,18 @@ test("candidate artifacts reject a deployment rehearsal without exact rollback",
   assert.throws(
     () => collectCandidateArtifacts({ ...fixture, commitSha }),
     /configuration switch and rollback/,
+  );
+});
+
+test("candidate artifacts reject incomplete production dependency evidence", (t) => {
+  const fixture = candidateArtifactFixture(t);
+  const lockfilePath = path.join(fixture.frontendRoot, "package-lock.json");
+  const lockfile = JSON.parse(readFileSync(lockfilePath, "utf8"));
+  delete lockfile.packages["node_modules/runtime-package"].integrity;
+  writeFileSync(lockfilePath, `${JSON.stringify(lockfile)}\n`);
+
+  assert.throws(
+    () => collectCandidateArtifacts({ ...fixture, commitSha }),
+    /incomplete lock evidence/i,
   );
 });

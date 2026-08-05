@@ -41,6 +41,22 @@ const validOwnerActions = `# Owner actions
 - [x] Done.
 `;
 
+const validWeekendChecklist = `# Weekend checklist
+
+[owner](./owner-actions.md)
+[contract](./base-sepolia-deployment.md)
+[pilot](./testnet-pilot-runbook.md)
+[incident](./testnet-incident-response-runbook.md)
+
+## Safety boundary
+## Choose the release path
+## Credentialed setup
+## Supervised checks
+## What to return for verification
+
+${Array.from({ length: 10 }, (_, index) => `- [ ] Step ${index + 1}.`).join("\n")}
+`;
+
 const validLegacy = {
   "legacy.md": "Superseded. See [roadmap](./mvp-roadmap.md).",
 };
@@ -51,6 +67,7 @@ test("accepts the canonical roadmap and owner-checklist structure", () => {
       roadmap: validRoadmap,
       validationLedger: validLedger,
       ownerActions: validOwnerActions,
+      weekendChecklist: validWeekendChecklist,
       legacyDocuments: validLegacy,
     }),
     [],
@@ -68,6 +85,7 @@ test("rejects status items placed under the wrong roadmap section", () => {
       "- **Verified:** Misplaced evidence.",
     ),
     ownerActions: validOwnerActions,
+    weekendChecklist: validWeekendChecklist,
     legacyDocuments: validLegacy,
   });
 
@@ -92,6 +110,7 @@ test("rejects stale numeric deployment claims and active-looking legacy handoffs
     roadmap: validRoadmap,
     validationLedger: validLedger,
     ownerActions: `${validOwnerActions}\nThe public site remains on production version 56.`,
+    weekendChecklist: validWeekendChecklist,
     legacyDocuments: { "legacy.md": "Current overnight instructions." },
   });
 
@@ -105,6 +124,31 @@ test("rejects stale numeric deployment claims and active-looking legacy handoffs
     errors.includes(
       "legacy.md must identify itself as superseded and point to mvp-roadmap.md.",
     ),
+    true,
+  );
+});
+
+test("rejects incomplete or secret-bearing weekend owner instructions", () => {
+  const errors = checkRoadmapDocuments({
+    roadmap: validRoadmap,
+    validationLedger: validLedger,
+    ownerActions: validOwnerActions,
+    weekendChecklist: validWeekendChecklist
+      .replace("## Credentialed setup", "## Setup")
+      .replace("- [ ] Step 10.", "password: abcdefghijklmnopqrstuvwxyz"),
+    legacyDocuments: validLegacy,
+  });
+
+  assert.equal(
+    errors.includes("Weekend owner checklist is missing ## Credentialed setup."),
+    true,
+  );
+  assert.equal(
+    errors.includes("Weekend owner checklist must retain its actionable unchecked steps."),
+    true,
+  );
+  assert.equal(
+    errors.includes("Owner documentation appears to contain assigned secret material."),
     true,
   );
 });

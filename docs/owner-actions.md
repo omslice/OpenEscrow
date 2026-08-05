@@ -5,6 +5,10 @@ accounts, signatures, private decisions, or external professional engagement.
 Codex should review and summarize the open items from this file whenever the
 owner asks for a progress update.
 
+For one supervised weekend session, start with the shorter
+[`owner-weekend-checklist.md`](./owner-weekend-checklist.md), then return here for the complete
+running list and future tracks.
+
 Do not paste passwords, private keys, API keys, encryption keys, recovery
 material, or identity documents into chat. Complete secret entry in the
 provider or hosting control that owns the secret.

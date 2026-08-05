@@ -415,9 +415,9 @@ operations-reserve handler adds three stateful invariants covering net token
 accounting, exact unique tenant shares with agreement-token binding, and immutable
 escrow/reserve/treasury bindings.
 
-Pilot-candidate schema v4 binds this contract-assurance evidence to the exact source
-commit together with the deployment rehearsal, both operational rehearsals, and every packaged
-Sites byte.
+Pilot-candidate schema v5 binds this contract-assurance evidence to the exact source
+commit together with the deployment rehearsal, both operational rehearsals, the hashed npm
+manifest/lockfile and exact production software inventory, and every packaged Sites byte.
 The detailed assumptions, residual risks, reproduction commands, and independent
 review questions are in `contract-threat-model.md` and
 `independent-audit-handoff.md`.

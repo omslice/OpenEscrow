@@ -90,7 +90,7 @@ detailed validation ledger.
   rejects both cross-cohort registry attempts with the exact authorization error, closes only the
   retired agreement, and preserves the candidate's full principal and Active state. A 12-field
   in-memory client/server switch parses back to the candidate manifest and rolls back to the exact
-  original bytes. Pilot-candidate schema v4 binds this local artifact after contract assurance.
+  original bytes. Pilot-candidate schema v5 binds this local artifact after contract assurance.
 - **Verified:** A secondary-contract review hardened the atomic deposit-plus-reserve boundary,
   reserve deployment binding, reserve phase gates, and registry arbiter authorization. Every
   externally callable escrow lifecycle mutation now shares the same reentrancy lock, funding
@@ -659,6 +659,19 @@ detailed validation ledger.
   pass a shared eligibility and lifecycle contract covering cancellation, timeout, uncertainty,
   late confirmation, exact/conflicting replay, reconciliation-key reuse, failure, refunds, and
   operator recovery. Production funding routes and trusted-webhook endpoints remain disabled.
+- **Verified:** Exact-source pilot candidate schema v5 adds a deterministic production software
+  inventory to the existing contract, deployment-rehearsal, pilot, incident, and Sites checksums.
+  It binds the source commit and Node runtime, hashes `package.json` and `package-lock.json`,
+  resolves every declared runtime dependency, inventories every non-development package path with
+  its exact version and npm integrity value, records license counts, and rejects manifest drift or
+  a component without lock evidence. Development-only packages are not mislabeled as deployed
+  runtime components.
+- **Verified:** The owner-only work is now available as a concise supervised weekend checklist
+  without replacing the complete running action list. It separates code-only deployment from an
+  immutable contract-cohort broadcast, names testnet and secret-handling stop conditions, links
+  the detailed deployment/pilot/incident runbooks, and limits return evidence to public hashes,
+  manifests, URLs, sanitized readiness, and redacted notes. Roadmap validation rejects missing
+  sections, lost runbook links, a non-actionable checklist, or apparent assigned secret material.
 
 ## Remaining
 

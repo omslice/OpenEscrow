@@ -10,9 +10,10 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { validateDeploymentManifest } from "./deployment-config-plan.mjs";
+import { buildReleaseSoftwareInventory } from "./release-software-inventory.mjs";
 
 export const PILOT_CANDIDATE_SCHEMA_VERSION =
-  "openescrow-pilot-candidate/v4";
+  "openescrow-pilot-candidate/v5";
 
 export const PILOT_CANDIDATE_STEPS = Object.freeze([
   Object.freeze({
@@ -292,6 +293,21 @@ function verifiedContractAssuranceArtifact({
       `Contract assurance is not passing deterministic offline evidence for ${commitSha}.`,
     );
   }
+  if (
+    typeof summary.forgeVersion !== "string" ||
+    summary.forgeVersion.length < 3 ||
+    summary.forgeVersion.length > 200 ||
+    summary.profile?.solcVersion !== "0.8.26" ||
+    summary.profile?.optimizer !== true ||
+    summary.profile?.optimizerRuns !== 200 ||
+    summary.profile?.viaIr !== true ||
+    summary.profile?.storageLayoutOutput !== true ||
+    summary.profile?.fuzzRuns !== 512 ||
+    summary.profile?.invariantRuns !== 256 ||
+    summary.profile?.invariantDepth !== 128
+  ) {
+    throw new Error("Contract assurance has an unexpected compiler or test toolchain.");
+  }
 
   const total = Number(summary.tests?.total);
   const passed = Number(summary.tests?.passed);
@@ -341,6 +357,19 @@ function verifiedContractAssuranceArtifact({
     generatedAt: summary.generatedAt,
     sourceCommit: summary.sourceCommit,
     executionMode: summary.executionMode,
+    toolchain: {
+      forge: summary.forgeVersion,
+      solc: summary.profile.solcVersion,
+    },
+    profile: {
+      optimizer: summary.profile.optimizer,
+      optimizerRuns: summary.profile.optimizerRuns,
+      viaIr: summary.profile.viaIr,
+      storageLayoutOutput: summary.profile.storageLayoutOutput,
+      fuzzRuns: summary.profile.fuzzRuns,
+      invariantRuns: summary.profile.invariantRuns,
+      invariantDepth: summary.profile.invariantDepth,
+    },
     tests: { total, passed, failed, skipped },
     contracts: summary.contracts.map((contract) => ({
       name: contract.name,
@@ -503,6 +532,10 @@ export function collectCandidateArtifacts({
     deploymentRehearsal: verifiedDeploymentRehearsalArtifact({
       frontendRoot,
       repositoryRoot,
+      commitSha,
+    }),
+    softwareInventory: buildReleaseSoftwareInventory({
+      frontendRoot,
       commitSha,
     }),
   };

@@ -21,6 +21,7 @@ export function checkRoadmapDocuments({
   roadmap,
   validationLedger,
   ownerActions,
+  weekendChecklist = "",
   legacyDocuments,
 }) {
   const errors = [];
@@ -67,6 +68,34 @@ export function checkRoadmapDocuments({
     );
   }
 
+  for (const heading of [
+    "## Safety boundary",
+    "## Choose the release path",
+    "## Credentialed setup",
+    "## Supervised checks",
+    "## What to return for verification",
+  ]) {
+    if (!weekendChecklist.includes(heading)) {
+      errors.push(`Weekend owner checklist is missing ${heading}.`);
+    }
+  }
+  if (
+    !weekendChecklist.includes("owner-actions.md") ||
+    !weekendChecklist.includes("base-sepolia-deployment.md") ||
+    !weekendChecklist.includes("testnet-pilot-runbook.md") ||
+    !weekendChecklist.includes("testnet-incident-response-runbook.md")
+  ) {
+    errors.push("Weekend owner checklist is missing a required detailed-runbook link.");
+  }
+  if ((weekendChecklist.match(/^- \[ \]/gm) || []).length < 10) {
+    errors.push("Weekend owner checklist must retain its actionable unchecked steps.");
+  }
+  const secretAssignment =
+    /(?:api[_ -]?key|secret|password|private[_ -]?key)\s*(?:=|:)\s*`?["']?[a-z0-9+/_=-]{16,}/i;
+  if (secretAssignment.test(`${ownerActions}\n${weekendChecklist}`)) {
+    errors.push("Owner documentation appears to contain assigned secret material.");
+  }
+
   for (const [name, contents] of Object.entries(legacyDocuments)) {
     if (!contents.includes("Superseded") || !contents.includes("mvp-roadmap.md")) {
       errors.push(`${name} must identify itself as superseded and point to mvp-roadmap.md.`);
@@ -85,6 +114,7 @@ function runCli() {
     roadmap: read("docs/mvp-roadmap.md"),
     validationLedger: read("docs/mvp-checkpoint-2026-07-29.md"),
     ownerActions: read("docs/owner-actions.md"),
+    weekendChecklist: read("docs/owner-weekend-checklist.md"),
     legacyDocuments: {
       "docs/overnight-roadmap-priority.md": read(
         "docs/overnight-roadmap-priority.md",

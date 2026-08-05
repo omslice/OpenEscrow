@@ -16,6 +16,12 @@ The release check fails on:
 Exceptions are allowed only for an exact moderate advisory and expire automatically. They cannot
 waive high or critical findings.
 
+The exact-source pilot candidate additionally emits schema-v1 production software
+inventory evidence. It hashes `package.json` and `package-lock.json`, resolves each
+direct runtime dependency, and records every non-development npm package path with
+its exact version, lock integrity, and declared license. Missing integrity or
+manifest/lock drift fails candidate collection before deployment review.
+
 ## Current status
 
 There are no active dependency-audit exceptions. The release check requires the production

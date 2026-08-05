@@ -4,6 +4,8 @@ Updated 2026-08-05. This is the canonical high-level project status. The
 [validation ledger](./mvp-checkpoint-2026-07-29.md) contains detailed evidence, and
 [owner actions](./owner-actions.md) contains only work that needs credentials, signatures,
 external professional review, or an owner decision.
+The [weekend checklist](./owner-weekend-checklist.md) is the concise supervised-session view of
+those owner-only actions.
 
 Labels are evidence boundaries:
 
@@ -84,8 +86,11 @@ production custody, or reliance on the compliance research as legal advice.
   creation bytecode, storage-layout, selector-collision, EVM-size-margin, and dependency-tree
   evidence. Three new reserve invariants pass 98,304 stateful calls, and an overlapping-ID cohort
   regression proves retired and candidate deployments cannot share funds, roles, reserve
-  receipts, or registry authority. Pilot-candidate schema v4 rejects dirty source, rechecks it
-  after the build, and binds this evidence plus the deployment rehearsal to the exact commit. The threat model and independent-
+  receipts, or registry authority. Pilot-candidate schema v5 rejects dirty source, rechecks it
+  after the build, and binds this evidence plus the deployment rehearsal to the exact commit.
+  Candidate schema v5 also records the exact Node runtime, hashes `package.json` and the v3
+  lockfile, resolves every direct runtime dependency, and inventories every non-development npm
+  component with its version, integrity, license, and package path. The threat model and independent-
   audit handoff are ready; professional audit and any broadcast remain owner/external gates.
 - **Verified:** A credential-free deployment rehearsal now starts ephemeral local Anvil with Base
   Sepolia's chain ID, deploys two complete escrow/reserve/registry cohorts from compiled release
@@ -345,8 +350,8 @@ production custody, or reliance on the compliance research as legal advice.
   incident scenarios.
 - `npm run deploy:pilot-candidate` runs the credential-free release, rehearsal, incident, and
   exact-source packaging gates in dependency order. Its machine-readable evidence binds both
-  rehearsal summaries, their JUnit reports, and every packaged Sites byte to the candidate commit
-  without querying or changing the live site.
+  rehearsal summaries, their JUnit reports, the full production software inventory, and every
+  packaged Sites byte to the candidate commit without querying or changing the live site.
 - `npm run pilot:check` evaluates the currently deployed readiness endpoint and intentionally
   exits unsuccessfully while required hosted gates remain.
 - `npm run build:sites` builds the candidate and verifies exact Git provenance before packaging.
