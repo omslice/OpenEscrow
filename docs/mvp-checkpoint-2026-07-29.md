@@ -135,9 +135,11 @@ detailed validation ledger.
   context as soon as its scenario finishes and explicitly proves the arbiter resolution view is
   ready before exercising it. The complete release sequence reaches the late ruling, deadline,
   activity-proof, lifecycle, build, and landing-load gates without accumulating stale test pages.
-  Mocked Vite modes also use separate dependency caches, while the account-workspace rehearsal
-  prewarms its deferred module, selects a per-process port, and waits for server shutdown. Two
-  runs separated by another mocked mode and the complete 23-scenario pilot rehearsal pass.
+  Every rendered test mode now has a separate dependency cache. Account-workspace and load-
+  recovery rehearsals prewarm their deferred modules, select per-process ports, close completed
+  browser contexts, and wait for server shutdown. Two account runs separated by another mocked
+  mode, the complete 23-scenario pilot rehearsal, and the consecutive record/accessibility/load/
+  deposit checks pass without a stale dynamic import.
   If local and session storage are blocked, the invitation, proposal bundle, jurisdiction,
   tracked-agreement, preference, and notification caches degrade to current-page state instead
   of blanking the page or making a completed action look failed. Worker authorization remains

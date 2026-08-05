@@ -11,15 +11,9 @@ export default defineConfig(({ mode }) => {
   const privateRecordRecoveryTest = mode === 'private-record-recovery-test'
   const evidenceRecoveryTest = mode === 'evidence-recovery-test'
   const pilotLifecycleTest = mode === 'pilot-lifecycle-test'
-  const isolatedTestCacheDir =
-    accountSwitchTest ||
-    fundingRecoveryTest ||
-    fundingProductionLockTest ||
-    privateRecordRecoveryTest ||
-    evidenceRecoveryTest ||
-    pilotLifecycleTest
-      ? `node_modules/.vite-${mode}`
-      : undefined
+  const isolatedTestCacheDir = mode.endsWith('-test')
+    ? `node_modules/.vite-${mode}`
+    : undefined
   return {
     cacheDir: isolatedTestCacheDir,
     plugins: [react()],

@@ -26,7 +26,16 @@ async function waitForServer() {
 
 const server = spawn(
   process.execPath,
-  [viteEntrypoint, "--host", host, "--port", String(port), "--strictPort"],
+  [
+    viteEntrypoint,
+    "--host",
+    host,
+    "--port",
+    String(port),
+    "--strictPort",
+    "--mode",
+    "deposit-list-test",
+  ],
   {
     cwd: new URL("..", import.meta.url),
     stdio: ["ignore", "pipe", "pipe"],

@@ -176,7 +176,16 @@ async function stopServer(child) {
 
 const server = spawn(
   process.execPath,
-  [viteEntrypoint, "--host", host, "--port", String(port), "--strictPort"],
+  [
+    viteEntrypoint,
+    "--host",
+    host,
+    "--port",
+    String(port),
+    "--strictPort",
+    "--mode",
+    "record-verification-test",
+  ],
   {
     cwd: new URL("..", import.meta.url),
     env: { ...process.env, VITE_PRIVY_APP_ID: "" },

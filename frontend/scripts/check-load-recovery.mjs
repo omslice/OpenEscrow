@@ -4,7 +4,14 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const host = "127.0.0.1";
-const port = 4175;
+const configuredPort = Number.parseInt(
+  process.env.OPENESCROW_LOAD_RECOVERY_TEST_PORT || "",
+  10,
+);
+const port =
+  Number.isInteger(configuredPort) && configuredPort >= 1_024 && configuredPort <= 65_535
+    ? configuredPort
+    : 23_000 + (process.pid % 30_000);
 const baseUrl = `http://${host}:${port}`;
 const viteEntrypoint = fileURLToPath(
   new URL("../node_modules/vite/bin/vite.js", import.meta.url),
@@ -15,7 +22,10 @@ async function waitForServer() {
   while (Date.now() < deadline) {
     try {
       const response = await fetch(baseUrl);
-      if (response.ok) return;
+      const fallbackModule = response.ok
+        ? await fetch(`${baseUrl}/src/FallbackRoot.tsx`)
+        : null;
+      if (response.ok && fallbackModule?.ok) return;
     } catch {
       // The local Vite server is still starting.
     }
@@ -24,9 +34,28 @@ async function waitForServer() {
   throw new Error(`Timed out waiting for ${baseUrl}.`);
 }
 
+async function stopServer(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  child.kill();
+  await Promise.race([
+    exited,
+    new Promise((resolve) => setTimeout(resolve, 2_000)),
+  ]);
+}
+
 const server = spawn(
   process.execPath,
-  [viteEntrypoint, "--host", host, "--port", String(port), "--strictPort"],
+  [
+    viteEntrypoint,
+    "--host",
+    host,
+    "--port",
+    String(port),
+    "--strictPort",
+    "--mode",
+    "load-recovery-test",
+  ],
   {
     cwd: new URL("..", import.meta.url),
     env: { ...process.env, VITE_PRIVY_APP_ID: "" },
@@ -59,6 +88,7 @@ try {
     /before repeating any transaction/i,
     "The app recovery message should prevent accidental transaction retries without exposing technical details.",
   );
+  await appPage.context().close();
 
   const workspacePage = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   await workspacePage.route(
@@ -93,6 +123,7 @@ try {
     true,
     "A failed workspace section should not blank the rest of the app.",
   );
+  await workspacePage.context().close();
 
   const depositPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await depositPage.goto(`${baseUrl}/testing/agreement-load-recovery.html`, {
@@ -145,6 +176,7 @@ try {
     /without repeating a deposit action/i,
     "A successful retry should return to the deposit without submitting a new action.",
   );
+  await depositPage.context().close();
 
   const activityPage = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await activityPage.goto(`${baseUrl}/testing/activity-load-recovery.html`, {
@@ -213,6 +245,7 @@ try {
     /without repeating an agreement action/i,
     "A successful receipt retry should recover without submitting another agreement action.",
   );
+  await activityPage.context().close();
 
   process.stdout.write(
     "Load recovery check passed: app, workspace, deposit, and public-receipt connection failures remain visible, accessible, and actionable without duplicate transactions or blank pages.\n",
@@ -222,7 +255,7 @@ try {
   throw error;
 } finally {
   await browser?.close();
-  server.kill();
+  await stopServer(server);
 }
 
 async function assertFocusedReload(page, message) {
