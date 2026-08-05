@@ -4,7 +4,14 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const host = "127.0.0.1";
-const port = 4176;
+const configuredPort = Number.parseInt(
+  process.env.OPENESCROW_ACCOUNT_SWITCH_TEST_PORT || "",
+  10,
+);
+const port =
+  Number.isInteger(configuredPort) && configuredPort >= 1_024 && configuredPort <= 65_535
+    ? configuredPort
+    : 21_000 + (process.pid % 30_000);
 const baseUrl = `http://${host}:${port}`;
 const viteEntrypoint = fileURLToPath(
   new URL("../node_modules/vite/bin/vite.js", import.meta.url),
@@ -168,13 +175,26 @@ async function waitForServer() {
   while (Date.now() < deadline) {
     try {
       const response = await fetch(baseUrl);
-      if (response.ok) return;
+      const workspaceModule = response.ok
+        ? await fetch(`${baseUrl}/src/WorkspaceApp.tsx`)
+        : null;
+      if (response.ok && workspaceModule?.ok) return;
     } catch {
       // Vite is still starting.
     }
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
   throw new Error(`Timed out waiting for ${baseUrl}.`);
+}
+
+async function stopServer(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  child.kill();
+  await Promise.race([
+    exited,
+    new Promise((resolve) => setTimeout(resolve, 2_000)),
+  ]);
 }
 
 async function assertMobileActionTarget(locator, label) {
@@ -877,5 +897,5 @@ try {
   throw error;
 } finally {
   await browser?.close();
-  server.kill();
+  await stopServer(server);
 }
