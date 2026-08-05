@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { appendAdditionalCheckJUnit } from "./rehearsal-runner.mjs";
+import {
+  appendAdditionalCheckJUnit,
+  parseJUnitTestcases,
+} from "./rehearsal-runner.mjs";
 
 test("rendered rehearsal results are added to JUnit with escaped failure details", () => {
   const source = `<?xml version="1.0" encoding="utf-8"?>
@@ -51,4 +54,18 @@ test("rendered rehearsal results are added to JUnit with escaped failure details
     ]),
     /valid JUnit root/,
   );
+});
+
+test("JUnit parsing keeps self-closing passes separate from a later rendered failure", () => {
+  const observed = parseJUnitTestcases(`<?xml version="1.0" encoding="utf-8"?>
+<testsuites>
+  <testcase name="server pass" time="0.1"/>
+  <testcase name="rendered pass" classname="rendered-pilot"/>
+  <testcase name="rendered failure"><failure message="failed">details</failure></testcase>
+</testsuites>`);
+
+  assert.deepEqual(observed.get("server pass"), { failed: false });
+  assert.deepEqual(observed.get("rendered pass"), { failed: false });
+  assert.deepEqual(observed.get("rendered failure"), { failed: true });
+  assert.equal(observed.size, 3);
 });

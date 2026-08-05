@@ -57,6 +57,20 @@ export function appendAdditionalCheckJUnit(junit, results) {
   return `${junit.slice(0, closingIndex)}${testcases}\n${junit.slice(closingIndex)}`;
 }
 
+export function parseJUnitTestcases(junit) {
+  const testcasePattern =
+    /<testcase\b([^>]*?)(?:\/>|>([\s\S]*?)<\/testcase>)/g;
+  const observedTests = new Map();
+  for (const match of junit.matchAll(testcasePattern)) {
+    const name = /\bname="([^"]+)"/.exec(match[1])?.[1];
+    if (!name) continue;
+    observedTests.set(name, {
+      failed: /<(?:failure|error)\b/.test(match[2] || ""),
+    });
+  }
+  return observedTests;
+}
+
 export function runServerRehearsal({
   artifactDirectoryName,
   artifactPrefix,
@@ -148,14 +162,7 @@ export function runServerRehearsal({
   ]
     .filter(Boolean)
     .join("\n") || null;
-  const testcasePattern =
-    /<testcase\b[^>]*\bname="([^"]+)"[^>]*(?:\/>|>([\s\S]*?)<\/testcase>)/g;
-  const observedTests = new Map();
-  for (const match of junit.matchAll(testcasePattern)) {
-    observedTests.set(match[1], {
-      failed: /<(?:failure|error)\b/.test(match[2] || ""),
-    });
-  }
+  const observedTests = parseJUnitTestcases(junit);
   for (const result of additionalResults) {
     observedTests.set(result.name, { failed: result.failed });
   }
