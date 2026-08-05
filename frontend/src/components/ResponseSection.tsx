@@ -34,6 +34,10 @@ import { EvidenceList } from "./EvidenceList";
 
 type Mode = "accept" | "partial" | "dispute";
 type ClaimResponseAction = ClaimResponseReceiptAction;
+type NoticeFeedback = {
+  kind: "progress" | "success" | "error";
+  message: string;
+};
 
 function responseFromEvent(
   event: NegotiationEvent | undefined,
@@ -95,9 +99,11 @@ export function ResponseSection({
   const [pendingRecord, setPendingRecord] = useState<ClaimResponseAction | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
   const [isSavingResponseRecord, setIsSavingResponseRecord] = useState(false);
-  const [noticeStatus, setNoticeStatus] = useState<string | null>(null);
+  const [noticeFeedback, setNoticeFeedback] = useState<NoticeFeedback | null>(null);
   const recordRetryButton = useRef<HTMLButtonElement>(null);
   const responseReceiptRetryButton = useRef<HTMLButtonElement>(null);
+  const landlordEmailButton = useRef<HTMLButtonElement>(null);
+  const pendingNotificationFallbackFocus = useRef(false);
   const pendingRecordStored = useRef(true);
   const recordLoadProposalId = negotiationAccess?.role === "tenant"
     ? negotiationAccess.proposalId
@@ -136,6 +142,8 @@ export function ResponseSection({
     responseReceiptScope.open();
     responseNotificationScope.open();
     setIsSavingResponseRecord(false);
+    setNoticeFeedback(null);
+    pendingNotificationFallbackFocus.current = false;
     const storage = getBrowserRecoveryStorage("session");
     const recovered =
       pendingRecordKey && storage
@@ -158,6 +166,12 @@ export function ResponseSection({
       responseNotificationScope.close();
     };
   }, [pendingRecordKey, responseNotificationScope, responseReceiptScope]);
+
+  useLayoutEffect(() => {
+    if (!pendingNotificationFallbackFocus.current) return;
+    pendingNotificationFallbackFocus.current = false;
+    landlordEmailButton.current?.focus();
+  }, [noticeFeedback]);
 
   const { data: tenantShare } = useReadContract({
     address: OPEN_ESCROW_ADDRESS,
@@ -331,19 +345,28 @@ export function ResponseSection({
   async function notifyLandlord(action: ClaimResponseAction) {
     if (!negotiationAccess || negotiationAccess.role !== "tenant") return;
     const operationId = responseNotificationScope.start();
-    setNoticeStatus("Sending the landlord notification...");
+    setNoticeFeedback({
+      kind: "progress",
+      message: "Sending the landlord notification...",
+    });
     try {
       await sendClaimResponseNotification(negotiationAccess, {
         transactionHash: action.transactionHash,
       });
       if (responseNotificationScope.isCurrent(operationId)) {
-        setNoticeStatus("The landlord was emailed automatically.");
+        setNoticeFeedback({
+          kind: "success",
+          message: "The landlord was emailed automatically.",
+        });
       }
     } catch {
       if (responseNotificationScope.isCurrent(operationId)) {
-        setNoticeStatus(
-          "Automatic email is unavailable. Use the Gmail or copy-email option below.",
-        );
+        pendingNotificationFallbackFocus.current = true;
+        setNoticeFeedback({
+          kind: "error",
+          message:
+            "Automatic email is unavailable. Use the Gmail or copy-email option below.",
+        });
       }
     }
   }
@@ -399,34 +422,43 @@ export function ResponseSection({
         method,
       });
     } catch {
-      setNoticeStatus(
-        "The email or copy action worked, but OpenEscrow could not add that preparation step to the private record. Your response receipt and onchain decision are unchanged.",
-      );
+      setNoticeFeedback({
+        kind: "error",
+        message:
+          "The email or copy action worked, but OpenEscrow could not add that preparation step to the private record. Your response receipt and onchain decision are unchanged.",
+      });
     }
   }
 
   async function copyLandlordEmail(body: string) {
-    setNoticeStatus(null);
+    setNoticeFeedback(null);
     try {
       await copyTextToClipboard(body);
-      setNoticeStatus("The landlord email was copied.");
+      setNoticeFeedback({
+        kind: "success",
+        message: "The landlord email was copied.",
+      });
       void recordNotice("copy");
     } catch (error) {
-      setNoticeStatus(
-        error instanceof Error ? error.message : "The landlord email could not be copied.",
-      );
+      setNoticeFeedback({
+        kind: "error",
+        message:
+          error instanceof Error ? error.message : "The landlord email could not be copied.",
+      });
     }
   }
 
   function openLandlordEmail(url: string) {
-    setNoticeStatus(null);
+    setNoticeFeedback(null);
     try {
       openExternalWindow(url);
       void recordNotice("gmail");
     } catch (error) {
-      setNoticeStatus(
-        error instanceof Error ? error.message : "The landlord email could not be opened.",
-      );
+      setNoticeFeedback({
+        kind: "error",
+        message:
+          error instanceof Error ? error.message : "The landlord email could not be opened.",
+      });
     }
   }
 
@@ -658,6 +690,7 @@ export function ResponseSection({
           </p>
           <div className="button-row">
             <button
+              ref={landlordEmailButton}
               className="btn btn-secondary"
               type="button"
               onClick={() => openLandlordEmail(email.gmailUrl)}
@@ -672,25 +705,19 @@ export function ResponseSection({
               Copy landlord email
             </button>
           </div>
-          {noticeStatus && (
+          {noticeFeedback && (
             <p
               className={
-                noticeStatus.includes("could not") || noticeStatus.includes("unavailable")
+                noticeFeedback.kind === "error"
                   ? "tx-error"
-                  : "field-help"
+                  : noticeFeedback.kind === "success"
+                    ? "tx-success"
+                    : "field-help"
               }
-              role={
-                noticeStatus.includes("could not") || noticeStatus.includes("unavailable")
-                  ? "alert"
-                  : "status"
-              }
-              aria-live={
-                noticeStatus.includes("could not") || noticeStatus.includes("unavailable")
-                  ? "assertive"
-                  : "polite"
-              }
+              role={noticeFeedback.kind === "error" ? "alert" : "status"}
+              aria-live={noticeFeedback.kind === "error" ? "assertive" : "polite"}
             >
-              {noticeStatus}
+              {noticeFeedback.message}
             </p>
           )}
         </div>

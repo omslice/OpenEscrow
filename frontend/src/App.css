@@ -2614,6 +2614,10 @@ a.btn.disabled {
   margin-top: 0;
 }
 
+.claim-response-step .btn {
+  min-height: 44px;
+}
+
 .button-row {
   display: flex;
   gap: 8px;
@@ -3953,6 +3957,11 @@ a.btn.disabled {
   min-height: 44px;
 }
 
+.claim-notice-actions > .btn {
+  justify-self: start;
+  min-height: 44px;
+}
+
 .claim-line-items {
   display: grid;
   gap: 12px;
@@ -4024,13 +4033,19 @@ a.btn.disabled {
 }
 
 @media (max-width: 680px) {
+  .claim-response-step .button-row,
+  .claim-response-step .btn {
+    width: 100%;
+  }
+
   .claim-notice-recipient {
     align-items: stretch;
     flex-direction: column;
   }
 
   .claim-notice-recipient .button-row,
-  .claim-notice-recipient .btn {
+  .claim-notice-recipient .btn,
+  .claim-notice-actions > .btn {
     width: 100%;
   }
 

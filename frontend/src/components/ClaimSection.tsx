@@ -46,6 +46,11 @@ const CATEGORY_LABEL: Record<string, string> = {
   "13": "Lease-authorized restoration or replacement of landlord property",
   "14": "Other documented test deduction",
 };
+
+type NoticeFeedback = {
+  kind: "progress" | "success" | "error";
+  message: string;
+};
 const CATEGORY_VALUE = Object.fromEntries(
   Object.entries(CATEGORY_LABEL).map(([value, label]) => [label, value]),
 );
@@ -93,7 +98,7 @@ export function ClaimSection({
   const [recordError, setRecordError] = useState<string | null>(null);
   const [isSavingClaimRecord, setIsSavingClaimRecord] = useState(false);
   const [noticeCopiedFor, setNoticeCopiedFor] = useState<string | null>(null);
-  const [noticeStatus, setNoticeStatus] = useState<string | null>(null);
+  const [noticeFeedback, setNoticeFeedback] = useState<NoticeFeedback | null>(null);
   const [isSendingTenantNotification, setIsSendingTenantNotification] = useState(false);
   const [itemizationConfirmed, setItemizationConfirmed] = useState(false);
   const [documentsConfirmed, setDocumentsConfirmed] = useState(false);
@@ -109,6 +114,8 @@ export function ClaimSection({
   const pendingRecordStored = useRef(true);
   const itemFieldsets = useRef<Array<HTMLFieldSetElement | null>>([]);
   const pendingItemFocus = useRef<number | null>(null);
+  const tenantNotificationButton = useRef<HTMLButtonElement>(null);
+  const pendingNotificationRetryFocus = useRef(false);
   const recordLoadProposalId = negotiationAccess?.role === "landlord"
     ? negotiationAccess.proposalId
     : null;
@@ -138,11 +145,20 @@ export function ClaimSection({
     [claimRecordScopeKey],
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     tenantNotificationScope.open();
     setIsSendingTenantNotification(false);
+    setNoticeFeedback(null);
+    setNoticeCopiedFor(null);
+    pendingNotificationRetryFocus.current = false;
     return () => tenantNotificationScope.close();
   }, [tenantNotificationScope]);
+
+  useLayoutEffect(() => {
+    if (isSendingTenantNotification || !pendingNotificationRetryFocus.current) return;
+    pendingNotificationRetryFocus.current = false;
+    tenantNotificationButton.current?.focus();
+  }, [isSendingTenantNotification]);
 
   useLayoutEffect(() => {
     claimRecordScope.open();
@@ -748,9 +764,11 @@ export function ClaimSection({
         method,
       });
     } catch {
-      setNoticeStatus(
-        "The email or copy action worked, but OpenEscrow could not add that preparation step to the private record. The claim receipt and onchain agreement are unchanged.",
-      );
+      setNoticeFeedback({
+        kind: "error",
+        message:
+          "The email or copy action worked, but OpenEscrow could not add that preparation step to the private record. The claim receipt and onchain agreement are unchanged.",
+      });
     }
   }
 
@@ -766,7 +784,10 @@ export function ClaimSection({
     }
     const operationId = tenantNotificationScope.start();
     setIsSendingTenantNotification(true);
-    setNoticeStatus("Sending the tenant claim email...");
+    setNoticeFeedback({
+      kind: "progress",
+      message: "Sending the tenant claim email...",
+    });
     try {
       try {
         await sendClaimNotification(negotiationAccess, {
@@ -778,15 +799,21 @@ export function ClaimSection({
         });
       } catch (emailError) {
         if (!tenantNotificationScope.isCurrent(operationId)) return;
-        setNoticeStatus(
-          emailError instanceof Error
-            ? emailError.message
-            : "Automatic email could not be sent. Use the Gmail fallback.",
-        );
+        pendingNotificationRetryFocus.current = true;
+        setNoticeFeedback({
+          kind: "error",
+          message:
+            emailError instanceof Error
+              ? emailError.message
+              : "Automatic email could not be sent. Use the Gmail fallback.",
+        });
         return;
       }
       if (!tenantNotificationScope.isCurrent(operationId)) return;
-      setNoticeStatus("Tenant claim email sent and added to the record.");
+      setNoticeFeedback({
+        kind: "success",
+        message: "Tenant claim email sent and added to the record.",
+      });
       try {
         const updatedRecord = await loadNegotiation(negotiationAccess);
         if (!tenantNotificationScope.isCurrent(operationId)) return;
@@ -806,27 +833,31 @@ export function ClaimSection({
   }
 
   async function copyClaimNotice(notice: (typeof notices)[number]) {
-    setNoticeStatus(null);
+    setNoticeFeedback(null);
     try {
       await copyTextToClipboard(notice.body);
       setNoticeCopiedFor(notice.tenantId);
       void recordNotice("copy");
     } catch (error) {
       setNoticeCopiedFor(null);
-      setNoticeStatus(
-        error instanceof Error ? error.message : "The claim notice could not be copied.",
-      );
+      setNoticeFeedback({
+        kind: "error",
+        message:
+          error instanceof Error ? error.message : "The claim notice could not be copied.",
+      });
     }
   }
   function openClaimNotice(notice: (typeof notices)[number]) {
-    setNoticeStatus(null);
+    setNoticeFeedback(null);
     try {
       openExternalWindow(notice.gmailUrl);
       void recordNotice("gmail");
     } catch (error) {
-      setNoticeStatus(
-        error instanceof Error ? error.message : "The claim notice could not be opened.",
-      );
+      setNoticeFeedback({
+        kind: "error",
+        message:
+          error instanceof Error ? error.message : "The claim notice could not be opened.",
+      });
     }
   }
   const noticeActions = notices.length > 0 && (
@@ -837,6 +868,7 @@ export function ClaimSection({
       </p>
       {negotiationAccess && (
         <button
+          ref={tenantNotificationButton}
           className="btn btn-primary"
           type="button"
           disabled={isSendingTenantNotification}
@@ -875,12 +907,19 @@ export function ClaimSection({
           </div>
         ))}
       </div>
-      {noticeStatus && (
+      {noticeFeedback && (
         <p
-          className={noticeStatus.includes("sent") ? "tx-success" : "tx-error"}
-          role={noticeStatus.includes("sent") ? "status" : "alert"}
+          className={
+            noticeFeedback.kind === "error"
+              ? "tx-error"
+              : noticeFeedback.kind === "success"
+                ? "tx-success"
+                : "field-help"
+          }
+          role={noticeFeedback.kind === "error" ? "alert" : "status"}
+          aria-live={noticeFeedback.kind === "error" ? "assertive" : "polite"}
         >
-          {noticeStatus}
+          {noticeFeedback.message}
         </p>
       )}
     </div>

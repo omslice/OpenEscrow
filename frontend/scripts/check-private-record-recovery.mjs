@@ -430,6 +430,16 @@ try {
   });
   await claimPage.route(/\/api\/notifications\/claim$/, async (route) => {
     claimNotificationAttempts += 1;
+    if (claimNotificationAttempts === 1) {
+      await route.fulfill({
+        status: 502,
+        contentType: "application/json",
+        body: JSON.stringify({
+          error: "Automatic email could not be sent. Use the Gmail fallback.",
+        }),
+      });
+      return;
+    }
     await claimNotificationPending;
     await route.fulfill({
       status: 200,
@@ -538,6 +548,29 @@ try {
     name: "Send tenant email(s)",
   });
   await sendClaimEmail.click();
+  const claimNotificationFailure = claimPage.getByRole("alert").filter({
+    hasText: "Automatic email could not be sent",
+  });
+  await claimNotificationFailure.waitFor({ state: "visible" });
+  assert.equal(
+    await claimNotificationFailure.evaluate((element) =>
+      element.classList.contains("tx-error"),
+    ),
+    true,
+    "A failed email whose copy contains the word sent must still use error styling and alert semantics.",
+  );
+  assert.equal(
+    await sendClaimEmail.evaluate((element) => element === document.activeElement),
+    true,
+    "A failed automatic claim email should restore focus to its retry control.",
+  );
+  const sendClaimEmailBox = await sendClaimEmail.boundingBox();
+  assert.equal(
+    Boolean(sendClaimEmailBox && sendClaimEmailBox.height >= 44),
+    true,
+    "The focused claim-email retry should remain a 44px mobile touch target.",
+  );
+  await sendClaimEmail.press("Enter");
   const sendingClaimEmail = claimPage.getByRole("button", {
     name: "Sending tenant email(s)...",
   });
@@ -560,7 +593,7 @@ try {
   );
   assert.equal(
     claimNotificationAttempts,
-    1,
+    2,
     "A display refresh outage must not repeat the delivered email.",
   );
   const postDeliveryRetry = claimPage.getByRole("button", {
@@ -575,7 +608,7 @@ try {
   await claimAlert.waitFor({ state: "detached" });
   assert.equal(
     claimNotificationAttempts,
-    1,
+    2,
     "Refreshing the private record must never resend the tenant email.",
   );
 
@@ -798,9 +831,9 @@ try {
       assert.equal(body.token, "synthetic-private-record-recovery-token");
       assert.equal(body.transactionHash, `0x${"8".repeat(64)}`);
       await route.fulfill({
-        status: 200,
+        status: 502,
         contentType: "application/json",
-        body: JSON.stringify({ messageId: "synthetic-response-message" }),
+        body: JSON.stringify({ error: "simulated notification outage" }),
       });
     },
   );
@@ -876,9 +909,26 @@ try {
   );
   await recoveredResponseReceiptRetry.press("Enter");
   await recoveredResponseReceiptRetry.waitFor({ state: "detached" });
-  await responseReceiptPage
-    .getByText("The landlord was emailed automatically.")
-    .waitFor({ state: "visible" });
+  const responseNotificationFailure = responseReceiptPage.getByRole("alert").filter({
+    hasText: "Automatic email is unavailable",
+  });
+  await responseNotificationFailure.waitFor({ state: "visible" });
+  const landlordEmailFallback = responseReceiptPage.getByRole("button", {
+    name: "Email decision to landlord",
+  });
+  assert.equal(
+    await landlordEmailFallback.evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+    "A failed automatic response notice should focus the first manual fallback.",
+  );
+  const landlordEmailFallbackBox = await landlordEmailFallback.boundingBox();
+  assert.equal(
+    Boolean(landlordEmailFallbackBox && landlordEmailFallbackBox.height >= 44),
+    true,
+    "The focused response-email fallback should remain a 44px mobile touch target.",
+  );
   assert.equal(responseReceiptAttempts(), 2);
   assert.equal(responseNotificationAttempts, 1);
   assert.equal((await pendingDecisionRecoveryEntries(responseReceiptPage)).length, 0);
@@ -1186,7 +1236,7 @@ try {
   await activityReceiptPage.close();
 
   process.stdout.write(
-    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, and confirmed claims, tenant responses, arbiter rulings, withdrawals, activity proofs, and every deadline outcome survive private-record outages and reloads without another transaction or stored bearer token; terminal retries remain wallet-scoped, time-sensitive responses remain available, retries restore focus, and delivered email is not repeated by a record-only retry.\n",
+    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, notification failures use error semantics and focus 44px retry/fallback actions, and confirmed claims, tenant responses, arbiter rulings, withdrawals, activity proofs, and every deadline outcome survive private-record outages and reloads without another transaction or stored bearer token; terminal retries remain wallet-scoped, time-sensitive responses remain available, and delivered email is not repeated by a record-only retry.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

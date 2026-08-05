@@ -73,7 +73,10 @@ production custody, or reliance on the compliance research as legal advice.
   copied link, submitted claim, or submitted response. Automatic tenant-claim email delivery is
   separately scoped from its follow-up record refresh: pending delivery cannot be double-sent,
   an account/access change discards stale completion, and a refresh-only outage retries without
-  resending the email.
+  resending the email. Notification feedback now uses explicit progress, success, and error states
+  rather than wording heuristics: even an error containing the word “sent” remains an assertive
+  alert, failed claim delivery restores the retry button, and failed response delivery focuses a
+  full-width 44-pixel manual fallback on mobile.
 - **Verified:** After a testnet claim confirms, its private receipt retry is saved only in the
   current browser tab and is isolated by agreement, proposal, landlord wallet, and role without
   storing the bearer token. A rendered outage-and-reload rehearsal proves the retry regains focus,
