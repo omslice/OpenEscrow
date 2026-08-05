@@ -16,7 +16,7 @@ detailed validation ledger.
   rehearsal summaries, binds their JUnit reports by SHA-256, and records a deterministic digest of
   every packaged Sites file. The live-deploy wrapper runs readiness only after a successful
   publish and passes the new deployment URL positionally to the readiness checker.
-- **Verified:** Nineteen credential-free rehearsals pass: lifecycle scenarios cover
+- **Verified:** Twenty credential-free rehearsals pass: lifecycle scenarios cover
   archive/restore, record proof, disputed claim, accepted claim, and no-claim refund, while a
   rendered Record scenario proves encrypted JSON export, separate-key download, wrong-key
   rejection, keyboard disclosure, narrow-screen layout, and local verification during a public-
@@ -29,7 +29,10 @@ detailed validation ledger.
   repeatable snapshot integrity. The added shared rendered lifecycle uses four isolated mobile
   browser sessions for one landlord, two tenants, and one arbiter; it proves exact participant
   handoffs, a 225/465/310 USDC allocation, one withdrawal per party, complete report contents,
-  44-pixel action targets, and no bearer in the URL or browser storage.
+  44-pixel action targets, and no bearer in the URL or browser storage. A second rendered account
+  rehearsal moves one proposal and its Record entry through their separate archived views and
+  restores each to the current list at mobile width, including focus recovery and live account-
+  switch isolation; every rendered archive and restore action retains a 44-pixel touch target.
 - **Verified:** A separate 15-scenario incident-response rehearsal passes for identity forgery,
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,

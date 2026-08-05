@@ -25,7 +25,10 @@ production custody, or reliance on the compliance research as legal advice.
   only on a separate release check. A shared rendered mobile rehearsal now moves one agreement
   through a landlord claim, two isolated tenant decisions, an arbiter ruling, exact final
   allocation, three one-time withdrawals, and a complete header-authorized report without
-  putting an access bearer in a URL or browser storage.
+  putting an access bearer in a URL or browser storage. The production account workspace is also
+  rendered at mobile width while a proposal and its Record entry are archived, found in their
+  separate archive disclosures, restored to the current list, and given predictable keyboard
+  focus with 44-pixel actions without weakening live account isolation.
 - **Verified:** Authorization, invitation, cross-account isolation, evidence encryption/keyring
   recovery, tamper detection, transaction receipt binding, and privacy failure modes have
   dedicated server, client, and operator-command regressions. Invitee bearer recovery is limited

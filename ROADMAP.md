@@ -22,7 +22,8 @@ the repository; they are not claims of legal approval or production readiness.
 
 - [x] Account-based proposal and finalized-agreement discovery
 - [x] Role-safe multi-tenant records and lifecycle receipt verification
-- [x] Collapsed agreement list with local archive/restore controls
+- [x] Collapsed agreement list with account-backed archive/restore controls and a rendered mobile
+  proposal/Record rehearsal that proves current-to-archive movement, restoration, and focus recovery
 - [x] Timestamped report plus encrypted canonical JSON archive and verification key
 - [x] Version-bound onchain record receipts and private proof verification
 - [x] Rendered encrypted-record export and verification rehearsal with separate-key recovery,

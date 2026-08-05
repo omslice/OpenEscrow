@@ -7,6 +7,18 @@ const expectedScenarios = [
     covers: ["archive", "restore", "cross-account authorization"],
   },
   {
+    id: "rendered-archive-restore",
+    name: "pilot rehearsal: rendered proposal and record archives restore in the account workspace",
+    covers: [
+      "rendered proposal archive",
+      "rendered proposal restore",
+      "rendered Record archive",
+      "rendered Record restore",
+      "focus recovery",
+      "mobile width",
+    ],
+  },
+  {
     id: "record-proof",
     name: "pilot rehearsal: record export and proof include claim, decision, and receipts",
     covers: ["report export", "canonical JSON", "snapshot hash", "receipt trail"],
@@ -182,6 +194,12 @@ runServerRehearsal({
   safetyBoundary:
     "In-memory workflow simulation only; no hosted identities, wallets, contracts, providers, secrets, or real funds.",
   additionalChecks: [
+    {
+      name: "pilot rehearsal: rendered proposal and record archives restore in the account workspace",
+      target: "scripts/check-account-switch.mjs",
+      command: process.execPath,
+      args: ["scripts/check-account-switch.mjs"],
+    },
     {
       name: "pilot rehearsal: encrypted record export and local verification remain usable",
       target: "scripts/check-record-verification.mjs",

@@ -4134,6 +4134,11 @@ a.btn.disabled {
     flex-direction: column;
   }
 
+  .record-workspace-actions .btn,
+  .saved-proposal-card .button-row .btn {
+    min-height: 44px;
+  }
+
   .record-list-heading {
     align-items: flex-start;
     flex-wrap: wrap;

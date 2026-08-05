@@ -177,6 +177,15 @@ async function waitForServer() {
   throw new Error(`Timed out waiting for ${baseUrl}.`);
 }
 
+async function assertMobileActionTarget(locator, label) {
+  const box = await locator.boundingBox();
+  assert.equal(
+    Boolean(box && box.height >= 44),
+    true,
+    `${label} must retain a 44-pixel mobile touch target.`,
+  );
+}
+
 const server = spawn(
   process.execPath,
   [
@@ -214,6 +223,8 @@ const preferenceRelease = deferred();
 const preferenceSeen = deferred();
 const testEmailRelease = deferred();
 const testEmailSeen = deferred();
+const accountArchiveState = { a: false, b: false };
+let delayedArchiveHandled = false;
 let downloadedFiles = 0;
 let browser;
 
@@ -304,7 +315,7 @@ try {
             proposalId: account === "a" ? "aaaaaaaa" : "bbbbbbbb",
             role: "landlord",
             token: `record-token-${account}`,
-            archived: false,
+            archived: accountArchiveState[account],
           },
         ],
       }),
@@ -331,6 +342,7 @@ try {
   });
   await page.route("**/api/profile/record-archives", async (route) => {
     const token = route.request().headers()["privy-id-token"];
+    const body = route.request().postDataJSON();
     if (token !== "identity-token-a") {
       await route.fulfill({
         status: 400,
@@ -339,16 +351,26 @@ try {
       });
       return;
     }
-    archiveSeen.resolve();
-    await archiveRelease.promise;
+    assert.deepEqual(body, {
+      proposalId: "aaaaaaaa",
+      role: "landlord",
+      archived: body.archived,
+    });
+    assert.equal(typeof body.archived, "boolean");
+    if (body.archived && !delayedArchiveHandled) {
+      delayedArchiveHandled = true;
+      archiveSeen.resolve();
+      await archiveRelease.promise;
+    }
+    accountArchiveState.a = body.archived;
     await route.fulfill({
       status: 200,
       contentType: "application/json",
       body: JSON.stringify({
         proposalId: "aaaaaaaa",
         role: "landlord",
-        archived: true,
-        archivedAt: "2026-07-30T20:01:00.000Z",
+        archived: body.archived,
+        archivedAt: body.archived ? "2026-07-30T20:01:00.000Z" : null,
       }),
     });
   });
@@ -759,8 +781,91 @@ try {
     "Account B must not inherit account A's pending test-email state.",
   );
 
+  await page.evaluate(() => {
+    window.__openEscrowAccountSwitchTest?.switchAccount("account-a");
+  });
+  await page.getByTitle("account.a@example.test").waitFor();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.getByRole("tab", { name: "Proposals" }).click();
+
+  const proposalArchiveSummary = page.getByText("Archived proposals (1)", {
+    exact: true,
+  });
+  await proposalArchiveSummary.waitFor({ state: "visible" });
+  assert.equal(
+    await page
+      .locator("section.active-proposals-section > article.saved-proposal-card")
+      .filter({ hasText: "OE-P-AAAAAAAA" })
+      .count(),
+    0,
+    "A server-archived proposal must not remain in the current proposal list.",
+  );
+  await proposalArchiveSummary.click();
+  const archivedProposalCard = page
+    .locator(".proposal-archive-list article.saved-proposal-card")
+    .filter({ hasText: "OE-P-AAAAAAAA" });
+  const restoreProposalButton = archivedProposalCard.getByRole("button", {
+    name: "Restore",
+  });
+  await assertMobileActionTarget(restoreProposalButton, "Restore proposal");
+  await restoreProposalButton.click();
+  await page
+    .getByText("OE-P-AAAAAAAA restored.", { exact: true })
+    .waitFor({ state: "visible" });
+  const currentProposalCard = page
+    .locator("section.active-proposals-section > article.saved-proposal-card")
+    .filter({ hasText: "OE-P-AAAAAAAA" });
+  await currentProposalCard.waitFor({ state: "visible" });
+  await page.waitForFunction(
+    () => document.activeElement?.textContent?.includes("OE-P-AAAAAAAA"),
+  );
+
+  await page.getByRole("tab", { name: "Record" }).click();
+  const currentRecordCard = page
+    .locator("article.record-list-item")
+    .filter({ hasText: "OE-P-AAAAAAAA" });
+  await currentRecordCard.waitFor({ state: "visible" });
+  const archiveRecordButton = currentRecordCard.getByRole("button", {
+    name: "Archive",
+  });
+  await assertMobileActionTarget(archiveRecordButton, "Archive record");
+  await archiveRecordButton.click();
+  await page
+    .getByText("OE-P-AAAAAAAA archived.", { exact: true })
+    .waitFor({ state: "visible" });
+  const recordArchiveSummary = page.getByText("Archived records (1)", {
+    exact: true,
+  });
+  await recordArchiveSummary.waitFor({ state: "visible" });
+  assert.equal(
+    await page.evaluate(
+      () => document.activeElement?.id === "record-archive-summary",
+    ),
+    true,
+    "Archiving a record should focus the newly available archive summary.",
+  );
+  const archivedRecordCard = page
+    .locator("details.record-archive-section article.record-list-item")
+    .filter({ hasText: "OE-P-AAAAAAAA" });
+  const restoreRecordButton = archivedRecordCard.getByRole("button", {
+    name: "Restore",
+  });
+  await assertMobileActionTarget(restoreRecordButton, "Restore record");
+  await restoreRecordButton.click();
+  await page
+    .getByText("OE-P-AAAAAAAA restored.", { exact: true })
+    .waitFor({ state: "visible" });
+  await currentRecordCard.waitFor({ state: "visible" });
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "Proposal and record archive controls must fit a mobile viewport.",
+  );
+
   process.stdout.write(
-    "Account-switch browser check passed: neutral and role-aware invitation sign-in recover safely, while proposals, archives, wallet setup, inventory delivery, session containment, notification preferences, and test-email feedback remain isolated across live identity changes.\n",
+    "Account-switch browser check passed: neutral and role-aware invitation sign-in recover safely; proposal and Record archives restore in the rendered mobile workspace; and archives, wallet setup, inventory delivery, session containment, notification preferences, and test-email feedback remain isolated across live identity changes.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);
