@@ -26,6 +26,13 @@ const activityEvent = parseAbiItem(
   "event ActivityPublished(uint256 indexed agreementId, uint8 indexed activityType, address indexed party, bytes32 contentHash, uint64 timestamp)",
 );
 
+const activityTypeLabel: Record<number, string> = {
+  1: "Private note",
+  2: "Document receipt",
+  3: "Formal notice",
+  4: "Decision",
+};
+
 export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) {
   const publicClient = usePublicClient();
   const [working, setWorking] = useState(false);
@@ -52,10 +59,10 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
     setResult(null);
     try {
       if (file.size > 100_000) {
-        throw new Error("Proof files must be smaller than 100 KB.");
+        throw new Error("Private verification files must be smaller than 100 KB.");
       }
       if (!publicClient) {
-        throw new Error("The Base Sepolia connection is not ready.");
+        throw new Error("The public proof service is not ready. Try again shortly.");
       }
       const proof = parseActivityProofFile(await file.text());
       if (!verificationScope.isCurrent(operationId)) return;
@@ -71,7 +78,9 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
       }
       const computedHash = hashActivityEnvelope(proof.envelope);
       if (computedHash.toLowerCase() !== proof.contentHash.toLowerCase()) {
-        throw new Error("The private content no longer matches the proof hash.");
+        throw new Error(
+          "The private text or document details no longer match this proof.",
+        );
       }
 
       const receipt = await publicClient.getTransactionReceipt({
@@ -79,14 +88,14 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
       });
       if (!verificationScope.isCurrent(operationId)) return;
       if (receipt.status !== "success") {
-        throw new Error("The referenced transaction did not succeed.");
+        throw new Error("The public receipt did not complete successfully.");
       }
       if (
         receipt.to?.toLowerCase() !==
         AGREEMENT_ACTIVITY_REGISTRY_ADDRESS.toLowerCase()
       ) {
         throw new Error(
-          "The referenced transaction was not sent to this OpenEscrow record registry.",
+          "This receipt belongs to a different OpenEscrow release.",
         );
       }
       const logs = await publicClient.getLogs({
@@ -105,13 +114,15 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
       );
       const publisher = matchingLog?.args.party || null;
       if (!publisher) {
-        throw new Error("No matching OpenEscrow activity receipt was found in this transaction.");
+        throw new Error("No matching public OpenEscrow receipt was found.");
       }
       setResult({ proof, computedHash, publisher, blockNumber: receipt.blockNumber });
     } catch (cause) {
       if (!verificationScope.isCurrent(operationId)) return;
       setError(
-        cause instanceof Error ? cause.message : "The proof file could not be verified.",
+        cause instanceof Error
+          ? cause.message
+          : "The private verification file could not be checked.",
       );
     } finally {
       if (verificationScope.isCurrent(operationId)) setWorking(false);
@@ -120,13 +131,13 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
 
   return (
     <details className="technical-details activity-proof-verifier">
-      <summary>Verify a private activity proof</summary>
+      <summary>Check a private timestamped proof</summary>
       <p className="field-help">
-        Select a downloaded OpenEscrow proof JSON. It stays in this browser while the app checks
-        its content hash and matching Base Sepolia receipt.
+        Choose the private verification file you downloaded earlier. It stays in this browser
+        while OpenEscrow confirms that its contents match the public timestamped receipt.
       </p>
       <label>
-        Private proof JSON
+        Private verification file
         <input
           key={verificationScope.key}
           type="file"
@@ -139,28 +150,41 @@ export function ActivityProofVerifier({ agreementId }: { agreementId: bigint }) 
           }}
         />
       </label>
-      {working && <p className="field-help">Checking the file and onchain receipt…</p>}
+      {working && <p className="field-help">Checking the file and public receipt…</p>}
       {error && (
         <p className="tx-error" role="alert">
           {error}
         </p>
       )}
       {result && (
-        <div className="proof-verification-success" role="status">
-          <strong>Proof verified</strong>
-          <span>
-            {agreementReference(result.proof.envelope.agreementId)} · activity type{" "}
-            {result.proof.envelope.activityType} · publisher {shortAddr(result.publisher)}
-          </span>
-          <code title={result.computedHash}>{result.computedHash}</code>
-          <span>Confirmed in block {result.blockNumber.toString()}.</span>
-          <a
-            href={`https://sepolia.basescan.org/tx/${result.proof.transactionHash}`}
-            target="_blank"
-            rel="noreferrer"
-          >
-            Open verified transaction
-          </a>
+        <div className="proof-verification-success">
+          <p className="tx-success" role="status">
+            <strong>Proof verified</strong>
+            <span>
+              This private file matches {agreementReference(result.proof.envelope.agreementId)}
+              {" "}and its public timestamped receipt.
+            </span>
+          </p>
+          <details className="technical-details activity-verification-details">
+            <summary>Verification details</summary>
+            <span>
+              Record type: {activityTypeLabel[result.proof.envelope.activityType] || "Other"}
+            </span>
+            <span>Saved by wallet: {shortAddr(result.publisher)}</span>
+            <code title={result.computedHash}>
+              Digital fingerprint: {result.computedHash}
+            </code>
+            <span>
+              Confirmed in test-network block {result.blockNumber.toString()}.
+            </span>
+            <a
+              href={`https://sepolia.basescan.org/tx/${result.proof.transactionHash}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              View public receipt
+            </a>
+          </details>
         </div>
       )}
     </details>

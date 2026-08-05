@@ -1070,27 +1070,28 @@ try {
   const activityReceiptAttempts = await routeActivityReceiptRecovery(
     activityReceiptPage,
   );
-  const activityReceiptUrl = `${baseUrl}/testing/private-record-recovery.html?role=landlord&flow=activity-receipt&tx=activity-success`;
+  const activityReceiptUrl = `${baseUrl}/testing/private-record-recovery.html?role=landlord&flow=activity-receipt&tx=activity-success&agreement=43`;
+  const otherActivityReceiptUrl = `${baseUrl}/testing/private-record-recovery.html?role=landlord&flow=activity-receipt&tx=activity-success&agreement=44`;
   await activityReceiptPage.goto(activityReceiptUrl, {
     waitUntil: "networkidle",
   });
   await activityReceiptPage
-    .getByText("Publish a privacy-safe activity receipt", { exact: true })
+    .getByText("Add a private timestamped proof", { exact: true })
     .click();
   await activityReceiptPage
-    .getByLabel("Private content to hash")
+    .getByLabel("Private note or document description")
     .fill("Synthetic move-out notice prepared for the rendered recovery check.");
   await activityReceiptPage
-    .getByRole("button", { name: "Publish proof hash onchain" })
+    .getByRole("button", { name: "Save timestamped proof" })
     .click();
 
   const activityRetry = activityReceiptPage.getByRole("button", {
-    name: "Retry saving activity receipt",
+    name: "Retry record save",
   });
   await activityRetry.waitFor({ state: "visible" });
   assert.equal(
     await activityReceiptPage
-      .getByRole("button", { name: "Publish proof hash onchain" })
+      .getByRole("button", { name: "Save timestamped proof" })
       .count(),
     0,
     "A confirmed activity proof with a pending private receipt must hide the control that could publish it again.",
@@ -1124,12 +1125,12 @@ try {
     "1",
   );
 
-  await activityReceiptPage.goto(`${activityReceiptUrl}&agreement=44`, {
+  await activityReceiptPage.goto(otherActivityReceiptUrl, {
     waitUntil: "networkidle",
   });
   assert.equal(
     await activityReceiptPage
-      .getByRole("button", { name: "Retry saving activity receipt" })
+      .getByRole("button", { name: "Retry record save" })
       .count(),
     0,
     "A different agreement must not inherit another agreement's pending activity receipt.",
@@ -1138,11 +1139,11 @@ try {
   await activityReceiptPage.goto(activityReceiptUrl, { waitUntil: "networkidle" });
   await activityReceiptPage.reload({ waitUntil: "networkidle" });
   const recoveredActivityRetry = activityReceiptPage.getByRole("button", {
-    name: "Retry saving activity receipt",
+    name: "Retry record save",
   });
   await recoveredActivityRetry.waitFor({ state: "visible" });
   await activityReceiptPage
-    .getByText(/recovered a confirmed testnet activity proof/i)
+    .getByText(/recovered a confirmed timestamped proof/i)
     .waitFor({ state: "visible" });
   assert.equal(
     await recoveredActivityRetry.evaluate(
@@ -1154,7 +1155,7 @@ try {
   await recoveredActivityRetry.press("Enter");
   await activityReceiptPage
     .getByRole("button", {
-      name: /(?:Saving|Retry saving) activity receipt/,
+      name: /(?:Saving agreement record|Retry record save)/,
     })
     .waitFor({ state: "detached" });
   assert.equal(activityReceiptAttempts(), 2);

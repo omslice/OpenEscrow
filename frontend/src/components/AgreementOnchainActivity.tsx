@@ -136,7 +136,7 @@ export function AgreementOnchainActivity({
                 target="_blank"
                 rel="noreferrer"
               >
-                Receipt
+                View receipt
               </a>
             </div>
           ))}

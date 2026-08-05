@@ -3765,6 +3765,23 @@ a.btn.disabled {
   background: color-mix(in srgb, var(--success) 9%, var(--surface));
 }
 
+.proof-verification-success > .tx-success {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.activity-verification-details[open] {
+  display: grid;
+  gap: 8px;
+}
+
+.activity-verification-details span,
+.activity-verification-details code,
+.activity-verification-details a {
+  display: block;
+}
+
 .proof-verification-success span {
   color: var(--muted);
 }

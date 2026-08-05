@@ -72,7 +72,12 @@ export function hashActivityEnvelope(envelope: ActivityEnvelope): `0x${string}` 
 }
 
 export function parseActivityProofFile(raw: string): ActivityProofFile {
-  const parsed = JSON.parse(raw) as Partial<ActivityProofFile>;
+  let parsed: Partial<ActivityProofFile>;
+  try {
+    parsed = JSON.parse(raw) as Partial<ActivityProofFile>;
+  } catch {
+    throw new Error("This is not a valid OpenEscrow private verification file.");
+  }
   const envelope = parsed.envelope as Partial<ActivityEnvelope> | undefined;
   if (
     parsed.algorithm !== "keccak256" ||
@@ -86,7 +91,7 @@ export function parseActivityProofFile(raw: string): ActivityProofFile {
     envelope.content.length < 4 ||
     envelope.content.length > 2_000
   ) {
-    throw new Error("This is not a valid OpenEscrow activity proof file.");
+    throw new Error("This is not a valid OpenEscrow private verification file.");
   }
   if (
     envelope.version === "openescrow-activity-v2" &&
@@ -94,7 +99,7 @@ export function parseActivityProofFile(raw: string): ActivityProofFile {
       !addressPattern.test(envelope.escrowAddress || "") ||
       !addressPattern.test(envelope.registryAddress || ""))
   ) {
-    throw new Error("This is not a valid OpenEscrow activity proof file.");
+    throw new Error("This is not a valid OpenEscrow private verification file.");
   }
   return parsed as ActivityProofFile;
 }
@@ -112,7 +117,7 @@ export function assertActivityProofContext(
         expectedRegistry.toLowerCase())
   ) {
     throw new Error(
-      "This proof belongs to a different OpenEscrow contract release.",
+      "This file belongs to a different OpenEscrow release.",
     );
   }
 }

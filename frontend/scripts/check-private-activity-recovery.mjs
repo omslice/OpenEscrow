@@ -124,26 +124,36 @@ try {
   browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({ viewport: { width: 390, height: 844 } });
   const attempts = await routeActivityReceiptRecovery(page);
-  const pageUrl = `${baseUrl}/testing/private-record-recovery.html?role=landlord&flow=activity-receipt&tx=activity-success`;
+  const pageUrl = `${baseUrl}/testing/private-record-recovery.html?role=landlord&flow=activity-receipt&tx=activity-success&agreement=43`;
+  const otherAgreementUrl = `${baseUrl}/testing/private-record-recovery.html?role=landlord&flow=activity-receipt&tx=activity-success&agreement=44`;
 
   await page.goto(pageUrl, { waitUntil: "networkidle" });
   await page
-    .getByText("Publish a privacy-safe activity receipt", { exact: true })
+    .getByText("Add a private timestamped proof", { exact: true })
     .click();
   await page
-    .getByLabel("Private content to hash")
+    .getByLabel("Private note or document description")
     .fill("Synthetic move-out notice prepared for the rendered recovery check.");
+  const fingerprintPreview = page.locator(
+    "details.activity-fingerprint-preview",
+  );
+  assert.equal(await fingerprintPreview.getAttribute("open"), null);
+  assert.equal(
+    await fingerprintPreview.locator("code.snapshot-hash").isVisible(),
+    false,
+    "The raw fingerprint should remain hidden unless technical details are requested.",
+  );
   await page
-    .getByRole("button", { name: "Publish proof hash onchain" })
+    .getByRole("button", { name: "Save timestamped proof" })
     .click();
 
   const retry = page.getByRole("button", {
-    name: "Retry saving activity receipt",
+    name: "Retry record save",
   });
   await retry.waitFor({ state: "visible" });
   assert.equal(
     await page
-      .getByRole("button", { name: "Publish proof hash onchain" })
+      .getByRole("button", { name: "Save timestamped proof" })
       .count(),
     0,
     "A confirmed proof with a pending private receipt must hide the publish control.",
@@ -169,11 +179,22 @@ try {
     ),
     "1",
   );
+  const downloadPromise = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: "Download private verification file" })
+    .click();
+  const verificationDownload = await downloadPromise;
+  const verificationFilePath = await verificationDownload.path();
+  assert.ok(verificationFilePath, "The private verification file should download.");
+  assert.match(
+    verificationDownload.suggestedFilename(),
+    /^openescrow-activity-43-[a-f0-9]{8}\.json$/i,
+  );
 
-  await page.goto(`${pageUrl}&agreement=44`, { waitUntil: "networkidle" });
+  await page.goto(otherAgreementUrl, { waitUntil: "networkidle" });
   assert.equal(
     await page
-      .getByRole("button", { name: "Retry saving activity receipt" })
+      .getByRole("button", { name: "Retry record save" })
       .count(),
     0,
     "A different agreement must not inherit another agreement's pending receipt.",
@@ -181,11 +202,11 @@ try {
 
   await page.goto(pageUrl, { waitUntil: "networkidle" });
   const recoveredRetry = page.getByRole("button", {
-    name: "Retry saving activity receipt",
+    name: "Retry record save",
   });
   await recoveredRetry.waitFor({ state: "visible" });
   await page
-    .getByText(/recovered a confirmed testnet activity proof/i)
+    .getByText(/recovered a confirmed timestamped proof/i)
     .waitFor({ state: "visible" });
   assert.equal(
     await recoveredRetry.evaluate(
@@ -197,7 +218,7 @@ try {
   await recoveredRetry.press("Enter");
   await page
     .getByRole("button", {
-      name: /(?:Saving|Retry saving) activity receipt/,
+      name: /(?:Saving agreement record|Retry record save)/,
     })
     .waitFor({ state: "detached" });
   assert.equal(attempts(), 2);
@@ -211,6 +232,40 @@ try {
     "1",
     "The record-only retry must not publish another proof.",
   );
+
+  await page
+    .getByText("Check a private timestamped proof", { exact: true })
+    .click();
+  await page
+    .getByLabel("Private verification file")
+    .setInputFiles(verificationFilePath);
+  const verifiedSummary = page
+    .locator(".proof-verification-success .tx-success")
+    .filter({ hasText: "Proof verified" });
+  await verifiedSummary.waitFor({ state: "visible" });
+  const friendlySummary = await verifiedSummary.innerText();
+  assert.match(friendlySummary, /matches OE-A-000044/i);
+  assert.doesNotMatch(
+    friendlySummary,
+    /0x|keccak256|activity type|publisher/i,
+    "The primary success message should not expose technical receipt language.",
+  );
+  const verificationDetails = page.locator(
+    "details.activity-verification-details",
+  );
+  assert.equal(await verificationDetails.getAttribute("open"), null);
+  assert.equal(
+    await verificationDetails.getByText(/Digital fingerprint:/).isVisible(),
+    false,
+    "Technical verification evidence should start collapsed.",
+  );
+  await verificationDetails.getByText("Verification details", { exact: true }).click();
+  await verificationDetails.getByText("Record type: Private note").waitFor();
+  await verificationDetails.getByText(/Saved by wallet: 0x1111.*1111/).waitFor();
+  await verificationDetails.getByText(/Digital fingerprint: 0x[a-f0-9]{64}/i).waitFor();
+  await verificationDetails
+    .getByText("Confirmed in test-network block 12345.")
+    .waitFor();
   assert.equal(
     await page.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
@@ -219,7 +274,7 @@ try {
   );
 
   process.stdout.write(
-    "Private activity recovery check passed: a confirmed proof survives one private-record outage only in its exact agreement, restores an accessible mobile retry after reload, stores no bearer, and cannot publish twice.\n",
+    "Private activity recovery check passed: a confirmed proof survives one private-record outage only in its exact agreement, restores an accessible mobile retry after reload, stores no bearer, cannot publish twice, and completes a plain-language download-and-verify workflow with technical evidence collapsed by default.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

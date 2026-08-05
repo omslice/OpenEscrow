@@ -246,6 +246,12 @@ detailed validation ledger.
 - **Verified:** Private-activity D1 receipt recovery conditionally removes browser JSON only when
   the stored activity type, content hash, and transaction hash match the successful save. An older
   completion therefore cannot clear a newer proof's recovery control or feedback.
+- **Verified:** Private timestamped-proof publishing and verification now lead with consumer
+  language while preserving exact fingerprints, wallet attribution, test-network blocks, and
+  public receipts inside collapsed technical disclosures. A rendered mobile rehearsal downloads
+  the private verification file, isolates an interrupted record save to the exact agreement,
+  reloads and retries without another blockchain action or stored bearer, and verifies the same
+  file against its public receipt.
 - **Verified:** Standard contract-write controls now treat wallet-write errors, synchronous
   submission failures, and mined-receipt failures as terminal failures. Each path unlocks the
   control, discards the submitted success callback, and announces the error instead of leaving a

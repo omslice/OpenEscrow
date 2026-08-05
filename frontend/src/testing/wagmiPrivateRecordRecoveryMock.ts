@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { AGREEMENT_ACTIVITY_REGISTRY_ADDRESS } from "../contracts/activityRegistryConfig";
 
 const LANDLORD = "0x1111111111111111111111111111111111111111" as const;
 const TENANT = "0x2222222222222222222222222222222222222222" as const;
@@ -20,6 +21,7 @@ const WITHDRAWAL_TRANSACTION_COUNT_KEY =
   "openescrow:test:withdrawal-transaction-writes";
 const ACTIVITY_TRANSACTION_COUNT_KEY =
   "openescrow:test:activity-transaction-writes";
+const ACTIVITY_CONTENT_HASH_KEY = "openescrow:test:activity-content-hash";
 
 function transactionCount(key: string) {
   return Number(window.sessionStorage.getItem(key) || "0");
@@ -43,7 +45,26 @@ export function useAccount() {
 }
 
 export function usePublicClient() {
-  return undefined;
+  if (currentFlow() !== "activity-receipt") return undefined;
+  return {
+    getTransactionReceipt: async () => ({
+      status: "success" as const,
+      to: AGREEMENT_ACTIVITY_REGISTRY_ADDRESS,
+      blockNumber: 12_345n,
+    }),
+    getLogs: async () => [
+      {
+        transactionHash: ACTIVITY_TRANSACTION_HASH,
+        args: {
+          activityType: 1,
+          contentHash: window.sessionStorage.getItem(
+            ACTIVITY_CONTENT_HASH_KEY,
+          ) as `0x${string}`,
+          party: selectedAddress(),
+        },
+      },
+    ],
+  };
 }
 
 export function useReadContract(parameters: { functionName?: string }) {
@@ -81,7 +102,7 @@ export function useReadContract(parameters: { functionName?: string }) {
 export function useWriteContract() {
   const [data, setData] = useState<`0x${string}` | undefined>();
   return {
-    writeContract: () => {
+    writeContract: (request?: { args?: readonly unknown[] }) => {
       const transaction = new URLSearchParams(window.location.search).get("tx");
       if (transaction === "claim-success") {
         recordTransaction(CLAIM_TRANSACTION_COUNT_KEY);
@@ -114,6 +135,10 @@ export function useWriteContract() {
           setData(ARBITER_TIMEOUT_TRANSACTION_HASH);
         }
       } else if (transaction === "activity-success") {
+        const contentHash = request?.args?.[2];
+        if (typeof contentHash === "string") {
+          window.sessionStorage.setItem(ACTIVITY_CONTENT_HASH_KEY, contentHash);
+        }
         recordTransaction(ACTIVITY_TRANSACTION_COUNT_KEY);
         setData(ACTIVITY_TRANSACTION_HASH);
       }

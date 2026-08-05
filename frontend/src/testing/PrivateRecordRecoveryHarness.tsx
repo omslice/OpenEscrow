@@ -1,5 +1,6 @@
 /* oxlint-disable react/only-export-components -- This test-only entry mounts one deterministic browser harness. */
 import { createRoot } from "react-dom/client";
+import { ActivityProofVerifier } from "../components/ActivityProofVerifier";
 import { ClaimSection } from "../components/ClaimSection";
 import { DisputeResolutionSection } from "../components/DisputeResolutionSection";
 import { PrivateActivityPublisher } from "../components/PrivateActivityPublisher";
@@ -140,11 +141,14 @@ createRoot(document.getElementById("root")!).render(
           negotiationAccess={access}
         />
       ) : flow === "activity-receipt" ? (
-        <PrivateActivityPublisher
-          agreementId={agreementId}
-          negotiationAccess={access}
-          onPublished={() => undefined}
-        />
+        <>
+          <PrivateActivityPublisher
+            agreementId={agreementId}
+            negotiationAccess={access}
+            onPublished={() => undefined}
+          />
+          <ActivityProofVerifier agreementId={agreementId} />
+        </>
       ) : role === "tenant" ? (
         <ResponseSection
           id={agreementId}

@@ -94,7 +94,7 @@ function StandardPublishAction(props: PublishActionProps) {
       abi={AgreementActivityRegistryABI}
       functionName="publishActivity"
       args={[props.agreementId, props.activityType, props.contentHash]}
-      label="Publish proof hash onchain"
+      label="Save timestamped proof"
       onSubmit={props.onSubmit}
       onBusyChange={props.onBusyChange}
       onSuccess={props.onSuccess}
@@ -144,14 +144,14 @@ function SponsoredPublishAction(props: PublishActionProps) {
             );
             await waitForSuccessfulTransactionReceipt(
               () => publicClient.waitForTransactionReceipt({ hash: result.hash }),
-              "The activity proof transaction reached the test network but did not complete. No public proof or activity receipt was recorded. Refresh the agreement and try again.",
+              "The timestamped proof reached the test network but did not complete. Nothing was added to the public record. Refresh the agreement and try again.",
             );
             props.onSuccess(result.hash);
           } catch (cause) {
             setError(
               cause instanceof Error
                 ? cause.message.split("\n")[0]
-                : "The sponsored activity transaction failed.",
+                : "The timestamped proof could not be saved.",
             );
           } finally {
             setWorking(false);
@@ -159,7 +159,9 @@ function SponsoredPublishAction(props: PublishActionProps) {
           }
         }}
       >
-        {working ? "Publishing with gas covered..." : "Publish proof hash—gas covered"}
+        {working
+          ? "Saving timestamped proof..."
+          : "Save timestamped proof—network fee covered"}
       </button>
       {error && <p className="tx-error" role="alert">{error}</p>}
     </>
@@ -262,7 +264,7 @@ export function PrivateActivityPublisher({
     setDetailsOpen(Boolean(recoveredRecord));
     setRecordError(
       recoveredRecord
-        ? "OpenEscrow recovered a confirmed testnet activity proof whose agreement receipt still needs to be saved. Retry the record save; do not publish the proof again."
+        ? "OpenEscrow recovered a confirmed timestamped proof whose private agreement record still needs to be saved. Retry the record save; do not add the proof again."
         : null,
     );
     return () => publisherScope.close();
@@ -309,8 +311,8 @@ export function PrivateActivityPublisher({
       if (!publisherScope.isCurrent(operationId)) return;
       setRecordError(
         cause instanceof Error
-          ? `The onchain receipt succeeded, but its agreement record still needs to be saved: ${cause.message}`
-          : "The onchain receipt succeeded, but its agreement record still needs to be saved.",
+          ? `The timestamped proof was confirmed, but its private agreement record still needs to be saved: ${cause.message}`
+          : "The timestamped proof was confirmed, but its private agreement record still needs to be saved.",
       );
     } finally {
       if (recordSaveInFlight.current === saveToken) {
@@ -340,13 +342,15 @@ export function PrivateActivityPublisher({
         `openescrow-activity-${agreementId}-${proof.contentHash.slice(2, 10)}.json`,
       );
       setProofDownloadStatus({
-        message: "Private proof downloaded. Keep it with the matching transaction receipt.",
+        message: "Private verification file downloaded. Keep it with your agreement records.",
         error: false,
       });
     } catch (error) {
       setProofDownloadStatus({
         message:
-          error instanceof Error ? error.message : "The private proof could not be downloaded.",
+          error instanceof Error
+            ? error.message
+            : "The private verification file could not be downloaded.",
         error: true,
       });
     }
@@ -358,11 +362,12 @@ export function PrivateActivityPublisher({
       open={detailsOpen}
       onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
     >
-      <summary>Publish a privacy-safe activity receipt</summary>
+      <summary>Add a private timestamped proof</summary>
       <p className="field-help">
-        The app hashes the text in this browser. Only the agreement number, activity type, your
-        wallet, timestamp, and hash are public. The readable text is not uploaded or sent to the
-        server.
+        Use this to show that a note, document description, notice, or decision existed at a
+        certain time without posting the readable text. OpenEscrow creates a digital fingerprint
+        in this browser and saves it with the agreement number, record type, wallet, and time to
+        the public test network. The readable text stays private.
       </p>
       <label>
         Activity type
@@ -384,13 +389,13 @@ export function PrivateActivityPublisher({
       </label>
       <p className="field-help">{selectedType?.help}</p>
       <label>
-        Private content to hash
+        Private note or document description
         <textarea
           value={content}
           disabled={publishing}
           maxLength={2_000}
           rows={4}
-          placeholder="Enter the note or document description you want to prove existed…"
+          placeholder="Enter the private note or document description you want to timestamp…"
           onChange={(event) => {
             setContent(event.target.value);
             setProof(null);
@@ -400,9 +405,15 @@ export function PrivateActivityPublisher({
       </label>
       {contentHash && !proof && !pendingRecord && (
         <>
-          <code className="snapshot-hash" title={contentHash}>
-            keccak256: {contentHash}
-          </code>
+          <details className="technical-details activity-fingerprint-preview">
+            <summary>Technical fingerprint preview</summary>
+            <p className="field-help">
+              Only this digital fingerprint—not the readable text—will be public.
+            </p>
+            <code className="snapshot-hash" title={contentHash}>
+              keccak256: {contentHash}
+            </code>
+          </details>
           <PublishAction
             agreementId={agreementId}
             activityType={activityType}
@@ -439,22 +450,25 @@ export function PrivateActivityPublisher({
         </>
       )}
       {!contentHash && (
-        <p className="field-help">Enter at least four non-space characters to create a proof.</p>
+        <p className="field-help">
+          Enter at least four characters to create a timestamped proof.
+        </p>
       )}
       {proof && (
         <div className="private-proof-success">
           <p className="tx-success" role="status">
-            Receipt published. Download the private proof file while this text is still available.
+            Timestamped proof saved. Download the private verification file now—it contains the
+            readable text and is not stored by OpenEscrow.
           </p>
           <button className="btn btn-ghost small" type="button" onClick={downloadProof}>
-            Download private proof JSON
+            Download private verification file
           </button>
           <a
             href={`https://sepolia.basescan.org/tx/${proof.transactionHash}`}
             target="_blank"
             rel="noreferrer"
           >
-            Open transaction receipt
+            View public receipt
           </a>
           {proofDownloadStatus && (
             <p
@@ -471,7 +485,7 @@ export function PrivateActivityPublisher({
         <div className="receipt-recovery" aria-busy={isSavingRecord}>
           {isSavingRecord && (
             <p className="hint" role="status" aria-live="polite">
-              Saving the activity receipt to this agreement...
+              Saving the proof to this agreement record...
             </p>
           )}
           {recordError && <p className="tx-error" role="alert">{recordError}</p>}
@@ -483,8 +497,8 @@ export function PrivateActivityPublisher({
             onClick={() => void saveActivityRecord(pendingRecord)}
           >
             {isSavingRecord
-              ? "Saving activity receipt..."
-              : "Retry saving activity receipt"}
+              ? "Saving agreement record..."
+              : "Retry record save"}
           </button>
         </div>
       )}

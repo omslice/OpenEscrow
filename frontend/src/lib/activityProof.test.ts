@@ -61,7 +61,7 @@ test("versioned proof rejects a different escrow or registry release", () => {
         "0x4444444444444444444444444444444444444444",
         registry,
       ),
-    /different OpenEscrow contract release/,
+    /different OpenEscrow release/,
   );
   assert.throws(
     () =>
@@ -70,7 +70,7 @@ test("versioned proof rejects a different escrow or registry release", () => {
         escrow,
         "0x5555555555555555555555555555555555555555",
       ),
-    /different OpenEscrow contract release/,
+    /different OpenEscrow release/,
   );
 });
 
@@ -82,6 +82,10 @@ test("malformed activity proof fields are rejected", () => {
   };
   assert.throws(
     () => parseActivityProofFile(JSON.stringify(malformed)),
-    /not a valid OpenEscrow activity proof/,
+    /not a valid OpenEscrow private verification file/,
+  );
+  assert.throws(
+    () => parseActivityProofFile("not-json"),
+    /not a valid OpenEscrow private verification file/,
   );
 });

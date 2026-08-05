@@ -134,7 +134,11 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** Once a privacy-safe activity proof is confirmed, its publish control stays hidden
   while the private agreement receipt is saved. A failed save recovers only in the exact agreement,
   reopens and focuses the one safe retry after reload, stores no agreement-access bearer, and
-  cannot issue a second onchain publication.
+  cannot issue a second onchain publication. The participant-facing publisher and verifier now
+  explain the workflow as a private timestamped proof; raw fingerprints, wallet details, blocks,
+  and receipt links remain available in collapsed technical disclosures. A rendered mobile
+  rehearsal downloads the private file, survives the interrupted record save, verifies that same
+  file against the public receipt, and keeps the primary success message free of technical IDs.
 - **Verified:** A durable active sandbox attempt now reports whether it matches the currently
   requested wallet, asset, and amount, and the browser independently confirms that binding. A
   mismatch stays locked, is not copied into the new intent's local recovery key, and offers a
