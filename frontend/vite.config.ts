@@ -9,22 +9,28 @@ export default defineConfig(({ mode }) => {
   const fundingProductionLockTest = mode === 'funding-production-lock-test'
   const fiatFundingTest = fundingRecoveryTest || fundingProductionLockTest
   const privateRecordRecoveryTest = mode === 'private-record-recovery-test'
+  const evidenceRecoveryTest = mode === 'evidence-recovery-test'
   const pilotLifecycleTest = mode === 'pilot-lifecycle-test'
   return {
     plugins: [react()],
     optimizeDeps: fiatFundingTest
       ? { entries: ['testing/funding-recovery.html'] }
-      : pilotLifecycleTest
+      : evidenceRecoveryTest
+        ? {
+            entries: ['testing/evidence-recovery.html'],
+            exclude: ['@privy-io/react-auth', '@privy-io/wagmi'],
+          }
+        : pilotLifecycleTest
         ? {
             entries: ['testing/pilot-lifecycle.html'],
             exclude: ['@privy-io/react-auth', '@privy-io/wagmi'],
           }
-      : privateRecordRecoveryTest
-        ? {
-            entries: ['testing/private-record-recovery.html'],
-            exclude: ['@privy-io/react-auth', '@privy-io/wagmi'],
-          }
-        : undefined,
+          : privateRecordRecoveryTest
+            ? {
+                entries: ['testing/private-record-recovery.html'],
+                exclude: ['@privy-io/react-auth', '@privy-io/wagmi'],
+              }
+            : undefined,
     resolve: {
       alias: [
         ...(pilotLifecycleTest
@@ -65,6 +71,19 @@ export default defineConfig(({ mode }) => {
                 replacement: fileURLToPath(
                   new URL(
                     './src/testing/wagmiPrivateRecordRecoveryMock.ts',
+                    import.meta.url,
+                  ),
+                ),
+              },
+            ]
+          : []),
+        ...(evidenceRecoveryTest
+          ? [
+              {
+                find: /^wagmi$/,
+                replacement: fileURLToPath(
+                  new URL(
+                    './src/testing/wagmiEvidenceRecoveryMock.ts',
                     import.meta.url,
                   ),
                 ),

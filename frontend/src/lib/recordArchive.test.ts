@@ -88,4 +88,8 @@ test("archive parser rejects an invalid record reference", async () => {
     () => parseEncryptedRecordArchive(JSON.stringify(malformed)),
     /not a valid encrypted OpenEscrow record/,
   );
+  assert.throws(
+    () => parseEncryptedRecordArchive("not-json"),
+    /not a valid encrypted OpenEscrow record file/,
+  );
 });

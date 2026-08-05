@@ -118,7 +118,12 @@ export async function encryptRecordSnapshot(
 }
 
 export function parseEncryptedRecordArchive(raw: string): EncryptedRecordArchive {
-  const parsed = JSON.parse(raw) as Partial<EncryptedRecordArchive>;
+  let parsed: Partial<EncryptedRecordArchive>;
+  try {
+    parsed = JSON.parse(raw) as Partial<EncryptedRecordArchive>;
+  } catch {
+    throw new Error("This is not a valid encrypted OpenEscrow record file.");
+  }
   if (
     parsed.schema !== "openescrow.encrypted-agreement-record.v1" ||
     parsed.encryption?.algorithm !== "AES-256-GCM" ||
@@ -132,7 +137,7 @@ export function parseEncryptedRecordArchive(raw: string): EncryptedRecordArchive
     typeof parsed.ciphertext !== "string" ||
     !parsed.ciphertext
   ) {
-    throw new Error("This is not a valid encrypted OpenEscrow record.");
+    throw new Error("This is not a valid encrypted OpenEscrow record file.");
   }
   return parsed as EncryptedRecordArchive;
 }
@@ -180,7 +185,9 @@ export async function decryptRecordArchive(
   const canonical = decoder.decode(plaintext);
   const hash = await sha256Hex(canonical);
   if (hash.toLowerCase() !== archive.integrity.canonicalRecordHash.toLowerCase()) {
-    throw new Error("The decrypted record does not match its integrity hash.");
+    throw new Error(
+      "The decrypted contents no longer match the record's saved digital fingerprint.",
+    );
   }
   const snapshot = JSON.parse(canonical) as Record<string, unknown>;
   if (
@@ -189,7 +196,7 @@ export async function decryptRecordArchive(
       snapshot.schema !== "openescrow.agreement-record.v3") ||
     snapshot.proposalId !== archive.record.proposalId
   ) {
-    throw new Error("The decrypted content is not the record described by this archive.");
+    throw new Error("The decrypted contents do not match the record described by this file.");
   }
   return { canonical, hash, snapshot };
 }

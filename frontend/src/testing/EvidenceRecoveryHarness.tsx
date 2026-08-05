@@ -1,6 +1,7 @@
 /* oxlint-disable react/only-export-components -- This test-only entry mounts one deterministic browser harness. */
 import { useState } from "react";
 import { createRoot } from "react-dom/client";
+import { EvidenceList } from "../components/EvidenceList";
 import { useEvidenceInputs } from "../components/EvidenceInputs";
 import type { NegotiationAccess } from "../lib/negotiations";
 import "../index.css";
@@ -58,6 +59,7 @@ function EvidenceRecoveryHarness() {
             contentHash: evidence.contentHash,
           })}
         </output>
+        <EvidenceList id={43n} negotiationAccess={ACCESS[scope]} />
       </section>
     </main>
   );

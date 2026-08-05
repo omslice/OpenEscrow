@@ -16,7 +16,7 @@ detailed validation ledger.
   rehearsal summaries, binds their JUnit reports by SHA-256, and records a deterministic digest of
   every packaged Sites file. The live-deploy wrapper runs readiness only after a successful
   publish and passes the new deployment URL positionally to the readiness checker.
-- **Verified:** Twenty-two credential-free rehearsals pass: lifecycle scenarios cover
+- **Verified:** Twenty-three credential-free rehearsals pass: lifecycle scenarios cover
   archive/restore, record proof, disputed claim, accepted claim, and no-claim refund, while a
   rendered Record scenario proves encrypted JSON export, separate-key download, wrong-key
   rejection, keyboard disclosure, narrow-screen layout, and local verification during a public-
@@ -452,6 +452,12 @@ detailed validation ledger.
   request, the expanded workflow fits a narrow viewport, and encrypted export, separate-key
   download, wrong-key rejection, and local verification remain usable during a public-proof
   service outage.
+- **Verified:** Claim supporting-file lists now present a readable category, timestamp, and
+  44-pixel file action without requiring a participant to understand a content URI, wallet, or
+  hash. Each exact wallet and digital fingerprint remains available in an independently collapsed
+  44-pixel verification disclosure. The rendered mobile rehearsal proves private file access uses
+  a token-free URL, retains agreement-scoped POST authorization, and preserves same-file upload
+  retry, focus, announcements, and scope isolation.
 - **Verified:** Public activity-receipt query failures now render as a visible alert instead of
   being hidden in a closed receipt-history disclosure. The alert distinguishes a connection
   problem from missing agreement data, retains a manual retry, and keeps raw RPC text collapsed.

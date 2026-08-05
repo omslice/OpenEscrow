@@ -4,7 +4,14 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const host = "127.0.0.1";
-const port = 4178;
+const configuredPort = Number.parseInt(
+  process.env.OPENESCROW_EVIDENCE_TEST_PORT || "",
+  10,
+);
+const port =
+  Number.isInteger(configuredPort) && configuredPort >= 1_024 && configuredPort <= 65_535
+    ? configuredPort
+    : 22_000 + (process.pid % 30_000);
 const baseUrl = `http://${host}:${port}/testing/evidence-recovery.html`;
 const viteEntrypoint = fileURLToPath(
   new URL("../node_modules/vite/bin/vite.js", import.meta.url),
@@ -24,9 +31,28 @@ async function waitForServer() {
   throw new Error(`Timed out waiting for ${baseUrl}.`);
 }
 
+async function stopServer(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  child.kill();
+  await Promise.race([
+    exited,
+    new Promise((resolve) => setTimeout(resolve, 2_000)),
+  ]);
+}
+
 const server = spawn(
   process.execPath,
-  [viteEntrypoint, "--host", host, "--port", String(port), "--strictPort"],
+  [
+    viteEntrypoint,
+    "--host",
+    host,
+    "--port",
+    String(port),
+    "--strictPort",
+    "--mode",
+    "evidence-recovery-test",
+  ],
   {
     cwd: new URL("..", import.meta.url),
     stdio: ["ignore", "pipe", "pipe"],
@@ -84,7 +110,7 @@ try {
   });
 
   await page.goto(baseUrl, { waitUntil: "networkidle" });
-  const fileInput = page.getByLabel("Supporting file");
+  const fileInput = page.getByLabel("Supporting file", { exact: true });
   await fileInput.setInputFiles({
     name: "supporting-file.pdf",
     mimeType: "application/pdf",
@@ -145,6 +171,64 @@ try {
     "A delayed upload must not populate a newly selected agreement.",
   );
 
+  const evidenceItems = page.locator(".evidence-list li");
+  assert.equal(await evidenceItems.count(), 2);
+  const firstEvidence = evidenceItems.nth(0);
+  const firstSummary = await firstEvidence
+    .locator(".evidence-entry-summary")
+    .innerText();
+  assert.match(firstSummary, /Claim—unpaid rent/);
+  assert.match(firstSummary, /Added/);
+  assert.doesNotMatch(
+    firstSummary,
+    /0x|hash|uri|wallet|cryptographic/i,
+    "The primary supporting-file summary should not expose technical identifiers.",
+  );
+  const firstDetails = firstEvidence.locator(
+    "details.evidence-verification-details",
+  );
+  const secondDetails = evidenceItems
+    .nth(1)
+    .locator("details.evidence-verification-details");
+  assert.equal(await firstDetails.getAttribute("open"), null);
+  const firstDetailsSummary = firstDetails.getByText("Verification details", {
+    exact: true,
+  });
+  const firstDetailsSummaryBox = await firstDetailsSummary.boundingBox();
+  assert.equal(
+    Boolean(firstDetailsSummaryBox && firstDetailsSummaryBox.height >= 44),
+    true,
+  );
+  assert.equal(
+    await firstDetails.getByText(/Digital fingerprint:/).isVisible(),
+    false,
+  );
+  await firstDetailsSummary.click();
+  await firstDetails.getByText(/Submitted by wallet: 0x1111.*1111/).waitFor();
+  await firstDetails.getByText(/Digital fingerprint: 0x[a-f0-9]{64}/i).waitFor();
+  assert.equal(
+    await secondDetails.getByText(/Digital fingerprint:/).isVisible(),
+    false,
+    "Opening one supporting-file disclosure must not expand another.",
+  );
+  const privateFileButton = firstEvidence.getByRole("button", {
+    name: "View supporting file for Claim—unpaid rent",
+  });
+  const privateFileButtonBox = await privateFileButton.boundingBox();
+  assert.equal(Boolean(privateFileButtonBox && privateFileButtonBox.height >= 44), true);
+  const privateForm = firstEvidence.locator("form.evidence-document-form");
+  assert.equal(await privateForm.getAttribute("method"), "post");
+  assert.equal(await privateForm.getAttribute("rel"), "noreferrer");
+  assert.equal(
+    (await privateForm.getAttribute("action"))?.includes("access-b"),
+    false,
+    "Agreement access must not be embedded in the supporting-file URL.",
+  );
+  assert.equal(
+    await privateForm.locator('input[name="token"]').inputValue(),
+    "access-b",
+  );
+
   const mobileWidth = await page.evaluate(() => ({
     viewport: window.innerWidth,
     document: document.documentElement.scrollWidth,
@@ -156,12 +240,12 @@ try {
   );
 
   process.stdout.write(
-    "Evidence recovery browser check passed: same-file retry, focus, announcements, scope isolation, and mobile width remain usable.\n",
+    "Evidence recovery browser check passed: same-file retry, focus, announcements, scope isolation, plain-language supporting-file summaries, independently collapsed verification details, token-free file URLs, mobile touch targets, and mobile width remain usable.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);
   throw error;
 } finally {
   await browser?.close();
-  server.kill();
+  await stopServer(server);
 }

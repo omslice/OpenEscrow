@@ -38,6 +38,19 @@ const expectedScenarios = [
     ],
   },
   {
+    id: "rendered-supporting-evidence",
+    name: "pilot rehearsal: supporting-file recovery and verification details remain usable",
+    covers: [
+      "rendered supporting-file workflow",
+      "same-file upload retry",
+      "agreement scope isolation",
+      "token-free file URL",
+      "collapsed verification details",
+      "mobile touch targets",
+      "mobile width",
+    ],
+  },
+  {
     id: "rendered-multi-party-lifecycle",
     name: "pilot rehearsal: rendered landlord, tenants, and arbiter complete one shared lifecycle",
     covers: [
@@ -228,6 +241,12 @@ runServerRehearsal({
       target: "scripts/check-record-verification.mjs",
       command: process.execPath,
       args: ["scripts/check-record-verification.mjs"],
+    },
+    {
+      name: "pilot rehearsal: supporting-file recovery and verification details remain usable",
+      target: "scripts/check-evidence-recovery.mjs",
+      command: process.execPath,
+      args: ["scripts/check-evidence-recovery.mjs"],
     },
     {
       name: "pilot rehearsal: rendered landlord, tenants, and arbiter complete one shared lifecycle",

@@ -2749,21 +2749,47 @@ a.btn.disabled {
 }
 
 .evidence-list ul {
-  padding-left: 18px;
-  font-size: 12px;
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 14px;
   color: var(--text-h);
 }
 
+.evidence-list li {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--accent) 8%);
+}
+
+.evidence-entry-summary {
+  display: grid;
+  gap: 2px;
+}
+
+.evidence-entry-summary span {
+  color: var(--muted);
+}
+
 .evidence-list code {
-  word-break: break-all;
+  display: block;
+  overflow-wrap: anywhere;
 }
 
 .evidence-document-form {
-  display: inline;
+  display: block;
 }
 
 .evidence-document-link {
-  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 0;
   border: 0;
   background: transparent;
   color: var(--accent);
@@ -2772,6 +2798,21 @@ a.btn.disabled {
   cursor: pointer;
   text-decoration: underline;
   text-underline-offset: 2px;
+}
+
+.evidence-verification-details {
+  margin: 0;
+}
+
+.evidence-verification-details > summary,
+.verification-proof-details > summary {
+  min-height: 44px;
+  padding-block: 10px;
+}
+
+.evidence-verification-details[open] {
+  display: grid;
+  gap: 8px;
 }
 
 .evidence-document-link:hover,
@@ -3779,6 +3820,22 @@ a.btn.disabled {
 .activity-verification-details span,
 .activity-verification-details code,
 .activity-verification-details a {
+  display: block;
+}
+
+.verification-result-summary {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.verification-proof-details[open] {
+  display: grid;
+  gap: 8px;
+}
+
+.verification-proof-details code,
+.verification-proof-details span {
   display: block;
 }
 

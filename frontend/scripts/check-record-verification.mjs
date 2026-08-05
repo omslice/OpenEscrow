@@ -6,7 +6,14 @@ import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 
 const host = "127.0.0.1";
-const port = 4178;
+const configuredPort = Number.parseInt(
+  process.env.OPENESCROW_RECORD_VERIFICATION_TEST_PORT || "",
+  10,
+);
+const port =
+  Number.isInteger(configuredPort) && configuredPort >= 1_024 && configuredPort <= 65_535
+    ? configuredPort
+    : 22_000 + (process.pid % 30_000);
 const baseUrl = `http://${host}:${port}`;
 const proposalId = "record-browser-pilot";
 const accessToken = "record-browser-landlord-token";
@@ -155,6 +162,16 @@ async function waitForServer() {
     await new Promise((resolve) => setTimeout(resolve, 150));
   }
   throw new Error(`Timed out waiting for ${baseUrl}.`);
+}
+
+async function stopServer(child) {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  const exited = new Promise((resolve) => child.once("exit", resolve));
+  child.kill();
+  await Promise.race([
+    exited,
+    new Promise((resolve) => setTimeout(resolve, 2_000)),
+  ]);
 }
 
 const server = spawn(
@@ -341,14 +358,14 @@ try {
   const verificationKey = keyText.match(/oe1_[A-Za-z0-9_-]+/u)?.[0];
   assert.ok(verificationKey, "The downloaded key file should contain an OpenEscrow key.");
 
-  await page.getByLabel("Encrypted record JSON").setInputFiles({
+  await page.getByLabel("Encrypted record file").setInputFiles({
     name: archiveDownload.suggestedFilename(),
     mimeType: "application/json",
     buffer: archiveBytes,
   });
   const keyInput = page.getByLabel("Verification key");
   const verifyButton = page.getByRole("button", {
-    name: "Verify encrypted record",
+    name: "Check encrypted record",
   });
   await page.getByText(
     "The public proof check will be skipped until the record service is connected to this OpenEscrow release.",
@@ -392,7 +409,23 @@ try {
   await page.getByText(
     "Record verified; public proof check unavailable",
   ).waitFor({ state: "visible" });
-  const verificationDetails = page.getByText("View verification details");
+  const resultSummary = page.locator(".verification-result-summary");
+  const friendlyResult = await resultSummary.innerText();
+  assert.match(friendlyResult, /downloaded file is intact/i);
+  assert.doesNotMatch(
+    friendlyResult,
+    /0x|sha-256|base sepolia|wallet/i,
+    "The primary verification result should not expose technical identifiers.",
+  );
+  const verificationDetails = page.getByText("Verification details", {
+    exact: true,
+  });
+  const verificationDetailsBox = await verificationDetails.boundingBox();
+  assert.equal(
+    Boolean(verificationDetailsBox && verificationDetailsBox.height >= 44),
+    true,
+    "The optional verification disclosure should remain a 44px mobile target.",
+  );
   const verifiedFingerprint = page.locator(".verification-proof-details code");
   assert.equal(
     await verifiedFingerprint.isVisible(),
@@ -451,12 +484,12 @@ try {
   }
 
   process.stdout.write(
-    "Record verification browser check passed: header-authorized readable report download, plain-language guidance, keyboard-accessible technical details, mobile width, encrypted export, separate key download, wrong-key rejection, and local integrity verification remain usable during a public-proof outage.\n",
+    "Record verification browser check passed: header-authorized readable report download, plain-language results without technical identifiers, keyboard-accessible verification details, mobile width, encrypted export, separate key download, wrong-key rejection, and local integrity verification remain usable during a public-proof outage.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);
   throw error;
 } finally {
   await browser?.close();
-  server.kill();
+  await stopServer(server);
 }

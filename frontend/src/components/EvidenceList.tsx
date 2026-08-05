@@ -46,31 +46,32 @@ export function EvidenceList({
 
   return (
     <div className="evidence-list">
-      <h4>Evidence trail ({entries.length})</h4>
+      <h4>Supporting files ({entries.length})</h4>
       <p className="hint">
-        Only a cryptographic hash and encrypted content reference are stored on-chain - the contract
-        never sees or validates the underlying supporting file.
+        This list shows when supporting documentation was added. The public agreement record keeps
+        a digital fingerprint and protected file reference, but it does not inspect or judge the
+        file itself.
       </p>
       <ul>
         {entries.map((e, i) => {
+          const typeLabel = TYPE_LABEL[e.evidenceType] ?? "Supporting record";
           const privatePath = negotiationAccess
             ? privateEvidencePath(e.uri)
             : null;
           const documentUrl = publicEvidenceUrl(e.uri);
           return (
-          <li key={i}>
-            <strong>{TYPE_LABEL[e.evidenceType] ?? `Type ${e.evidenceType}`}</strong> by{" "}
-            {shortAddr(e.submittedBy)} at {formatTimestamp(e.timestamp)}
-            <br />
-            hash: <code>{e.contentHash}</code>
-            {privatePath && negotiationAccess ? (
-              <>
-                <br />
+            <li key={`${e.contentHash}:${e.timestamp.toString()}:${i}`}>
+              <div className="evidence-entry-summary">
+                <strong>{typeLabel}</strong>
+                <span>Added {formatTimestamp(e.timestamp)}</span>
+              </div>
+              {privatePath && negotiationAccess ? (
                 <form
                   className="evidence-document-form"
                   action={privatePath}
                   method="post"
                   target="_blank"
+                  rel="noreferrer"
                 >
                   <input
                     type="hidden"
@@ -78,20 +79,36 @@ export function EvidenceList({
                     value={negotiationAccess.token}
                     readOnly
                   />
-                  <button className="evidence-document-link" type="submit">
-                    Open supporting document
+                  <button
+                    className="evidence-document-link"
+                    type="submit"
+                    aria-label={`View supporting file for ${typeLabel}`}
+                  >
+                    View supporting file
                   </button>
                 </form>
-              </>
-            ) : documentUrl ? (
-              <>
-                <br />
-                <a href={documentUrl} target="_blank" rel="noreferrer">
-                  Open supporting document
+              ) : documentUrl ? (
+                <a
+                  className="evidence-document-link"
+                  href={documentUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`View supporting file for ${typeLabel}`}
+                >
+                  View supporting file
                 </a>
-              </>
-            ) : null}
-          </li>
+              ) : (
+                <span className="hint">Supporting file access is unavailable from this view.</span>
+              )}
+              <details className="technical-details evidence-verification-details">
+                <summary>Verification details</summary>
+                <span>Submitted by wallet: {shortAddr(e.submittedBy)}</span>
+                <code title={e.contentHash}>Digital fingerprint: {e.contentHash}</code>
+                {TYPE_LABEL[e.evidenceType] === undefined && (
+                  <span>Record category code: {e.evidenceType}</span>
+                )}
+              </details>
+            </li>
           );
         })}
       </ul>

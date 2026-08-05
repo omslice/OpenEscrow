@@ -93,7 +93,11 @@ production custody, or reliance on the compliance research as legal advice.
   available in keyboard-accessible collapsed disclosures; the rendered rehearsal still proves
   narrow-screen layout, authenticated readable-report download and outage retry with focus
   recovery, separate-key export, wrong-key rejection, and local verification during a public-
-  proof outage.
+  proof outage. Record-check results now keep wallet addresses, network names, and the exact hash
+  out of the primary status while retaining them in a 44-pixel optional disclosure. Claim
+  supporting files likewise lead with category, date, and a direct file action; each wallet and
+  fingerprint is independently collapsed, private access stays out of its URL, and a rendered
+  mobile rehearsal proves scope isolation and safe same-file upload recovery.
 - **Verified:** A public-receipt query failure is no longer hidden inside collapsed history.
   The visible recovery panel explains that agreement activity was not removed, keeps raw
   connection text in an optional disclosure, contains an unexpected retry rejection, and gives

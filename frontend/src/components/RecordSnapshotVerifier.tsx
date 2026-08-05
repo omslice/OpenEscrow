@@ -70,7 +70,7 @@ export function RecordSnapshotVerifier({
     const selectedFile = file;
     const selectedVerificationKey = verificationKey;
     if (!selectedFile) {
-      setError("Choose the encrypted OpenEscrow record JSON first.");
+      setError("Choose the encrypted OpenEscrow record file first.");
       return;
     }
     const operationId = verificationScope.start();
@@ -90,7 +90,7 @@ export function RecordSnapshotVerifier({
         agreementId !== undefined &&
         archive.record.agreementId !== agreementId.toString()
       ) {
-        throw new Error("This encrypted record belongs to a different onchain agreement.");
+        throw new Error("This encrypted record belongs to a different finalized agreement.");
       }
       const decrypted = await decryptRecordArchive(
         archive,
@@ -114,14 +114,14 @@ export function RecordSnapshotVerifier({
             AGREEMENT_ACTIVITY_REGISTRY_ADDRESS.toLowerCase())
       ) {
         throw new Error(
-          "This encrypted record belongs to a different OpenEscrow contract release.",
+          "This encrypted record belongs to a different OpenEscrow release.",
         );
       }
       if (
         onchain?.agreementId !== undefined &&
         onchain.agreementId !== archive.record.agreementId
       ) {
-        throw new Error("The encrypted record's agreement reference does not match its contents.");
+        throw new Error("The agreement number in this file does not match its contents.");
       }
 
       let anchoredBy: `0x${string}`[] = [];
@@ -192,7 +192,7 @@ export function RecordSnapshotVerifier({
         </p>
       </div>
       <label>
-        Encrypted record JSON
+        Encrypted record file
         <input
           key={verificationScope.key}
           type="file"
@@ -232,10 +232,10 @@ export function RecordSnapshotVerifier({
         onClick={() => void verify()}
       >
         {working
-          ? "Verifying encrypted record..."
+          ? "Checking encrypted record..."
           : agreementId !== undefined && registryReady
-            ? "Verify record and public proof"
-            : "Verify encrypted record"}
+            ? "Check record and public proof"
+            : "Check encrypted record"}
       </button>
       {agreementId !== undefined && !registryReady && (
         <p className="field-help">
@@ -258,41 +258,37 @@ export function RecordSnapshotVerifier({
               ? "proof-verification-success"
               : "proof-verification-warning"
           }
-          role="status"
         >
-          <strong>
-            {result.onchainStatus === "not_applicable"
-              ? "Encrypted record opened and verified"
-              : result.onchainStatus === "verified"
-                ? "Encrypted record and public proof verified"
-                : result.onchainStatus === "not_anchored"
-                  ? "Record verified; no matching public proof found"
-                  : "Record verified; public proof check unavailable"}
-          </strong>
+          <p className="verification-result-summary" role="status">
+            <strong>
+              {result.onchainStatus === "not_applicable"
+                ? "Encrypted record opened and verified"
+                : result.onchainStatus === "verified"
+                  ? "Encrypted record and public proof verified"
+                  : result.onchainStatus === "not_anchored"
+                    ? "Record verified; no matching public proof found"
+                    : "Record verified; public proof check unavailable"}
+            </strong>
+            <span>
+              {result.onchainStatus === "not_applicable"
+                ? "The downloaded file is intact. This proposal has not been finalized as an active deposit yet."
+                : result.onchainStatus === "verified"
+                  ? "The downloaded file is intact and matches a public timestamped proof."
+                  : result.onchainStatus === "not_anchored"
+                    ? "The downloaded file is intact, but no current agreement party has saved a matching public proof."
+                    : "The downloaded file is intact. Try again later to check its public timestamped proof."}
+            </span>
+          </p>
           <details className="technical-details verification-proof-details">
-            <summary>View verification details</summary>
+            <summary>Verification details</summary>
             <code title={result.hash}>SHA-256: {result.hash}</code>
+            {result.onchainStatus === "verified" && (
+              <span>
+                Proof saved by wallet {result.anchoredBy.length === 1 ? "address" : "addresses"}:{" "}
+                {result.anchoredBy.map(shortAddr).join(", ")}.
+              </span>
+            )}
           </details>
-          {result.onchainStatus === "verified" && (
-            <span>
-              Public proof saved by agreement {result.anchoredBy.length === 1 ? "party" : "parties"}{" "}
-              {result.anchoredBy.map(shortAddr).join(", ")}.
-            </span>
-          )}
-          {result.onchainStatus === "not_applicable" && (
-            <span>This proposal does not have a finalized agreement reference yet.</span>
-          )}
-          {result.onchainStatus === "not_anchored" && (
-            <span>
-              The file is intact, but a current agreement party has not saved a matching public
-              proof.
-            </span>
-          )}
-          {result.onchainStatus === "unavailable" && (
-            <span>
-              The encrypted file is intact. Retry later to check its public proof on Base Sepolia.
-            </span>
-          )}
         </div>
       )}
     </section>
