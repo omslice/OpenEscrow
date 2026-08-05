@@ -552,9 +552,11 @@ const PRIVY_JWKS_CACHE_TTL_MS = 5 * 60 * 1000;
 const PRIVY_JWKS_UNKNOWN_KEY_REFRESH_MS = 60 * 1000;
 const PRIVY_JWKS_TIMEOUT_MS = 3_000;
 const PRIVY_JWKS_CACHE_LIMIT = 8;
+const JSON_RPC_RESPONSE_LIMIT_BYTES = 512 * 1024;
 const COMPLIANCE_SOURCE_FRESHNESS_MS = 21 * 24 * 60 * 60 * 1000;
 const DEFAULT_BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org";
 const FALLBACK_BASE_SEPOLIA_RPC_URL = "https://base-sepolia-rpc.publicnode.com";
+const BASE_SEPOLIA_CHAIN_ID_HEX = "0x14a34";
 const DEFAULT_OPEN_ESCROW_ADDRESS = "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99";
 const DEFAULT_USDC_ADDRESS = "0xE129b23BD89904D363ba226eE52deC74185D7789";
 const DEFAULT_YIELD_USDC_ADDRESS = "0x2746034FF16371A65c133016470f85535992dabC";
@@ -624,6 +626,8 @@ const complianceSourceChecksInFlight = new WeakMap();
 const databaseInitializationPromises = new WeakMap();
 const privyJwksCache = new Map();
 const privyJwksRequestsInFlight = new Map();
+const jsonRpcRequestsInFlight = new Map();
+const baseSepoliaRpcValidationCache = new Map();
 const COMPLIANCE_SOURCE_STATUS_VALUES = new Set([
   "pending",
   "unchanged",
@@ -913,6 +917,7 @@ async function activityRegistryReadiness(env) {
 
   let boundEscrowAddress = null;
   let rpcResponded = false;
+  let rpcChainMismatch = false;
   for (const rpcUrl of rpcUrls) {
     let parsedRpcUrl;
     try {
@@ -921,35 +926,27 @@ async function activityRegistryReadiness(env) {
     } catch {
       continue;
     }
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 3_000);
-    try {
-      const response = await fetch(parsedRpcUrl.toString(), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "eth_call",
-          params: [
-            { to: registryAddress, data: ACTIVITY_REGISTRY_ESCROW_SELECTOR },
-            "latest",
-          ],
-        }),
-        signal: controller.signal,
-      });
-      if (!response.ok) continue;
-      const payload = await response.json();
-      if (payload?.error) continue;
+    if (configuredRpcUrl && !(await isBaseSepoliaRpc(parsedRpcUrl))) {
+      rpcChainMismatch = true;
+      continue;
+    }
+    const rpc = await fetchJsonRpc(
+      parsedRpcUrl,
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_call",
+        params: [
+          { to: registryAddress, data: ACTIVITY_REGISTRY_ESCROW_SELECTOR },
+          "latest",
+        ],
+      },
+      3_000,
+    );
+    if (/^0x[a-fA-F0-9]{64}$/.test(rpc.result || "")) {
       rpcResponded = true;
-      if (/^0x[a-fA-F0-9]{64}$/.test(payload?.result || "")) {
-        boundEscrowAddress = `0x${payload.result.slice(-40)}`.toLowerCase();
-        break;
-      }
-    } catch {
-      // Try the next approved Base Sepolia endpoint.
-    } finally {
-      clearTimeout(timeout);
+      boundEscrowAddress = `0x${rpc.result.slice(-40)}`.toLowerCase();
+      break;
     }
   }
 
@@ -965,9 +962,11 @@ async function activityRegistryReadiness(env) {
     checkedAt,
     error: ready
       ? null
-      : rpcResponded
-        ? "The activity registry is not bound to the active OpenEscrow release."
-        : "The activity registry binding could not be read from Base Sepolia.",
+      : rpcChainMismatch
+        ? "The configured receipt verifier does not report Base Sepolia."
+        : rpcResponded
+          ? "The activity registry is not bound to the active OpenEscrow release."
+          : "The activity registry binding could not be read from Base Sepolia.",
   };
   activityRegistryReadinessCache.set(cacheKey, {
     cachedAt: Date.now(),
@@ -1625,38 +1624,43 @@ async function agreementTokenAtReceipt(
   const callData = `0x4f9f6fe6${agreementTopic.slice(2)}`;
   let rpcResponded = false;
   for (const parsedRpcUrl of parsedRpcUrls) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4_000);
-    try {
-      const response = await fetch(parsedRpcUrl.toString(), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 2,
-          method: "eth_call",
-          params: [
-            { to: openEscrowAddress, data: callData },
-            blockNumber || "latest",
-          ],
-        }),
-        signal: controller.signal,
-      });
-      if (!response.ok) continue;
-      const result = await response.json();
-      if (result?.error) continue;
+    const rpc = await fetchJsonRpc(
+      parsedRpcUrl,
+      {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "eth_call",
+        params: [
+          { to: openEscrowAddress, data: callData },
+          blockNumber || "latest",
+        ],
+      },
+      4_000,
+    );
+    if (rpc.ok) {
+      const words = receiptDataWords(rpc.result);
+      if (!words || words.length < 13) continue;
       rpcResponded = true;
-      const words = receiptDataWords(result?.result);
-      if (words && words.length >= 13) {
-        return { ok: true, tokenAddress: topicAddress(words[12]) };
-      }
-    } catch {
-      // Try the next approved Base Sepolia endpoint.
-    } finally {
-      clearTimeout(timeout);
+      return { ok: true, tokenAddress: topicAddress(words[12]) };
     }
   }
   return { ok: false, rpcResponded };
+}
+
+function isConfirmedReceiptForTransaction(receipt, transactionHash) {
+  return (
+    receipt &&
+    typeof receipt === "object" &&
+    !Array.isArray(receipt) &&
+    cleanText(receipt.transactionHash, 80).toLowerCase() ===
+      transactionHash.toLowerCase() &&
+    /^0x[a-fA-F0-9]{64}$/.test(cleanText(receipt.blockHash, 80)) &&
+    /^0x[0-9a-fA-F]+$/.test(cleanText(receipt.blockNumber, 80)) &&
+    (receipt.status === "0x0" || receipt.status === "0x1") &&
+    WALLET_PATTERN.test(cleanText(receipt.from, 80)) &&
+    Array.isArray(receipt.logs) &&
+    receipt.logs.length <= 256
+  );
 }
 
 async function verifiedBaseSepoliaReceipt(
@@ -1762,36 +1766,35 @@ async function verifiedBaseSepoliaReceipt(
       };
     }
   }
+  if (configuredRpcUrl && !(await isBaseSepoliaRpc(parsedRpcUrls[0]))) {
+    return {
+      ok: false,
+      status: 503,
+      error: "The configured receipt verifier does not report Base Sepolia.",
+    };
+  }
 
   let receipt;
   let rpcResponded = false;
   for (const parsedRpcUrl of parsedRpcUrls) {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 7_500);
-    try {
-      const response = await fetch(parsedRpcUrl.toString(), {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          jsonrpc: "2.0",
-          id: 1,
-          method: "eth_getTransactionReceipt",
-          params: [transactionHash],
-        }),
-        signal: controller.signal,
-      });
-      if (!response.ok) continue;
-      const result = await response.json();
-      if (result?.error) continue;
+    const rpc = await fetchJsonRpc(
+      parsedRpcUrl,
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "eth_getTransactionReceipt",
+        params: [transactionHash],
+      },
+      7_500,
+    );
+    if (rpc.ok && rpc.result === null) {
       rpcResponded = true;
-      if (result?.result) {
-        receipt = result.result;
-        break;
-      }
-    } catch {
-      // Try the next approved Base Sepolia endpoint.
-    } finally {
-      clearTimeout(timeout);
+      continue;
+    }
+    if (rpc.ok && isConfirmedReceiptForTransaction(rpc.result, transactionHash)) {
+      rpcResponded = true;
+      receipt = rpc.result;
+      break;
     }
   }
   if (!rpcResponded) {
@@ -2762,9 +2765,9 @@ async function readBoundedJsonResponse(response, maximumBytes) {
     declaredLength !== null &&
     (!/^\d+$/.test(declaredLength) || Number(declaredLength) > maximumBytes)
   ) {
-    throw new Error("Remote identity response exceeded its safety limit.");
+    throw new Error("Remote response exceeded its safety limit.");
   }
-  if (!response.body) throw new Error("Remote identity response was empty.");
+  if (!response.body) throw new Error("Remote response was empty.");
 
   const reader = response.body.getReader();
   const chunks = [];
@@ -2775,7 +2778,8 @@ async function readBoundedJsonResponse(response, maximumBytes) {
       if (done) break;
       totalBytes += value.byteLength;
       if (totalBytes > maximumBytes) {
-        throw new Error("Remote identity response exceeded its safety limit.");
+        await reader.cancel("remote response exceeds OpenEscrow limit");
+        throw new Error("Remote response exceeded its safety limit.");
       }
       chunks.push(value);
     }
@@ -2790,6 +2794,85 @@ async function readBoundedJsonResponse(response, maximumBytes) {
     offset += chunk.byteLength;
   }
   return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes));
+}
+
+async function fetchJsonRpc(parsedUrl, payload, timeoutMs) {
+  const requestKey = `${parsedUrl.toString()}\n${timeoutMs}\n${JSON.stringify(payload)}`;
+  const existing = jsonRpcRequestsInFlight.get(requestKey);
+  if (existing) return existing;
+
+  const request = (async () => {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      const response = await fetch(parsedUrl.toString(), {
+        method: "POST",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      });
+      if (!response.ok) return { ok: false, result: null };
+      const envelope = await readBoundedJsonResponse(
+        response,
+        JSON_RPC_RESPONSE_LIMIT_BYTES,
+      );
+      if (
+        !envelope ||
+        typeof envelope !== "object" ||
+        Array.isArray(envelope) ||
+        envelope.jsonrpc !== "2.0" ||
+        envelope.id !== payload.id ||
+        Object.hasOwn(envelope, "error") ||
+        !Object.hasOwn(envelope, "result")
+      ) {
+        return { ok: false, result: null };
+      }
+      return { ok: true, result: envelope.result };
+    } catch {
+      return { ok: false, result: null };
+    } finally {
+      clearTimeout(timeout);
+    }
+  })();
+  jsonRpcRequestsInFlight.set(requestKey, request);
+  try {
+    return await request;
+  } finally {
+    if (jsonRpcRequestsInFlight.get(requestKey) === request) {
+      jsonRpcRequestsInFlight.delete(requestKey);
+    }
+  }
+}
+
+async function isBaseSepoliaRpc(parsedUrl) {
+  const cacheKey = parsedUrl.toString();
+  const cachedAt = baseSepoliaRpcValidationCache.get(cacheKey);
+  if (cachedAt && Date.now() - cachedAt < 5 * 60 * 1000) return true;
+  const rpc = await fetchJsonRpc(
+    parsedUrl,
+    { jsonrpc: "2.0", id: 84532, method: "eth_chainId", params: [] },
+    3_000,
+  );
+  if (
+    !rpc.ok ||
+    typeof rpc.result !== "string" ||
+    rpc.result.toLowerCase() !== BASE_SEPOLIA_CHAIN_ID_HEX
+  ) {
+    return false;
+  }
+  if (
+    baseSepoliaRpcValidationCache.size >= 8 &&
+    !baseSepoliaRpcValidationCache.has(cacheKey)
+  ) {
+    baseSepoliaRpcValidationCache.delete(
+      baseSepoliaRpcValidationCache.keys().next().value,
+    );
+  }
+  baseSepoliaRpcValidationCache.set(cacheKey, Date.now());
+  return true;
 }
 
 async function fetchPrivyJwks(appId, forceRefresh = false) {

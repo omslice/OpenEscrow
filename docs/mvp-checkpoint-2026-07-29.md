@@ -54,6 +54,11 @@ detailed validation ledger.
   cleanup, bounded/cached Privy JWKS validation, constrained token time claims, and sanitized
   correlation-ID error boundary are covered by server regressions, including a forced failure with
   a sentinel secret in the query, authorization header, and exception.
+- **Verified:** Registry and transaction-receipt verification consume bounded JSON-RPC 2.0
+  envelopes with exact response IDs. Custom endpoints must report Base Sepolia, receipt objects
+  must identify the submitted transaction and confirmed block before log matching, and concurrent
+  identical receipt/state reads share one network request. Server regressions reject wrong-chain,
+  wrong-ID, oversized, and wrong-transaction responses and prove a later exact retry succeeds.
 - **Verified:** The full repository release check passes the complete server and client-logic
   suites, lint, browser account-switch, funding-recovery, record-verification,
   accessibility/mobile, landing-budget, and load-recovery checks, plus the production build.

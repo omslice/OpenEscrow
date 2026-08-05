@@ -455,6 +455,16 @@ limit, or denial-of-service guarantee. Privy sponsorship budgets and alerts rema
 control, and production traffic still requires external application-security review and runtime
 monitoring.
 
+The same remote-response boundary now protects Base Sepolia verification. JSON-RPC bodies are
+stream-limited to 512 KiB and must return JSON-RPC 2.0 with the exact request ID and one result.
+Configured custom endpoints must identify Base Sepolia before they can support registry readiness
+or receipt recording. Confirmed receipt objects must contain the submitted transaction hash, a
+block hash/number, success status, sender, and a bounded log collection before event-specific
+matching begins. Identical concurrent receipt/state calls share one in-flight request, reducing
+provider load without caching a receipt across time. Adversarial regressions reject a wrong chain,
+wrong response ID, oversized response, and mismatched transaction receipt, then prove a valid retry
+can finalize normally.
+
 ## Disclaimer
 
 This review was performed by an AI system acting as the project's developer, not by a licensed

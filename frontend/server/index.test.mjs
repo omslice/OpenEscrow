@@ -1958,6 +1958,8 @@ function finalizationReceipt(
   return {
     status: "0x1",
     blockNumber: "0x2a",
+    blockHash: transactionHash(9_000),
+    transactionHash: transactionHash(agreementId),
     from: landlord,
     logs,
   };
@@ -2048,7 +2050,11 @@ async function actWithVerifiedReceipt(db, created, token, action, receipt) {
     return Response.json({
       jsonrpc: "2.0",
       id: rpcRequest.id,
-      result: receipt,
+      result: {
+        blockHash: transactionHash(9_001),
+        transactionHash: action.transactionHash,
+        ...receipt,
+      },
     });
   };
   try {
@@ -5866,6 +5872,13 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     }
     if (url === "https://rpc.example/") {
       const payload = JSON.parse(options.body);
+      if (payload.method === "eth_chainId") {
+        return Response.json({
+          jsonrpc: "2.0",
+          id: payload.id,
+          result: "0x14a34",
+        });
+      }
       assert.equal(payload.method, "eth_call");
       return Response.json({
         jsonrpc: "2.0",
@@ -5875,11 +5888,27 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     }
     if (url === "https://mismatched-rpc.example/") {
       const payload = JSON.parse(options.body);
+      if (payload.method === "eth_chainId") {
+        return Response.json({
+          jsonrpc: "2.0",
+          id: payload.id,
+          result: "0x14a34",
+        });
+      }
       assert.equal(payload.method, "eth_call");
       return Response.json({
         jsonrpc: "2.0",
         id: payload.id,
         result: `0x${"0".repeat(24)}83fabc39c4fcccb6a4e42c568e9750d1a24ff11f`,
+      });
+    }
+    if (url === "https://wrong-chain-rpc.example/") {
+      const payload = JSON.parse(options.body);
+      assert.equal(payload.method, "eth_chainId");
+      return Response.json({
+        jsonrpc: "2.0",
+        id: payload.id,
+        result: "0x1",
       });
     }
     deliveries.push({
@@ -5945,6 +5974,20 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     assert.equal(
       mismatchedReadiness.recordIntegrity.activityRegistry.error,
       "The activity registry is not bound to the active OpenEscrow release.",
+    );
+    const wrongChainReadiness = await jsonResponse(
+      await worker.fetch(request("/api/system/readiness"), {
+        ...resendEnv,
+        BASE_SEPOLIA_RPC_URL: "https://wrong-chain-rpc.example/",
+      }),
+    );
+    assert.equal(
+      wrongChainReadiness.recordIntegrity.activityRegistry.ready,
+      false,
+    );
+    assert.equal(
+      wrongChainReadiness.recordIntegrity.activityRegistry.error,
+      "The configured receipt verifier does not report Base Sepolia.",
     );
 
     const testRequest = () =>
@@ -10669,18 +10712,23 @@ test("configured receipt verification accepts only the expected Base Sepolia agr
       });
     }
     assert.equal(rpcRequest.method, "eth_getTransactionReceipt");
+    const receipt =
+      receiptMutation === "missing"
+        ? {
+            status: "0x1",
+            blockNumber: "0x2a",
+            from: RECEIPT_TEST_LANDLORD,
+            logs: [],
+          }
+        : finalizationReceipt(42, receiptMutation);
     return Response.json({
       jsonrpc: "2.0",
       id: 1,
-      result:
-        receiptMutation === "missing"
-          ? {
-              status: "0x1",
-              blockNumber: "0x2a",
-              from: RECEIPT_TEST_LANDLORD,
-              logs: [],
-            }
-          : finalizationReceipt(42, receiptMutation),
+      result: {
+        ...receipt,
+        blockHash: transactionHash(9_002),
+        transactionHash: rpcRequest.params[0],
+      },
     });
   };
   const env = {
@@ -10794,6 +10842,164 @@ test("configured receipt verification accepts only the expected Base Sepolia agr
       finalized.events.filter((event) => event.action === "posted_onchain").length,
       1,
     );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("receipt verification rejects malformed RPC envelopes and mismatched receipts before recovering", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "approve",
+      wallet: RECEIPT_TEST_TENANT,
+    }),
+  );
+  const originalFetch = globalThis.fetch;
+  let mode = "wrong-id";
+  globalThis.fetch = async (url, options) => {
+    const rpcRequest = JSON.parse(options.body);
+    if (rpcRequest.method === "eth_chainId") {
+      return Response.json({
+        jsonrpc: "2.0",
+        id: rpcRequest.id,
+        result:
+          String(url) === "https://wrong-receipt-chain.example/"
+            ? "0x1"
+            : "0x14a34",
+      });
+    }
+    if (mode === "oversized") {
+      return new Response(
+        JSON.stringify({
+          jsonrpc: "2.0",
+          id: rpcRequest.id,
+          result: null,
+          padding: "x".repeat(512 * 1024),
+        }),
+        { headers: { "content-type": "application/json" } },
+      );
+    }
+    if (rpcRequest.method === "eth_call") {
+      return Response.json({
+        jsonrpc: "2.0",
+        id: rpcRequest.id,
+        result: agreementStateResult(),
+      });
+    }
+    const receipt = {
+      ...finalizationReceipt(88),
+      transactionHash:
+        mode === "wrong-transaction"
+          ? transactionHash(8_888)
+          : rpcRequest.params[0],
+    };
+    return Response.json({
+      jsonrpc: "2.0",
+      id: mode === "wrong-id" ? rpcRequest.id + 1 : rpcRequest.id,
+      result: receipt,
+    });
+  };
+  const env = {
+    VERIFY_TRANSACTION_RECEIPTS: "true",
+    BASE_SEPOLIA_RPC_URL: "https://rpc.example/",
+  };
+  const finalize = (hashIndex) =>
+    act(
+      db,
+      created.record.id,
+      created.access.landlord,
+      {
+        type: "finalize",
+        agreementId: "88",
+        transactionHash: transactionHash(hashIndex),
+      },
+      env,
+    );
+  try {
+    const wrongChain = await act(
+      db,
+      created.record.id,
+      created.access.landlord,
+      {
+        type: "finalize",
+        agreementId: "88",
+        transactionHash: transactionHash(300),
+      },
+      {
+        ...env,
+        BASE_SEPOLIA_RPC_URL: "https://wrong-receipt-chain.example/",
+      },
+    );
+    assert.equal(wrongChain.status, 503);
+    assert.match((await wrongChain.json()).error, /does not report Base Sepolia/);
+
+    for (const [nextMode, hashIndex] of [
+      ["wrong-id", 301],
+      ["oversized", 302],
+      ["wrong-transaction", 303],
+    ]) {
+      mode = nextMode;
+      const response = await finalize(hashIndex);
+      assert.equal(response.status, 503, nextMode);
+      assert.match((await response.json()).error, /could not verify/i);
+    }
+
+    mode = "valid";
+    const recovered = await jsonResponse(await finalize(304));
+    assert.equal(recovered.status, "finalized");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("simultaneous receipt verification shares identical RPC work", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "approve",
+      wallet: RECEIPT_TEST_TENANT,
+    }),
+  );
+  const originalFetch = globalThis.fetch;
+  let rpcFetchCount = 0;
+  globalThis.fetch = async (_url, options) => {
+    rpcFetchCount += 1;
+    const rpcRequest = JSON.parse(options.body);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    return Response.json({
+      jsonrpc: "2.0",
+      id: rpcRequest.id,
+      result:
+        rpcRequest.method === "eth_call"
+          ? agreementStateResult()
+          : {
+              ...finalizationReceipt(89),
+              transactionHash: rpcRequest.params[0],
+            },
+    });
+  };
+  const action = {
+    type: "finalize",
+    agreementId: "89",
+    transactionHash: transactionHash(305),
+  };
+  try {
+    const responses = await Promise.all([
+      act(db, created.record.id, created.access.landlord, action, {
+        VERIFY_TRANSACTION_RECEIPTS: "true",
+      }),
+      act(db, created.record.id, created.access.landlord, action, {
+        VERIFY_TRANSACTION_RECEIPTS: "true",
+      }),
+    ]);
+    assert.deepEqual(
+      responses.map((response) => response.status),
+      [200, 200],
+    );
+    assert.equal(rpcFetchCount, 2);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -11576,6 +11782,7 @@ test("receipt verification falls back when the official public RPC is rate limit
       result: {
         ...finalizationReceipt(43),
         blockNumber: "0x2b",
+        transactionHash: rpcRequest.params[0],
       },
     });
   };
@@ -11630,6 +11837,8 @@ test("receipt verification binds tenant funding to the exact participant and amo
       result: {
         status: "0x1",
         blockNumber: "0x2c",
+        blockHash: transactionHash(9_003),
+        transactionHash: rpcRequest.params[0],
         from: RECEIPT_TEST_TENANT,
         logs: [
           {
@@ -12215,13 +12424,20 @@ test("legacy finalized records re-prove and preserve the landlord wallet before 
       return Response.json({
         jsonrpc: "2.0",
         id: rpcRequest.id,
-        result: finalizationReceipt(42, originalReceiptMode),
+        result: {
+          ...finalizationReceipt(42, originalReceiptMode),
+          transactionHash: rpcRequest.params[0],
+        },
       });
     }
     return Response.json({
       jsonrpc: "2.0",
       id: rpcRequest.id,
-      result: currentReceipt,
+      result: {
+        blockHash: transactionHash(9_004),
+        transactionHash: rpcRequest.params[0],
+        ...currentReceipt,
+      },
     });
   };
 
@@ -12532,6 +12748,8 @@ test("receipt verification binds private record anchors to the submitted hash, t
       result: {
         status: "0x1",
         blockNumber: "0x2d",
+        blockHash: transactionHash(9_005),
+        transactionHash: rpcRequest.params[0],
         from: RECEIPT_TEST_TENANT,
         logs: [
           isActivity

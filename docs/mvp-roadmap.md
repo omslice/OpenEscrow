@@ -57,6 +57,12 @@ production custody, or reliance on the compliance research as legal advice.
   claims are constrained. Unexpected errors return a correlation ID without exposing query,
   authorization, body, or exception content. These controls do not replace edge bot protection or
   operator-configured Privy sponsorship budgets.
+- **Verified:** Base Sepolia remote verification now bounds every JSON-RPC body, requires the exact
+  protocol/request ID/result envelope, verifies custom endpoints report the expected chain, and
+  binds confirmed receipt structure to the submitted transaction hash before matching an event.
+  Simultaneous identical receipt/state checks share one in-flight provider call. Regressions reject
+  a wrong chain, wrong response ID, oversized response, and mismatched transaction, then complete a
+  valid retry without recording any rejected attempt.
 - **Verified:** The core escrow, operations reserve, and activity registry now share a documented
   secondary-contract security review. Atomic funding records effects before its external calls,
   every public lifecycle mutation uses one cross-function reentrancy guard, and an adversarial
