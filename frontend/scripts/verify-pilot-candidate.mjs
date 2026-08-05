@@ -11,7 +11,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 
 export const PILOT_CANDIDATE_SCHEMA_VERSION =
-  "openescrow-pilot-candidate/v2";
+  "openescrow-pilot-candidate/v3";
 
 export const PILOT_CANDIDATE_STEPS = Object.freeze([
   Object.freeze({
@@ -52,7 +52,7 @@ const REHEARSAL_ARTIFACTS = Object.freeze([
   }),
 ]);
 
-export function validateCandidateContext({ commitSha, hosting }) {
+export function validateCandidateContext({ commitSha, hosting, sourceChanges = [] }) {
   const errors = [];
   if (!/^[0-9a-f]{40}$/.test(commitSha || "")) {
     errors.push("Candidate commit SHA is missing or invalid.");
@@ -70,6 +70,11 @@ export function validateCandidateContext({ commitSha, hosting }) {
   if (hosting?.r2 !== "EVIDENCE") {
     errors.push("The required R2 binding name EVIDENCE was not preserved.");
   }
+  if (sourceChanges.length > 0) {
+    errors.push(
+      `Candidate source differs from HEAD: ${sourceChanges.join(", ")}.`,
+    );
+  }
   return errors;
 }
 
@@ -78,10 +83,15 @@ export async function executeCandidateVerification({
   hosting,
   runScript,
   collectArtifacts,
+  sourceChanges = [],
   now = () => new Date(),
 }) {
   const startedAt = now();
-  const contextErrors = validateCandidateContext({ commitSha, hosting });
+  const contextErrors = validateCandidateContext({
+    commitSha,
+    hosting,
+    sourceChanges,
+  });
   const steps = [];
   let failed = contextErrors.length > 0;
 
@@ -252,6 +262,101 @@ function verifiedRehearsalArtifact({
   };
 }
 
+function verifiedContractAssuranceArtifact({
+  frontendRoot,
+  repositoryRoot,
+  commitSha,
+}) {
+  const summaryPath = path.join(
+    frontendRoot,
+    ".contract-assurance",
+    "latest.json",
+  );
+  const summaryBytes = readFileSync(summaryPath);
+  const summary = JSON.parse(summaryBytes.toString("utf8"));
+  if (
+    summary.schema !== "openescrow.contract-assurance/v1" ||
+    summary.status !== "passed" ||
+    summary.executionMode !== "local-credential-free" ||
+    summary.sourceCommit !== commitSha ||
+    summary.deterministicBuild?.forcedCleanCompile !== true ||
+    summary.deterministicBuild?.offline !== true
+  ) {
+    throw new Error(
+      `Contract assurance is not passing deterministic offline evidence for ${commitSha}.`,
+    );
+  }
+
+  const total = Number(summary.tests?.total);
+  const passed = Number(summary.tests?.passed);
+  const failed = Number(summary.tests?.failed);
+  const skipped = Number(summary.tests?.skipped);
+  if (
+    !Number.isInteger(total) ||
+    total <= 0 ||
+    !Number.isInteger(passed) ||
+    !Number.isInteger(skipped) ||
+    failed !== 0 ||
+    passed + skipped !== total
+  ) {
+    throw new Error("Contract assurance contains incomplete Foundry results.");
+  }
+
+  if (
+    !Array.isArray(summary.contracts) ||
+    summary.contracts.length !== 3 ||
+    summary.contracts.some(
+      (contract) =>
+        contract?.abiMatched !== true ||
+        !Number.isInteger(contract?.runtime?.marginBytes) ||
+        contract.runtime.marginBytes < 2_048 ||
+        !Array.isArray(contract?.selectors?.collisions) ||
+        contract.selectors.collisions.length !== 0,
+    )
+  ) {
+    throw new Error("Contract assurance contains unsafe or incomplete contract evidence.");
+  }
+
+  if (
+    !Array.isArray(summary.dependencies) ||
+    summary.dependencies.length !== 2 ||
+    summary.dependencies.some(
+      (dependency) =>
+        dependency?.algorithm !== "sha256-file-manifest-v1" ||
+        !/^sha256:[0-9a-f]{64}$/.test(dependency?.sha256 || "") ||
+        !/^[0-9a-f]{40}$/.test(dependency?.gitlink || ""),
+    )
+  ) {
+    throw new Error("Contract assurance contains incomplete dependency evidence.");
+  }
+
+  return {
+    schema: summary.schema,
+    generatedAt: summary.generatedAt,
+    sourceCommit: summary.sourceCommit,
+    executionMode: summary.executionMode,
+    tests: { total, passed, failed, skipped },
+    contracts: summary.contracts.map((contract) => ({
+      name: contract.name,
+      runtimeBytes: contract.runtime.runtimeBytes,
+      runtimeMarginBytes: contract.runtime.marginBytes,
+      runtimeSha256: contract.runtime.sha256,
+      abiSha256: contract.abiSha256,
+      storageLayoutSha256: contract.storageLayoutSha256,
+      selectorCount: contract.selectors.count,
+    })),
+    dependencies: summary.dependencies.map((dependency) => ({
+      path: dependency.path,
+      gitlink: dependency.gitlink,
+      sha256: dependency.sha256,
+    })),
+    summary: {
+      path: relativeArtifactPath(repositoryRoot, summaryPath),
+      sha256: sha256(summaryBytes),
+    },
+  };
+}
+
 function digestDirectory(directory) {
   const manifestHash = createHash("sha256");
   let fileCount = 0;
@@ -305,7 +410,13 @@ export function collectCandidateArtifacts({
   repositoryRoot,
   commitSha,
 }) {
-  const artifacts = {};
+  const artifacts = {
+    contractAssurance: verifiedContractAssuranceArtifact({
+      frontendRoot,
+      repositoryRoot,
+      commitSha,
+    }),
+  };
   for (const descriptor of REHEARSAL_ARTIFACTS) {
     artifacts[descriptor.key] = verifiedRehearsalArtifact({
       frontendRoot,
@@ -403,6 +514,33 @@ function gitHead(repositoryRoot) {
   return result.stdout.trim();
 }
 
+function gitSourceChanges(repositoryRoot) {
+  const result = spawnSync(
+    "git",
+    [
+      "status",
+      "--porcelain=v1",
+      "--untracked-files=all",
+      "--",
+      ".openai",
+      "contracts",
+      "script",
+      "test",
+      "foundry.toml",
+      ".gitmodules",
+      "frontend",
+    ],
+    { cwd: repositoryRoot, encoding: "utf8" },
+  );
+  if (result.error || result.status !== 0) {
+    return ["Git source status could not be determined"];
+  }
+  return result.stdout
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 function artifactPath(frontendRoot, checkedAt, args) {
   const explicitPath = args.find((arg) => arg.startsWith("--artifact-path="));
   if (explicitPath) {
@@ -436,16 +574,25 @@ async function runCli() {
   }
 
   const commitSha = gitHead(repositoryRoot);
+  const sourceChanges = gitSourceChanges(repositoryRoot);
   const evidence = await executeCandidateVerification({
     commitSha,
     hosting,
+    sourceChanges,
     runScript: (scriptName) => runNpmScript(frontendRoot, scriptName),
-    collectArtifacts: () =>
-      collectCandidateArtifacts({
+    collectArtifacts: () => {
+      const finalSourceChanges = gitSourceChanges(repositoryRoot);
+      if (finalSourceChanges.length > 0) {
+        throw new Error(
+          `Candidate source changed during verification: ${finalSourceChanges.join(", ")}.`,
+        );
+      }
+      return collectCandidateArtifacts({
         frontendRoot,
         repositoryRoot,
         commitSha,
-      }),
+      });
+    },
   });
   const destination = artifactPath(
     frontendRoot,

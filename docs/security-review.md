@@ -383,7 +383,7 @@ activity hashes, but this does not grow escrow state or block another party. A h
 integrity relative to the holder's private bytes; it does not prove truth, authorship beyond the
 calling wallet, legal sufficiency, or confidentiality.
 
-After the fixes, the complete Foundry run passes 230 tests across 20 suites, including six
+After the fixes, the complete Foundry run passes 234 tests across 22 suites, including nine
 32,768-call stateful accounting properties and the existing fuzz cases. One opt-in live Base
 Sepolia Aave adapter fork test remains skipped without an RPC URL. The current production
 dependency audit reports zero known advisories, and the full hosted application gate passes.
@@ -396,6 +396,30 @@ registry do not contain this complete addendum's fixes. Because the core and res
 bound and immutable, activating the funding hardening requires a new reviewed pair; the registry
 must then be deployed against that exact escrow. Existing testnet agreements stay on their old
 immutable code and must be treated as a retired cohort rather than silently migrated.
+
+## Deterministic contract-release assurance addendum — 2026-08-05
+
+The release envelope now forces a clean offline production-profile compile before
+the complete Foundry suite. It fails closed when a compiled frontend ABI differs,
+runtime bytecode has less than 2,048 bytes of EVM size margin, function selectors
+collide, the declared compiler/optimizer/fuzz/invariant profile changes, or the
+reviewed Foundry/OpenZeppelin source trees differ from their pinned gitlink and
+canonical SHA-256 manifests. It records runtime, creation-bytecode, ABI, selector,
+and storage-layout hashes for all three production contracts.
+
+An immutable-cohort regression deploys two independent escrow/reserve/registry
+sets with overlapping agreement identifiers. It proves that balances, reserve
+receipts, roles, and registry publication authority do not cross cohorts and that
+closing the retired agreement cannot change the candidate agreement. A dedicated
+operations-reserve handler adds three stateful invariants covering net token
+accounting, exact unique tenant shares with agreement-token binding, and immutable
+escrow/reserve/treasury bindings.
+
+Pilot-candidate schema v3 binds this contract-assurance evidence to the exact source
+commit together with both credential-free rehearsals and every packaged Sites byte.
+The detailed assumptions, residual risks, reproduction commands, and independent
+review questions are in `contract-threat-model.md` and
+`independent-audit-handoff.md`.
 
 ## Disclaimer
 

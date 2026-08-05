@@ -439,12 +439,12 @@
   },
   {
     "type": "error",
-    "name": "InvalidContract",
+    "name": "InvalidAgreementPhase",
     "inputs": []
   },
   {
     "type": "error",
-    "name": "InvalidAgreementPhase",
+    "name": "InvalidContract",
     "inputs": []
   },
   {

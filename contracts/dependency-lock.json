@@ -1,0 +1,43 @@
+{
+  "schema": "openescrow.contract-dependencies/v1",
+  "dependencies": [
+    {
+      "path": "lib/forge-std",
+      "gitlink": "77041d2ce690e692d6e03cc812b57d1ddaa4d505",
+      "algorithm": "sha256-file-manifest-v1",
+      "sha256": "sha256:33be0b5cf0ff174624c9e79ffc9027090481668db89a5778b2d45ef9eb8f08b0",
+      "fileCount": 59,
+      "totalBytes": 1007506
+    },
+    {
+      "path": "lib/openzeppelin-contracts",
+      "gitlink": "69c8def5f222ff96f2b5beff05dfba996368aa79",
+      "algorithm": "sha256-file-manifest-v1",
+      "sha256": "sha256:55909d45b21150482e950853dfc0de870bf679e7d76fa6b49d86057c07e69444",
+      "fileCount": 713,
+      "totalBytes": 10374682
+    }
+  ],
+  "upstreamVerification": {
+    "verifiedAt": "2026-08-05",
+    "method": "Canonical source-tree manifests matched independent upstream checkouts at the pinned commits, including recursively pinned submodules.",
+    "sources": [
+      {
+        "path": "lib/forge-std",
+        "repository": "https://github.com/foundry-rs/forge-std.git",
+        "commit": "77041d2ce690e692d6e03cc812b57d1ddaa4d505"
+      },
+      {
+        "path": "lib/openzeppelin-contracts",
+        "repository": "https://github.com/OpenZeppelin/openzeppelin-contracts.git",
+        "commit": "69c8def5f222ff96f2b5beff05dfba996368aa79",
+        "recursiveSubmodules": [
+          "https://github.com/a16z/erc4626-tests.git@8b1d7c2ac248c33c3506b1bff8321758943c5e11",
+          "https://github.com/foundry-rs/forge-std@ae570fec082bfe1c1f45b0acca4a2b4f84d345ce",
+          "https://github.com/dapphub/ds-test@e282159d5170298eb2455a6c05280ab5a73a4ef0",
+          "https://github.com/a16z/halmos-cheatcodes@c0d865508c0fee0a11b97732c5e90f9cad6b65a5"
+        ]
+      }
+    ]
+  }
+}

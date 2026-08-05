@@ -57,6 +57,14 @@ production custody, or reliance on the compliance research as legal advice.
   unaccepted, declined, or resigned arbiter cannot publish registry hashes. The complete Foundry
   suite and Slither rerun cover the hardened source. These protections remain undeployed until a
   newly reviewed escrow/reserve pair and registry are explicitly approved and broadcast.
+- **Verified:** Contract release assurance now forces a clean offline Solidity 0.8.26 production-
+  profile build and binds the full 234-pass/one-skip Foundry result to compiled ABI, runtime and
+  creation bytecode, storage-layout, selector-collision, EVM-size-margin, and dependency-tree
+  evidence. Three new reserve invariants pass 98,304 stateful calls, and an overlapping-ID cohort
+  regression proves retired and candidate deployments cannot share funds, roles, reserve
+  receipts, or registry authority. Pilot-candidate schema v3 rejects dirty source, rechecks it
+  after the build, and binds this evidence to the exact commit. The threat model and independent-
+  audit handoff are ready; professional audit and any broadcast remain owner/external gates.
 - **Verified:** The release dependency audit blocks every high/critical finding and every unknown
   moderate advisory. The former transitive `uuid` advisory is removed from the locked
   wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector

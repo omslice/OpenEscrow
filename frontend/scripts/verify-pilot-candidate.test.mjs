@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import {
   mkdirSync,
   mkdtempSync,
+  readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
@@ -50,7 +51,7 @@ test("candidate verification runs every credential-free gate in dependency order
   assert.equal(evidence.ok, true);
   assert.equal(
     evidence.artifactSchemaVersion,
-    "openescrow-pilot-candidate/v2",
+    "openescrow-pilot-candidate/v3",
   );
   assert.equal(evidence.testnetBoundary.releaseMode, "testnet");
   assert.equal(evidence.testnetBoundary.productionMoneyEnabled, false);
@@ -100,6 +101,24 @@ test("candidate preflight fails closed before commands when provenance is invali
     ),
     true,
   );
+});
+
+test("candidate preflight rejects source that differs from the named commit", async () => {
+  let commandCalls = 0;
+  const evidence = await executeCandidateVerification({
+    commitSha,
+    hosting,
+    sourceChanges: ["M frontend/src/App.tsx"],
+    now: clock(),
+    runScript: async () => {
+      commandCalls += 1;
+      return 0;
+    },
+  });
+
+  assert.equal(commandCalls, 0);
+  assert.equal(evidence.ok, false);
+  assert.match(evidence.preflightErrors[0], /differs from HEAD/);
 });
 
 test("candidate context preserves the existing D1 and R2 binding names", () => {
@@ -172,6 +191,43 @@ function candidateArtifactFixture(t) {
   );
   t.after(() => rmSync(repositoryRoot, { recursive: true, force: true }));
   const frontendRoot = path.join(repositoryRoot, "frontend");
+  mkdirSync(path.join(frontendRoot, ".contract-assurance"), {
+    recursive: true,
+  });
+  writeFileSync(
+    path.join(frontendRoot, ".contract-assurance", "latest.json"),
+    `${JSON.stringify({
+      schema: "openescrow.contract-assurance/v1",
+      generatedAt: "2026-07-30T12:00:00.000Z",
+      status: "passed",
+      executionMode: "local-credential-free",
+      sourceCommit: commitSha,
+      deterministicBuild: { forcedCleanCompile: true, offline: true },
+      tests: { total: 2, passed: 1, failed: 0, skipped: 1 },
+      contracts: ["OpenEscrow", "OperationsReserve", "AgreementActivityRegistry"].map(
+        (name) => ({
+          name,
+          abiMatched: true,
+          abiSha256: `sha256:${"a".repeat(64)}`,
+          runtime: {
+            runtimeBytes: 10_000,
+            marginBytes: 14_576,
+            sha256: `sha256:${"b".repeat(64)}`,
+          },
+          selectors: { count: 4, collisions: [] },
+          storageLayoutSha256: `sha256:${"c".repeat(64)}`,
+        }),
+      ),
+      dependencies: ["lib/forge-std", "lib/openzeppelin-contracts"].map(
+        (dependencyPath) => ({
+          path: dependencyPath,
+          gitlink: "d".repeat(40),
+          algorithm: "sha256-file-manifest-v1",
+          sha256: `sha256:${"e".repeat(64)}`,
+        }),
+      ),
+    })}\n`,
+  );
   writeRehearsalFixture({
     frontendRoot,
     directory: ".pilot-rehearsal",
@@ -226,6 +282,9 @@ test("candidate artifacts bind both rehearsals and every packaged Sites byte", (
   });
 
   assert.equal(first.pilotRehearsal.sourceCommit, commitSha);
+  assert.equal(first.contractAssurance.sourceCommit, commitSha);
+  assert.equal(first.contractAssurance.contracts.length, 3);
+  assert.equal(first.contractAssurance.dependencies.length, 2);
   assert.deepEqual(first.pilotRehearsal.testTargets, [
     "server/index.test.mjs",
     "scripts/check-record-verification.mjs",
@@ -283,5 +342,22 @@ test("candidate artifacts require the rendered record-verification target", (t) 
         commitSha,
       }),
     /missing required rendered target/,
+  );
+});
+
+test("candidate artifacts reject a contract with insufficient bytecode margin", (t) => {
+  const fixture = candidateArtifactFixture(t);
+  const summaryPath = path.join(
+    fixture.frontendRoot,
+    ".contract-assurance",
+    "latest.json",
+  );
+  const summary = JSON.parse(readFileSync(summaryPath, "utf8"));
+  summary.contracts[0].runtime.marginBytes = 100;
+  writeFileSync(summaryPath, `${JSON.stringify(summary)}\n`);
+
+  assert.throws(
+    () => collectCandidateArtifacts({ ...fixture, commitSha }),
+    /unsafe or incomplete contract evidence/,
   );
 });

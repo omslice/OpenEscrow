@@ -1,4 +1,4 @@
-# Testnet MVP checkpoint — updated 2026-08-04
+# Testnet MVP checkpoint — updated 2026-08-05
 
 This checkpoint records repository and delivery evidence without claiming legal approval,
 production readiness, or authorization to hold real rental deposits.
@@ -14,7 +14,9 @@ detailed validation ledger.
   the existing project/D1/R2 bindings, and records machine-readable evidence without querying or
   changing the live site. The versioned candidate manifest also verifies the exact commit in both
   rehearsal summaries, binds their JUnit reports by SHA-256, and records a deterministic digest of
-  every packaged Sites file. The live-deploy wrapper runs readiness only after a successful
+  every packaged Sites file. Schema v3 additionally rejects dirty source before the gates,
+  rechecks it after packaging, and binds deterministic contract-assurance evidence for the exact
+  commit. The live-deploy wrapper runs readiness only after a successful
   publish and passes the new deployment URL positionally to the readiness checker.
 - **Verified:** Twenty-three credential-free rehearsals pass: lifecycle scenarios cover
   archive/restore, record proof, disputed claim, accepted claim, and no-claim refund, while a
@@ -51,12 +53,18 @@ detailed validation ledger.
   accessibility/mobile, landing-budget, and load-recovery checks, plus the production build.
   These rendered checks are part of the required `npm run check` path rather than separate,
   potentially stale results.
-- **Verified:** The complete Foundry suite passes 230 contract tests across 20 suites, with one
+- **Verified:** The complete Foundry suite passes 234 contract tests across 22 suites, with one
   opt-in Base Sepolia fork test skipped when no RPC URL is supplied. The candidate activity
   registry now authorizes the landlord, every nonzero-share tenant, and the current arbiter;
   a secondary-tenant regression proves independent snapshot anchoring and activity publishing.
   This source-level fix is not active until the owner broadcasts the version-matched registry and
   the release is configured to its validated address.
+- **Verified:** The contract release gate forces a clean offline Solidity 0.8.26 build using the
+  declared optimizer and IR profile, then records compiled ABI, runtime/creation bytecode,
+  storage-layout, selector-collision, runtime-size-margin, and exact dependency-tree evidence for
+  the escrow, reserve, and registry. Three reserve invariants pass 98,304 stateful calls, and an
+  overlapping-ID cohort regression proves retired/candidate deployment isolation. The reviewed
+  dependency source manifests, threat model, and independent-audit handoff are checked in.
 - **Verified:** A secondary-contract review hardened the atomic deposit-plus-reserve boundary,
   reserve deployment binding, reserve phase gates, and registry arbiter authorization. Every
   externally callable escrow lifecycle mutation now shares the same reentrancy lock, funding

@@ -93,7 +93,9 @@ provider or hosting control that owns the secret.
   and yield-product analysis. Software research is not a substitute for legal
   advice.
 - [ ] **Commission an independent smart-contract and application security
-  audit** for the exact release candidate and deployed configuration.
+  audit** for the exact release candidate and deployed configuration. Start with
+  [`independent-audit-handoff.md`](./independent-audit-handoff.md) and require the reviewer to name
+  the exact commit and regenerate its contract-assurance evidence.
 - [ ] **Select and contract with regulated on-ramp/off-ramp and custody
   providers**, complete their application review, and approve the full
   KYC/AML, webhook, failure, refund, fee, and support flows.

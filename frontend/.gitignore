@@ -15,6 +15,7 @@ dist-ssr
 .pilot-rehearsal
 .incident-rehearsal
 .pilot-candidate
+.contract-assurance
 
 # Editor directories and files
 .vscode/*
