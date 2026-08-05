@@ -660,6 +660,7 @@ export function isFundingCheckoutLifecycle(value) {
       eventIds.has(event.id) ||
       !Object.hasOwn(CHECKOUT_TRANSITIONS, event.status) ||
       !validProviderStatus(event.providerStatus) ||
+      normalizeFundingCheckoutState(event.providerStatus) !== event.status ||
       !validFundingCheckoutEventProvenance(
         event.source,
         event.verification,
@@ -750,6 +751,11 @@ export function applyFundingCheckoutEvent(
   const nextStatus = normalizeFundingCheckoutState(status);
   if (!validProviderStatus(normalizedProviderStatus)) {
     throw new Error("A valid provider status is required.");
+  }
+  if (normalizeFundingCheckoutState(normalizedProviderStatus) !== nextStatus) {
+    throw new Error(
+      "The checkout state does not match the provider result.",
+    );
   }
   if (
     !validFundingCheckoutEventProvenance(

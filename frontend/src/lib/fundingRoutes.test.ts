@@ -413,6 +413,39 @@ test("checkout lifecycle reconciles delayed confirmation idempotently", () => {
   assert.equal(submitted.events[0].reconciliationKey, null);
   assert.equal(submitted.events[0].payloadDigest, null);
 
+  assert.throws(
+    () =>
+      applyFundingCheckoutEvent(submitted, {
+        eventId: "provider-event-contradictory",
+        status: "confirmed",
+        providerStatus: "declined",
+        occurredAt: "2026-07-30T00:02:00.000Z",
+      }),
+    /does not match the provider result/i,
+  );
+  assert.equal(
+    isFundingCheckoutLifecycle({
+      ...submitted,
+      status: "confirmed",
+      providerStatus: "declined",
+      updatedAt: "2026-07-30T00:02:00.000Z",
+      events: [
+        ...submitted.events,
+        {
+          id: "provider-event-contradictory",
+          status: "confirmed",
+          providerStatus: "declined",
+          source: "browser_callback",
+          verification: "unverified",
+          reconciliationKey: null,
+          payloadDigest: null,
+          occurredAt: "2026-07-30T00:02:00.000Z",
+        },
+      ],
+    }),
+    false,
+  );
+
   const duplicate = applyFundingCheckoutEvent(submitted, {
     eventId: "provider-event-001",
     status: "processing",

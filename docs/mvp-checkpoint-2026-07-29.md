@@ -333,6 +333,9 @@ detailed validation ledger.
 - **Verified:** D1 insert and update guards enforce the same provenance pairing and lowercase
   SHA-256 identity format on already-migrated databases. Direct malformed writes therefore fail
   closed even if they bypass the application lifecycle validator.
+- **Verified:** Durable funding history now requires each event's normalized raw provider result
+  to equal its recorded lifecycle state. The shared validator rejects tampered stored histories,
+  and the tenant sandbox endpoint rejects contradictory new events before D1 persistence.
 - **Verified:** Arrow-key workspace navigation moves focus to the selected tab synchronously,
   eliminating an intermittent animation-frame race in the required accessibility smoke check.
 - **Verified:** The validated-address combobox now retains the listbox referenced by

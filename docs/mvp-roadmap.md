@@ -162,6 +162,9 @@ production custody, or reliance on the compliance research as legal advice.
   requested wallet, asset, and amount, and the browser independently confirms that binding. A
   mismatch stays locked, is not copied into the new intent's local recovery key, and offers a
   plain-language close action before the updated no-money preview can open.
+- **Verified:** Every saved checkout event now derives the same lifecycle state from its raw
+  provider result. Contradictory pairs such as a confirmed event with a declined provider status
+  fail closed in both the shared lifecycle validator and the tenant-authorized D1 endpoint.
 - **Verified:** Deferred workspace loading, bounded onchain event reads, shared receipt polling,
   one-snapshot wallet discovery, and workspace-only blockchain wallet providers reduce initial and
   repeat network work without weakening account recognition, invitation roles, or receipt checks.

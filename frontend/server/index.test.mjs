@@ -1946,6 +1946,23 @@ test("pilot rehearsal: sandbox checkout recovery is durable and separate from ag
   assert.equal(conflictingDuplicate.status, 409);
   assert.match((await conflictingDuplicate.json()).error, /conflicts/);
 
+  const contradictoryProviderResult = await fundingCheckoutRequest(
+    db,
+    created.record.id,
+    `/${attemptId}/events`,
+    {
+      token: created.access.tenant,
+      eventId: "provider:contradictory-1",
+      status: "confirmed",
+      providerStatus: "declined",
+    },
+  );
+  assert.equal(contradictoryProviderResult.status, 409);
+  assert.match(
+    (await contradictoryProviderResult.json()).error,
+    /does not match the provider result/i,
+  );
+
   const confirmed = await jsonResponse(
     await fundingCheckoutRequest(
       db,

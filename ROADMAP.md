@@ -110,6 +110,8 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Expose and verify active sandbox checkout intent mismatches so a changed amount, asset, or
   wallet cannot inherit the earlier attempt's UI or browser-recovery key; the tenant must close
   the no-money preview before opening the updated intent
+- [x] Bind every durable checkout lifecycle state to the normalized raw provider result so a
+  contradictory confirmation, cancellation, failure, or refund cannot enter saved history
 - [ ] Enable and validate an eligible provider sandbox in the Privy dashboard
 - [ ] Decide whether the pilot needs separate ACH/bank-deposit support
 - [ ] Complete provider approval, KYC/AML, fees, refunds, webhooks, reconciliation, and support
