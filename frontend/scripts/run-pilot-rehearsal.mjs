@@ -26,6 +26,20 @@ const expectedScenarios = [
     ],
   },
   {
+    id: "rendered-multi-party-lifecycle",
+    name: "pilot rehearsal: rendered landlord, tenants, and arbiter complete one shared lifecycle",
+    covers: [
+      "rendered landlord claim",
+      "two isolated tenant decisions",
+      "arbiter role handoff",
+      "exact allocation",
+      "one-time withdrawals",
+      "complete report",
+      "mobile width",
+      "bearer privacy",
+    ],
+  },
+  {
     id: "disputed-claim",
     name: "pilot rehearsal: a disputed claim completes funding, ruling, and withdrawals once",
     covers: ["multi-tenant funding", "partial dispute", "arbiter ruling", "withdrawals"],
@@ -173,6 +187,12 @@ runServerRehearsal({
       target: "scripts/check-record-verification.mjs",
       command: process.execPath,
       args: ["scripts/check-record-verification.mjs"],
+    },
+    {
+      name: "pilot rehearsal: rendered landlord, tenants, and arbiter complete one shared lifecycle",
+      target: "scripts/check-pilot-lifecycle.mjs",
+      command: process.execPath,
+      args: ["scripts/check-pilot-lifecycle.mjs"],
     },
   ],
 });

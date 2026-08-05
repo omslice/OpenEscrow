@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>OpenEscrow multi-party pilot lifecycle check</title>
+  </head>
+  <body>
+    <div id="root" aria-live="polite">Loading synthetic pilot agreement...</div>
+    <script type="module">
+      const role = new URLSearchParams(window.location.search).get("role");
+      const response = await fetch(
+        `/testing/pilot-lifecycle-state?role=${encodeURIComponent(role || "")}`,
+      );
+      if (!response.ok) throw new Error("The synthetic pilot state could not be loaded.");
+      window.__OPENESCROW_PILOT_LIFECYCLE__ = await response.json();
+      await import("/src/testing/PilotLifecycleHarness.tsx");
+    </script>
+  </body>
+</html>

@@ -1,4 +1,4 @@
-# Testnet MVP checkpoint — updated 2026-08-03
+# Testnet MVP checkpoint — updated 2026-08-04
 
 This checkpoint records repository and delivery evidence without claiming legal approval,
 production readiness, or authorization to hold real rental deposits.
@@ -16,7 +16,7 @@ detailed validation ledger.
   rehearsal summaries, binds their JUnit reports by SHA-256, and records a deterministic digest of
   every packaged Sites file. The live-deploy wrapper runs readiness only after a successful
   publish and passes the new deployment URL positionally to the readiness checker.
-- **Verified:** Eighteen credential-free rehearsals pass: lifecycle scenarios cover
+- **Verified:** Nineteen credential-free rehearsals pass: lifecycle scenarios cover
   archive/restore, record proof, disputed claim, accepted claim, and no-claim refund, while a
   rendered Record scenario proves encrypted JSON export, separate-key download, wrong-key
   rejection, keyboard disclosure, narrow-screen layout, and local verification during a public-
@@ -26,7 +26,10 @@ detailed validation ledger.
   session isolation, privacy inventory, and durable sandbox funding recovery/refund. The no-claim
   rehearsal uses separately signed landlord/tenant identities and proves deposit funding,
   premature-withdrawal denial, the one-time refund and withdrawal, final report contents, and
-  repeatable snapshot integrity.
+  repeatable snapshot integrity. The added shared rendered lifecycle uses four isolated mobile
+  browser sessions for one landlord, two tenants, and one arbiter; it proves exact participant
+  handoffs, a 225/465/310 USDC allocation, one withdrawal per party, complete report contents,
+  44-pixel action targets, and no bearer in the URL or browser storage.
 - **Verified:** A separate 15-scenario incident-response rehearsal passes for identity forgery,
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,

@@ -2650,6 +2650,10 @@ a.btn.disabled {
   margin-top: 8px;
 }
 
+.tx-button > .btn {
+  min-height: 44px;
+}
+
 .tx-error {
   color: var(--error);
   font-size: 13px;

@@ -7,10 +7,16 @@ export default defineConfig(({ mode }) => {
   const accountSwitchTest = mode === 'account-switch-test'
   const fundingRecoveryTest = mode === 'funding-recovery-test'
   const privateRecordRecoveryTest = mode === 'private-record-recovery-test'
+  const pilotLifecycleTest = mode === 'pilot-lifecycle-test'
   return {
     plugins: [react()],
     optimizeDeps: fundingRecoveryTest
       ? { entries: ['testing/funding-recovery.html'] }
+      : pilotLifecycleTest
+        ? {
+            entries: ['testing/pilot-lifecycle.html'],
+            exclude: ['@privy-io/react-auth', '@privy-io/wagmi'],
+          }
       : privateRecordRecoveryTest
         ? {
             entries: ['testing/private-record-recovery.html'],
@@ -19,6 +25,28 @@ export default defineConfig(({ mode }) => {
         : undefined,
     resolve: {
       alias: [
+        ...(pilotLifecycleTest
+          ? [
+              {
+                find: '@privy-io/react-auth',
+                replacement: fileURLToPath(
+                  new URL(
+                    './src/testing/privyPilotLifecycleMock.ts',
+                    import.meta.url,
+                  ),
+                ),
+              },
+              {
+                find: /^wagmi$/,
+                replacement: fileURLToPath(
+                  new URL(
+                    './src/testing/wagmiPilotLifecycleMock.ts',
+                    import.meta.url,
+                  ),
+                ),
+              },
+            ]
+          : []),
         ...(privateRecordRecoveryTest
           ? [
               {

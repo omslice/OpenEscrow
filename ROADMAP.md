@@ -125,6 +125,9 @@ the repository; they are not claims of legal approval or production readiness.
   account archive/restore, and record-proof paths; the no-claim path uses separate signed
   landlord/tenant identities and proves funding, premature-withdrawal denial, one-time refund and
   withdrawal, report contents, and stable snapshots
+- [x] One shared rendered mobile lifecycle across isolated landlord, two-tenant, and arbiter
+  browser sessions, proving exact participant handoffs, allocation, one-time withdrawals,
+  header-authorized report export, and token-free URLs/browser storage
 - [x] Auth/evidence threat model plus expired/forged identity, cross-account evidence, ciphertext,
   key-material, and digest-tamper regression coverage
 - [x] Hosted evidence readiness detects retained-key loss and wrong backup bytes through

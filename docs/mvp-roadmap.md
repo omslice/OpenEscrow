@@ -22,7 +22,10 @@ production custody, or reliance on the compliance research as legal advice.
   disputed claim, archive/restore, record export and verification, privacy requests, service
   outages, and recovery paths with synthetic identities and testnet-only assets. The machine-
   readable pilot artifact includes the rendered encrypted-record workflow rather than relying
-  only on a separate release check.
+  only on a separate release check. A shared rendered mobile rehearsal now moves one agreement
+  through a landlord claim, two isolated tenant decisions, an arbiter ruling, exact final
+  allocation, three one-time withdrawals, and a complete header-authorized report without
+  putting an access bearer in a URL or browser storage.
 - **Verified:** Authorization, invitation, cross-account isolation, evidence encryption/keyring
   recovery, tamper detection, transaction receipt binding, and privacy failure modes have
   dedicated server, client, and operator-command regressions. Invitee bearer recovery is limited
