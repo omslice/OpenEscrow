@@ -1553,7 +1553,23 @@ try {
     "Reload recovery should focus the discovered cancellation's record-only retry.",
   );
   await recoveredDiscoveredCancellation.press("Enter");
-  await recoveredDiscoveredCancellation.waitFor({ state: "detached" });
+  await cancellationDiscoveryPage.waitForFunction(() => {
+    for (let index = 0; index < window.sessionStorage.length; index += 1) {
+      if (
+        window.sessionStorage
+          .key(index)
+          ?.startsWith("openescrow:pending-terminal-receipt:")
+      ) {
+        return false;
+      }
+    }
+    return true;
+  });
+  await cancellationDiscoveryPage
+    .getByRole("button", {
+      name: /(?:Adding cancellation|Finish adding cancellation) to Record/i,
+    })
+    .waitFor({ state: "detached" });
   assert.equal(cancellationDiscoveryAttempts(), 2);
   assert.equal(
     (await pendingTerminalRecoveryEntries(cancellationDiscoveryPage)).length,
