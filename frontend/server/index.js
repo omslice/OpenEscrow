@@ -9796,14 +9796,55 @@ function normalizeAddressSuggestions(value) {
   if (!Array.isArray(value?.features)) return [];
   const suggestions = [];
   const labels = new Set();
+  const providerIds = new Set();
   for (const candidate of value.features) {
     const properties = candidate?.properties;
     const coordinates = candidate?.geometry?.coordinates;
     if (!properties || !Array.isArray(coordinates)) continue;
+    const houseNumber = cleanText(properties.housenumber, 40);
+    const street = cleanText(properties.street, 120);
+    const locality = cleanText(
+      properties.city || properties.town || properties.village || properties.hamlet,
+      120,
+    );
+    const postalCode = cleanText(properties.postcode, 20);
+    const countryName = cleanText(properties.country, 120);
+    const providedCountryCode = cleanText(properties.countrycode, 8).toUpperCase();
+    const countryNameIsUs = /^(united states|united states of america|usa)$/i.test(
+      countryName,
+    );
+    const countryCode =
+      providedCountryCode || (countryNameIsUs ? "US" : "");
+    const stateName = cleanText(properties.state, 120);
+    const photonStateCode = cleanText(
+      properties.statecode || properties.state_code,
+      12,
+    ).toUpperCase();
+    const stateCodeFromProvider =
+      US_JURISDICTION_PROFILE_BY_CODE[`us-${photonStateCode.toLowerCase()}`]
+        ?.postalCode || "";
+    const stateCodeFromName =
+      US_STATE_POSTAL_CODE_BY_NAME[stateName.toLowerCase()] || "";
+    const stateCode =
+      countryCode === "US" ? stateCodeFromProvider || stateCodeFromName : "";
+    if (
+      !houseNumber ||
+      !street ||
+      !locality ||
+      !postalCode ||
+      countryCode !== "US" ||
+      (providedCountryCode && countryName && !countryNameIsUs) ||
+      !stateCode ||
+      (stateCodeFromProvider &&
+        stateCodeFromName &&
+        stateCodeFromProvider !== stateCodeFromName)
+    ) {
+      continue;
+    }
     const label = [
-      [properties.housenumber, properties.street].filter(Boolean).join(" "),
+      `${houseNumber} ${street}`,
       properties.name,
-      properties.city || properties.town || properties.village,
+      locality,
       properties.state,
       properties.postcode,
       properties.country,
@@ -9829,35 +9870,21 @@ function normalizeAddressSuggestions(value) {
     labels.add(label.toLowerCase());
     const osmType = cleanText(properties.osm_type, 20);
     const osmId = cleanText(String(properties.osm_id ?? ""), 80);
-    const countryName = cleanText(properties.country, 120);
-    const countryCode =
-      cleanText(properties.countrycode, 8).toUpperCase() ||
-      (/^(united states|united states of america|usa)$/i.test(countryName) ? "US" : "");
-    const stateName = cleanText(properties.state, 120);
-    const photonStateCode = cleanText(
-      properties.statecode || properties.state_code,
-      12,
-    ).toUpperCase();
-    const stateCode =
-      countryCode === "US"
-        ? (/^[A-Z]{2}$/.test(photonStateCode)
-            ? photonStateCode
-            : US_STATE_POSTAL_CODE_BY_NAME[stateName.toLowerCase()] || "")
-        : "";
+    const suggestionId = osmId
+      ? `${osmType || "osm"}:${osmId}`
+      : `${latitude},${longitude}`;
+    if (providerIds.has(suggestionId)) continue;
+    providerIds.add(suggestionId);
     suggestions.push({
-      id: osmId ? `${osmType || "osm"}:${osmId}` : `${latitude},${longitude}`,
+      id: suggestionId,
       label,
       latitude,
       longitude,
       countryCode: countryCode || null,
       stateCode: stateCode || null,
-      city:
-        cleanText(
-          properties.city || properties.town || properties.village || properties.hamlet,
-          120,
-        ) || null,
+      city: locality,
       county: cleanText(properties.county, 120) || null,
-      postalCode: cleanText(properties.postcode, 20) || null,
+      postalCode,
     });
     if (suggestions.length === 5) break;
   }

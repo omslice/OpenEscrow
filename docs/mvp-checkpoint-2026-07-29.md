@@ -648,6 +648,17 @@ detailed validation ledger.
   only the discovered candidate through the same exact server receipt verifier. The rendered
   recovery path proves lookup retry, agreement isolation, a second Record-save retry after reload,
   no stored bearer or raw-hash prompt, and no new cancellation transaction.
+- **Verified:** Address lookup now attests only complete numbered U.S. street addresses in one of
+  the 50 states or District of Columbia. Broad street/city features, foreign results, unknown
+  postal codes, invalid coordinates, and duplicate provider IDs are rejected before a compliance
+  profile can be selected. The existing manual-entry fallback remains generic and does not gain a
+  state profile. No jurisdiction requirement, deadline, source, or applicability decision changed.
+- **Verified:** A reusable local-overlay validator now checks exact catalog fields, unique stable
+  IDs, city/county routing-key scope, HTTPS citations, requirements, deadlines, privacy notes, and
+  the current no-condition boundary at module load. Separate provider-neutral mock adapters also
+  pass a shared eligibility and lifecycle contract covering cancellation, timeout, uncertainty,
+  late confirmation, exact/conflicting replay, reconciliation-key reuse, failure, refunds, and
+  operator recovery. Production funding routes and trusted-webhook endpoints remain disabled.
 
 ## Remaining
 

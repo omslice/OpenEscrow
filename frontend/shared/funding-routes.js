@@ -458,7 +458,7 @@ export function fundingIntentKey(intent) {
     intent.routeCatalogVersion !== FUNDING_ROUTE_CATALOG_VERSION ||
     !["sandbox", "production"].includes(intent.environment) ||
     !Object.values(DEPOSIT_ASSET_IDS).includes(intent.assetId) ||
-    intent.providerStrategy !== ONRAMP_STRATEGY.id ||
+    !validProviderStrategy(intent.providerStrategy) ||
     intent.destination?.chain !== ONRAMP_STRATEGY.destinationChain ||
     intent.destination?.asset !== ONRAMP_STRATEGY.destinationAsset ||
     !/^0x[a-fA-F0-9]{40}$/.test(String(intent.destination?.address || "")) ||
@@ -503,6 +503,15 @@ function validProviderStatus(value) {
     value.length >= 1 &&
     value.length <= 160 &&
     value.trim() === value
+  );
+}
+
+function validProviderStrategy(value) {
+  return (
+    typeof value === "string" &&
+    value.length >= 3 &&
+    value.length <= 100 &&
+    /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/.test(value)
   );
 }
 
@@ -634,7 +643,7 @@ export function isFundingCheckoutLifecycle(value) {
     !validAttemptId(value.attemptId) ||
     !["sandbox", "production"].includes(value.environment) ||
     !Object.values(DEPOSIT_ASSET_IDS).includes(value.assetId) ||
-    value.providerStrategy !== ONRAMP_STRATEGY.id ||
+    !validProviderStrategy(value.providerStrategy) ||
     !/^0x[a-fA-F0-9]{40}$/.test(String(value.walletAddress || "")) ||
     !/^[1-9][0-9]*$/.test(String(value.amountMicros || "")) ||
     !Object.hasOwn(CHECKOUT_TRANSITIONS, value.status) ||
@@ -789,7 +798,9 @@ export function applyFundingCheckoutEvent(
       duplicate.source !== source ||
       duplicate.verification !== verification ||
       duplicate.reconciliationKey !== reconciliationKey ||
-      duplicate.payloadDigest !== payloadDigest
+      duplicate.payloadDigest !== payloadDigest ||
+      (source !== FUNDING_CHECKOUT_EVENT_SOURCES.BROWSER_CALLBACK &&
+        duplicate.occurredAt !== occurredAt)
     ) {
       throw new Error("A duplicate provider event conflicts with the saved checkout state.");
     }

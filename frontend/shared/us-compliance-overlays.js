@@ -1,3 +1,5 @@
+import { assertValidLocalComplianceOverlayCatalog } from "./compliance-overlay-validation.js";
+
 export const COMPLIANCE_FACT_OPTIONS = Object.freeze({
   housingProgram: Object.freeze([
     "unknown",
@@ -337,6 +339,8 @@ export const LOCAL_COMPLIANCE_OVERLAYS = Object.freeze([
     privacyNote: null,
   }),
 ]);
+
+assertValidLocalComplianceOverlayCatalog(LOCAL_COMPLIANCE_OVERLAYS);
 
 export function normalizeComplianceFacts(value) {
   const input = value && typeof value === "object" ? value : {};

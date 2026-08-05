@@ -20,10 +20,12 @@ Canonical data and evaluator:
 
 ## What is automated
 
-When a user selects a U.S. property suggestion from the address lookup, the
-server returns the normalized address, two-letter state code, municipality,
-county, postal code, coordinates, provider feature identifier, and a
-server-only HMAC attestation over those exact fields. The proposal builder then:
+When a user selects a complete U.S. street-address suggestion, including a
+building number, the server returns the normalized address, two-letter state
+code, municipality, county, postal code, coordinates, provider feature
+identifier, and a server-only HMAC attestation over those exact fields. Broad
+street or city results, foreign addresses, unknown states, and duplicate
+provider features are filtered out before attestation. The proposal builder then:
 
 1. selects the matching `us-xx` profile;
 2. records the normalized address resolution and exact profile version in the
@@ -125,6 +127,14 @@ Portland. A locality absent from the registry remains visibly marked
 `unreviewed-locality`; the engine does not treat a missing entry as proof that
 no local rule exists.
 
+The local registry is validated when the module loads. Overlay IDs, declared
+city/county scope, routing keys, version identifiers, HTTPS citations,
+requirements, deadline shapes, and privacy notes must match the reusable
+catalog contract. Duplicate identities, unknown fields, and unsupported
+overlay-level conditions fail closed instead of being silently ignored. This
+validator checks data integrity only; it does not determine that a cited rule
+is complete or legally applicable.
+
 ## What is not automated
 
 An address by itself cannot determine or prove:
@@ -164,7 +174,8 @@ The implementation is regression-checked to ensure all 51 profiles have unique
 versions, official-source metadata, requirements, exceptions, and at least one
 deadline path. Representative tests also cover business-day arithmetic,
 multi-stage rules, address/profile mismatch rejection, and incomplete/non-U.S.
-address records.
+address records. Geocoder regressions also prove that only a complete numbered
+U.S. street address in a recognized state can receive a validated profile.
 
 The review corrected several stale assumptions in the earlier draft:
 

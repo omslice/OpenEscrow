@@ -73,6 +73,16 @@ It would also incorrectly imply that a DEX is needed to enter or exit Aave.
     attempts; browser callbacks carry neither field. Insert and update guards apply the same
     provenance and lowercase SHA-256 shape rules to already-migrated D1 databases, not only newly
     created tables.
+12. Define a provider-neutral adapter contract before integrating another vendor. Every adapter
+    must expose versioned eligibility, open, cancel, refund, reconciliation, and signed-webhook
+    operations. The shared boundary supplies only the checkout fields needed for that operation,
+    rejects extra output fields, exact-binds provider and attempt IDs, and sends every result
+    through the same immutable lifecycle validator. Deterministic mock adapters now prove
+    eligible and ineligible results, timeout without mutation, uncertain and late outcomes,
+    exact replay, conflicting replay, cancellation, failure, refund, operator reconciliation,
+    and production terminal-provenance rejection across two provider IDs. This contract does not
+    enable another provider, approve a region, verify a real webhook, or expose a production-money
+    endpoint; the active route catalog and both production flags remain authoritative.
 
 ## Why not choose a single onramp vendor now?
 

@@ -475,6 +475,20 @@ provider load without caching a receipt across time. Adversarial regressions rej
 wrong response ID, oversized response, and mismatched transaction receipt, then prove a valid retry
 can finalize normally.
 
+Compliance address routing now requires a complete numbered U.S. street result and a recognized
+state before the Worker can sign an address attestation. Broad place/street results, foreign or
+unknown-state records, and duplicate provider IDs fail closed. Local compliance-overlay data is
+also schema-checked at module load so a future malformed scope, source, condition, or deadline
+cannot be silently applied. These checks establish input and catalog integrity; they do not prove
+legal coverage or replace qualified review.
+
+The funding lifecycle now has a provider-neutral adapter boundary with deterministic conformance
+mocks. Adapter output is exact-shaped and bound to the saved provider and attempt, while terminal
+production events still require signed-provider or authorized-operator provenance plus unique
+reconciliation evidence. The tests cover timeouts, late outcomes, replay conflicts, cancellation,
+failure, refund, and recovery across distinct provider IDs. No production provider endpoint,
+signature verifier, real-money route, or operator authority was enabled by this internal seam.
+
 ## Disclaimer
 
 This review was performed by an AI system acting as the project's developer, not by a licensed

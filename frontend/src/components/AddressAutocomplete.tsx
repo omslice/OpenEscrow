@@ -321,8 +321,9 @@ export function AddressAutocomplete({
           >
             OpenStreetMap contributors
           </a>
-          . A “Validated” result is signed by the OpenEscrow server and locks its
-          exact state profile.
+          . Use a complete U.S. street address, including the building number.
+          A “Validated” result locks the matching state profile; a manually
+          entered address does not.
         </small>
       )}
     </div>

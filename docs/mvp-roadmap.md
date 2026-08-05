@@ -165,6 +165,11 @@ production custody, or reliance on the compliance research as legal advice.
   usable at mobile width without repeating an agreement action.
 - **Verified:** Validated U.S. addresses route to immutable, versioned state snapshots with
   conditional/business-day deadline regression coverage and fail-closed official-source gates.
+  Only a complete numbered U.S. street address in a recognized state can receive an attestation;
+  broad street/city results, foreign results, unknown states, and duplicate provider features are
+  discarded. The local-overlay module also fails at load time on malformed city/county scope,
+  routing keys, HTTPS source records, duplicate IDs, unknown fields, deadlines, or unsupported
+  overlay-level conditions. These are routing and data-integrity controls, not new legal rules.
   Wallet preflight is an audited readiness check, not a waiver: finalization rechecks the exact
   source set and blocks any later changed, stale, pending, or incomplete source state. Stored
   snapshot collection shapes, exact canonical address/provider fields, HTTPS source records,
@@ -185,6 +190,12 @@ production custody, or reliance on the compliance research as legal advice.
   needs-review state rather than hiding the affected deadline. No legal rule changed.
 - **Verified:** Provider-neutral funding abstractions cover eligibility, one active attempt,
   cancellation, interruption, refund, failure, reconciliation, and unverified terminal outcomes.
+  A versioned adapter contract now exact-binds provider and attempt outputs, strips the checkout
+  context to required fields, rejects unexpected result fields, and passes all state changes
+  through the same provenance-gated lifecycle. Two deterministic mock providers cover eligible
+  and ineligible decisions, timeout without mutation, late signed results, exact and conflicting
+  replay, reused reconciliation identities, operator recovery, terminal failure, cancellation,
+  and the full refund path.
   No-money submitted or interrupted previews can close through cancellation; confirmed and
   refund-pending previews can reset through the valid refunded transition. Rendered and durable
   regressions prove a new rehearsal can then start. Real-money and production provider routes
