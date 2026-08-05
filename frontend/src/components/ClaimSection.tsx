@@ -92,7 +92,7 @@ export function ClaimSection({
   const [pendingRecord, setPendingRecord] = useState<ClaimReceiptAction | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
   const [isSavingClaimRecord, setIsSavingClaimRecord] = useState(false);
-  const [noticeCopied, setNoticeCopied] = useState(false);
+  const [noticeCopiedFor, setNoticeCopiedFor] = useState<string | null>(null);
   const [noticeStatus, setNoticeStatus] = useState<string | null>(null);
   const [isSendingTenantNotification, setIsSendingTenantNotification] = useState(false);
   const [itemizationConfirmed, setItemizationConfirmed] = useState(false);
@@ -439,55 +439,62 @@ export function ClaimSection({
     void saveClaimRecord(action);
   }
 
-  function tenantNotice() {
-    if (!negotiationAccess || !record) return null;
+  function tenantNotices() {
+    if (!negotiationAccess || !record) return [];
     const bundle = readLandlordBundle();
-    if (!bundle || bundle.proposalId !== negotiationAccess.proposalId) return null;
-    const reviewUrl = buildNegotiationInviteUrl(
-      "tenant",
-      negotiationAccess.proposalId,
-      bundle.access.tenant,
-    );
+    if (!bundle || bundle.proposalId !== negotiationAccess.proposalId) return [];
     const subject = `OpenEscrow deduction claim for ${agreementReference(id)}`;
     const claimAmount = amount || formatUSDC(agreement.claimedAmount);
     const itemSummary = items.map(
       (item, index) =>
         `${index + 1}. ${CATEGORY_LABEL[item.category] || "Other"} — ${item.description.trim()} (${item.amount || "0"} shares)`,
     );
-    const body = [
-      `A deduction claim of ${claimAmount} shares has been submitted for ${agreementReference(id)}.`,
-      "",
-      "Itemized deductions:",
-      ...itemSummary,
-      "",
-      note.trim() ? `Landlord note: ${note.trim()}` : "",
-      uri
-        ? uri.startsWith("openescrow://evidence/")
-          ? "Invoice / evidence: available privately after opening the agreement"
-          : `Invoice / evidence: ${uri}`
-        : "",
-      "",
-      `Review the documentation, add a note, and approve or dispute the claim here: ${reviewUrl}`,
-      "",
-      "Your decision and all related actions will be included in the timestamped agreement record.",
-    ].filter(Boolean).join("\n");
-    const tenantEmails = Array.from(
-      new Set(
-        [record.tenantEmail, ...record.tenants.map((tenant) => tenant.email)]
-          .map((email) => email.trim().toLowerCase())
-          .filter(Boolean),
-      ),
-    );
-    const primaryEmail = record.tenantEmail.trim().toLowerCase() || tenantEmails[0];
-    const ccEmails = tenantEmails.filter((email) => email !== primaryEmail);
-    const ccParameter = ccEmails.length
-      ? `&cc=${encodeURIComponent(ccEmails.join(","))}`
-      : "";
-    return {
-      body,
-      reviewUrl,
-      gmailUrl: `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(primaryEmail)}${ccParameter}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
-    };
+    const accessTenants = bundle.access.tenants || [];
+    const notices = record.tenants.map((tenant, index) => {
+      const tenantAccess = accessTenants.find((candidate) => candidate.id === tenant.id);
+      const token = tenantAccess?.token ||
+        (record.tenants.length === 1 && index === 0 ? bundle.access.tenant : null);
+      if (!token) return null;
+      const email = tenant.email.trim().toLowerCase();
+      const label = tenant.name?.trim() || email;
+      const reviewUrl = buildNegotiationInviteUrl(
+        "tenant",
+        negotiationAccess.proposalId,
+        token,
+      );
+      const body = [
+        tenant.name?.trim() ? `Hello ${tenant.name.trim()},` : "Hello,",
+        "",
+        `A deduction claim of ${claimAmount} shares has been submitted for ${agreementReference(id)}.`,
+        "",
+        "Itemized deductions:",
+        ...itemSummary,
+        "",
+        note.trim() ? `Landlord note: ${note.trim()}` : "",
+        uri
+          ? uri.startsWith("openescrow://evidence/")
+            ? "Invoice / evidence: available privately after opening the agreement"
+            : `Invoice / evidence: ${uri}`
+          : "",
+        "",
+        `Review the documentation, add a note, and approve or dispute the claim here: ${reviewUrl}`,
+        "",
+        "This private invitation is only for you. Do not forward it.",
+        "",
+        "Your decision and all related actions will be included in the timestamped agreement record.",
+      ].filter(Boolean).join("\n");
+      return {
+        tenantId: tenant.id,
+        email,
+        label,
+        body,
+        reviewUrl,
+        gmailUrl: `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+      };
+    });
+    return notices.every(Boolean)
+      ? notices.filter((notice) => notice !== null)
+      : [];
   }
 
   const itemEditor = (
@@ -747,10 +754,10 @@ export function ClaimSection({
     }
   }
 
-  const notice = tenantNotice();
+  const notices = tenantNotices();
   async function sendTenantClaimNotification() {
     if (
-      !notice ||
+      notices.length === 0 ||
       !negotiationAccess ||
       negotiationAccess.role !== "landlord" ||
       isSendingTenantNotification
@@ -763,7 +770,11 @@ export function ClaimSection({
     try {
       try {
         await sendClaimNotification(negotiationAccess, {
-          reviewUrl: notice.reviewUrl,
+          reviewLinks: notices.map((notice) => ({
+            tenantId: notice.tenantId,
+            email: notice.email,
+            reviewUrl: notice.reviewUrl,
+          })),
           agreementId: id.toString(),
           amount: amount || formatUSDC(agreement.claimedAmount),
           items,
@@ -799,22 +810,20 @@ export function ClaimSection({
     }
   }
 
-  async function copyClaimNotice() {
-    if (!notice) return;
+  async function copyClaimNotice(notice: (typeof notices)[number]) {
     setNoticeStatus(null);
     try {
       await copyTextToClipboard(notice.body);
-      setNoticeCopied(true);
+      setNoticeCopiedFor(notice.tenantId);
       void recordNotice("copy");
     } catch (error) {
-      setNoticeCopied(false);
+      setNoticeCopiedFor(null);
       setNoticeStatus(
         error instanceof Error ? error.message : "The claim notice could not be copied.",
       );
     }
   }
-  function openClaimNotice() {
-    if (!notice) return;
+  function openClaimNotice(notice: (typeof notices)[number]) {
     setNoticeStatus(null);
     try {
       openExternalWindow(notice.gmailUrl);
@@ -825,6 +834,62 @@ export function ClaimSection({
       );
     }
   }
+  const noticeActions = notices.length > 0 && (
+    <div className="claim-notice-actions">
+      <strong>Notify each tenant privately</strong>
+      <p className="hint">
+        Every tenant receives a separate message with only their own private review link.
+      </p>
+      {negotiationAccess && (
+        <button
+          className="btn btn-primary"
+          type="button"
+          disabled={isSendingTenantNotification}
+          onClick={() => void sendTenantClaimNotification()}
+        >
+          {isSendingTenantNotification
+            ? "Sending tenant email(s)..."
+            : "Send tenant email(s)"}
+        </button>
+      )}
+      <div className="claim-notice-recipient-list">
+        {notices.map((notice) => (
+          <div className="claim-notice-recipient" key={notice.tenantId}>
+            <span>
+              <strong>{notice.label}</strong>
+              {notice.label !== notice.email && <small>{notice.email}</small>}
+            </span>
+            <div className="button-row">
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => openClaimNotice(notice)}
+              >
+                Email {notice.label}
+              </button>
+              <button
+                className="btn btn-secondary"
+                type="button"
+                onClick={() => void copyClaimNotice(notice)}
+              >
+                {noticeCopiedFor === notice.tenantId
+                  ? `Notice copied for ${notice.label}`
+                  : `Copy notice for ${notice.label}`}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {noticeStatus && (
+        <p
+          className={noticeStatus.includes("sent") ? "tx-success" : "tx-error"}
+          role={noticeStatus.includes("sent") ? "status" : "alert"}
+        >
+          {noticeStatus}
+        </p>
+      )}
+    </div>
+  );
   const showNotice = agreement.phase === Phase.ClaimOpen || claimRecorded;
   const recordRecovery = pendingRecord && (
     <div className="receipt-recovery" aria-busy={isSavingClaimRecord}>
@@ -895,45 +960,7 @@ export function ClaimSection({
           onSuccess={(transactionHash) => recordClaim(transactionHash)}
         />
         {recordRecovery}
-        {showNotice && notice && (
-          <div className="claim-notice-actions">
-            <strong>Notify the tenant</strong>
-            <div className="button-row">
-              {negotiationAccess && (
-                <button
-                  className="btn btn-primary"
-                  type="button"
-                  disabled={isSendingTenantNotification}
-                  onClick={() => void sendTenantClaimNotification()}
-                >
-                  {isSendingTenantNotification ? "Sending tenant email(s)..." : "Send tenant email(s)"}
-                </button>
-              )}
-              <button
-                className="btn btn-secondary"
-                type="button"
-                onClick={openClaimNotice}
-              >
-                Email tenant(s)
-              </button>
-              <button
-                className="btn btn-secondary"
-                type="button"
-                onClick={() => void copyClaimNotice()}
-              >
-                {noticeCopied ? "Claim notice copied" : "Copy claim notice"}
-              </button>
-            </div>
-            {noticeStatus && (
-              <p
-                className={noticeStatus.includes("sent") ? "tx-success" : "tx-error"}
-                role={noticeStatus.includes("sent") ? "status" : "alert"}
-              >
-                {noticeStatus}
-              </p>
-            )}
-          </div>
-        )}
+        {showNotice && noticeActions}
       </div>
     );
   }
@@ -976,45 +1003,7 @@ export function ClaimSection({
           onSuccess={(transactionHash) => recordClaim(transactionHash, true)}
         />
         {recordRecovery}
-        {notice && (
-          <div className="claim-notice-actions">
-            <strong>Notify the tenant about the current claim</strong>
-            <div className="button-row">
-              {negotiationAccess && (
-                <button
-                  className="btn btn-primary"
-                  type="button"
-                  disabled={isSendingTenantNotification}
-                  onClick={() => void sendTenantClaimNotification()}
-                >
-                  {isSendingTenantNotification ? "Sending tenant email(s)..." : "Send tenant email(s)"}
-                </button>
-              )}
-              <button
-                className="btn btn-secondary"
-                type="button"
-                onClick={openClaimNotice}
-              >
-                Email tenant(s)
-              </button>
-              <button
-                className="btn btn-secondary"
-                type="button"
-                onClick={() => void copyClaimNotice()}
-              >
-                {noticeCopied ? "Claim notice copied" : "Copy claim notice"}
-              </button>
-            </div>
-            {noticeStatus && (
-              <p
-                className={noticeStatus.includes("sent") ? "tx-success" : "tx-error"}
-                role={noticeStatus.includes("sent") ? "status" : "alert"}
-              >
-                {noticeStatus}
-              </p>
-            )}
-          </div>
-        )}
+        {noticeActions}
       </div>
     );
   }

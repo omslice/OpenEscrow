@@ -3919,6 +3919,40 @@ a.btn.disabled {
   margin: 0;
 }
 
+.claim-notice-recipient-list {
+  display: grid;
+  gap: 10px;
+}
+
+.claim-notice-recipient {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.claim-notice-recipient > span {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+
+.claim-notice-recipient small {
+  overflow-wrap: anywhere;
+  color: var(--muted);
+}
+
+.claim-notice-recipient .button-row {
+  justify-content: flex-end;
+  margin: 0;
+}
+
+.claim-notice-recipient .btn {
+  min-height: 44px;
+}
+
 .claim-line-items {
   display: grid;
   gap: 12px;
@@ -3990,6 +4024,16 @@ a.btn.disabled {
 }
 
 @media (max-width: 680px) {
+  .claim-notice-recipient {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .claim-notice-recipient .button-row,
+  .claim-notice-recipient .btn {
+    width: 100%;
+  }
+
   .negotiation-refresh-warning {
     align-items: stretch;
     flex-direction: column;

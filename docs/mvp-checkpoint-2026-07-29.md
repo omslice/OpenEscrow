@@ -40,11 +40,12 @@ detailed validation ledger.
   activity receipt, proves another agreement cannot inherit it, restores keyboard focus to its
   mobile-size retry after reload, and completes the record without another onchain publication.
   Production funding remains disabled outside these deterministic tests.
-- **Verified:** A separate 17-scenario incident-response rehearsal passes for identity forgery,
+- **Verified:** A separate 18-scenario incident-response rehearsal passes for identity forgery,
   cross-account isolation, cross-site read isolation, evidence URL-bearer denial, account-session
-  containment, lost-tenant invitation recovery, privacy inventory, evidence tamper, retained-key
-  loss/restoration, R2/encrypted-IPFS cleanup after metadata failure, outages, notification
-  recovery, legacy-landlord receipt recovery, receipt spoofing, and RPC fallback.
+  containment, lost-tenant invitation recovery, multi-tenant notice isolation, privacy inventory,
+  evidence tamper, retained-key loss/restoration, R2/encrypted-IPFS cleanup after metadata
+  failure, outages, notification recovery, legacy-landlord receipt recovery, receipt spoofing,
+  and RPC fallback.
 - **Verified:** The full repository release check passes the complete server and client-logic
   suites, lint, browser account-switch, funding-recovery, record-verification,
   accessibility/mobile, landing-budget, and load-recovery checks, plus the production build.
@@ -104,14 +105,22 @@ detailed validation ledger.
   transactions no longer depend on writable browser storage to save their D1 receipt. Blocked
   storage degrades to an in-memory retry instead of interrupting the completed action; malformed
   persisted hashes and JSON are discarded before use.
-- **Verified:** Invitation bearer tokens are scrubbed from the URL before browser persistence is
-  attempted. A valid role-restricted invitation preserves a same-tab recovery copy before the
+- **Verified:** New invitation credentials are generated in a client-only URL fragment rather than
+  the query sent with the initial document request. Legacy query links remain readable once and
+  are immediately scrubbed; malformed, empty, or conflicting query/fragment credentials fail
+  closed. A valid role-restricted invitation preserves a same-tab recovery copy before the
   deferred workspace request, so an interrupted bundle download can reload without restoring the
   bearer to browser history or accepting a different proposal, role, or account-discovery token.
   Invitee recovery remains session-scoped; a legacy persistent invitation is migrated into the
   current tab and removed from local storage, without changing durable landlord-created access or
   verified account-discovery sessions. A sanitized proposal-only remount resumes only one unique
   invitation role and fails closed when multiple roles match.
+- **Verified:** A multi-tenant deduction claim now produces one private message per exact tenant.
+  Each server-validated fragment credential must hash to that tenant's current invitation and each
+  provider request has a tenant-specific idempotency key. Missing, duplicate, query-based,
+  relabeled, and cross-tenant links fail before delivery. The rendered mobile rehearsal shows two
+  separately named 44-pixel email/copy actions and verifies the automatic request contains neither
+  a query credential nor another tenant's credential.
   If local and session storage are blocked, the invitation, proposal bundle, jurisdiction,
   tracked-agreement, preference, and notification caches degrade to current-page state instead
   of blanking the page or making a completed action look failed. Worker authorization remains

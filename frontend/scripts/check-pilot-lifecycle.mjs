@@ -48,6 +48,7 @@ const lifecycle = {
   events: [],
   nextEventId: 1,
 };
+let claimNoticeChecked = false;
 
 function addEvent(actorRole, action, summary, metadata) {
   lifecycle.events.push({
@@ -150,6 +151,7 @@ function recordFor(role) {
 }
 
 function bootstrapFor(role) {
+  const record = recordFor(role);
   return {
     role,
     stage: stage(),
@@ -159,7 +161,37 @@ function bootstrapFor(role) {
       token: tokens[role],
       source: "invite",
     },
-    record: recordFor(role),
+    record,
+    ...(role === "landlord"
+      ? {
+          landlordBundle: {
+            record,
+            access: {
+              landlord: tokens.landlord,
+              tenant: tokens["tenant-one"],
+              tenants: [
+                {
+                  id: tenantIds["tenant-one"],
+                  name: "Rendered Tenant One",
+                  email: "tenant-one@example.test",
+                  token: tokens["tenant-one"],
+                  isFundingTenant: true,
+                  depositShareBps: 6_000,
+                },
+                {
+                  id: tenantIds["tenant-two"],
+                  name: "Rendered Tenant Two",
+                  email: "tenant-two@example.test",
+                  token: tokens["tenant-two"],
+                  isFundingTenant: false,
+                  depositShareBps: 4_000,
+                },
+              ],
+              arbiter: tokens.arbiter,
+            },
+          },
+        }
+      : {}),
     responseCount: lifecycle.responses.size,
     viewerResponded: lifecycle.responses.has(role),
     claimAmountMicros: lifecycle.claim ? "300000000" : "0",
@@ -335,10 +367,45 @@ async function routeContext(context, role) {
         }),
       });
     }
-    if (
-      url.pathname === "/api/notifications/claim" ||
-      url.pathname === "/api/notifications/claim-response"
-    ) {
+    if (url.pathname === "/api/notifications/claim") {
+      assert.equal(role, "landlord");
+      const body = JSON.parse(request.postData() || "{}");
+      assert.equal(body.token, tokens.landlord);
+      assert.equal(body.reviewLinks.length, 2);
+      for (const tenantRole of ["tenant-one", "tenant-two"]) {
+        const link = body.reviewLinks.find(
+          (candidate) => candidate.tenantId === tenantIds[tenantRole],
+        );
+        assert.ok(link, `A private claim notice is required for ${tenantRole}.`);
+        const reviewUrl = new URL(link.reviewUrl);
+        assert.equal(reviewUrl.searchParams.has("token"), false);
+        assert.equal(
+          new URLSearchParams(reviewUrl.hash.slice(1)).get("token"),
+          tokens[tenantRole],
+        );
+        assert.equal(
+          body.reviewLinks.some(
+            (candidate) =>
+              candidate.tenantId !== tenantIds[tenantRole] &&
+              candidate.reviewUrl.includes(tokens[tenantRole]),
+          ),
+          false,
+        );
+      }
+      claimNoticeChecked = true;
+      return route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          messageId: "rendered-landlord-notification-1",
+          messageIds: [
+            "rendered-landlord-notification-1",
+            "rendered-landlord-notification-2",
+          ],
+        }),
+      });
+    }
+    if (url.pathname === "/api/notifications/claim-response") {
       return route.fulfill({
         status: 200,
         contentType: "application/json",
@@ -459,6 +526,32 @@ try {
     .getByRole("button", { name: "Submit documented deduction claim" })
     .click();
   await waitForStage(landlord.page, "claim-open");
+  await landlord.page
+    .getByText("Every tenant receives a separate message with only their own private review link.")
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await landlord.page.locator(".claim-notice-recipient").count(),
+    2,
+  );
+  for (const tenantLabel of ["Rendered Tenant One", "Rendered Tenant Two"]) {
+    const emailButton = landlord.page.getByRole("button", {
+      name: `Email ${tenantLabel}`,
+    });
+    const copyButton = landlord.page.getByRole("button", {
+      name: `Copy notice for ${tenantLabel}`,
+    });
+    for (const button of [emailButton, copyButton]) {
+      const box = await button.boundingBox();
+      assert.equal(Boolean(box && box.height >= 44), true);
+    }
+  }
+  await landlord.page
+    .getByRole("button", { name: "Send tenant email(s)" })
+    .click();
+  await landlord.page
+    .getByText("Tenant claim email sent and added to the record.")
+    .waitFor({ state: "visible" });
+  assert.equal(claimNoticeChecked, true);
 
   const tenantOne = await openRole(browser, "tenant-one");
   entries.push(tenantOne);
@@ -613,7 +706,7 @@ try {
   );
 
   process.stdout.write(
-    "Rendered multi-party pilot lifecycle passed: one synthetic funded agreement moved through a landlord claim, two exact tenant decisions, arbiter ruling, 225/465/310 allocations, three one-time withdrawals, and a complete header-authorized report across isolated mobile browser contexts with no bearer URL or browser-storage leakage.\n",
+    "Rendered multi-party pilot lifecycle passed: one synthetic funded agreement moved through a landlord claim with two recipient-specific private notices, two exact tenant decisions, arbiter ruling, 225/465/310 allocations, three one-time withdrawals, and a complete header-authorized report across isolated mobile browser contexts with no bearer URL or browser-storage leakage.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

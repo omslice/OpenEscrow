@@ -16,7 +16,7 @@ From `frontend`, run:
 npm run incident:rehearse
 ```
 
-The command exercises seventeen credential-free controls in memory:
+The command exercises eighteen credential-free controls in memory:
 
 1. forged, expired, and wrong-application identity rejection;
 2. cross-account record and archive isolation;
@@ -24,18 +24,19 @@ The command exercises seventeen credential-free controls in memory:
 4. private-evidence URL-bearer rejection while same-origin agreement access remains available;
 5. verified-account session containment;
 6. targeted lost-tenant invitation replacement with co-tenant continuity;
-7. role-isolated, token-free privacy inventory;
-8. ciphertext, key-material, and digest tamper rejection;
-9. isolated D1/R2 restoration that rejects missing and mislabeled key backups, safely verifies
+7. recipient-specific multi-tenant claim notices with cross-tenant and query-link rejection;
+8. role-isolated, token-free privacy inventory;
+9. ciphertext, key-material, and digest tamper rejection;
+10. isolated D1/R2 restoration that rejects missing and mislabeled key backups, safely verifies
    legacy metadata, and recovers exact bytes with the approved keyring;
-10. evidence-upload outage and safe retry;
-11. incomplete encrypted R2 upload cleanup after a metadata failure;
-12. incomplete encrypted IPFS unpinning after a metadata failure;
-13. evidence-download outage and privacy-safe failure;
-14. notification-provider outage and idempotent recovery;
-15. Base Sepolia receipt/event spoof rejection;
-16. original-landlord verification and isolation for legacy receipt recovery; and
-17. bounded receipt verification during public-RPC rate limiting.
+11. evidence-upload outage and safe retry;
+12. incomplete encrypted R2 upload cleanup after a metadata failure;
+13. incomplete encrypted IPFS unpinning after a metadata failure;
+14. evidence-download outage and privacy-safe failure;
+15. notification-provider outage and idempotent recovery;
+16. Base Sepolia receipt/event spoof rejection;
+17. original-landlord verification and isolation for legacy receipt recovery; and
+18. bounded receipt verification during public-RPC rate limiting.
 
 Machine-readable JSON and JUnit evidence is written under
 `frontend/.incident-rehearsal/`. The artifact records the exact Git commit. It touches no hosted

@@ -1423,6 +1423,16 @@ async function create(db, arbiterEmail = null) {
   );
 }
 
+function claimReviewLinks(created) {
+  return created.access.tenants.map((tenant) => ({
+    tenantId: tenant.id,
+    email: tenant.email,
+    reviewUrl:
+      `https://openescrow.example/?invite=tenant&proposal=${created.record.id}` +
+      `#token=${tenant.token}`,
+  }));
+}
+
 async function seedVerifiedComplianceSources(
   db,
   agreementTerms,
@@ -8218,7 +8228,7 @@ test("role-bound actions are strictly enforced by session role", async () => {
   );
 });
 
-test("deduction claim email includes every tenant", async () => {
+test("deduction claim emails isolate each tenant's private invitation", async () => {
   const db = new TestD1();
   const created = await jsonResponse(
     await worker.fetch(
@@ -8237,29 +8247,87 @@ test("deduction claim email includes every tenant", async () => {
     ),
   );
   const originalFetch = globalThis.fetch;
-  let sentEmail = null;
+  const sentEmails = [];
   globalThis.fetch = async (url, init) => {
     assert.equal(url, "https://api.resend.com/emails");
-    sentEmail = JSON.parse(init.body);
-    return Response.json({ id: "multi-tenant-claim-message" });
+    sentEmails.push({
+      body: JSON.parse(init.body),
+      idempotencyKey: new Headers(init.headers).get("idempotency-key"),
+    });
+    return Response.json({ id: `multi-tenant-claim-message-${sentEmails.length}` });
   };
   try {
+    const validReviewLinks = claimReviewLinks(created);
+    const notificationInput = {
+      proposalId: created.record.id,
+      token: created.access.landlord,
+      agreementId: "42",
+      amount: "100",
+      items: [
+        {
+          category: "Damage beyond ordinary wear",
+          description: "Documented repair",
+          amount: "100",
+        },
+      ],
+      note: "",
+      evidenceUri: "openescrow://evidence/test",
+    };
+    const unauthorizedNotice = await worker.fetch(
+      request("/api/notifications/claim", "POST", {
+        ...notificationInput,
+        token: created.access.tenants[0].token,
+        reviewLinks: validReviewLinks,
+      }),
+      { DB: db },
+    );
+    assert.equal(unauthorizedNotice.status, 403);
+    assert.equal(sentEmails.length, 0);
+    const swappedLinks = validReviewLinks.map((link, index) => ({
+      ...link,
+      reviewUrl: validReviewLinks[(index + 1) % validReviewLinks.length].reviewUrl,
+    }));
+    const rejectedCrossTenantLink = await worker.fetch(
+      request("/api/notifications/claim", "POST", {
+        ...notificationInput,
+        reviewLinks: swappedLinks,
+      }),
+      {
+        DB: db,
+        RESEND_API_KEY: "test-resend-key",
+        NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      },
+    );
+    assert.equal(rejectedCrossTenantLink.status, 400);
+    assert.match((await rejectedCrossTenantLink.json()).error, /review link/i);
+    assert.equal(sentEmails.length, 0);
+
+    const queryCredentialLinks = validReviewLinks.map((link) => {
+      const reviewUrl = new URL(link.reviewUrl);
+      const token = new URLSearchParams(reviewUrl.hash.slice(1)).get("token");
+      reviewUrl.hash = "";
+      reviewUrl.searchParams.set("token", token);
+      return { ...link, reviewUrl: reviewUrl.toString() };
+    });
+    const rejectedQueryCredential = await worker.fetch(
+      request("/api/notifications/claim", "POST", {
+        ...notificationInput,
+        reviewLinks: queryCredentialLinks,
+      }),
+      {
+        DB: db,
+        RESEND_API_KEY: "test-resend-key",
+        NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      },
+    );
+    assert.equal(rejectedQueryCredential.status, 400);
+    assert.match((await rejectedQueryCredential.json()).error, /review link/i);
+    assert.equal(sentEmails.length, 0);
+
     const response = await worker.fetch(
       request("/api/notifications/claim", "POST", {
-        proposalId: created.record.id,
-        token: created.access.landlord,
-        reviewUrl: `https://openescrow.example/?invite=tenant&proposal=${created.record.id}&token=${created.access.tenant}`,
-        agreementId: "42",
-        amount: "100",
-        items: [
-          {
-            category: "Damage beyond ordinary wear",
-            description: "Documented repair",
-            amount: "100",
-          },
-        ],
-        note: "",
-        evidenceUri: "openescrow://evidence/test",
+        ...notificationInput,
+        reviewLinks: validReviewLinks,
       }),
       {
         DB: db,
@@ -8268,7 +8336,47 @@ test("deduction claim email includes every tenant", async () => {
       },
     );
     assert.equal(response.status, 200);
-    assert.deepEqual(sentEmail.to, ["tenant@example.com", "casey@example.com"]);
+    assert.equal(sentEmails.length, 2);
+    for (const [index, tenant] of created.access.tenants.entries()) {
+      const sent = sentEmails[index];
+      assert.deepEqual(sent.body.to, [tenant.email]);
+      assert.match(sent.body.text, new RegExp(`#token=${tenant.token}`));
+      assert.equal(sent.body.text.includes("?token="), false);
+      for (const otherTenant of created.access.tenants) {
+        if (otherTenant.id !== tenant.id) {
+          assert.equal(sent.body.text.includes(otherTenant.token), false);
+        }
+      }
+      assert.match(sent.idempotencyKey, new RegExp(tenant.id));
+    }
+    const delivered = await response.json();
+    assert.equal(delivered.duplicate, false);
+    assert.deepEqual(delivered.messageIds, [
+      "multi-tenant-claim-message-1",
+      "multi-tenant-claim-message-2",
+    ]);
+
+    const duplicateResponse = await worker.fetch(
+      request("/api/notifications/claim", "POST", {
+        ...notificationInput,
+        reviewLinks: validReviewLinks,
+      }),
+      {
+        DB: db,
+        RESEND_API_KEY: "test-resend-key",
+        NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      },
+    );
+    assert.equal(duplicateResponse.status, 200);
+    assert.deepEqual(await duplicateResponse.json(), {
+      messageId: "multi-tenant-claim-message-1",
+      messageIds: [
+        "multi-tenant-claim-message-1",
+        "multi-tenant-claim-message-2",
+      ],
+      duplicate: true,
+    });
+    assert.equal(sentEmails.length, 2);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -8280,7 +8388,7 @@ test("pilot rehearsal: a notification outage is retryable without a phantom deli
   const payload = {
     proposalId: created.record.id,
     token: created.access.landlord,
-    reviewUrl: `https://openescrow.example/?invite=tenant&proposal=${created.record.id}&token=${created.access.tenant}`,
+    reviewLinks: claimReviewLinks(created),
     agreementId: "42",
     amount: "100",
     items: [
@@ -8721,7 +8829,7 @@ test("pilot rehearsal: record export and proof include claim, decision, and rece
     request("/api/notifications/claim", "POST", {
       proposalId: created.record.id,
       token: created.access.landlord,
-      reviewUrl: `https://openescrow.example/?invite=tenant&proposal=${created.record.id}&token=${created.access.tenant}`,
+      reviewLinks: claimReviewLinks(created),
       agreementId: "42",
       amount: "300",
       items: [
@@ -8755,7 +8863,7 @@ test("pilot rehearsal: record export and proof include claim, decision, and rece
     const payload = {
       proposalId: created.record.id,
       token: created.access.landlord,
-      reviewUrl: `https://openescrow.example/?invite=tenant&proposal=${created.record.id}&token=${created.access.tenant}`,
+      reviewLinks: claimReviewLinks(created),
       agreementId: "42",
       amount: "300",
       items: [

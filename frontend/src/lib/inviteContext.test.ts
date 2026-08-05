@@ -66,7 +66,7 @@ test("workspace selection remains usable when session storage is blocked", () =>
     assert.equal(readWorkspaceRole(), "landlord");
 
     currentUrl = new URL(
-      "https://openescrow.example/?invite=tenant&proposal=proposal-1&token=secret",
+      "https://openescrow.example/?invite=tenant&proposal=proposal-1#token=secret",
     );
     assert.equal(readInviteRole(), "tenant");
     assert.equal(readWorkspaceRole(), "tenant");
@@ -77,7 +77,7 @@ test("workspace selection remains usable when session storage is blocked", () =>
     clearInviteRole();
     assert.equal(readInviteRole(), null);
     assert.equal(readWorkspaceRole(), null);
-    assert.equal(currentUrl.searchParams.get("token"), "secret");
+    assert.equal(currentUrl.hash, "#token=secret");
     currentUrl.hash = "yield-stablecoins";
     assert.equal(readInviteRole(), null);
     currentUrl.searchParams.set("token", "replacement-secret");

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   appendDurableFundingCheckoutEvent,
+  buildNegotiationInviteUrl,
   captureNegotiationAccessFromUrl,
   clearAccountNegotiationAccesses,
   clearLandlordBundle,
@@ -148,7 +149,7 @@ test("blocked storage cannot blank an invitation or leave its bearer token in th
   const originalWindow = globalThis.window;
   const blocked = new BlockedStorage();
   let currentUrl = new URL(
-    "https://openescrow.example/?invite=tenant&proposal=blocked-invite&token=secret-invite-token",
+    "https://openescrow.example/?invite=tenant&proposal=blocked-invite#token=secret-invite-token",
   );
   Object.defineProperty(globalThis, "window", {
     configurable: true,
@@ -156,6 +157,7 @@ test("blocked storage cannot blank an invitation or leave its bearer token in th
       localStorage: blocked,
       sessionStorage: blocked,
       location: {
+        origin: "https://openescrow.example",
         get href() {
           return currentUrl.toString();
         },
@@ -177,6 +179,7 @@ test("blocked storage cannot blank an invitation or leave its bearer token in th
       source: "invite",
     });
     assert.equal(currentUrl.searchParams.get("token"), null);
+    assert.equal(currentUrl.hash, "");
     assert.equal(currentUrl.searchParams.get("access"), null);
     assert.equal(currentUrl.searchParams.get("invite"), "tenant");
     assert.deepEqual(
@@ -215,6 +218,22 @@ test("blocked storage cannot blank an invitation or leave its bearer token in th
     assert.equal(captureNegotiationAccessFromUrl(), null);
     assert.equal(currentUrl.searchParams.get("token"), null);
     assert.equal(currentUrl.searchParams.get("invite"), null);
+
+    currentUrl = new URL(
+      "https://openescrow.example/?invite=tenant&proposal=conflicted&token=query-secret#token=fragment-secret",
+    );
+    assert.equal(captureNegotiationAccessFromUrl(), null);
+    assert.equal(currentUrl.searchParams.has("token"), false);
+    assert.equal(currentUrl.hash, "");
+    assert.equal(currentUrl.searchParams.has("invite"), false);
+
+    const generated = new URL(
+      buildNegotiationInviteUrl("tenant", "generated-invite", "generated-secret"),
+    );
+    assert.equal(generated.searchParams.get("invite"), "tenant");
+    assert.equal(generated.searchParams.get("proposal"), "generated-invite");
+    assert.equal(generated.searchParams.has("token"), false);
+    assert.equal(generated.hash, "#token=generated-secret");
   } finally {
     Object.defineProperty(globalThis, "window", {
       configurable: true,

@@ -11,6 +11,11 @@ import {
   type BrowserRecoveryStorageKind,
 } from "./browserRecovery.ts";
 import { recoverUniqueNegotiationAccessForProposal } from "./negotiationAccessRecovery.ts";
+import {
+  clearInvitationCredential,
+  readInvitationCredential,
+  setInvitationCredential,
+} from "./invitationCredential.ts";
 import type {
   DepositAssetId,
   DepositAssetSnapshot,
@@ -699,12 +704,13 @@ export function clearLandlordBundle(proposalId?: string) {
 export function captureNegotiationAccessFromUrl(): NegotiationAccess | null {
   const url = new URL(window.location.href);
   const proposalId = url.searchParams.get("proposal");
-  const token = url.searchParams.get("token");
+  const invitationCredential = readInvitationCredential(url);
+  const token = invitationCredential.token;
   const role = url.searchParams.get("access") || url.searchParams.get("invite");
   const validRole =
     role === "landlord" || role === "tenant" || role === "arbiter";
   const validInvitation = Boolean(proposalId && token && validRole);
-  if (proposalId && !token) {
+  if (proposalId && !invitationCredential.present) {
     const recovered =
       recoverUniqueNegotiationAccessForProposal(proposalId);
     if (recovered) return recovered;
@@ -722,8 +728,8 @@ export function captureNegotiationAccessFromUrl(): NegotiationAccess | null {
       ? currentPageMatches[0]
       : null;
   }
-  if (token) {
-    url.searchParams.delete("token");
+  if (invitationCredential.present) {
+    clearInvitationCredential(url);
     url.searchParams.delete("access");
     if (!validInvitation) url.searchParams.delete("invite");
     if (!replaceRecoveryUrl(url)) {
@@ -755,7 +761,7 @@ export function buildNegotiationInviteUrl(
   const url = new URL(window.location.origin);
   url.searchParams.set("invite", role);
   url.searchParams.set("proposal", proposalId);
-  url.searchParams.set("token", token);
+  setInvitationCredential(url, token);
   return url.toString();
 }
 
@@ -1310,7 +1316,11 @@ export async function uploadEvidenceDocument(
 export async function sendClaimNotification(
   access: NegotiationAccess,
   input: {
-    reviewUrl: string;
+    reviewLinks: Array<{
+      tenantId: string;
+      email: string;
+      reviewUrl: string;
+    }>;
     agreementId: string;
     amount: string;
     items: DeductionLineItem[];

@@ -5,6 +5,10 @@ import {
   recoverUniqueNegotiationAccessForProposal,
 } from "./negotiationAccessRecovery";
 import type { NegotiationAccess, NegotiationRole } from "./negotiations";
+import {
+  clearInvitationCredential,
+  readInvitationCredential,
+} from "./invitationCredential";
 
 export type AccountLoginMethod = "google" | "wallet";
 
@@ -18,7 +22,8 @@ let currentPageEntryAccess: NegotiationAccess | null = null;
 export function captureEntryContext(): EntryContext {
   const url = new URL(window.location.href);
   const proposalId = url.searchParams.get("proposal");
-  const token = url.searchParams.get("token");
+  const invitationCredential = readInvitationCredential(url);
+  const token = invitationCredential.token;
   const accessRole = url.searchParams.get("access");
   const inviteRole = url.searchParams.get("invite");
   const role = accessRole || inviteRole;
@@ -32,7 +37,7 @@ export function captureEntryContext(): EntryContext {
       ? currentPageEntryAccess
       : null;
   const recoveredAccess =
-    !token && proposalId
+    !invitationCredential.present && proposalId
       ? validRole
         ? recoverNegotiationAccessForEntry(proposalId, role) ||
           currentPageRecovery
@@ -54,8 +59,8 @@ export function captureEntryContext(): EntryContext {
   }
 
   let needsCleanup = false;
-  if (token) {
-    url.searchParams.delete("token");
+  if (invitationCredential.present) {
+    clearInvitationCredential(url);
     url.searchParams.delete("access");
     needsCleanup = true;
   } else if (accessRole) {

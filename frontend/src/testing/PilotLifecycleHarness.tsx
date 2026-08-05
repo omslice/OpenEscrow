@@ -7,6 +7,7 @@ import { ResponseSection } from "../components/ResponseSection";
 import { WithdrawSection } from "../components/WithdrawSection";
 import { Phase, ZERO_ADDRESS } from "../contracts/config";
 import { formatUSDC } from "../lib/format";
+import { rememberLandlordBundle } from "../lib/negotiations";
 import type { Agreement } from "../lib/useAgreement";
 import type { PilotLifecycleRole } from "./pilotLifecycleTypes";
 import "../index.css";
@@ -21,6 +22,15 @@ const ADDRESSES: Record<PilotLifecycleRole, `0x${string}`> = {
 
 const state = window.__OPENESCROW_PILOT_LIFECYCLE__;
 if (!state) throw new Error("The rendered pilot lifecycle did not receive state.");
+if (state.role === "landlord" && state.landlordBundle) {
+  rememberLandlordBundle(state.landlordBundle);
+  for (const storage of [window.localStorage, window.sessionStorage]) {
+    storage.removeItem("openescrow.latestLandlordProposalBundle");
+    storage.removeItem(
+      `openescrow.landlordProposalBundle.${state.landlordBundle.record.id}`,
+    );
+  }
+}
 
 const phase =
   state.stage === "funded"

@@ -41,6 +41,11 @@ production custody, or reliance on the compliance research as legal advice.
   without accepting an agreement bearer from a query string. Private supporting files likewise
   require a same-origin form POST: the former evidence `?token=` URL is rejected before D1 or R2
   access, so an agreement secret is not accepted from browser history, logs, or referrers.
+  Newly generated participant invitations likewise keep their temporary credential in the
+  client-only URL fragment while legacy query links remain one-time readable and immediately
+  scrubbed. Conflicting or malformed credentials fail closed. Multi-tenant deduction notices are
+  generated, validated, and delivered separately for each exact tenant; a missing, duplicated,
+  query-based, or cross-tenant link blocks the entire notice request.
 - **Verified:** The release dependency audit blocks every high/critical finding and every unknown
   moderate advisory. The former transitive `uuid` advisory is removed from the locked
   wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector

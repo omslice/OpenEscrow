@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { replaceRecoveryUrl } from "./browserRecovery.ts";
+import { clearInvitationCredential } from "./invitationCredential.ts";
 
 export type InviteRole = "tenant" | "arbiter";
 export type WorkspaceRole = "landlord" | InviteRole;
@@ -46,7 +47,7 @@ export function clearInviteRole() {
   const url = new URL(window.location.href);
   url.searchParams.delete("invite");
   url.searchParams.delete("proposal");
-  url.searchParams.delete("token");
+  clearInvitationCredential(url);
   if (replaceRecoveryUrl(url)) {
     ignoredInviteHref = null;
   } else {

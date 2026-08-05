@@ -324,12 +324,21 @@ try {
       await route.continue();
     },
   );
-  await invitationPage.goto(
-    `${baseUrl}/?proposal=pilot-proposal&token=pilot-secret&invite=tenant`,
+  const invitationResponse = await invitationPage.goto(
+    `${baseUrl}/?proposal=pilot-proposal&invite=tenant#token=pilot-secret`,
     { waitUntil: "domcontentloaded" },
   );
+  assert.ok(invitationResponse);
+  assert.equal(
+    invitationResponse.request().url().includes("pilot-secret"),
+    false,
+    "The invitation credential must not be sent with the initial document request.",
+  );
   await invitationPage.waitForFunction(
-    () => !new URL(window.location.href).searchParams.has("token"),
+    () => {
+      const url = new URL(window.location.href);
+      return !url.searchParams.has("token") && !url.hash.includes("token=");
+    },
   );
   assert.equal(
     accountProviderRequestSeen,

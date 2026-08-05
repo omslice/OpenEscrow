@@ -280,7 +280,7 @@ try {
   });
 
   await page.goto(
-    `${baseUrl}/?proposal=${proposalId}&access=landlord&token=${accessToken}`,
+    `${baseUrl}/?proposal=${proposalId}&access=landlord#token=${accessToken}`,
     { waitUntil: "domcontentloaded" },
   );
   await page.getByRole("tab", { name: "Record" }).click();

@@ -411,7 +411,7 @@ try {
   const invitationContext = await browser.newContext();
   const invitationPage = await invitationContext.newPage();
   await invitationPage.goto(
-    `${baseUrl}/?proposal=pilot-proposal&token=pilot-secret&invite=tenant&public-access-test=1`,
+    `${baseUrl}/?proposal=pilot-proposal&invite=tenant&public-access-test=1#token=pilot-secret`,
     { waitUntil: "domcontentloaded" },
   );
   await invitationPage
@@ -422,6 +422,7 @@ try {
     false,
     "A role-aware invitation must scrub its bearer token before sign-in.",
   );
+  assert.equal(new URL(invitationPage.url()).hash.includes("token="), false);
   assert.equal(
     await invitationPage.locator("details.notification-center > summary").count(),
     1,
@@ -442,7 +443,7 @@ try {
     async (route) => route.abort("failed"),
   );
   await recoverableInvitationPage.goto(
-    `${baseUrl}/?proposal=recoverable-proposal&token=recoverable-secret&invite=tenant&public-access-test=1`,
+    `${baseUrl}/?proposal=recoverable-proposal&invite=tenant&public-access-test=1#token=recoverable-secret`,
     { waitUntil: "domcontentloaded" },
   );
   await recoverableInvitationPage
@@ -452,6 +453,10 @@ try {
     new URL(recoverableInvitationPage.url()).searchParams.has("token"),
     false,
     "A failed workspace download must not put the invitation token back in the URL.",
+  );
+  assert.equal(
+    new URL(recoverableInvitationPage.url()).hash.includes("token="),
+    false,
   );
   assert.equal(
     await recoverableInvitationPage.evaluate(

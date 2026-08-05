@@ -1,4 +1,5 @@
 import type {
+  CreatedNegotiation,
   NegotiationAccess,
   NegotiationRecord,
 } from "../lib/negotiations";
@@ -20,6 +21,7 @@ export type PilotLifecycleBootstrap = {
   stage: PilotLifecycleStage;
   access: NegotiationAccess;
   record: NegotiationRecord;
+  landlordBundle?: CreatedNegotiation;
   responseCount: number;
   viewerResponded: boolean;
   claimAmountMicros: string;

@@ -52,6 +52,16 @@ const expectedScenarios = [
     ],
   },
   {
+    id: "multi-tenant-notice-isolation",
+    name: "deduction claim emails isolate each tenant's private invitation",
+    covers: [
+      "recipient-specific invitations",
+      "cross-tenant link denial",
+      "query credential denial",
+      "per-tenant delivery idempotency",
+    ],
+  },
+  {
     id: "privacy-inventory",
     name: "pilot rehearsal: account data inventory is role-isolated and contains no access secrets",
     covers: [

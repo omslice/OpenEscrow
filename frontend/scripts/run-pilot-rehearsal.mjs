@@ -55,6 +55,7 @@ const expectedScenarios = [
     name: "pilot rehearsal: rendered landlord, tenants, and arbiter complete one shared lifecycle",
     covers: [
       "rendered landlord claim",
+      "recipient-specific tenant notices",
       "two isolated tenant decisions",
       "arbiter role handoff",
       "exact allocation",

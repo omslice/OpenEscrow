@@ -585,6 +585,7 @@ const COMPLIANCE_SOURCE_STATUS_VALUES = new Set([
   "unreachable",
 ]);
 const encoder = new TextEncoder();
+const INVITATION_TOKEN_PATTERN = /^[a-zA-Z0-9_-]{1,200}$/;
 
 function json(data, status = 200) {
   return new Response(JSON.stringify(data), {
@@ -1707,6 +1708,17 @@ async function deliverEmail(
 
 function cleanText(value, max = 500) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
+}
+
+function invitationTokenFromFragment(url) {
+  if (url.searchParams.has("token")) return null;
+  const fragment = new URLSearchParams(
+    url.hash.startsWith("#") ? url.hash.slice(1) : url.hash,
+  );
+  const values = fragment.getAll("token");
+  if (values.length !== 1) return null;
+  const token = values[0];
+  return token && INVITATION_TOKEN_PATTERN.test(token) ? token : null;
 }
 
 function tokenMicros(value) {
@@ -8385,6 +8397,13 @@ async function downloadEvidence(request, env, evidenceId) {
 
 async function sendClaimNotification(request, env) {
   if (!env.DB) return json({ error: "Agreement record storage is not available." }, 503);
+  const body = await request.json();
+  const proposalId = cleanText(body.proposalId, 80);
+  const row = await rowFor(env.DB, proposalId);
+  const role = await authorize(env.DB, row, body.token);
+  if (role !== "landlord") {
+    return json({ error: "Only the landlord may send a deduction-claim notice." }, 403);
+  }
   if (!emailProvider(env)) {
     return json(
       {
@@ -8394,26 +8413,59 @@ async function sendClaimNotification(request, env) {
       503,
     );
   }
-  const body = await request.json();
-  const proposalId = cleanText(body.proposalId, 80);
-  const row = await rowFor(env.DB, proposalId);
-  const role = await authorize(env.DB, row, body.token);
-  if (role !== "landlord") {
-    return json({ error: "Only the landlord may send a deduction-claim notice." }, 403);
-  }
-  let reviewUrl;
-  try {
-    reviewUrl = new URL(body.reviewUrl);
-  } catch {
-    return json({ error: "The tenant review link is invalid." }, 400);
-  }
   const requestOrigin = new URL(request.url).origin;
-  if (
-    reviewUrl.origin !== requestOrigin ||
-    reviewUrl.searchParams.get("invite") !== "tenant" ||
-    reviewUrl.searchParams.get("proposal") !== proposalId
-  ) {
-    return json({ error: "The tenant review link is invalid." }, 400);
+  const tenantResult = await env.DB
+    .prepare(
+      `SELECT id, name, email, token_hash
+       FROM negotiation_tenants
+       WHERE negotiation_id = ?
+       ORDER BY is_funding_tenant DESC, created_at ASC`,
+    )
+    .bind(proposalId)
+    .all();
+  const tenantRows = tenantResult.results || [];
+  const submittedLinks = Array.isArray(body.reviewLinks) ? body.reviewLinks : [];
+  if (tenantRows.length === 0 || submittedLinks.length !== tenantRows.length) {
+    return json({ error: "Each tenant needs their own private review link." }, 400);
+  }
+  const reviewLinks = [];
+  const seenTenantIds = new Set();
+  for (const submitted of submittedLinks) {
+    const tenantId = cleanText(submitted?.tenantId, 100);
+    const email = normalizeEmail(submitted?.email);
+    const tenant = tenantRows.find((candidate) => candidate.id === tenantId);
+    if (
+      !tenant ||
+      seenTenantIds.has(tenantId) ||
+      email !== normalizeEmail(tenant.email)
+    ) {
+      return json({ error: "Each tenant needs their own private review link." }, 400);
+    }
+    let reviewUrl;
+    try {
+      reviewUrl = new URL(submitted?.reviewUrl);
+    } catch {
+      return json({ error: "A tenant review link is invalid." }, 400);
+    }
+    const reviewToken = invitationTokenFromFragment(reviewUrl);
+    const reviewTokenHash = reviewToken ? await hashToken(reviewToken) : null;
+    if (
+      reviewUrl.origin !== requestOrigin ||
+      reviewUrl.searchParams.get("invite") !== "tenant" ||
+      reviewUrl.searchParams.get("proposal") !== proposalId ||
+      !reviewToken ||
+      reviewTokenHash !== tenant.token_hash
+    ) {
+      return json({ error: "A tenant review link is invalid." }, 400);
+    }
+    seenTenantIds.add(tenantId);
+    reviewLinks.push({
+      tenantId,
+      name: cleanText(tenant.name, 160),
+      email,
+      url: reviewUrl.toString(),
+      credentialHash: reviewTokenHash,
+    });
   }
   const agreementId = cleanText(body.agreementId, 80);
   const amount = cleanText(body.amount, 80);
@@ -8440,17 +8492,14 @@ async function sendClaimNotification(request, env) {
         items,
         note,
         evidenceUri,
+        reviewCredentials: reviewLinks.map((link) => ({
+          tenantId: link.tenantId,
+          credentialHash: link.credentialHash,
+        })),
       }),
     )
   ).slice(0, 32);
   const existingRecord = await serialize(env.DB, row);
-  const recipientEmails = [
-    ...new Set(
-      [row.tenant_email, ...existingRecord.tenants.map((tenant) => tenant.email)]
-        .map((email) => normalizeEmail(email))
-        .filter(Boolean),
-    ),
-  ];
   const existingDelivery = existingRecord.events.find(
     (event) =>
       event.action === "claim_notification_sent" &&
@@ -8459,30 +8508,41 @@ async function sendClaimNotification(request, env) {
   if (existingDelivery) {
     return json({
       messageId: existingDelivery.metadata.messageId,
+      messageIds: existingDelivery.metadata.messageIds || [
+        existingDelivery.metadata.messageId,
+      ],
       duplicate: true,
     });
   }
-  const text = [
-    `A deduction claim of ${amount} shares has been submitted for OpenEscrow agreement #${agreementId}.`,
-    `Itemized deductions:\n${itemSummary}`,
-    note ? `Landlord note: ${note}` : "",
-    evidenceUri
-      ? evidenceUri.startsWith("openescrow://evidence/") ||
-        evidenceUri.startsWith("openescrow+ipfs://")
-        ? "Invoice / evidence: available privately after opening the agreement"
-        : `Invoice / evidence: ${evidenceUri}`
-      : "",
-    `Review the documentation and approve or dispute the claim: ${reviewUrl.toString()}`,
-    "Your decision and all related actions will be included in the timestamped agreement record.",
-  ].filter(Boolean).join("\n\n");
-  const delivered = await deliverEmail(env, {
-    to: recipientEmails,
-    subject,
-    text,
-    idempotencyKey: `claim-${proposalId}-${deliveryKey}`,
-  });
-  if (!delivered?.id) {
-    return json({ error: "The email provider could not send this claim notice." }, 502);
+  const deliveries = [];
+  for (const reviewLink of reviewLinks) {
+    const text = [
+      reviewLink.name ? `Hello ${reviewLink.name},` : "Hello,",
+      `A deduction claim of ${amount} shares has been submitted for OpenEscrow agreement #${agreementId}.`,
+      `Itemized deductions:\n${itemSummary}`,
+      note ? `Landlord note: ${note}` : "",
+      evidenceUri
+        ? evidenceUri.startsWith("openescrow://evidence/") ||
+          evidenceUri.startsWith("openescrow+ipfs://")
+          ? "Invoice / evidence: available privately after opening the agreement"
+          : `Invoice / evidence: ${evidenceUri}`
+        : "",
+      `Review the documentation and approve or dispute the claim: ${reviewLink.url}`,
+      "This private invitation is only for you. Do not forward it.",
+      "Your decision and all related actions will be included in the timestamped agreement record.",
+    ].filter(Boolean).join("\n\n");
+    const delivered = await deliverEmail(env, {
+      to: [reviewLink.email],
+      subject,
+      text,
+      idempotencyKey:
+        `claim-${proposalId}-${reviewLink.tenantId}-${deliveryKey}-` +
+        reviewLink.credentialHash.slice(0, 12),
+    });
+    if (!delivered?.id) {
+      return json({ error: "The email provider could not send every tenant claim notice." }, 502);
+    }
+    deliveries.push(delivered);
   }
 
   const now = new Date().toISOString();
@@ -8496,12 +8556,21 @@ async function sendClaimNotification(request, env) {
       now,
       role,
       "claim_notification_sent",
-      `Sent the deduction-claim notice to ${recipientEmails.join(", ")}.`,
+      `Sent separate deduction-claim notices to ${reviewLinks.map((link) => link.email).join(", ")}.`,
       row.revision,
-      { messageId: delivered.id, deliveryKey },
+      {
+        messageId: deliveries[0].id,
+        messageIds: deliveries.map((delivery) => delivery.id),
+        deliveryKey,
+        recipientCount: reviewLinks.length,
+      },
     ),
   ]);
-  return json({ messageId: delivered.id, duplicate: false });
+  return json({
+    messageId: deliveries[0].id,
+    messageIds: deliveries.map((delivery) => delivery.id),
+    duplicate: false,
+  });
 }
 
 async function sendClaimResponseNotification(request, env) {
