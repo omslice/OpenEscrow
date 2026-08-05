@@ -305,6 +305,14 @@ not deployed until a new version-matched registry is broadcast and validated.
   the same exact receipt verifier. Manual transaction-hash entry remains a collapsed technical
   fallback rather than a normal participant requirement.
   This hosted safeguard depends on receipt verification remaining enabled.
+- A landlord's pre-funding `cancelProposal` transaction is now mirrored into the hosted lifecycle
+  only after the server verifies the successful `ProposalCancelled` receipt against the exact
+  contract, agreement, and previously verified landlord sender. The D1 status then leaves active
+  proposal/deposit discovery while the append-only event history and report remain available.
+  Receipt verification is mandatory for this state change, exact retries are idempotent, and the
+  browser keeps an interrupted Record-only retry in the exact tab without a bearer credential or
+  a second contract write. If that browser-tab recovery is unavailable, the contract remains the
+  authority and the stale hosted Record must be reconciled before it is relied upon.
 - Invitation URLs are bearer credentials. A landlord can reset a tenant or optional-arbiter link
   without changing approved terms; the reset invalidates the prior direct link and the affected
   account-discovery sessions, while the matching verified email can discover a fresh session.

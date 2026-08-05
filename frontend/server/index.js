@@ -117,7 +117,8 @@ WHERE action IN (
   'arbiter_replacement_proposed',
   'arbiter_replacement_confirmed',
   'arbiter_replacement_cancelled',
-  'arbiter_replacement_accepted'
+  'arbiter_replacement_accepted',
+  'onchain_proposal_cancelled'
 )
 AND json_type(metadata_json, '$.transactionHash') = 'text'
 GROUP BY negotiation_id, action,
@@ -142,7 +143,8 @@ WHEN NEW.action IN (
   'arbiter_replacement_proposed',
   'arbiter_replacement_confirmed',
   'arbiter_replacement_cancelled',
-  'arbiter_replacement_accepted'
+  'arbiter_replacement_accepted',
+  'onchain_proposal_cancelled'
 )
 AND json_type(NEW.metadata_json, '$.transactionHash') = 'text'
 BEGIN
@@ -530,6 +532,8 @@ const COMPLIANCE_SOURCE_MONITOR_GRACE_MS = 2 * COMPLIANCE_SOURCE_MONITOR_INTERVA
 const RECEIPT_EVENT_TOPICS = Object.freeze({
   agreementProposed:
     "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6",
+  proposalCancelled:
+    "0x416e669c63d9a3a5e36ee7cc7e2104b8db28ccd286aa18966e98fa230c73b08c",
   tenantParticipantAdded:
     "0x30ab399feb0ae9b4c920d576e81a8e47863afdae2efa0fc6d97a13114f5440ad",
   operationsReservePaid:
@@ -983,6 +987,19 @@ function receiptExpectation(body, row, env, context, recordedEvents) {
     extra.expectedAgreementToken = expectedTokenAddress;
     extra.openEscrowAddress = openEscrowAddress;
     extra.agreementTopic = agreementTopic;
+  } else if (body.type === "onchain_proposal_cancelled") {
+    const missingActor = requireKnownActor("landlord");
+    if (missingActor) return missingActor;
+    variants = [
+      variant({
+        address: openEscrowAddress,
+        topic0: RECEIPT_EVENT_TOPICS.proposalCancelled,
+        agreementTopic,
+        topicCount: 2,
+        dataWordCount: 0,
+        exactSender,
+      }),
+    ];
   } else if (body.type === "operations_reserve_paid") {
     const missingActor = requireKnownActor("tenant");
     if (missingActor) return missingActor;
@@ -5939,27 +5956,31 @@ async function applyAction(request, env, id) {
   const row = await rowFor(db, id);
   const role = await authorize(db, row, body.token);
   if (!role) return json({ error: "This proposal link is invalid or no longer available." }, 403);
-  const arbiterReplacementReceiptActions = new Set([
+  const receiptRequiredActions = new Set([
     "arbiter_replacement_proposed",
     "arbiter_replacement_confirmed",
     "arbiter_replacement_cancelled",
     "arbiter_replacement_accepted",
+    "onchain_proposal_cancelled",
   ]);
   if (
-    arbiterReplacementReceiptActions.has(body.type) &&
+    receiptRequiredActions.has(body.type) &&
     !receiptVerificationEnabled(env)
   ) {
     return json(
       {
         error:
-          "Arbiter access changes require Base Sepolia receipt verification and cannot be recorded while it is disabled.",
+          body.type === "onchain_proposal_cancelled"
+            ? "Onchain cancellation requires Base Sepolia receipt verification and cannot change the private Record while verification is disabled."
+            : "Arbiter access changes require Base Sepolia receipt verification and cannot be recorded while it is disabled.",
       },
       503,
     );
   }
   if (
     (row.status === "cancelled" || row.status === "superseded") &&
-    body.type !== "cancel_proposal"
+    body.type !== "cancel_proposal" &&
+    body.type !== "onchain_proposal_cancelled"
   ) {
     return json({ error: "This proposal is no longer active." }, 409);
   }
@@ -5981,6 +6002,7 @@ async function applyAction(request, env, id) {
     arbiter_replacement_confirmed: "arbiter_replacement_confirmed",
     arbiter_replacement_cancelled: "arbiter_replacement_cancelled",
     arbiter_replacement_accepted: "arbiter_replacement_accepted",
+    onchain_proposal_cancelled: "onchain_proposal_cancelled",
   };
   const expectedEvent = transactionEventByAction[body.type];
   const incomingTransactionHash = cleanText(body.transactionHash, 100);
@@ -6081,6 +6103,40 @@ async function applyAction(request, env, id) {
         "proposal_cancelled",
         "Cancelled and removed this proposal from every party's active workspace. The timestamped record remains available for audit.",
         revision,
+      ),
+    );
+  } else if (body.type === "onchain_proposal_cancelled") {
+    if (role !== "landlord") {
+      return json({ error: "Only the landlord may save an onchain proposal cancellation." }, 403);
+    }
+    if (row.status !== "finalized" || !row.onchain_agreement_id) {
+      return json(
+        { error: "Only a finalized, unfunded onchain agreement can save this cancellation." },
+        409,
+      );
+    }
+    const transactionHash = cleanText(body.transactionHash, 100);
+    if (!/^0x[a-fA-F0-9]{64}$/.test(transactionHash)) {
+      return json({ error: "The cancellation transaction is invalid." }, 400);
+    }
+    clearsPendingArbiterOnchain = true;
+    statements.push(
+      db
+        .prepare(
+          `UPDATE agreement_negotiations
+           SET status = 'cancelled', updated_at = ?
+           WHERE id = ?`,
+        )
+        .bind(now, id),
+      eventStatement(
+        db,
+        id,
+        now,
+        role,
+        "onchain_proposal_cancelled",
+        "Cancelled the unfunded testnet agreement. It was removed from active deposits, and its timestamped Record remains available.",
+        revision,
+        { transactionHash },
       ),
     );
   } else if (body.type === "update_tenant_shares") {

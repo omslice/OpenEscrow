@@ -76,6 +76,7 @@ export function AgreementCard({
   onUnavailable,
   negotiationAccess,
   participantRecord,
+  onParticipantRecordUpdated,
   activePanel,
   onPanelChange,
   focusRequest,
@@ -85,6 +86,7 @@ export function AgreementCard({
   onUnavailable?: () => void;
   negotiationAccess?: NegotiationAccess | null;
   participantRecord?: NegotiationRecord | null;
+  onParticipantRecordUpdated?: (record: NegotiationRecord) => void;
   activePanel?: AgreementPanel;
   onPanelChange?: (panel: AgreementPanel) => void;
   focusRequest?: AgreementFocusRequest;
@@ -276,6 +278,7 @@ export function AgreementCard({
                 agreement={agreement}
                 negotiationAccess={negotiationAccess}
                 participantRecord={participantRecord}
+                onParticipantRecordUpdated={onParticipantRecordUpdated}
                 onRefetch={onRefetch}
               />
             </DeferredLoadBoundary>

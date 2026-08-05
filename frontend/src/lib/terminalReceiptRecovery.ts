@@ -9,9 +9,14 @@ export type TimeoutReceiptAction = Extract<
   NegotiationAction,
   { type: "timeout_executed" }
 >;
+export type ProposalCancellationReceiptAction = Extract<
+  NegotiationAction,
+  { type: "onchain_proposal_cancelled" }
+>;
 export type TerminalReceiptAction =
   | WithdrawalReceiptAction
-  | TimeoutReceiptAction;
+  | TimeoutReceiptAction
+  | ProposalCancellationReceiptAction;
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -64,6 +69,18 @@ export function isTimeoutReceiptAction(
   );
 }
 
+export function isProposalCancellationReceiptAction(
+  value: unknown,
+): value is ProposalCancellationReceiptAction {
+  if (!isPlainRecord(value) || value.type !== "onchain_proposal_cancelled") {
+    return false;
+  }
+  return (
+    hasOnlyKeys(value, new Set(["type", "transactionHash"])) &&
+    isTransactionHash(value.transactionHash)
+  );
+}
+
 export function sameTerminalReceipt(
   left: TerminalReceiptAction | null,
   right: TerminalReceiptAction,
@@ -76,7 +93,7 @@ export function sameTerminalReceipt(
 }
 
 export function terminalReceiptRecoveryKey(input: {
-  receipt: "withdrawal" | "timeout";
+  receipt: "withdrawal" | "timeout" | "proposal-cancellation";
   agreementId: string;
   proposalId: string;
   role: "landlord" | "tenant" | "arbiter";

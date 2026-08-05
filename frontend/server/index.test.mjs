@@ -66,6 +66,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0014_funding_event_provenance_guards.sql",
     "0015_arbiter_replacement_access.sql",
     "0016_transaction_receipt_guards.sql",
+    "0017_onchain_cancellation_receipt_guard.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -288,6 +289,50 @@ test("the receipt guard migration preserves and backfills historical duplicate e
       )
       .get().count,
     2,
+  );
+
+  const cancellationReceipt = JSON.stringify({
+    transactionHash: `0x${"b".repeat(64)}`,
+  });
+  const insertCancellationEvent = database.prepare(
+    `INSERT INTO negotiation_events
+     (negotiation_id, created_at, actor_role, action, summary, revision,
+      metadata_json)
+     VALUES ('OE-P-HISTORY', ?, 'landlord', 'onchain_proposal_cancelled',
+             'Historical cancellation.', 1, ?)`,
+  );
+  insertCancellationEvent.run(
+    "2026-08-01T00:04:00.000Z",
+    cancellationReceipt,
+  );
+  insertCancellationEvent.run(
+    "2026-08-01T00:05:00.000Z",
+    cancellationReceipt,
+  );
+  applyMigration("0017_onchain_cancellation_receipt_guard.sql");
+  assert.equal(
+    database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM negotiation_receipt_guards WHERE negotiation_id = 'OE-P-HISTORY'",
+      )
+      .get().count,
+    2,
+  );
+  assert.throws(
+    () =>
+      insertCancellationEvent.run(
+        "2026-08-01T00:06:00.000Z",
+        cancellationReceipt,
+      ),
+    /unique/i,
+  );
+  assert.equal(
+    database
+      .prepare(
+        "SELECT COUNT(*) AS count FROM negotiation_events WHERE negotiation_id = 'OE-P-HISTORY'",
+      )
+      .get().count,
+    4,
   );
 });
 
@@ -1554,6 +1599,8 @@ const RECEIPT_TEST_OPERATIONS_RESERVE =
   "0x5d2E9c429F9d117c7b028c8f0f67d37252aDceC0";
 const AGREEMENT_PROPOSED_TOPIC =
   "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6";
+const PROPOSAL_CANCELLED_TOPIC =
+  "0x416e669c63d9a3a5e36ee7cc7e2104b8db28ccd286aa18966e98fa230c73b08c";
 const TENANT_PARTICIPANT_ADDED_TOPIC =
   "0x30ab399feb0ae9b4c920d576e81a8e47863afdae2efa0fc6d97a13114f5440ad";
 const OPERATIONS_RESERVE_PAID_TOPIC =
@@ -7945,6 +7992,145 @@ test("cancelling a proposal removes it from active work while preserving its rec
   );
   assert.equal(report.status, 200);
   assert.match(await report.text(), /status cancelled/);
+});
+
+test("onchain proposal cancellation is landlord-only, receipt-bound, idempotent, and preserves the Record", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithVerifiedReceipt(db, created);
+  const agreementTopic = receiptWord(42);
+  const cancellationReceipt = ({
+    contract = RECEIPT_TEST_OPEN_ESCROW,
+    topic = PROPOSAL_CANCELLED_TOPIC,
+    agreement = agreementTopic,
+    from = RECEIPT_TEST_LANDLORD,
+    status = "0x1",
+    data = "0x",
+  } = {}) => ({
+    status,
+    blockNumber: "0x48",
+    from,
+    logs: [
+      {
+        address: contract,
+        topics: [topic, agreement],
+        data,
+      },
+    ],
+  });
+  const cancellationHash = transactionHash(230);
+
+  const disabled = await act(db, created.record.id, created.access.landlord, {
+    type: "onchain_proposal_cancelled",
+    transactionHash: cancellationHash,
+  });
+  assert.equal(disabled.status, 503);
+  assert.match((await disabled.json()).error, /receipt verification/i);
+
+  const wrongRole = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.tenant,
+    {
+      type: "onchain_proposal_cancelled",
+      transactionHash: transactionHash(231),
+    },
+    cancellationReceipt({ from: RECEIPT_TEST_TENANT }),
+  );
+  assert.equal(wrongRole.status, 403);
+
+  for (const [label, receipt] of [
+    ["contract", cancellationReceipt({ contract: RECEIPT_TEST_OPERATIONS_RESERVE })],
+    ["event", cancellationReceipt({ topic: ARBITER_REPLACEMENT_CANCELLED_TOPIC })],
+    ["agreement", cancellationReceipt({ agreement: receiptWord(43) })],
+    ["sender", cancellationReceipt({ from: RECEIPT_TEST_TENANT })],
+    ["status", cancellationReceipt({ status: "0x0" })],
+    ["data", cancellationReceipt({ data: receiptData(receiptWord(1)) })],
+  ]) {
+    const rejected = await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.landlord,
+      {
+        type: "onchain_proposal_cancelled",
+        transactionHash: transactionHash(232 + label.length),
+      },
+      receipt,
+    );
+    assert.equal(rejected.status, 400, `${label} mismatch must fail closed`);
+  }
+
+  const cancelled = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.landlord,
+      {
+        type: "onchain_proposal_cancelled",
+        transactionHash: cancellationHash,
+      },
+      cancellationReceipt(),
+    ),
+  );
+  assert.equal(cancelled.status, "cancelled");
+  assert.equal(cancelled.onchainAgreementId, "42");
+  const cancellationEvent = cancelled.events.find(
+    (event) => event.action === "onchain_proposal_cancelled",
+  );
+  assert.equal(cancellationEvent.actorRole, "landlord");
+  assert.equal(cancellationEvent.metadata.transactionHash, cancellationHash);
+  assert.match(cancellationEvent.summary, /timestamped Record remains available/i);
+  assert.equal(
+    cancelled.events.filter(
+      (event) =>
+        event.action === "transaction_receipt_verified" &&
+        event.metadata?.eventType === "onchain_proposal_cancelled",
+    ).length,
+    1,
+  );
+
+  const replayed = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.landlord,
+      {
+        type: "onchain_proposal_cancelled",
+        transactionHash: cancellationHash,
+      },
+      cancellationReceipt(),
+    ),
+  );
+  assert.equal(replayed.status, "cancelled");
+  assert.equal(
+    replayed.events.filter(
+      (event) => event.action === "onchain_proposal_cancelled",
+    ).length,
+    1,
+  );
+
+  const differentReceipt = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.landlord,
+    {
+      type: "onchain_proposal_cancelled",
+      transactionHash: transactionHash(240),
+    },
+    cancellationReceipt(),
+  );
+  assert.equal(differentReceipt.status, 409);
+
+  const report = await worker.fetch(
+    request(
+      `/api/negotiations/${created.record.id}/report?token=${created.access.landlord}`,
+    ),
+    { DB: db },
+  );
+  assert.equal(report.status, 200);
+  const reportHtml = await report.text();
+  assert.match(reportHtml, /Cancelled the unfunded testnet agreement/);
+  assert.match(reportHtml, /Recorded transaction receipts/);
 });
 
 test("the landlord is notified when all required approvals make a proposal ready", async () => {

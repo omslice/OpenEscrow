@@ -14,6 +14,7 @@ const NO_RESPONSE_TIMEOUT_TRANSACTION_HASH = `0x${"2".repeat(64)}` as const;
 const ARBITER_TIMEOUT_TRANSACTION_HASH = `0x${"1".repeat(64)}` as const;
 const ACTIVITY_TRANSACTION_HASH = `0x${"7".repeat(64)}` as const;
 const ARBITER_REPLACEMENT_TRANSACTION_HASH = `0x${"d".repeat(64)}` as const;
+const PROPOSAL_CANCELLATION_TRANSACTION_HASH = `0x${"f".repeat(64)}` as const;
 const REPLACEMENT_ARBITER = "0x5555555555555555555555555555555555555555" as const;
 const ARBITER_REPLACEMENT_SEARCH_COUNT_KEY =
   "openescrow:test:arbiter-replacement-searches";
@@ -183,6 +184,11 @@ export function useWriteContract() {
             "openescrow:test:arbiter-timeout-receipt-transaction-writes",
           );
           setData(ARBITER_TIMEOUT_TRANSACTION_HASH);
+        } else if (flow === "proposal-cancellation-receipt") {
+          recordTransaction(
+            "openescrow:test:proposal-cancellation-transaction-writes",
+          );
+          setData(PROPOSAL_CANCELLATION_TRANSACTION_HASH);
         }
       } else if (transaction === "activity-success") {
         const contentHash = request?.args?.[2];

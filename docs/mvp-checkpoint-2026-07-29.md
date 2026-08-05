@@ -583,6 +583,14 @@ detailed validation ledger.
   fact, deposit-cap, overlay, and claim-policy shapes before use. Malformed D1-decoded snapshots
   fail closed without throwing or falling back to current rules, while valid evaluations are
   recursively copied and frozen so later parsed-record or consumer mutations cannot alter them.
+- **Verified:** A finalized, unfunded agreement can no longer be cancelled onchain while remaining
+  active in the hosted workspace. The new Record action is landlord-only and requires a successful
+  Base Sepolia receipt from the verified agreement creator with the exact deployed contract,
+  `ProposalCancelled` event, and agreement ID. A D1 migration extends the atomic receipt guard
+  without deleting historical duplicates. The readable report remains available after the status
+  becomes cancelled, while the active proposal/deposit lists update immediately. A rendered mobile
+  outage rehearsal proves reload recovery is bearer-free, wallet-scoped, keyboard-focused,
+  44 pixels high, and incapable of submitting the cancellation twice.
 
 ## Remaining
 

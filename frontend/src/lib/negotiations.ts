@@ -1061,6 +1061,7 @@ export type NegotiationAction =
         shares: Array<{ tenantId: string; depositShareBps: number }>;
       }
     | { type: "cancel_proposal" }
+    | { type: "onchain_proposal_cancelled"; transactionHash: string }
     | {
         type: "invitation_prepared";
         invitedRole: InviteRole;

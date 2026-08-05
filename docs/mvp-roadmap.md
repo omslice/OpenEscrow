@@ -179,6 +179,14 @@ production custody, or reliance on the compliance research as legal advice.
   hash entry remains available only in a collapsed technical recovery disclosure. A rendered
   mobile rehearsal proves lookup failure and retry, keyboard-focus restoration, 44-pixel summary
   and action targets, no overflow, and the successful server-authorized Record update.
+- **Verified:** Cancelling a finalized but unfunded agreement now updates both the testnet contract
+  and its private Record instead of leaving a cancelled agreement listed as an active deposit.
+  The server fails closed unless the receipt proves the exact deployed contract, cancellation
+  event, agreement ID, successful transaction, and verified landlord sender. The append-only D1
+  receipt guard is upgraded in place, exact retries are idempotent, any pending replacement-
+  arbiter access is revoked, and the timestamped report remains available. If the private save is
+  interrupted, a wallet-, role-, agreement-, and proposal-scoped browser-tab recovery restores a
+  focused 44-pixel Record-only retry without storing the bearer or submitting another transaction.
 - **Verified:** A durable active sandbox attempt now reports whether it matches the currently
   requested wallet, asset, and amount, and the browser independently confirms that binding. A
   mismatch stays locked, is not copied into the new intent's local recovery key, and offers a

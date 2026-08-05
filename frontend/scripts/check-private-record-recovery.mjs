@@ -1115,6 +1115,19 @@ try {
     transactionCountKey: "openescrow:test:withdrawal-transaction-writes",
   });
 
+  await exerciseTerminalReceiptRecovery(browser, {
+    flow: "proposal-cancellation-receipt",
+    role: "landlord",
+    actionType: "onchain_proposal_cancelled",
+    transactionHash: `0x${"f".repeat(64)}`,
+    transactionButton: "Cancel proposal",
+    retryButton: "Finish adding cancellation to Record",
+    confirmedHeading: "Proposal cancellation confirmed",
+    recoveredText: /recovered a confirmed testnet cancellation/i,
+    transactionCountKey:
+      "openescrow:test:proposal-cancellation-transaction-writes",
+  });
+
   const timeoutScenarios = [
     {
       flow: "no-claim-timeout-receipt",
@@ -1373,7 +1386,7 @@ try {
   await activityReceiptPage.context().close();
 
   process.stdout.write(
-    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, notification failures use error semantics and focus 44px retry/fallback actions, interrupted arbiter access rotation uses automatic bounded confirmation lookup with a collapsed technical fallback, and confirmed claims, tenant responses, arbiter rulings, withdrawals, activity proofs, and every deadline outcome survive private-record outages and reloads without another transaction or stored bearer token; terminal retries remain wallet-scoped, time-sensitive responses remain available, and delivered email is not repeated by a record-only retry.\n",
+    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, notification failures use error semantics and focus 44px retry/fallback actions, interrupted arbiter access rotation uses automatic bounded confirmation lookup with a collapsed technical fallback, and confirmed proposal cancellations, claims, tenant responses, arbiter rulings, withdrawals, activity proofs, and every deadline outcome survive private-record outages and reloads without another transaction or stored bearer token; terminal retries remain wallet-scoped, time-sensitive responses remain available, and delivered email is not repeated by a record-only retry.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

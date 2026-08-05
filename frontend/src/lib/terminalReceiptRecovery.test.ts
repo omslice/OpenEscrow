@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  isProposalCancellationReceiptAction,
   isTimeoutReceiptAction,
   isWithdrawalReceiptAction,
   sameTerminalReceipt,
@@ -18,12 +19,21 @@ const timeout = {
   timeout: "no_claim_refund",
   transactionHash: `0x${"cd".repeat(32)}`,
 } as const;
+const proposalCancellation = {
+  type: "onchain_proposal_cancelled",
+  transactionHash: `0x${"ef".repeat(32)}`,
+} as const;
 
-test("terminal receipt recovery accepts exact withdrawal and timeout payloads", () => {
+test("terminal receipt recovery accepts exact withdrawal, timeout, and cancellation payloads", () => {
   assert.equal(isWithdrawalReceiptAction(withdrawal), true);
   assert.equal(isTimeoutReceiptAction(timeout), true);
+  assert.equal(isProposalCancellationReceiptAction(proposalCancellation), true);
   assert.equal(sameTerminalReceipt(withdrawal, withdrawal), true);
   assert.equal(sameTerminalReceipt(withdrawal, timeout), false);
+  assert.equal(
+    sameTerminalReceipt(proposalCancellation, proposalCancellation),
+    true,
+  );
 });
 
 test("terminal receipt recovery rejects malformed and bearer-bearing data", () => {
@@ -45,6 +55,20 @@ test("terminal receipt recovery rejects malformed and bearer-bearing data", () =
     isTimeoutReceiptAction({ ...timeout, token: "must-not-persist" }),
     false,
   );
+  assert.equal(
+    isProposalCancellationReceiptAction({
+      ...proposalCancellation,
+      token: "must-not-persist",
+    }),
+    false,
+  );
+  assert.equal(
+    isProposalCancellationReceiptAction({
+      ...proposalCancellation,
+      transactionHash: "0x1234",
+    }),
+    false,
+  );
 });
 
 test("terminal recovery keys isolate action, agreement, role, and wallet", () => {
@@ -61,6 +85,13 @@ test("terminal recovery keys isolate action, agreement, role, and wallet", () =>
   assert.notEqual(
     key,
     terminalReceiptRecoveryKey({ ...base, receipt: "timeout" }),
+  );
+  assert.notEqual(
+    key,
+    terminalReceiptRecoveryKey({
+      ...base,
+      receipt: "proposal-cancellation",
+    }),
   );
   assert.notEqual(
     key,

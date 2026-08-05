@@ -5,6 +5,7 @@ import { ArbiterReplacementSection } from "../components/ArbiterReplacementSecti
 import { ClaimSection } from "../components/ClaimSection";
 import { DisputeResolutionSection } from "../components/DisputeResolutionSection";
 import { PrivateActivityPublisher } from "../components/PrivateActivityPublisher";
+import { ProposalActions } from "../components/ProposalActions";
 import { ResponseSection } from "../components/ResponseSection";
 import { TimeoutSection } from "../components/TimeoutSection";
 import { WithdrawSection } from "../components/WithdrawSection";
@@ -50,6 +51,11 @@ const timeoutTransactionWrites = Number(
     `openescrow:test:${flow || "unknown"}-transaction-writes`,
   ) || "0",
 );
+const proposalCancellationTransactionWrites = Number(
+  window.sessionStorage.getItem(
+    "openescrow:test:proposal-cancellation-transaction-writes",
+  ) || "0",
+);
 
 function agreementPhase() {
   if (flow === "claim-receipt") {
@@ -70,6 +76,11 @@ function agreementPhase() {
   }
   if (flow === "arbiter-timeout-receipt") {
     return timeoutTransactionWrites === 0 ? Phase.Disputed : Phase.Closed;
+  }
+  if (flow === "proposal-cancellation-receipt") {
+    return proposalCancellationTransactionWrites === 0
+      ? Phase.Proposed
+      : Phase.Cancelled;
   }
   return Phase.ClaimOpen;
 }
@@ -134,6 +145,11 @@ const arbiterReplacementParticipantRecord = {
     confirmedAt: "2026-07-31T00:05:00.000Z",
   },
 } as unknown as NegotiationRecord;
+const finalizedParticipantRecord = {
+  id: access.proposalId,
+  status: "finalized",
+  revision: 1,
+} as unknown as NegotiationRecord;
 
 if (role !== "tenant" && role !== "arbiter") {
   rememberLandlordBundle({
@@ -161,6 +177,13 @@ createRoot(document.getElementById("root")!).render(
           id={agreementId}
           agreement={agreement}
           negotiationAccess={access}
+        />
+      ) : flow === "proposal-cancellation-receipt" ? (
+        <ProposalActions
+          id={agreementId}
+          agreement={agreement}
+          negotiationAccess={access}
+          participantRecord={finalizedParticipantRecord}
         />
       ) : flow === "activity-receipt" ? (
         <>

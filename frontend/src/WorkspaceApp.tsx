@@ -1095,6 +1095,30 @@ function AppView({
                       }}
                       negotiationAccess={proposal?.access}
                       participantRecord={proposal?.record}
+                      onParticipantRecordUpdated={(updatedRecord) => {
+                        setSavedRecords((current) =>
+                          current.map((item) =>
+                            item.record.id === updatedRecord.id
+                              ? { ...item, record: updatedRecord }
+                              : item,
+                          ),
+                        );
+                        setSavedProposals((current) =>
+                          compactActiveProposals(
+                            current.map((item) =>
+                              item.record.id === updatedRecord.id
+                                ? { ...item, record: updatedRecord }
+                                : item,
+                            ),
+                          ),
+                        );
+                        if (updatedRecord.status === "cancelled") {
+                          removeId(id);
+                          setRequestedDepositId((current) =>
+                            current === agreementKey ? null : current,
+                          );
+                        }
+                      }}
                       activePanel={agreementPanels[agreementKey]}
                       focusRequest={agreementFocusRequests[agreementKey]}
                       onPanelChange={(panel) =>

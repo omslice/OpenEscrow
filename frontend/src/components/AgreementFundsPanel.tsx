@@ -16,12 +16,14 @@ export function AgreementFundsPanel({
   agreement,
   negotiationAccess,
   participantRecord,
+  onParticipantRecordUpdated,
   onRefetch,
 }: {
   id: bigint;
   agreement: Agreement;
   negotiationAccess?: NegotiationAccess | null;
   participantRecord?: NegotiationRecord | null;
+  onParticipantRecordUpdated?: (record: NegotiationRecord) => void;
   onRefetch: () => void;
 }) {
   return (
@@ -37,7 +39,14 @@ export function AgreementFundsPanel({
       {(ARBITER_UI_ENABLED || agreement.arbiter !== ZERO_ADDRESS) && (
         <ArbiterActions id={id} agreement={agreement} onRefetch={onRefetch} />
       )}
-      <ProposalActions id={id} agreement={agreement} onRefetch={onRefetch} />
+      <ProposalActions
+        id={id}
+        agreement={agreement}
+        negotiationAccess={negotiationAccess}
+        participantRecord={participantRecord}
+        onParticipantRecordUpdated={onParticipantRecordUpdated}
+        onRefetch={onRefetch}
+      />
       <FundingLedger
         id={id}
         agreement={agreement}
