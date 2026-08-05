@@ -599,7 +599,17 @@ function json(data, status = 200) {
   });
 }
 
-function secureResponse(response) {
+const VERSIONED_STATIC_ASSET_PATH = /^\/assets\/.+-[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9]+$/;
+
+function staticAssetCacheControl(requestUrl, responseOk, spaFallback = false) {
+  if (spaFallback || !responseOk) return "no-cache";
+  const pathname = new URL(requestUrl).pathname;
+  return VERSIONED_STATIC_ASSET_PATH.test(pathname)
+    ? "public, max-age=31536000, immutable"
+    : "no-cache";
+}
+
+function secureResponse(response, requestUrl, spaFallback = false) {
   const headers = new Headers(response.headers);
   if (!headers.has("referrer-policy")) {
     headers.set("referrer-policy", "no-referrer");
@@ -607,6 +617,10 @@ function secureResponse(response) {
   if (!headers.has("x-content-type-options")) {
     headers.set("x-content-type-options", "nosniff");
   }
+  headers.set(
+    "cache-control",
+    staticAssetCacheControl(requestUrl, response.ok, spaFallback),
+  );
   return new Response(response.body, {
     status: response.status,
     statusText: response.statusText,
@@ -9475,12 +9489,16 @@ const worker = {
 
     const response = await env.ASSETS.fetch(request);
     if (response.status !== 404 || request.method !== "GET") {
-      return secureResponse(response);
+      return secureResponse(response, request.url);
     }
     const fallback = new URL(request.url);
     fallback.pathname = "/index.html";
     fallback.search = "";
-    return secureResponse(await env.ASSETS.fetch(new Request(fallback, request)));
+    return secureResponse(
+      await env.ASSETS.fetch(new Request(fallback, request)),
+      request.url,
+      true,
+    );
   },
   async scheduled(controller, env, context) {
     const scheduledAt = new Date(controller?.scheduledTime || Date.now());

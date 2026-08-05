@@ -242,6 +242,8 @@ the repository; they are not claims of legal approval or production readiness.
   returning-account discovery through a non-sensitive device hint, and capture role-locked
   invitations before the provider module finishes loading
 - [x] Split infrequently used proposal, deposit, and record tools into tab-level chunks
+- [x] Cache content-hashed static assets immutably while requiring the HTML app shell and
+  single-page fallbacks to revalidate, reducing repeat downloads without serving stale releases
 - [x] Load each agreement's funding and claims tools only after that panel is visited, preserve
   the mounted panel after first use, and contain deferred-load failures within the agreement
 - [x] Keep multi-agreement Deposit accounts compact and mount live contract polling for only the

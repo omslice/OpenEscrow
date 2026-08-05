@@ -10052,23 +10052,46 @@ test("a landlord can retract an unanswered claim but cannot replace or increase 
   );
 });
 
-test("static assets and single-page fallbacks receive browser privacy headers", async () => {
+test("static assets receive safe cache policies and browser privacy headers", async () => {
   const assets = {
     async fetch(assetRequest) {
       const path = new URL(assetRequest.url).pathname;
       if (path === "/missing") return new Response("missing", { status: 404 });
+      if (path === "/assets/failing-12345678.js") {
+        return new Response("temporary failure", { status: 503 });
+      }
       return new Response(path === "/index.html" ? "<main>OpenEscrow</main>" : "asset", {
         headers: { "content-type": "text/html; charset=utf-8" },
       });
     },
   };
 
-  for (const path of ["/", "/missing"]) {
+  for (const path of ["/", "/missing", "/openescrow-logo.svg"]) {
     const response = await worker.fetch(request(path), { ASSETS: assets });
     assert.equal(response.status, 200);
     assert.equal(response.headers.get("referrer-policy"), "no-referrer");
     assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(response.headers.get("cache-control"), "no-cache");
   }
+
+  const versionedAsset = await worker.fetch(
+    request("/assets/WorkspaceApp-BLtOPHD6.js"),
+    { ASSETS: assets },
+  );
+  assert.equal(versionedAsset.status, 200);
+  assert.equal(
+    versionedAsset.headers.get("cache-control"),
+    "public, max-age=31536000, immutable",
+  );
+  assert.equal(versionedAsset.headers.get("referrer-policy"), "no-referrer");
+  assert.equal(versionedAsset.headers.get("x-content-type-options"), "nosniff");
+
+  const failedVersionedAsset = await worker.fetch(
+    request("/assets/failing-12345678.js"),
+    { ASSETS: assets },
+  );
+  assert.equal(failedVersionedAsset.status, 503);
+  assert.equal(failedVersionedAsset.headers.get("cache-control"), "no-cache");
 });
 
 test("configured receipt verification accepts only the expected Base Sepolia agreement event", async () => {

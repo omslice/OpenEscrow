@@ -316,6 +316,9 @@ detailed validation ledger.
 - **Verified:** Proposal asset cards no longer expose ambiguous internal implementation badges.
   Larger availability-aware labels distinguish the testnet USDC option, simulated Aave option,
   and unavailable FRNT/USDY options without changing the versioned asset catalog or snapshots.
+- **Verified:** Static delivery now gives content-hashed assets a one-year immutable cache lifetime
+  and makes the app shell, public files, and SPA fallbacks revalidate. This improves repeat-load
+  performance while preventing a cached HTML entry point from pinning users to an older release.
 - **Verified:** Browser checkout recovery keys are scoped to the proposal and authorized tenant in
   addition to wallet, asset, amount, and environment. Two agreements or co-tenants using the same
   wallet and amount cannot import each other's local provider result, while a rotated invitation

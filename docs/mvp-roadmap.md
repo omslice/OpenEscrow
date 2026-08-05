@@ -152,6 +152,9 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** Deposit-asset cards now use readable, availability-aware labels such as Testnet
   option, Simulation, and Unavailable rather than exposing internal implementation statuses. The
   exact status remains in the immutable agreement snapshot for technical review.
+- **Verified:** Content-hashed browser assets receive a one-year immutable cache policy while the
+  HTML app shell, public files, and single-page fallbacks always revalidate. Repeat visits can
+  reuse exact release bytes without risking a stale entry page after a deployment.
 - **Verified:** Sponsored testnet writes now inspect the mined receipt status before continuing.
   A reverted or unknown receipt cannot mark a tenant share funded, claim test tokens, save a
   record proof, publish a private-activity receipt, or create a success-recovery record. The
