@@ -39,6 +39,15 @@ async function waitFor(condition, message, timeoutMs = 2_000) {
   throw new Error(message);
 }
 
+async function assertMobileActionTarget(locator, label) {
+  const box = await locator.boundingBox();
+  assert.equal(
+    Boolean(box && box.height >= 44),
+    true,
+    `${label} must retain a 44-pixel mobile touch target.`,
+  );
+}
+
 function hydrateIntent(serialized) {
   return {
     ...serialized,
@@ -419,8 +428,78 @@ try {
     .getByText(/Checkout was closed before confirmation/)
     .waitFor({ state: "visible" });
 
+  await page.setViewportSize({ width: 390, height: 844 });
+  const retryAfterCancellation = page.getByRole("button", {
+    name: "Start a new checkout",
+  });
+  await assertMobileActionTarget(
+    retryAfterCancellation,
+    "Retry after sandbox cancellation",
+  );
+  await retryAfterCancellation.click();
+  await page.waitForFunction(
+    () => window.__openEscrowFundingRecoveryTest?.snapshot().callCount === 7,
+  );
+  await page.evaluate(() => {
+    window.__openEscrowFundingRecoveryTest?.resolveCall(6, "failed");
+  });
+  await page
+    .getByText(/provider did not confirm this checkout/i)
+    .waitFor({ state: "visible" });
+  assert.equal(attempts.get("proposal-a:access-a-1")?.status, "failed");
+
+  const retryAfterFailure = page.getByRole("button", {
+    name: "Start a new checkout",
+  });
+  await assertMobileActionTarget(retryAfterFailure, "Retry after provider failure");
+  await retryAfterFailure.click();
+  await page.waitForFunction(
+    () => window.__openEscrowFundingRecoveryTest?.snapshot().callCount === 8,
+  );
+  await page.evaluate(() => {
+    window.__openEscrowFundingRecoveryTest?.resolveCall(7, "unexpected_state");
+  });
+  await page
+    .getByText(/could not verify the checkout result/i)
+    .waitFor({ state: "visible" });
+  assert.equal(attempts.get("proposal-a:access-a-1")?.status, "unknown");
+  assert.equal(
+    await page
+      .getByRole("button", { name: "Check provider before retrying" })
+      .isDisabled(),
+    true,
+    "An unknown provider result must stay locked instead of opening a duplicate checkout.",
+  );
+  const refreshUnknown = page.getByRole("button", {
+    name: "Refresh wallet balance",
+  });
+  await assertMobileActionTarget(refreshUnknown, "Refresh after unknown result");
+  await refreshUnknown.click();
+  await page.getByTestId("balance-refresh-count").waitFor({ state: "attached" });
+  assert.equal(
+    await page.getByTestId("balance-refresh-count").textContent(),
+    "1",
+    "Refreshing an unknown result must not silently retry the provider checkout.",
+  );
+  const closeUnknown = page.getByRole("button", {
+    name: "Close no-money sandbox preview",
+  });
+  await assertMobileActionTarget(closeUnknown, "Close unknown sandbox preview");
+  await closeUnknown.click();
+  await page
+    .getByText(/Checkout was closed before confirmation/)
+    .waitFor({ state: "visible" });
+  assert.equal(attempts.get("proposal-a:access-a-1")?.status, "cancelled");
+  assert.equal(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "Funding failure and unknown-result recovery must fit a mobile viewport.",
+  );
+
   process.stdout.write(
-    "Funding recovery browser check passed: agreement and tenant state stays isolated, active intent mismatches must close before updated details can open, and no-money previews reset through valid refund or cancellation transitions.\n",
+    "Funding recovery browser check passed: agreement and tenant state stays isolated, active intent mismatches close before updated details can open, failed checkouts can retry, unknown results stay locked, and no-money previews reset through valid refund or cancellation transitions at mobile width.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

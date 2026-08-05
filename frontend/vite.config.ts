@@ -6,11 +6,13 @@ import react from '@vitejs/plugin-react'
 export default defineConfig(({ mode }) => {
   const accountSwitchTest = mode === 'account-switch-test'
   const fundingRecoveryTest = mode === 'funding-recovery-test'
+  const fundingProductionLockTest = mode === 'funding-production-lock-test'
+  const fiatFundingTest = fundingRecoveryTest || fundingProductionLockTest
   const privateRecordRecoveryTest = mode === 'private-record-recovery-test'
   const pilotLifecycleTest = mode === 'pilot-lifecycle-test'
   return {
     plugins: [react()],
-    optimizeDeps: fundingRecoveryTest
+    optimizeDeps: fiatFundingTest
       ? { entries: ['testing/funding-recovery.html'] }
       : pilotLifecycleTest
         ? {
@@ -60,13 +62,13 @@ export default defineConfig(({ mode }) => {
               },
             ]
           : []),
-        ...(accountSwitchTest || fundingRecoveryTest
+        ...(accountSwitchTest || fiatFundingTest
           ? [
             {
               find: '@privy-io/react-auth',
               replacement: fileURLToPath(
                 new URL(
-                  fundingRecoveryTest
+                  fiatFundingTest
                     ? './src/testing/privyFiatOnrampMock.ts'
                     : './src/testing/privyReactAuthMock.tsx',
                   import.meta.url,

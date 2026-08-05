@@ -97,6 +97,9 @@ the repository; they are not claims of legal approval or production readiness.
   out-of-order provider completions, isolated browser caches, and correctly scoped durable events
 - [x] Persist provider-neutral event provenance and keep unsigned browser terminal outcomes
   locked in production until a signed webhook or authorized operator reconciliation exists
+- [x] Render provider failure, unknown-result recovery, and the production lock boundary at mobile
+  width: sandbox failures can retry, unknown no-money previews require explicit closure, and an
+  unverified production browser success remains non-retryable across refresh and reload
 - [x] Reserve replay-resistant reconciliation keys and exact payload digests for future trusted
   events, with a global D1 uniqueness gate and no client path for minting trusted provenance
 - [x] Enforce provenance and SHA-256 identity pairing at the D1 insert/update boundary for both

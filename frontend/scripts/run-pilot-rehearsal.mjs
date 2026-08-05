@@ -182,6 +182,18 @@ const expectedScenarios = [
       "agreement-funding separation",
     ],
   },
+  {
+    id: "rendered-production-funding-lock",
+    name: "pilot rehearsal: unverified production funding results stay locked",
+    covers: [
+      "unverified browser result",
+      "duplicate purchase prevention",
+      "reload recovery",
+      "wallet refresh isolation",
+      "sandbox reset exclusion",
+      "mobile width",
+    ],
+  },
 ];
 
 runServerRehearsal({
@@ -211,6 +223,12 @@ runServerRehearsal({
       target: "scripts/check-pilot-lifecycle.mjs",
       command: process.execPath,
       args: ["scripts/check-pilot-lifecycle.mjs"],
+    },
+    {
+      name: "pilot rehearsal: unverified production funding results stay locked",
+      target: "scripts/check-funding-production-lock.mjs",
+      command: process.execPath,
+      args: ["scripts/check-funding-production-lock.mjs"],
     },
   ],
 });

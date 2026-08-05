@@ -123,7 +123,10 @@ production custody, or reliance on the compliance research as legal advice.
   No-money submitted or interrupted previews can close through cancellation; confirmed and
   refund-pending previews can reset through the valid refunded transition. Rendered and durable
   regressions prove a new rehearsal can then start. Real-money and production provider routes
-  remain disabled and require trusted provider or authorized-operator reconciliation.
+  remain disabled and require trusted provider or authorized-operator reconciliation. Rendered
+  mobile coverage now proves failed sandbox checkouts can retry, unknown results stay locked until
+  the no-money preview is explicitly closed, and an unverified production browser success remains
+  non-retryable through wallet refresh and page reload without exposing the sandbox reset path.
 - **Verified:** Sponsored testnet writes now inspect the mined receipt status before continuing.
   A reverted or unknown receipt cannot mark a tenant share funded, claim test tokens, save a
   record proof, publish a private-activity receipt, or create a success-recovery record. The

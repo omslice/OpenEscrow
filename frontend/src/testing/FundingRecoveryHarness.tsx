@@ -53,6 +53,7 @@ const depositAsset = getDepositAsset("usdc");
 function FundingRecoveryHarness() {
   const [scopeId, setScopeId] = useState<ScopeId>("agreement-a-tenant-1");
   const [amount, setAmount] = useState(originalAmount);
+  const [balanceRefreshes, setBalanceRefreshes] = useState(0);
   const scope = FUNDING_SCOPES[scopeId];
 
   return (
@@ -99,7 +100,11 @@ function FundingRecoveryHarness() {
           depositAsset={depositAsset}
           negotiationAccess={scope.access}
           tenantId={scope.tenantId}
+          onComplete={() => setBalanceRefreshes((current) => current + 1)}
         />
+        <output data-testid="balance-refresh-count" hidden>
+          {balanceRefreshes}
+        </output>
       </section>
     </main>
   );

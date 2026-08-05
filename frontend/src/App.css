@@ -2464,6 +2464,7 @@
 
 .fiat-funding-option.enabled .btn {
   justify-self: start;
+  min-height: 44px;
 }
 
 .funding-route-summary {
