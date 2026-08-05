@@ -53,7 +53,7 @@ test("invitation and notice audit saves cannot reject without visible recovery g
     assert.match(source, /async function record(?:Notice|Invitation)\(/);
     assert.match(
       source,
-      /could not add that preparation step to the private record/,
+      /could not add that preparation step to the private record/i,
     );
   }
   assert.doesNotMatch(claimSource, /\}\)\.then\(setRecord\)/);
@@ -67,7 +67,7 @@ test("claim email delivery remains distinct from its follow-up record refresh", 
   assert.match(claimSource, /disabled=\{isSendingTenantNotification\}/);
   assert.match(
     claimSource,
-    /accepted for delivery, but OpenEscrow could not refresh the private record display/,
+    /accepted for delivery, but OpenEscrow could not refresh the private Record display/,
   );
   assert.doesNotMatch(
     claimSource,
