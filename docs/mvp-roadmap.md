@@ -1,6 +1,6 @@
 # OpenEscrow testnet MVP roadmap
 
-Updated 2026-08-04. This is the canonical high-level project status. The
+Updated 2026-08-05. This is the canonical high-level project status. The
 [validation ledger](./mvp-checkpoint-2026-07-29.md) contains detailed evidence, and
 [owner actions](./owner-actions.md) contains only work that needs credentials, signatures,
 external professional review, or an owner decision.
