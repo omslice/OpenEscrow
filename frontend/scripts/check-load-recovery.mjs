@@ -183,7 +183,7 @@ try {
     waitUntil: "networkidle",
   });
   const activityAlert = activityPage.getByRole("alert", {
-    name: "Public record receipts could not be loaded",
+    name: "Public verification history could not be loaded",
   });
   await activityAlert.waitFor({ state: "visible" });
   assert.match(
@@ -198,7 +198,7 @@ try {
     "Technical receipt errors should be collapsed by default.",
   );
   const activityRetry = activityPage.getByRole("button", {
-    name: "Try loading public receipts again",
+    name: "Try loading verification history again",
   });
   await activityRetry.focus();
   await activityRetry.press("Enter");

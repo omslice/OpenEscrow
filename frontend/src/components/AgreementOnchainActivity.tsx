@@ -80,7 +80,7 @@ export function AgreementOnchainActivity({
       setError(
         cause instanceof Error
           ? cause.message.split("\n")[0]
-          : "The public receipt service did not respond.",
+          : "The public verification service did not respond.",
       );
       return false;
     }
@@ -95,11 +95,11 @@ export function AgreementOnchainActivity({
   return (
     <section className="onchain-record-tools" aria-label="Agreement public record tools">
       {registry.isChecking && (
-        <p className="field-help">Checking the public receipt service…</p>
+        <p className="field-help">Checking the public verification service…</p>
       )}
       {!registry.isChecking && !registry.isReady && (
         <p className="tx-error" role="alert">
-          Public record receipts are temporarily unavailable because the record service is not
+          Public verification history is temporarily unavailable because the record service is not
           connected to this OpenEscrow release.
         </p>
       )}
@@ -117,7 +117,7 @@ export function AgreementOnchainActivity({
       {registry.isReady && isParty && <ActivityProofVerifier agreementId={agreementId} />}
       {registry.isReady && items.length > 0 && (
         <details className="technical-details onchain-activity">
-          <summary>Public record receipts ({items.length})</summary>
+          <summary>Public verification history ({items.length})</summary>
           {items.map((item) => (
             <div className="onchain-activity-item" key={item.key}>
               <div>

@@ -173,7 +173,7 @@ export function ClaimSection({
     setClaimRecorded(Boolean(recovered));
     setRecordError(
       recovered
-        ? "OpenEscrow recovered a confirmed testnet claim whose private activity receipt still needs to be saved. Retry the record save; do not submit another claim."
+        ? "OpenEscrow recovered a confirmed testnet claim that still needs to be added to the private Record. Finish that Record update; do not submit another claim."
         : null,
     );
     return () => claimRecordScope.close();
@@ -767,7 +767,7 @@ export function ClaimSection({
       setNoticeFeedback({
         kind: "error",
         message:
-          "The email or copy action worked, but OpenEscrow could not add that preparation step to the private record. The claim receipt and onchain agreement are unchanged.",
+          "The email or copy action worked, but OpenEscrow could not add that preparation step to the private Record. The confirmed claim is unchanged.",
       });
     }
   }
@@ -822,7 +822,7 @@ export function ClaimSection({
       } catch {
         if (!tenantNotificationScope.isCurrent(operationId)) return;
         setRecordLoadError(
-          "The tenant claim email was accepted for delivery, but OpenEscrow could not refresh the private record display. The email, claim receipt, and onchain agreement are unchanged. Try loading the claim requirements again.",
+          "The tenant claim email was accepted for delivery, but OpenEscrow could not refresh the private Record display. The email and confirmed claim are unchanged. Try loading the claim requirements again.",
         );
       }
     } finally {
@@ -934,7 +934,7 @@ export function ClaimSection({
       )}
       {isSavingClaimRecord && (
         <p className="hint" role="status" aria-live="polite">
-          Saving the confirmed claim to the private activity record...
+          Adding the confirmed claim to the private Record...
         </p>
       )}
       <button
@@ -945,8 +945,8 @@ export function ClaimSection({
         onClick={() => void saveClaimRecord(pendingRecord)}
       >
         {isSavingClaimRecord
-          ? "Saving claim receipt..."
-          : "Retry saving claim receipt"}
+          ? "Adding claim to Record..."
+          : "Finish adding claim to Record"}
       </button>
     </div>
   );
@@ -1047,8 +1047,8 @@ export function ClaimSection({
       <div className="action-section">
         <h3>Finish saving the confirmed claim</h3>
         <p className="hint">
-          The testnet agreement has moved forward, but this private activity
-          receipt still needs the safe record-only retry below.
+          The testnet agreement has moved forward. Use the safe Record-only action below; it will
+          not submit another claim.
         </p>
         {recordRecovery}
       </div>

@@ -208,6 +208,9 @@ the repository; they are not claims of legal approval or production readiness.
   and proves repeated keyboard recovery without duplicating an agreement action
 - [x] Consumer-facing activity summaries keep hashes and storage receipts behind expandable
   verification details, and the optional-yield dialog remains spaced and legible at 80% zoom
+- [x] Replace receipt-oriented primary recovery copy with explicit “finish adding to Record”
+  actions for finalization, funding, claims, responses, rulings, deadlines, withdrawals, arbiter
+  replacement, and public proof; technical receipts remain available in history/details views
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a
   shared deadline clock
 - [x] Proposal-review polling is isolated from user actions: stale refreshes cannot replace a

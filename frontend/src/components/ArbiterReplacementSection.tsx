@@ -333,8 +333,8 @@ export function ArbiterReplacementSection({
         <div className="record-link-block">
           <p className="hint">
             {replacementAcceptedOnchain
-              ? "The replacement is complete onchain, but the private record still needs its verified acceptance receipt before access can rotate."
-              : "The replacement is no longer pending onchain, but the private record still needs the verified cancellation receipt before the nominee's access can be revoked."}
+              ? "The replacement is confirmed on the test network, but the private Record still needs its acceptance confirmation before access can rotate."
+              : "The replacement is no longer pending on the test network, but the private Record still needs its cancellation confirmation before the nominee's access can be revoked."}
           </p>
           <label>
             {replacementAcceptedOnchain ? "Acceptance" : "Cancellation"} transaction hash
@@ -414,7 +414,7 @@ export function ArbiterReplacementSection({
           disabled={isSavingRecord}
           onClick={() => void saveReplacementRecord(pendingRecord)}
         >
-          Retry saving replacement receipt
+          Finish adding replacement to Record
         </button>
       )}
       {recordStatus && <p className="tx-success" role="status">{recordStatus}</p>}

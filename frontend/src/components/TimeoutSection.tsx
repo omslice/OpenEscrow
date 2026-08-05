@@ -120,7 +120,7 @@ export function TimeoutSection({
     setConfirmedAction(recovered);
     setRecordError(
       recovered
-        ? "OpenEscrow recovered a confirmed testnet deadline action whose private activity receipt still needs to be saved. Retry the record save; do not submit the transaction again."
+        ? "OpenEscrow recovered a confirmed testnet deadline action that still needs to be added to the private Record. Finish that Record update; do not submit the action again."
         : null,
     );
     return () => recoveryScope.close();
@@ -165,7 +165,7 @@ export function TimeoutSection({
           ? `: ${cause.message.replace(/[.\s]+$/, "")}.`
           : ".";
       setRecordError(
-        `The testnet deadline action succeeded, but its private activity record still needs to be saved${failureDetail}${reloadWarning}`,
+        `The testnet deadline action succeeded, but it still needs to be added to the private Record${failureDetail}${reloadWarning}`,
       );
     } finally {
       if (recoveryScope.isCurrent(operationId)) {
@@ -206,8 +206,8 @@ export function TimeoutSection({
       <div className="action-section" tabIndex={-1}>
         <h3>{timeoutPresentation[displayedAction.timeout].heading}</h3>
         <p className="hint">
-          The testnet transaction is confirmed. OpenEscrow will only retry its
-          private activity receipt; it will not submit the transaction again.
+          The testnet action is confirmed. OpenEscrow will only finish the private Record update;
+          it will not submit the action again.
         </p>
         {pendingRecord && (
           <div className="receipt-recovery" aria-busy={isSavingRecord}>
@@ -218,8 +218,7 @@ export function TimeoutSection({
             )}
             {isSavingRecord && (
               <p className="hint" role="status" aria-live="polite">
-                Saving the confirmed deadline action to the private activity
-                record...
+                Adding the confirmed deadline action to the private Record...
               </p>
             )}
             {matchingAccess && (
@@ -231,8 +230,8 @@ export function TimeoutSection({
                 onClick={() => void saveTimeout(pendingRecord)}
               >
                 {isSavingRecord
-                  ? "Saving deadline-action receipt..."
-                  : "Retry saving deadline-action receipt"}
+                  ? "Adding deadline action to Record..."
+                  : "Finish adding deadline action to Record"}
               </button>
             )}
           </div>

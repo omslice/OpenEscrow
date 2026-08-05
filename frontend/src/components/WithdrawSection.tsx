@@ -100,7 +100,7 @@ export function WithdrawSection({
     setWithdrawalRecorded(Boolean(recovered));
     setRecordError(
       recovered
-        ? "OpenEscrow recovered a confirmed testnet withdrawal whose private activity receipt still needs to be saved. Retry the record save; do not withdraw again."
+        ? "OpenEscrow recovered a confirmed testnet withdrawal that still needs to be added to the private Record. Finish that Record update; do not withdraw again."
         : null,
     );
     return () => recoveryScope.close();
@@ -145,7 +145,7 @@ export function WithdrawSection({
           ? `: ${cause.message.replace(/[.\s]+$/, "")}.`
           : ".";
       setRecordError(
-        `The testnet withdrawal succeeded, but its private activity record still needs to be saved${failureDetail}${reloadWarning}`,
+        `The testnet withdrawal succeeded, but it still needs to be added to the private Record${failureDetail}${reloadWarning}`,
       );
     } finally {
       if (recoveryScope.isCurrent(operationId)) {
@@ -163,7 +163,7 @@ export function WithdrawSection({
       )}
       {isSavingRecord && (
         <p className="hint" role="status" aria-live="polite">
-          Saving the confirmed withdrawal to the private activity record...
+          Adding the confirmed withdrawal to the private Record...
         </p>
       )}
       {matchingAccess && (
@@ -175,8 +175,8 @@ export function WithdrawSection({
           onClick={() => void saveWithdrawal(pendingRecord)}
         >
           {isSavingRecord
-            ? "Saving withdrawal receipt..."
-            : "Retry saving withdrawal receipt"}
+            ? "Adding withdrawal to Record..."
+            : "Finish adding withdrawal to Record"}
         </button>
       )}
     </div>
@@ -193,8 +193,8 @@ export function WithdrawSection({
       <div className="action-section" tabIndex={-1}>
         <h3>Withdrawal confirmed</h3>
         <p className="hint">
-          The testnet withdrawal is confirmed. OpenEscrow will only retry its
-          private activity receipt; it will not withdraw again.
+          The testnet withdrawal is confirmed. OpenEscrow will only finish the private Record
+          update; it will not withdraw again.
         </p>
         {recordRecovery}
       </div>

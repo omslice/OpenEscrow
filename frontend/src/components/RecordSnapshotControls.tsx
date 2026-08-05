@@ -112,8 +112,8 @@ function StandardAnchorAction({
     } catch (cause) {
       setError(
         cause instanceof Error
-          ? `The public proof was saved, but its receipt could not be added to the private activity record: ${cause.message}`
-          : "The public proof was saved, but its receipt could not be added to the private activity record.",
+          ? `The public proof was saved, but its confirmation could not be added to the private Record: ${cause.message}`
+          : "The public proof was saved, but its confirmation could not be added to the private Record.",
       );
     }
   }
@@ -130,7 +130,7 @@ function StandardAnchorAction({
             type="button"
             onClick={() => void recordReceipt(recovery.pendingTransaction!)}
           >
-            Retry saving the proof receipt
+            Finish adding proof to Record
           </button>
         )}
         {error && <p className="tx-error" role="alert">{error}</p>}
@@ -161,7 +161,7 @@ function StandardAnchorAction({
           type="button"
           onClick={() => void recordReceipt(recovery.pendingTransaction!)}
         >
-          Retry saving the proof receipt
+          Finish adding proof to Record
         </button>
       )}
       {error && <p className="tx-error" role="alert">{error}</p>}
@@ -200,8 +200,8 @@ function SponsoredAnchorAction({
     } catch (cause) {
       setError(
         cause instanceof Error
-          ? `The public proof was saved, but its receipt could not be added to the private activity record: ${cause.message}`
-          : "The public proof was saved, but its receipt could not be added to the private activity record.",
+          ? `The public proof was saved, but its confirmation could not be added to the private Record: ${cause.message}`
+          : "The public proof was saved, but its confirmation could not be added to the private Record.",
       );
     }
   }
@@ -218,7 +218,7 @@ function SponsoredAnchorAction({
             type="button"
             onClick={() => void recordReceipt(recovery.pendingTransaction!)}
           >
-            Retry saving the proof receipt
+            Finish adding proof to Record
           </button>
         )}
         {error && <p className="tx-error" role="alert">{error}</p>}
@@ -251,7 +251,7 @@ function SponsoredAnchorAction({
             );
             await waitForSuccessfulTransactionReceipt(
               () => publicClient.waitForTransactionReceipt({ hash: result.hash }),
-              "The record-proof transaction reached the test network but did not complete. No public proof or receipt was recorded. Refresh the record and try again.",
+              "The public-proof action reached the test network but did not complete. No public proof was recorded. Refresh the Record and try again.",
             );
             recovery.remember(result.hash);
             await recordReceipt(result.hash);
@@ -275,7 +275,7 @@ function SponsoredAnchorAction({
           type="button"
           onClick={() => void recordReceipt(recovery.pendingTransaction!)}
         >
-          Retry saving the proof receipt
+          Finish adding proof to Record
         </button>
       )}
       {error && <p className="tx-error" role="alert">{error}</p>}
@@ -491,8 +491,8 @@ export function RecordSnapshotControls({
           <span className="eyebrow">1 · Readable report</span>
           <strong>Download the complete timestamped record</strong>
           <p className="field-help">
-            Includes the parties, approved terms and revisions, itemized claims, transaction
-            receipts, and every timestamped activity recorded for this agreement.
+            Includes the parties, approved terms and revisions, itemized claims, test-network
+            confirmations, and every timestamped activity recorded for this agreement.
           </p>
         </div>
         <button

@@ -47,10 +47,10 @@ export function ActivityLoadFailure({
       aria-labelledby={headingId}
       aria-busy={retrying}
     >
-      <strong id={headingId}>Public record receipts could not be loaded</strong>
+      <strong id={headingId}>Public verification history could not be loaded</strong>
       <p>
-        Your agreement and saved activity have not been removed. Previously loaded receipts may
-        be out of date, so check again before repeating an action.
+        Your agreement and saved activity have not been removed. Previously loaded confirmations
+        may be out of date, so check again before repeating an action.
       </p>
       <details className="technical-details">
         <summary>Connection details</summary>
@@ -69,7 +69,9 @@ export function ActivityLoadFailure({
         disabled={retrying}
         onClick={() => void retry()}
       >
-        {retrying ? "Retrying public receipts..." : "Try loading public receipts again"}
+        {retrying
+          ? "Checking verification history..."
+          : "Try loading verification history again"}
       </button>
     </section>
   );

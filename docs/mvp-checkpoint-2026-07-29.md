@@ -212,6 +212,11 @@ detailed validation ledger.
   atomic announcement instead of inferring severity from English message text. This improves
   screen-reader feedback without stealing keyboard focus; moderated assistive-technology testing
   remains a separate pilot task.
+- **Verified:** Primary recovery controls no longer tell consumers to save a technical receipt.
+  Confirmed finalization, funding, claim, response, ruling, deadline, withdrawal, arbiter-
+  replacement, and public-proof interruptions use one action-oriented “finish adding to Record”
+  model and make clear that the testnet action will not run again. Receipt and hash details remain
+  available in the appropriate technical/history views.
 - **Verified:** Proposal review now separates background-refresh feedback from user-action
   feedback. A successful poll cannot erase an approval or compliance-action failure, while a
   failed poll leaves the last known record visible with plain-language stale-data guidance and an

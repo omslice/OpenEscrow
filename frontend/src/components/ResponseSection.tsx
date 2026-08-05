@@ -158,7 +158,7 @@ export function ResponseSection({
     setSubmittedResponse(recovered);
     setRecordError(
       recovered
-        ? "OpenEscrow recovered a confirmed testnet response whose private activity receipt still needs to be saved. Retry the record save; do not submit another response."
+        ? "OpenEscrow recovered a confirmed testnet response that still needs to be added to the private Record. Finish that Record update; do not submit another response."
         : null,
     );
     return () => {
@@ -425,7 +425,7 @@ export function ResponseSection({
       setNoticeFeedback({
         kind: "error",
         message:
-          "The email or copy action worked, but OpenEscrow could not add that preparation step to the private record. Your response receipt and onchain decision are unchanged.",
+          "The email or copy action worked, but OpenEscrow could not add that preparation step to the private Record. Your confirmed response is unchanged.",
       });
     }
   }
@@ -664,7 +664,7 @@ export function ResponseSection({
           )}
           {isSavingResponseRecord && (
             <p className="hint" role="status" aria-live="polite">
-              Saving the confirmed response to the private activity record...
+              Adding the confirmed response to the private Record...
             </p>
           )}
           <button
@@ -675,8 +675,8 @@ export function ResponseSection({
             onClick={() => void saveResponse(pendingRecord)}
           >
             {isSavingResponseRecord
-              ? "Saving response receipt..."
-              : "Retry saving response receipt"}
+              ? "Adding response to Record..."
+              : "Finish adding response to Record"}
           </button>
         </div>
       )}

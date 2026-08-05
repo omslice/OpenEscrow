@@ -650,7 +650,7 @@ try {
   await submitClaim.click();
 
   const receiptRetry = claimReceiptPage.getByRole("button", {
-    name: "Retry saving claim receipt",
+    name: "Finish adding claim to Record",
   });
   await receiptRetry.waitFor({ state: "visible" });
   assert.equal(
@@ -688,7 +688,7 @@ try {
 
   await claimReceiptPage.reload({ waitUntil: "networkidle" });
   const recoveredReceiptRetry = claimReceiptPage.getByRole("button", {
-    name: "Retry saving claim receipt",
+    name: "Finish adding claim to Record",
   });
   await recoveredReceiptRetry.waitFor({ state: "visible" });
   await claimReceiptPage
@@ -699,7 +699,7 @@ try {
       .getByRole("button", { name: "Submit documented amendment" })
       .isDisabled(),
     true,
-    "Reload recovery must disable a new onchain amendment until the confirmed claim receipt is saved.",
+    "Reload recovery must disable a new testnet amendment until the confirmed claim is added to the Record.",
   );
   assert.equal(
     await recoveredReceiptRetry.evaluate(
@@ -723,7 +723,7 @@ try {
   });
   await claimReceiptPage
     .getByRole("button", {
-      name: /(?:Saving|Retry saving) claim receipt/,
+      name: /(?:Adding claim to Record|Finish adding claim to Record)/,
     })
     .waitFor({ state: "detached" });
   assert.equal(claimReceiptAttempts(), 2);
@@ -755,7 +755,7 @@ try {
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
     true,
-    "Durable claim receipt recovery should not overflow a mobile viewport.",
+    "Durable claim Record recovery should not overflow a mobile viewport.",
   );
   await claimReceiptPage.context().close();
 
@@ -853,7 +853,7 @@ try {
     .click();
 
   const responseReceiptRetry = responseReceiptPage.getByRole("button", {
-    name: "Retry saving response receipt",
+    name: "Finish adding response to Record",
   });
   await responseReceiptRetry.waitFor({ state: "visible" });
   assert.equal(
@@ -861,7 +861,7 @@ try {
       (element) => element === document.activeElement,
     ),
     true,
-    "A failed response receipt save should focus its retry control.",
+    "A failed response Record update should focus its recovery control.",
   );
   assert.equal(
     await responseReceiptPage
@@ -874,7 +874,7 @@ try {
   assert.equal(
     Boolean(responseRetryBox && responseRetryBox.height >= 44),
     true,
-    "The response receipt retry must remain a 44px mobile touch target.",
+    "The response Record recovery must remain a 44px mobile touch target.",
   );
   const responseRecoveryEntries = await pendingDecisionRecoveryEntries(
     responseReceiptPage,
@@ -897,7 +897,7 @@ try {
   await responseReceiptPage.reload({ waitUntil: "networkidle" });
   const recoveredResponseReceiptRetry = responseReceiptPage.getByRole(
     "button",
-    { name: "Retry saving response receipt" },
+    { name: "Finish adding response to Record" },
   );
   await recoveredResponseReceiptRetry.waitFor({ state: "visible" });
   await responseReceiptPage
@@ -942,14 +942,14 @@ try {
       ),
     ),
     "1",
-    "Retrying the response receipt must never resubmit the onchain decision.",
+    "Finishing the response Record update must never resubmit the testnet decision.",
   );
   assert.equal(
     await responseReceiptPage.evaluate(
       () => document.documentElement.scrollWidth <= window.innerWidth,
     ),
     true,
-    "Durable response receipt recovery should not overflow a mobile viewport.",
+    "Durable response Record recovery should not overflow a mobile viewport.",
   );
   await responseReceiptPage.context().close();
 
@@ -979,7 +979,7 @@ try {
     .click();
 
   const rulingReceiptRetry = rulingReceiptPage.getByRole("button", {
-    name: "Retry saving ruling receipt",
+    name: "Finish adding ruling to Record",
   });
   await rulingReceiptRetry.waitFor({ state: "visible" });
   await rulingReceiptPage
@@ -1023,7 +1023,7 @@ try {
 
   await rulingReceiptPage.reload({ waitUntil: "networkidle" });
   const recoveredRulingReceiptRetry = rulingReceiptPage.getByRole("button", {
-    name: "Retry saving ruling receipt",
+    name: "Finish adding ruling to Record",
   });
   await recoveredRulingReceiptRetry.waitFor({ state: "visible" });
   await rulingReceiptPage
@@ -1080,7 +1080,7 @@ try {
     actionType: "withdrawal_completed",
     transactionHash: `0x${"5".repeat(64)}`,
     transactionButton: "Withdraw 0.5 USDC",
-    retryButton: "Retry saving withdrawal receipt",
+    retryButton: "Finish adding withdrawal to Record",
     confirmedHeading: "Withdrawal confirmed",
     recoveredText: /recovered a confirmed testnet withdrawal/i,
     transactionCountKey: "openescrow:test:withdrawal-transaction-writes",
@@ -1116,7 +1116,7 @@ try {
     await exerciseTerminalReceiptRecovery(browser, {
       ...scenario,
       actionType: "timeout_executed",
-      retryButton: "Retry saving deadline-action receipt",
+      retryButton: "Finish adding deadline action to Record",
       recoveredText: /recovered a confirmed testnet deadline action/i,
       transactionCountKey: `openescrow:test:${scenario.flow}-transaction-writes`,
     });

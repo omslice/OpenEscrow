@@ -2799,6 +2799,7 @@ test("reports fail closed on malformed saved compliance snapshots", async () => 
   assert.equal(response.status, 200);
   const html = await response.text();
   assert.match(html, /Recorded compliance details need review/);
+  assert.match(html, /did not substitute today's rules/);
   assert.doesNotMatch(html, /forged-requirements/);
   assert.equal(html.includes(newYorkProfile.requirements[0]), false);
 });

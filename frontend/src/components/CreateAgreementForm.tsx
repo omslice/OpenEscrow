@@ -524,8 +524,8 @@ function AgreementForm({
       } catch (cause) {
         setFinalizationRecordError(
           cause instanceof Error
-            ? `${agreementReference(agreementId)} was created onchain, but the saved proposal still needs its receipt: ${cause.message}`
-            : `${agreementReference(agreementId)} was created onchain, but the saved proposal still needs its receipt.`,
+            ? `${agreementReference(agreementId)} was created on the test network, but its finalization still needs to be added to the Record: ${cause.message}`
+            : `${agreementReference(agreementId)} was created on the test network, but its finalization still needs to be added to the Record.`,
         );
       }
     },
@@ -3255,13 +3255,13 @@ function AgreementForm({
               )
             }
           >
-            Retry saving finalization receipt
+            Finish adding finalization to Record
           </button>
         </div>
       )}
       {createdId !== null && (
         <p className="tx-success" role="status">
-          Created {agreementReference(createdId)} onchain.
+          Created {agreementReference(createdId)} on the test network.
         </p>
       )}
       <div className="proposal-step-actions">

@@ -126,7 +126,7 @@ function useTenantReceiptRecovery(
         type="button"
         onClick={() => void record(pendingTransaction)}
       >
-        Retry saving {kind === "reserve" ? "reserve" : "funding"} receipt
+        Finish adding {kind === "reserve" ? "reserve funding" : "deposit funding"} to Record
       </button>
     </div>
   );

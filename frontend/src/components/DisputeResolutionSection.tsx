@@ -80,7 +80,7 @@ export function DisputeResolutionSection({
     setRulingRecorded(Boolean(recovered));
     setRecordError(
       recovered
-        ? "OpenEscrow recovered a confirmed testnet ruling whose private activity receipt still needs to be saved. Retry the record save; do not submit another ruling."
+        ? "OpenEscrow recovered a confirmed testnet ruling that still needs to be added to the private Record. Finish that Record update; do not submit another ruling."
         : null,
     );
     return () => rulingReceiptScope.close();
@@ -141,7 +141,7 @@ export function DisputeResolutionSection({
         ? `: ${cause.message.replace(/[.\s]+$/, "")}.`
         : ".";
       setRecordError(
-        `The onchain ruling succeeded, but its activity record still needs to be saved${failureDetail}${reloadWarning}`,
+        `The testnet ruling succeeded, but it still needs to be added to the private Record${failureDetail}${reloadWarning}`,
       );
     } finally {
       if (rulingReceiptScope.isCurrent(operationId)) {
@@ -159,7 +159,7 @@ export function DisputeResolutionSection({
       )}
       {isSavingRulingRecord && (
         <p className="hint" role="status" aria-live="polite">
-          Saving the confirmed ruling to the private activity record...
+          Adding the confirmed ruling to the private Record...
         </p>
       )}
       <button
@@ -170,8 +170,8 @@ export function DisputeResolutionSection({
         onClick={() => void saveRuling(pendingRecord)}
       >
         {isSavingRulingRecord
-          ? "Saving ruling receipt..."
-          : "Retry saving ruling receipt"}
+          ? "Adding ruling to Record..."
+          : "Finish adding ruling to Record"}
       </button>
     </div>
   );
@@ -185,8 +185,8 @@ export function DisputeResolutionSection({
       >
         <h3>Ruling confirmed</h3>
         <p className="hint">
-          The testnet ruling is confirmed. OpenEscrow will only retry its private
-          activity receipt; it will not submit another ruling.
+          The testnet ruling is confirmed. OpenEscrow will only finish the private Record update;
+          it will not submit another ruling.
         </p>
         {recordRecovery}
       </div>
