@@ -648,8 +648,11 @@ try {
     await withdraw.waitFor({ state: "visible" });
     const box = await withdraw.boundingBox();
     assert.equal(Boolean(box && box.height >= 44), true);
-    await withdraw.click();
-    await withdraw.waitFor({ state: "hidden" });
+    await Promise.all([
+      entry.page.waitForNavigation({ waitUntil: "networkidle" }),
+      withdraw.click(),
+    ]);
+    await waitForStage(entry.page, "closed");
     assert.equal(
       await entry.page.getByRole("button", { name: `Withdraw ${amount} USDC` }).count(),
       0,
