@@ -51,7 +51,7 @@ test("candidate verification runs every credential-free gate in dependency order
   assert.equal(evidence.ok, true);
   assert.equal(
     evidence.artifactSchemaVersion,
-    "openescrow-pilot-candidate/v3",
+    "openescrow-pilot-candidate/v4",
   );
   assert.equal(evidence.testnetBoundary.releaseMode, "testnet");
   assert.equal(evidence.testnetBoundary.productionMoneyEnabled, false);
@@ -71,13 +71,17 @@ test("candidate verification stops after the first failed gate and records skips
     },
   });
 
-  assert.deepEqual(commands, ["release:check", "pilot:rehearse"]);
+  assert.deepEqual(commands, [
+    "release:check",
+    "deploy:rehearse",
+    "pilot:rehearse",
+  ]);
   assert.equal(evidence.ok, false);
   assert.deepEqual(
     evidence.steps.map((step) => step.status),
-    ["passed", "failed", "skipped", "skipped"],
+    ["passed", "passed", "failed", "skipped", "skipped"],
   );
-  assert.equal(evidence.steps[1].exitCode, 7);
+  assert.equal(evidence.steps[2].exitCode, 7);
 });
 
 test("candidate preflight fails closed before commands when provenance is invalid", async () => {
@@ -185,6 +189,73 @@ function writeRehearsalFixture({
   );
 }
 
+function writeDeploymentRehearsalFixture(frontendRoot) {
+  mkdirSync(path.join(frontendRoot, ".deployment-rehearsal"), {
+    recursive: true,
+  });
+  writeFileSync(
+    path.join(frontendRoot, ".deployment-rehearsal", "latest.json"),
+    `${JSON.stringify({
+      schema: "openescrow.deployment-rehearsal/v1",
+      generatedAt: "2026-08-05T12:00:00.000Z",
+      status: "passed",
+      executionMode: "local-anvil-credential-free",
+      sourceCommit: commitSha,
+      chainId: 84_532,
+      manifest: {
+        schema: "openescrow.deployment-manifest/v2",
+        network: "local-anvil-base-sepolia-rehearsal",
+        sourceCommit: commitSha,
+        chainId: 84_532,
+        cohortStatus: "candidate-rehearsal-only",
+        openEscrow: {
+          address: "0x1111111111111111111111111111111111111111",
+          deploymentBlock: 10,
+          transactionHash: `0x${"1".repeat(64)}`,
+        },
+        operationsReserve: {
+          address: "0x2222222222222222222222222222222222222222",
+          deploymentBlock: 9,
+          transactionHash: `0x${"2".repeat(64)}`,
+        },
+        agreementActivityRegistry: {
+          address: "0x3333333333333333333333333333333333333333",
+          escrowAddress: "0x1111111111111111111111111111111111111111",
+          deploymentBlock: 12,
+          transactionHash: `0x${"3".repeat(64)}`,
+        },
+        reciprocalConfiguration: {
+          transactionHash: `0x${"4".repeat(64)}`,
+          reserveAddress: "0x2222222222222222222222222222222222222222",
+          escrowAddress: "0x1111111111111111111111111111111111111111",
+        },
+        tokens: {
+          plain: "0x4444444444444444444444444444444444444444",
+          yield: "0x5555555555555555555555555555555555555555",
+        },
+      },
+      bindings: {
+        retired: { reciprocalBindingsVerified: true },
+        candidate: {
+          reciprocalBindingsVerified: true,
+          runtime: { openEscrow: {}, operationsReserve: {}, agreementActivityRegistry: {} },
+        },
+      },
+      retiredCohort: {
+        principalWithdrawn: true,
+        registryIsolationVerified: true,
+        candidateUnaffected: true,
+      },
+      configSwitch: {
+        switchVerified: true,
+        rollbackVerified: true,
+        replacementCount: 12,
+        files: ["client", "registry", "server"],
+      },
+    })}\n`,
+  );
+}
+
 function candidateArtifactFixture(t) {
   const repositoryRoot = mkdtempSync(
     path.join(tmpdir(), "openescrow-candidate-"),
@@ -228,6 +299,7 @@ function candidateArtifactFixture(t) {
       ),
     })}\n`,
   );
+  writeDeploymentRehearsalFixture(frontendRoot);
   writeRehearsalFixture({
     frontendRoot,
     directory: ".pilot-rehearsal",
@@ -285,6 +357,8 @@ test("candidate artifacts bind both rehearsals and every packaged Sites byte", (
   assert.equal(first.contractAssurance.sourceCommit, commitSha);
   assert.equal(first.contractAssurance.contracts.length, 3);
   assert.equal(first.contractAssurance.dependencies.length, 2);
+  assert.equal(first.deploymentRehearsal.retiredCohortIsolationVerified, true);
+  assert.equal(first.deploymentRehearsal.configSwitch.rollbackVerified, true);
   assert.deepEqual(first.pilotRehearsal.testTargets, [
     "server/index.test.mjs",
     "scripts/check-record-verification.mjs",
@@ -359,5 +433,22 @@ test("candidate artifacts reject a contract with insufficient bytecode margin", 
   assert.throws(
     () => collectCandidateArtifacts({ ...fixture, commitSha }),
     /unsafe or incomplete contract evidence/,
+  );
+});
+
+test("candidate artifacts reject a deployment rehearsal without exact rollback", (t) => {
+  const fixture = candidateArtifactFixture(t);
+  const summaryPath = path.join(
+    fixture.frontendRoot,
+    ".deployment-rehearsal",
+    "latest.json",
+  );
+  const summary = JSON.parse(readFileSync(summaryPath, "utf8"));
+  summary.configSwitch.rollbackVerified = false;
+  writeFileSync(summaryPath, `${JSON.stringify(summary)}\n`);
+
+  assert.throws(
+    () => collectCandidateArtifacts({ ...fixture, commitSha }),
+    /configuration switch and rollback/,
   );
 });

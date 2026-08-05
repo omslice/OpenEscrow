@@ -289,6 +289,27 @@ export function validateDependencyLock(actual, expected) {
   }
 }
 
+export function verifyDependencyTrees({ repositoryRoot, dependencyLock }) {
+  return DEPENDENCIES.map((descriptor) => {
+    const absolute = path.join(repositoryRoot, descriptor.path);
+    if (!existsSync(absolute) || !statSync(absolute).isDirectory()) {
+      throw new Error(`Pinned dependency directory is missing: ${descriptor.path}`);
+    }
+    const actual = {
+      path: descriptor.path,
+      gitlink: gitlinkPin(repositoryRoot, descriptor.path),
+      ...digestDirectory(absolute),
+    };
+    if (dependencyLock) {
+      const expected = dependencyLock.dependencies?.find(
+        (entry) => entry.path === descriptor.path,
+      );
+      validateDependencyLock(actual, expected);
+    }
+    return actual;
+  });
+}
+
 export function collectContractAssurance({
   repositoryRoot,
   forge,
@@ -374,25 +395,7 @@ export function collectContractAssurance({
     };
   });
 
-  const dependencies = DEPENDENCIES.map((descriptor) => {
-    const absolute = path.join(repositoryRoot, descriptor.path);
-    if (!existsSync(absolute) || !statSync(absolute).isDirectory()) {
-      throw new Error(`Pinned dependency directory is missing: ${descriptor.path}`);
-    }
-    const digest = digestDirectory(absolute);
-    const actual = {
-      path: descriptor.path,
-      gitlink: gitlinkPin(repositoryRoot, descriptor.path),
-      ...digest,
-    };
-    if (dependencyLock) {
-      const expected = dependencyLock.dependencies?.find(
-        (entry) => entry.path === descriptor.path,
-      );
-      validateDependencyLock(actual, expected);
-    }
-    return actual;
-  });
+  const dependencies = verifyDependencyTrees({ repositoryRoot, dependencyLock });
 
   return {
     schema: CONTRACT_ASSURANCE_SCHEMA,
@@ -418,8 +421,8 @@ function runCli() {
   const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
   const frontendRoot = path.resolve(scriptDirectory, "..");
   const repositoryRoot = path.resolve(frontendRoot, "..");
-  const forge = resolveForge(repositoryRoot);
   const printDependencyLock = process.argv.includes("--print-dependency-lock");
+  const verifyDependencies = process.argv.includes("--verify-dependencies");
   const lockPath = path.join(repositoryRoot, "contracts", "dependency-lock.json");
   const dependencyLock = printDependencyLock
     ? null
@@ -432,6 +435,14 @@ function runCli() {
   ) {
     throw new Error("Dependency lock schema or dependency set is invalid.");
   }
+  if (verifyDependencies) {
+    const dependencies = verifyDependencyTrees({ repositoryRoot, dependencyLock });
+    console.log(
+      `Contract dependencies verified: ${dependencies.length} pinned SHA-256 source trees.`,
+    );
+    return;
+  }
+  const forge = resolveForge(repositoryRoot);
   const evidence = collectContractAssurance({
     repositoryRoot,
     forge,

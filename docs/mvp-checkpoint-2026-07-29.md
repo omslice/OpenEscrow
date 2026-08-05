@@ -14,7 +14,7 @@ detailed validation ledger.
   the existing project/D1/R2 bindings, and records machine-readable evidence without querying or
   changing the live site. The versioned candidate manifest also verifies the exact commit in both
   rehearsal summaries, binds their JUnit reports by SHA-256, and records a deterministic digest of
-  every packaged Sites file. Schema v3 additionally rejects dirty source before the gates,
+  every packaged Sites file. Schema v4 additionally rejects dirty source before the gates,
   rechecks it after packaging, and binds deterministic contract-assurance evidence for the exact
   commit. The live-deploy wrapper runs readiness only after a successful
   publish and passes the new deployment URL positionally to the readiness checker.
@@ -65,6 +65,12 @@ detailed validation ledger.
   the escrow, reserve, and registry. Three reserve invariants pass 98,304 stateful calls, and an
   overlapping-ID cohort regression proves retired/candidate deployment isolation. The reviewed
   dependency source manifests, threat model, and independent-audit handoff are checked in.
+- **Verified:** The no-broadcast deployment rehearsal deploys and funds two complete immutable
+  cohorts on local Anvil, confirms the escrow/reserve/registry and token/treasury/runtime bindings,
+  rejects both cross-cohort registry attempts with the exact authorization error, closes only the
+  retired agreement, and preserves the candidate's full principal and Active state. A 12-field
+  in-memory client/server switch parses back to the candidate manifest and rolls back to the exact
+  original bytes. Pilot-candidate schema v4 binds this local artifact after contract assurance.
 - **Verified:** A secondary-contract review hardened the atomic deposit-plus-reserve boundary,
   reserve deployment binding, reserve phase gates, and registry arbiter authorization. Every
   externally callable escrow lifecycle mutation now shares the same reentrancy lock, funding

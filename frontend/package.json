@@ -28,6 +28,8 @@
     "check:roadmap": "node scripts/check-roadmap-status.mjs",
     "check:sites-provenance": "node scripts/check-sites-provenance.mjs",
     "contract:assure": "node scripts/check-contract-release.mjs",
+    "contract:dependencies:verify": "node scripts/check-contract-release.mjs --verify-dependencies",
+    "deploy:rehearse": "node scripts/rehearse-contract-deployment.mjs",
     "check": "npm run lint && npm run test:server && npm run test:client-logic && npm run test:account-switch && npm run test:funding-recovery && npm run test:funding-production-lock && npm run test:evidence-recovery && npm run test:record-verification && npm run test:accessibility && npm run test:load-recovery && npm run test:deposit-list && npm run test:record-list && npm run test:private-record-recovery && npm run test:pilot-lifecycle && npm run check:roadmap && npm run build && npm run check:bundle && npm run check:landing-load",
     "release:check": "npm run contract:assure && npm run check && npm run check:audit && npm run check:wallet-dependencies && node scripts/check-release-config.mjs",
     "pilot:check": "node scripts/check-pilot-readiness.mjs",

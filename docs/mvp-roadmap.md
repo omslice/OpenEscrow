@@ -62,9 +62,17 @@ production custody, or reliance on the compliance research as legal advice.
   creation bytecode, storage-layout, selector-collision, EVM-size-margin, and dependency-tree
   evidence. Three new reserve invariants pass 98,304 stateful calls, and an overlapping-ID cohort
   regression proves retired and candidate deployments cannot share funds, roles, reserve
-  receipts, or registry authority. Pilot-candidate schema v3 rejects dirty source, rechecks it
-  after the build, and binds this evidence to the exact commit. The threat model and independent-
+  receipts, or registry authority. Pilot-candidate schema v4 rejects dirty source, rechecks it
+  after the build, and binds this evidence plus the deployment rehearsal to the exact commit. The threat model and independent-
   audit handoff are ready; professional audit and any broadcast remain owner/external gates.
+- **Verified:** A credential-free deployment rehearsal now starts ephemeral local Anvil with Base
+  Sepolia's chain ID, deploys two complete escrow/reserve/registry cohorts from compiled release
+  artifacts, funds overlapping agreement ID `0`, proves reciprocal/token/treasury/runtime and
+  cross-registry isolation, retires and withdraws only the old principal, and leaves the candidate
+  active. It then applies all 12 client/server address and block replacements in memory and
+  restores the current files byte-for-byte. The production script now deploys all three contracts
+  as one cohort; its exporter writes a separate candidate manifest and preserves the active
+  manifest as the rollback target. No public broadcast or configuration switch occurred.
 - **Verified:** The release dependency audit blocks every high/critical finding and every unknown
   moderate advisory. The former transitive `uuid` advisory is removed from the locked
   wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector

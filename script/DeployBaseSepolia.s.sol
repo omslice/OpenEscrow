@@ -4,6 +4,7 @@ pragma solidity 0.8.26;
 import {Script, console} from "forge-std/Script.sol";
 import {OpenEscrow} from "../contracts/OpenEscrow.sol";
 import {OperationsReserve} from "../contracts/OperationsReserve.sol";
+import {AgreementActivityRegistry} from "../contracts/AgreementActivityRegistry.sol";
 
 /// @notice Deploys the matching OpenEscrow and OperationsReserve release to Base Sepolia.
 /// @dev Signing is deliberately left to Foundry's CLI account/keystore support. This
@@ -11,7 +12,7 @@ import {OperationsReserve} from "../contracts/OperationsReserve.sol";
 contract DeployBaseSepolia is Script {
     uint256 internal constant BASE_SEPOLIA_CHAIN_ID = 84_532;
 
-    function run() external returns (OpenEscrow escrow, OperationsReserve reserve) {
+    function run() external returns (OpenEscrow escrow, OperationsReserve reserve, AgreementActivityRegistry registry) {
         require(block.chainid == BASE_SEPOLIA_CHAIN_ID, "Base Sepolia only");
 
         address token = vm.envAddress("TOKEN_ADDRESS");
@@ -23,6 +24,7 @@ contract DeployBaseSepolia is Script {
         reserve = new OperationsReserve(token, yieldToken);
         escrow = new OpenEscrow(token, yieldToken, address(reserve));
         reserve.configureEscrow(address(escrow));
+        registry = new AgreementActivityRegistry(address(escrow));
         vm.stopBroadcast();
 
         require(address(escrow.TOKEN()) == token, "escrow token mismatch");
@@ -31,9 +33,11 @@ contract DeployBaseSepolia is Script {
         require(address(reserve.ESCROW()) == address(escrow), "reserve escrow mismatch");
         require(address(reserve.TOKEN()) == token, "reserve token mismatch");
         require(address(reserve.YIELD_TOKEN()) == yieldToken, "reserve yield token mismatch");
+        require(address(registry.ESCROW()) == address(escrow), "registry escrow mismatch");
 
         console.log("OpenEscrow deployed at:       ", address(escrow));
         console.log("OperationsReserve deployed at:", address(reserve));
+        console.log("ActivityRegistry deployed at: ", address(registry));
         console.log("Plain token:                  ", token);
         console.log("Yield token:                  ", yieldToken);
         console.log("Reserve treasury/deployer:    ", reserve.TREASURY());

@@ -9,15 +9,21 @@ import { createHash } from "node:crypto";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
+import { validateDeploymentManifest } from "./deployment-config-plan.mjs";
 
 export const PILOT_CANDIDATE_SCHEMA_VERSION =
-  "openescrow-pilot-candidate/v3";
+  "openescrow-pilot-candidate/v4";
 
 export const PILOT_CANDIDATE_STEPS = Object.freeze([
   Object.freeze({
     id: "release-check",
     script: "release:check",
     label: "Repository release envelope",
+  }),
+  Object.freeze({
+    id: "deployment-rehearsal",
+    script: "deploy:rehearse",
+    label: "Credential-free deployment and rollback rehearsal",
   }),
   Object.freeze({
     id: "pilot-rehearsal",
@@ -357,6 +363,84 @@ function verifiedContractAssuranceArtifact({
   };
 }
 
+function verifiedDeploymentRehearsalArtifact({
+  frontendRoot,
+  repositoryRoot,
+  commitSha,
+}) {
+  const summaryPath = path.join(
+    frontendRoot,
+    ".deployment-rehearsal",
+    "latest.json",
+  );
+  const summaryBytes = readFileSync(summaryPath);
+  const summary = JSON.parse(summaryBytes.toString("utf8"));
+  if (
+    summary.schema !== "openescrow.deployment-rehearsal/v1" ||
+    summary.status !== "passed" ||
+    summary.executionMode !== "local-anvil-credential-free" ||
+    summary.sourceCommit !== commitSha ||
+    summary.chainId !== 84_532
+  ) {
+    throw new Error(
+      `Deployment rehearsal is not passing local credential-free evidence for ${commitSha}.`,
+    );
+  }
+  const manifest = summary.manifest;
+  try {
+    validateDeploymentManifest(manifest, commitSha);
+  } catch {
+    throw new Error("Deployment rehearsal manifest is incomplete or cross-bound.");
+  }
+  if (manifest.cohortStatus !== "candidate-rehearsal-only") {
+    throw new Error("Deployment rehearsal manifest is incomplete or cross-bound.");
+  }
+  if (
+    summary.bindings?.retired?.reciprocalBindingsVerified !== true ||
+    summary.bindings?.candidate?.reciprocalBindingsVerified !== true ||
+    Object.keys(summary.bindings?.candidate?.runtime || {}).length !== 3
+  ) {
+    throw new Error("Deployment rehearsal is missing cohort runtime or binding evidence.");
+  }
+  if (
+    summary.retiredCohort?.principalWithdrawn !== true ||
+    summary.retiredCohort?.registryIsolationVerified !== true ||
+    summary.retiredCohort?.candidateUnaffected !== true
+  ) {
+    throw new Error("Deployment rehearsal did not prove retired-cohort isolation.");
+  }
+  if (
+    summary.configSwitch?.switchVerified !== true ||
+    summary.configSwitch?.rollbackVerified !== true ||
+    summary.configSwitch?.replacementCount !== 12 ||
+    !Array.isArray(summary.configSwitch?.files) ||
+    summary.configSwitch.files.length !== 3
+  ) {
+    throw new Error("Deployment rehearsal did not prove configuration switch and rollback.");
+  }
+  return {
+    schema: summary.schema,
+    generatedAt: summary.generatedAt,
+    sourceCommit: summary.sourceCommit,
+    chainId: summary.chainId,
+    manifest: {
+      schema: manifest.schema,
+      openEscrow: manifest.openEscrow.address,
+      operationsReserve: manifest.operationsReserve.address,
+      agreementActivityRegistry: manifest.agreementActivityRegistry.address,
+    },
+    retiredCohortIsolationVerified: true,
+    configSwitch: {
+      replacementCount: summary.configSwitch.replacementCount,
+      rollbackVerified: summary.configSwitch.rollbackVerified,
+    },
+    summary: {
+      path: relativeArtifactPath(repositoryRoot, summaryPath),
+      sha256: sha256(summaryBytes),
+    },
+  };
+}
+
 function digestDirectory(directory) {
   const manifestHash = createHash("sha256");
   let fileCount = 0;
@@ -412,6 +496,11 @@ export function collectCandidateArtifacts({
 }) {
   const artifacts = {
     contractAssurance: verifiedContractAssuranceArtifact({
+      frontendRoot,
+      repositoryRoot,
+      commitSha,
+    }),
+    deploymentRehearsal: verifiedDeploymentRehearsalArtifact({
       frontendRoot,
       repositoryRoot,
       commitSha,

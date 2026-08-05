@@ -9,29 +9,38 @@ Do not paste passwords, private keys, API keys, encryption keys, recovery
 material, or identity documents into chat. Complete secret entry in the
 provider or hosting control that owns the secret.
 
+## Recommended weekend sequence
+
+1. Review the exact hardened contract candidate and the independent-audit handoff.
+2. In a private PowerShell window, use the encrypted Foundry keystore to broadcast the
+   unified Base Sepolia escrow/reserve/registry cohort. Never paste the key or password here.
+3. Share only the public candidate manifest and transaction hashes. Codex can verify code and
+   bindings, prepare the reversible configuration switch, and preserve the current cohort.
+4. Run the separate-account synthetic pilot and the incident/privacy drill after the new site
+   candidate is explicitly approved and deployed.
+5. Configure email, evidence encryption, address attestation, and the hosted scheduler when the
+   matching release is ready; keep every secret in its owning dashboard.
+
 ## Actionable now
 
 - [ ] **Review and explicitly approve the newest exact Sites candidate before deployment.** The
   public testnet matches the last approved exact source and exposes its release provenance. Newer
   validated work is saved as a separate undeployed candidate; selecting and promoting it remains
   a separate public action, followed by readiness verification.
-- [ ] **Review and broadcast a hardened Base Sepolia escrow/reserve pair.** The latest source adds
+- [ ] **Review and broadcast a hardened Base Sepolia escrow/reserve/registry cohort.** The latest source adds
   reciprocal immutable deployment binding, exact reserve phase gates, checks-effects-interactions
   funding, and a contract-wide cross-function reentrancy lock. The existing escrow and reserve are
   immutable and cannot be upgraded in place. After reviewing the exact candidate, use the private
-  local deployment procedure to create a new pair; share only its public transaction hashes and
-  generated manifest, never the keystore password. Do not change the app configuration or retire
+  local deployment procedure to create one mutually bound three-contract cohort; share only its
+  public transaction hashes and generated candidate manifest, never the keystore password. Do not
+  change the app configuration or retire
   the existing testnet cohort until the new bytecode and mutual bindings have been verified. See
   [`base-sepolia-deployment.md`](./base-sepolia-deployment.md).
-- [ ] **Broadcast the activity registry only after the hardened escrow address is final.** The
-  latest registry recognizes every nonzero-share co-tenant and only an accepted, non-declined,
-  non-resigned current arbiter. The currently configured registry is bound to a retired escrow,
-  and broadcasting the script before the new escrow is configured would repeat that mismatch.
-  After Codex updates and validates the deployment input for the approved escrow, run
-  `.\scripts\Broadcast-AgreementActivityRegistryBaseSepolia.ps1` from a private local PowerShell
-  terminal and enter the encrypted `openescrow-base-sepolia` keystore password only at the local
-  Foundry prompt. Share the public transaction hash or generated manifest. See
-  [`agreement-activity-registry-deployment.md`](./agreement-activity-registry-deployment.md).
+- [ ] **Return the public candidate manifest for verification before configuration changes.**
+  Codex can verify all three receipts, runtime code, reciprocal bindings, token addresses,
+  registry binding, deployment blocks, and source commit without receiving a secret. The existing
+  Base Sepolia cohort remains configured and available as the explicit rollback target until the
+  candidate and a new Sites build are approved.
 - [ ] **Choose the first pilot markets for local-rule coverage.**
   State law is routed nationwide, but only Chicago, Seattle, and Portland have
   reviewed city overlays. Name the cities/counties most likely to be used in

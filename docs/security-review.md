@@ -415,11 +415,19 @@ operations-reserve handler adds three stateful invariants covering net token
 accounting, exact unique tenant shares with agreement-token binding, and immutable
 escrow/reserve/treasury bindings.
 
-Pilot-candidate schema v3 binds this contract-assurance evidence to the exact source
-commit together with both credential-free rehearsals and every packaged Sites byte.
+Pilot-candidate schema v4 binds this contract-assurance evidence to the exact source
+commit together with the deployment rehearsal, both operational rehearsals, and every packaged
+Sites byte.
 The detailed assumptions, residual risks, reproduction commands, and independent
 review questions are in `contract-threat-model.md` and
 `independent-audit-handoff.md`.
+
+The current release envelope includes a separate credential-free local deployment artifact.
+Ephemeral Anvil deploys two full three-contract cohorts from the compiled
+artifacts, exercises overlapping funded agreement IDs and exact cross-registry authorization
+failures, retires only the old principal, verifies all immutable/runtime bindings, and performs a
+12-field in-memory configuration switch followed by byte-for-byte rollback. The public network
+and currently configured cohort remain unchanged.
 
 ## Disclaimer
 

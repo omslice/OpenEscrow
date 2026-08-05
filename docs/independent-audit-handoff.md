@@ -37,7 +37,7 @@ creation bytecode hashes, function selectors/collisions, and storage-layout hash
 also checks the actual Foundry/OpenZeppelin source trees against their reviewed
 gitlink and SHA-256 manifests. Evidence is written to the ignored local file
 `frontend/.contract-assurance/latest.json` and later bound into pilot-candidate
-schema v3.
+schema v4 alongside the separate deployment-rehearsal evidence.
 
 Any dependency-lock change, ABI change, bytecode change, selector change, storage
 layout change, compiler-profile change, test failure, or runtime margin below 2,048
@@ -84,5 +84,6 @@ bytes must stop release review until explained and re-approved.
   source-tree manifest.
 - No broadcast, signer, RPC credential, hosted secret, real asset, or production-yield
   action is part of credential-free candidate assurance.
-- The current deployment script must be assessed together with the registry and
-  manifest rehearsal before it is used for the next cohort.
+- The unified deployment script creates the reserve, escrow, reciprocal binding, and registry in
+  one cohort. Its credential-free Anvil rehearsal and candidate-manifest exporter are in scope;
+  no public broadcast is implied by passing them.

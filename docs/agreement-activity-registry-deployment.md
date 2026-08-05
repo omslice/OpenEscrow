@@ -1,4 +1,9 @@
-# Agreement activity registry deployment
+# Agreement activity registry deployment (legacy fallback)
+
+The current hardened-cohort runbook deploys the registry atomically with the new
+escrow/reserve pair. Use this separate procedure only to recover a reviewed cohort whose
+escrow and reserve were already deployed successfully without a registry; do not use it
+for the normal next-cohort path.
 
 ## Why a registry must be versioned with the escrow
 
