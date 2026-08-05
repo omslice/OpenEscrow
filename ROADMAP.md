@@ -211,6 +211,10 @@ the repository; they are not claims of legal approval or production readiness.
 - [x] Replace receipt-oriented primary recovery copy with explicit “finish adding to Record”
   actions for finalization, funding, claims, responses, rulings, deadlines, withdrawals, arbiter
   replacement, and public proof; technical receipts remain available in history/details views
+- [x] Recover interrupted arbiter acceptance or cancellation without asking consumers for a
+  transaction hash: search bounded Base Sepolia event ranges from the saved proposal window,
+  submit the discovered receipt through the existing exact server verifier, and keep manual hash
+  entry inside a collapsed technical fallback
 - [x] Visibility-aware background proposal and onchain polling with foreground catch-up, plus a
   shared deadline clock
 - [x] Proposal-review polling is isolated from user actions: stale refreshes cannot replace a

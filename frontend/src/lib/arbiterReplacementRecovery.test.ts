@@ -24,3 +24,26 @@ test("replacement-arbiter invitation copy keeps a permission-safe manual fallbac
   assert.match(replacementSource, /recordStatus && <p className="tx-success" role="status">/);
   assert.match(replacementSource, /recordError && <p className="tx-error" role="alert">/);
 });
+
+test("replacement-arbiter receipt recovery is automatic with a collapsed technical fallback", () => {
+  assert.match(
+    replacementSource,
+    /findArbiterReplacementTransaction\(/,
+  );
+  assert.match(
+    replacementSource,
+    /Find confirmation and finish Record update/,
+  );
+  assert.match(
+    replacementSource,
+    /<details className="technical-details">\s*<summary>Technical recovery<\/summary>/,
+  );
+  assert.match(
+    replacementSource,
+    /OpenEscrow will verify the agreement, event, wallet, and sender/,
+  );
+  assert.match(
+    replacementSource,
+    /Use transaction hash to finish Record update/,
+  );
+});

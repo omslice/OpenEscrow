@@ -172,6 +172,11 @@ production custody, or reliance on the compliance research as legal advice.
   deadline, withdrawal, arbiter-replacement, and public-proof controls explicitly say the safe
   recovery will not repeat the testnet action; technical receipts remain in secondary history and
   verification views.
+- **Verified:** Interrupted arbiter acceptance and cancellation recovery no longer makes an
+  ordinary participant find a transaction hash. The client searches only bounded Base Sepolia
+  ranges near the saved proposal, rejects removed, malformed, wrong-agreement, and wrong-nominee
+  events, and sends the latest candidate through the existing exact server receipt verifier. Raw
+  hash entry remains available only in a collapsed technical recovery disclosure.
 - **Verified:** A durable active sandbox attempt now reports whether it matches the currently
   requested wallet, asset, and amount, and the browser independently confirms that binding. A
   mismatch stays locked, is not copied into the new intent's local recovery key, and offers a

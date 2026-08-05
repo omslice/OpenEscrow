@@ -300,8 +300,10 @@ not deployed until a new version-matched registry is broadcast and validated.
   bearer, and revokes former-arbiter sessions. Nominee-session provenance also lets invitation
   reset or cancellation revoke only nominee sessions without removing the current arbiter early.
   A verified terminal agreement action also expires an unaccepted nominee and its sessions. An
-  authorized participant can recover an interrupted hosted save by resubmitting the original
-  acceptance or cancellation transaction hash; the same exact receipt checks still apply.
+  authorized participant can recover an interrupted hosted save through a bounded event search
+  near the saved proposal time; the discovered acceptance or cancellation is still submitted to
+  the same exact receipt verifier. Manual transaction-hash entry remains a collapsed technical
+  fallback rather than a normal participant requirement.
   This hosted safeguard depends on receipt verification remaining enabled.
 - Invitation URLs are bearer credentials. A landlord can reset a tenant or optional-arbiter link
   without changing approved terms; the reset invalidates the prior direct link and the affected

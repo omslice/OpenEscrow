@@ -461,9 +461,12 @@ detailed validation ledger.
   Nominee sessions are separately tagged so a lost invite or cancellation can revoke only the
   nominee without prematurely removing the current arbiter; a verified agreement-closing action
   also expires an unaccepted nominee. If a successful acceptance or cancellation reaches the
-  chain but its hosted save is interrupted, the agreement UI accepts the original transaction
-  hash and finishes the exact receipt-verified access update. The server suite covers wrong
-  nominees, parties, senders, old/new arbiter fields, lost-link rotation, cancellation, signed-in
+  chain but its hosted save is interrupted, the agreement UI searches bounded Base Sepolia event
+  ranges from the saved proposal window and submits the matching confirmation to the exact
+  receipt-verified access update. Removed, malformed, wrong-agreement, and wrong-nominee events
+  are ignored, while manual transaction-hash entry remains in a collapsed technical fallback.
+  The server suite covers wrong nominees, parties, senders, old/new arbiter fields, lost-link
+  rotation, cancellation, signed-in
   discovery, terminal expiry, recovery by an authorized participant, and post-acceptance access
   isolation. Replacement invitations also use the shared permission-safe clipboard path, with a
   visible link that remains manually selectable if browser copy access is blocked.

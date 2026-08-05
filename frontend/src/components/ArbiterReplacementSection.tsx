@@ -1,7 +1,17 @@
 import { useEffect, useState } from "react";
 import { isAddress } from "viem";
-import { useAccount } from "wagmi";
-import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
+import { useAccount, usePublicClient } from "wagmi";
+import {
+  DEPLOYMENT_BLOCK,
+  OpenEscrowABI,
+  OPEN_ESCROW_ADDRESS,
+  Phase,
+  ZERO_ADDRESS,
+} from "../contracts/config";
+import {
+  findArbiterReplacementTransaction,
+  type ArbiterReplacementRecoveryClient,
+} from "../lib/arbiterReplacementTransaction";
 import { copyTextToClipboard } from "../lib/browserActions";
 import { shortAddr } from "../lib/format";
 import {
@@ -37,6 +47,7 @@ export function ArbiterReplacementSection({
   onRefetch?: () => void;
 }) {
   const { address } = useAccount();
+  const publicClient = usePublicClient();
   const [candidate, setCandidate] = useState("");
   const [candidateEmail, setCandidateEmail] = useState("");
   const [recoveryTransactionHash, setRecoveryTransactionHash] = useState("");
@@ -48,6 +59,7 @@ export function ArbiterReplacementSection({
     participantRecord?.arbiterReplacement || null,
   );
   const [isSavingRecord, setIsSavingRecord] = useState(false);
+  const [isRecoveringConfirmation, setIsRecoveringConfirmation] = useState(false);
 
   useEffect(() => {
     setReplacementRecord(participantRecord?.arbiterReplacement || null);
@@ -81,15 +93,24 @@ export function ArbiterReplacementSection({
   const replacementClearedWithoutAcceptance = Boolean(
     replacementRecord && !hasPending && !replacementAcceptedOnchain,
   );
+  const recoveryActorIsAllowed =
+    replacementAcceptedOnchain ||
+    (replacementClearedWithoutAcceptance &&
+      negotiationAccess?.role === replacementRecord?.proposedByRole);
+  const canRecoverAutomatically = Boolean(
+    publicClient &&
+      negotiationAccess &&
+      replacementRecord &&
+      isAddress(replacementRecord.wallet) &&
+      recoveryActorIsAllowed,
+  );
   const canSaveRecovery =
     /^0x[a-fA-F0-9]{64}$/.test(recoveryTransactionHash.trim()) &&
     Boolean(negotiationAccess) &&
-    (replacementAcceptedOnchain ||
-      (replacementClearedWithoutAcceptance &&
-        negotiationAccess?.role === replacementRecord?.proposedByRole));
+    recoveryActorIsAllowed;
 
   async function saveReplacementRecord(action: ArbiterReplacementAction) {
-    if (!negotiationAccess) return;
+    if (!negotiationAccess) return false;
     setIsSavingRecord(true);
     setRecordError(null);
     setRecordStatus(null);
@@ -110,7 +131,7 @@ export function ArbiterReplacementSection({
         setRecordStatus(
           result.record.arbiterReplacement?.status === "confirmed"
             ? "A fresh replacement-arbiter invitation is ready to send."
-            : "Invitation prepared. It will open the private record only after the other party confirms onchain.",
+            : "Invitation prepared. It will open the private Record only after the other party confirms on the test network.",
         );
       } else if (action.type === "arbiter_replacement_accepted") {
         setInviteUrl(null);
@@ -119,18 +140,69 @@ export function ArbiterReplacementSection({
         setInviteUrl(null);
         setRecordStatus("The pending invitation was revoked.");
       } else {
-        setRecordStatus("The onchain step and private agreement record now match.");
+        setRecordStatus("The test-network step and private Record now match.");
       }
       setPendingRecord(null);
       onRefetch?.();
+      return true;
     } catch (cause) {
       setRecordError(
         cause instanceof Error
-          ? `The onchain step succeeded, but its private record still needs to be saved: ${cause.message}`
-          : "The onchain step succeeded, but its private record still needs to be saved.",
+          ? `The test-network step succeeded, but its private Record still needs to be updated: ${cause.message}`
+          : "The test-network step succeeded, but its private Record still needs to be updated.",
       );
+      return false;
     } finally {
       setIsSavingRecord(false);
+    }
+  }
+
+  async function recoverReplacementConfirmation() {
+    if (
+      !publicClient ||
+      !negotiationAccess ||
+      !replacementRecord ||
+      !isAddress(replacementRecord.wallet) ||
+      !recoveryActorIsAllowed
+    ) {
+      return;
+    }
+    setIsRecoveringConfirmation(true);
+    setRecordError(null);
+    setRecordStatus(null);
+    try {
+      const transactionHash = await findArbiterReplacementTransaction(
+        publicClient as unknown as ArbiterReplacementRecoveryClient,
+        {
+          deploymentBlock: DEPLOYMENT_BLOCK,
+          contractAddress: OPEN_ESCROW_ADDRESS,
+          abi: OpenEscrowABI,
+          agreementId: id,
+          replacementWallet: replacementRecord.wallet,
+          proposedAt: replacementRecord.proposedAt,
+          outcome: replacementAcceptedOnchain ? "accepted" : "cancelled",
+        },
+      );
+      if (!transactionHash) {
+        setRecordError(
+          "OpenEscrow could not find the matching test-network confirmation. Try again, or open Technical recovery below if you have the transaction hash.",
+        );
+        return;
+      }
+      setRecoveryTransactionHash(transactionHash);
+      const saved = await saveReplacementRecord({
+        type: replacementAcceptedOnchain
+          ? "arbiter_replacement_accepted"
+          : "arbiter_replacement_cancelled",
+        transactionHash,
+      });
+      if (saved) setRecoveryTransactionHash("");
+    } catch {
+      setRecordError(
+        "OpenEscrow could not search the test network right now. Try again, or use Technical recovery below if you have the transaction hash.",
+      );
+    } finally {
+      setIsRecoveringConfirmation(false);
     }
   }
 
@@ -336,16 +408,6 @@ export function ArbiterReplacementSection({
               ? "The replacement is confirmed on the test network, but the private Record still needs its acceptance confirmation before access can rotate."
               : "The replacement is no longer pending on the test network, but the private Record still needs its cancellation confirmation before the nominee's access can be revoked."}
           </p>
-          <label>
-            {replacementAcceptedOnchain ? "Acceptance" : "Cancellation"} transaction hash
-            <input
-              value={recoveryTransactionHash}
-              onChange={(event) => setRecoveryTransactionHash(event.target.value)}
-              placeholder="0x..."
-              spellCheck={false}
-              autoComplete="off"
-            />
-          </label>
           {replacementClearedWithoutAcceptance &&
             negotiationAccess?.role !== replacementRecord.proposedByRole && (
               <p className="field-help">
@@ -356,22 +418,55 @@ export function ArbiterReplacementSection({
           <button
             type="button"
             className="btn btn-secondary small"
-            disabled={!canSaveRecovery || isSavingRecord}
-            onClick={() =>
-              void saveReplacementRecord({
-                type: replacementAcceptedOnchain
-                  ? "arbiter_replacement_accepted"
-                  : "arbiter_replacement_cancelled",
-                transactionHash: recoveryTransactionHash.trim(),
-              })
+            disabled={
+              !canRecoverAutomatically || isSavingRecord || isRecoveringConfirmation
             }
+            onClick={() => void recoverReplacementConfirmation()}
           >
-            {isSavingRecord
-              ? "Verifying..."
-              : replacementAcceptedOnchain
-                ? "Finish updating arbiter access"
-                : "Finish revoking nominee access"}
+            {isRecoveringConfirmation || isSavingRecord
+              ? "Finding and verifying confirmation..."
+              : "Find confirmation and finish Record update"}
           </button>
+          {!publicClient && (
+            <p className="field-help">
+              Connect to Base Sepolia before asking OpenEscrow to find the confirmation.
+            </p>
+          )}
+          <details className="technical-details">
+            <summary>Technical recovery</summary>
+            <p className="field-help">
+              If automatic recovery cannot find the confirmation, paste its Base Sepolia
+              transaction hash. OpenEscrow will verify the agreement, event, wallet, and sender
+              before changing private-record access.
+            </p>
+            <label>
+              {replacementAcceptedOnchain ? "Acceptance" : "Cancellation"} transaction hash
+              <input
+                value={recoveryTransactionHash}
+                onChange={(event) => setRecoveryTransactionHash(event.target.value)}
+                placeholder="0x..."
+                spellCheck={false}
+                autoComplete="off"
+              />
+            </label>
+            <button
+              type="button"
+              className="btn btn-ghost small"
+              disabled={!canSaveRecovery || isSavingRecord || isRecoveringConfirmation}
+              onClick={() =>
+                void saveReplacementRecord({
+                  type: replacementAcceptedOnchain
+                    ? "arbiter_replacement_accepted"
+                    : "arbiter_replacement_cancelled",
+                  transactionHash: recoveryTransactionHash.trim(),
+                })
+              }
+            >
+              {isSavingRecord
+                ? "Verifying..."
+                : "Use transaction hash to finish Record update"}
+            </button>
+          </details>
         </div>
       )}
 
