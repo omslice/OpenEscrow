@@ -10,6 +10,7 @@ const WITHDRAWAL_TRANSACTION_HASH = `0x${"5".repeat(64)}` as const;
 const NO_CLAIM_TIMEOUT_TRANSACTION_HASH = `0x${"3".repeat(64)}` as const;
 const NO_RESPONSE_TIMEOUT_TRANSACTION_HASH = `0x${"2".repeat(64)}` as const;
 const ARBITER_TIMEOUT_TRANSACTION_HASH = `0x${"1".repeat(64)}` as const;
+const ACTIVITY_TRANSACTION_HASH = `0x${"7".repeat(64)}` as const;
 const CLAIM_TRANSACTION_COUNT_KEY = "openescrow:test:claim-transaction-writes";
 const RESPONSE_TRANSACTION_COUNT_KEY =
   "openescrow:test:response-transaction-writes";
@@ -17,6 +18,8 @@ const RULING_TRANSACTION_COUNT_KEY =
   "openescrow:test:ruling-transaction-writes";
 const WITHDRAWAL_TRANSACTION_COUNT_KEY =
   "openescrow:test:withdrawal-transaction-writes";
+const ACTIVITY_TRANSACTION_COUNT_KEY =
+  "openescrow:test:activity-transaction-writes";
 
 function transactionCount(key: string) {
   return Number(window.sessionStorage.getItem(key) || "0");
@@ -37,6 +40,10 @@ function currentFlow() {
 
 export function useAccount() {
   return { address: selectedAddress() };
+}
+
+export function usePublicClient() {
+  return undefined;
 }
 
 export function useReadContract(parameters: { functionName?: string }) {
@@ -106,6 +113,9 @@ export function useWriteContract() {
           );
           setData(ARBITER_TIMEOUT_TRANSACTION_HASH);
         }
+      } else if (transaction === "activity-success") {
+        recordTransaction(ACTIVITY_TRANSACTION_COUNT_KEY);
+        setData(ACTIVITY_TRANSACTION_HASH);
       }
     },
     data,

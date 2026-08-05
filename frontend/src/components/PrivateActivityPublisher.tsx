@@ -15,7 +15,7 @@ import {
 } from "../contracts/config";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
 import {
-  clearRecoveryJsonIf,
+  clearRecoveryValueIfMatches,
   isTransactionHash,
   readRecoveryJson,
   writeRecoveryJson,
@@ -208,8 +208,12 @@ export function PrivateActivityPublisher({
   } | null>(null);
   const [pendingRecord, setPendingRecord] = useState<ActivityReceiptAction | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
+  const [isSavingRecord, setIsSavingRecord] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
+  const recordSaveInFlight = useRef<symbol | null>(null);
+  const recordRetryButton = useRef<HTMLButtonElement>(null);
   const pendingRecordKey = negotiationAccess && address
-    ? `openescrow:pending-activity-receipt:${negotiationAccess.proposalId}:${negotiationAccess.role}:${address.toLowerCase()}`
+    ? `openescrow:pending-activity-receipt:${negotiationAccess.proposalId}:${agreementId.toString()}:${negotiationAccess.role}:${address.toLowerCase()}`
     : null;
   const publisherScopeKey = JSON.stringify([
     agreementId.toString(),
@@ -243,39 +247,58 @@ export function PrivateActivityPublisher({
   useLayoutEffect(() => {
     publisherScope.open();
     publicationOperation.current = null;
+    recordSaveInFlight.current = null;
     setActivityType(1);
     setContent("");
     setProof(null);
     setPublishing(false);
+    setIsSavingRecord(false);
     setProofDownloadStatus(null);
-    setRecordError(null);
-    setPendingRecord(
+    const recoveredRecord =
       pendingRecordKey
         ? readRecoveryJson(pendingRecordKey, isActivityReceiptAction)
+        : null;
+    setPendingRecord(recoveredRecord);
+    setDetailsOpen(Boolean(recoveredRecord));
+    setRecordError(
+      recoveredRecord
+        ? "OpenEscrow recovered a confirmed testnet activity proof whose agreement receipt still needs to be saved. Retry the record save; do not publish the proof again."
         : null,
     );
     return () => publisherScope.close();
   }, [pendingRecordKey, publisherScope]);
 
+  useLayoutEffect(() => {
+    if (detailsOpen && pendingRecord && recordError && !isSavingRecord) {
+      recordRetryButton.current?.focus({ preventScroll: true });
+    }
+  }, [detailsOpen, isSavingRecord, pendingRecord, recordError]);
+
   async function saveActivityRecord(action: ActivityReceiptAction) {
+    if (recordSaveInFlight.current) return;
+    const saveToken = Symbol("activity-record-save");
+    recordSaveInFlight.current = saveToken;
     const operationId = publisherScope.start();
+    setIsSavingRecord(true);
     if (!negotiationAccess) {
       if (publisherScope.isCurrent(operationId)) {
         setPendingRecord((current) =>
           sameActivityReceipt(current, action) ? null : current,
         );
       }
+      if (recordSaveInFlight.current === saveToken) {
+        recordSaveInFlight.current = null;
+      }
+      if (publisherScope.isCurrent(operationId)) setIsSavingRecord(false);
       return;
     }
     setRecordError(null);
     try {
       await negotiationAction(negotiationAccess, action);
       if (pendingRecordKey) {
-        clearRecoveryJsonIf(
+        clearRecoveryValueIfMatches(
           pendingRecordKey,
-          (value) =>
-            isActivityReceiptAction(value) &&
-            sameActivityReceipt(value, action),
+          JSON.stringify(action),
         );
       }
       if (!publisherScope.isCurrent(operationId)) return;
@@ -289,6 +312,11 @@ export function PrivateActivityPublisher({
           ? `The onchain receipt succeeded, but its agreement record still needs to be saved: ${cause.message}`
           : "The onchain receipt succeeded, but its agreement record still needs to be saved.",
       );
+    } finally {
+      if (recordSaveInFlight.current === saveToken) {
+        recordSaveInFlight.current = null;
+      }
+      if (publisherScope.isCurrent(operationId)) setIsSavingRecord(false);
     }
   }
 
@@ -325,7 +353,11 @@ export function PrivateActivityPublisher({
   }
 
   return (
-    <details className="technical-details private-activity-publisher">
+    <details
+      className="technical-details private-activity-publisher"
+      open={detailsOpen}
+      onToggle={(event) => setDetailsOpen(event.currentTarget.open)}
+    >
       <summary>Publish a privacy-safe activity receipt</summary>
       <p className="field-help">
         The app hashes the text in this browser. Only the agreement number, activity type, your
@@ -366,7 +398,7 @@ export function PrivateActivityPublisher({
           }}
         />
       </label>
-      {contentHash && (
+      {contentHash && !proof && !pendingRecord && (
         <>
           <code className="snapshot-hash" title={contentHash}>
             keccak256: {contentHash}
@@ -436,14 +468,23 @@ export function PrivateActivityPublisher({
         </div>
       )}
       {pendingRecord && (
-        <div className="receipt-recovery">
+        <div className="receipt-recovery" aria-busy={isSavingRecord}>
+          {isSavingRecord && (
+            <p className="hint" role="status" aria-live="polite">
+              Saving the activity receipt to this agreement...
+            </p>
+          )}
           {recordError && <p className="tx-error" role="alert">{recordError}</p>}
           <button
+            ref={recordRetryButton}
             className="btn btn-ghost small"
             type="button"
+            disabled={isSavingRecord}
             onClick={() => void saveActivityRecord(pendingRecord)}
           >
-            Retry saving activity receipt
+            {isSavingRecord
+              ? "Saving activity receipt..."
+              : "Retry saving activity receipt"}
           </button>
         </div>
       )}

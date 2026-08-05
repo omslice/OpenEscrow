@@ -2,6 +2,7 @@
 import { createRoot } from "react-dom/client";
 import { ClaimSection } from "../components/ClaimSection";
 import { DisputeResolutionSection } from "../components/DisputeResolutionSection";
+import { PrivateActivityPublisher } from "../components/PrivateActivityPublisher";
 import { ResponseSection } from "../components/ResponseSection";
 import { TimeoutSection } from "../components/TimeoutSection";
 import { WithdrawSection } from "../components/WithdrawSection";
@@ -21,6 +22,7 @@ const ARBITER = "0x4444444444444444444444444444444444444444" as const;
 const search = new URLSearchParams(window.location.search);
 const role = search.get("role");
 const flow = search.get("flow");
+const agreementId = BigInt(search.get("agreement") || "43");
 const claimTransactionWrites = Number(
   window.sessionStorage.getItem("openescrow:test:claim-transaction-writes") ||
     "0",
@@ -127,31 +129,37 @@ createRoot(document.getElementById("root")!).render(
     <section className="card">
       {flow === "withdrawal-receipt" ? (
         <WithdrawSection
-          id={43n}
+          id={agreementId}
           agreement={agreement}
           negotiationAccess={access}
         />
       ) : flow?.endsWith("timeout-receipt") ? (
         <TimeoutSection
-          id={43n}
+          id={agreementId}
           agreement={agreement}
           negotiationAccess={access}
         />
+      ) : flow === "activity-receipt" ? (
+        <PrivateActivityPublisher
+          agreementId={agreementId}
+          negotiationAccess={access}
+          onPublished={() => undefined}
+        />
       ) : role === "tenant" ? (
         <ResponseSection
-          id={43n}
+          id={agreementId}
           agreement={agreement}
           negotiationAccess={access}
         />
       ) : role === "arbiter" ? (
         <DisputeResolutionSection
-          id={43n}
+          id={agreementId}
           agreement={agreement}
           negotiationAccess={access}
         />
       ) : (
         <ClaimSection
-          id={43n}
+          id={agreementId}
           agreement={agreement}
           negotiationAccess={access}
         />

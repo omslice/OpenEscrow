@@ -178,6 +178,41 @@ async function routeDecisionReceiptRecovery(
   return () => attempts;
 }
 
+async function routeActivityReceiptRecovery(page) {
+  let attempts = 0;
+  await page.route(
+    /\/api\/negotiations\/OE-P-RECOVERY\/actions$/,
+    async (route) => {
+      attempts += 1;
+      const body = JSON.parse(route.request().postData() || "{}");
+      assert.equal(
+        body.token,
+        "synthetic-private-record-recovery-token",
+        "Activity receipt retries must use current agreement access without persisting it.",
+      );
+      assert.equal(body.type, "activity_hash_published");
+      assert.equal(body.activityType, 1);
+      assert.match(body.contentHash, /^0x[a-f0-9]{64}$/i);
+      assert.equal(body.transactionHash, `0x${"7".repeat(64)}`);
+      await new Promise((resolve) => setTimeout(resolve, 80));
+      if (attempts === 1) {
+        await route.fulfill({
+          status: 503,
+          contentType: "application/json",
+          body: JSON.stringify({ error: "Simulated activity receipt outage" }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(negotiationRecord),
+      });
+    },
+  );
+  return () => attempts;
+}
+
 async function pendingDecisionRecoveryEntries(page) {
   return page.evaluate(() => {
     const entries = [];
@@ -198,6 +233,24 @@ async function pendingTerminalRecoveryEntries(page) {
       const key = window.sessionStorage.key(index);
       if (key?.startsWith("openescrow:pending-terminal-receipt:")) {
         entries.push([key, window.sessionStorage.getItem(key)]);
+      }
+    }
+    return entries;
+  });
+}
+
+async function pendingActivityRecoveryEntries(page) {
+  return page.evaluate(() => {
+    const entries = [];
+    for (const [kind, storage] of [
+      ["local", window.localStorage],
+      ["session", window.sessionStorage],
+    ]) {
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index);
+        if (key?.startsWith("openescrow:pending-activity-receipt:")) {
+          entries.push([kind, key, storage.getItem(key)]);
+        }
       }
     }
     return entries;
@@ -994,8 +1047,128 @@ try {
     });
   }
 
+  const activityReceiptPage = await browser.newPage({
+    viewport: { width: 390, height: 844 },
+  });
+  const activityReceiptAttempts = await routeActivityReceiptRecovery(
+    activityReceiptPage,
+  );
+  const activityReceiptUrl = `${baseUrl}/testing/private-record-recovery.html?role=landlord&flow=activity-receipt&tx=activity-success`;
+  await activityReceiptPage.goto(activityReceiptUrl, {
+    waitUntil: "networkidle",
+  });
+  await activityReceiptPage
+    .getByText("Publish a privacy-safe activity receipt", { exact: true })
+    .click();
+  await activityReceiptPage
+    .getByLabel("Private content to hash")
+    .fill("Synthetic move-out notice prepared for the rendered recovery check.");
+  await activityReceiptPage
+    .getByRole("button", { name: "Publish proof hash onchain" })
+    .click();
+
+  const activityRetry = activityReceiptPage.getByRole("button", {
+    name: "Retry saving activity receipt",
+  });
+  await activityRetry.waitFor({ state: "visible" });
+  assert.equal(
+    await activityReceiptPage
+      .getByRole("button", { name: "Publish proof hash onchain" })
+      .count(),
+    0,
+    "A confirmed activity proof with a pending private receipt must hide the control that could publish it again.",
+  );
+  assert.equal(
+    await activityRetry.evaluate((element) => element === document.activeElement),
+    true,
+    "A failed activity receipt save should focus its record-only retry.",
+  );
+  const activityRetryBox = await activityRetry.boundingBox();
+  assert.equal(
+    Boolean(activityRetryBox && activityRetryBox.height >= 44),
+    true,
+    "The activity receipt retry must remain a 44px mobile touch target.",
+  );
+  const activityEntries = await pendingActivityRecoveryEntries(
+    activityReceiptPage,
+  );
+  assert.equal(activityEntries.length, 1);
+  assert.doesNotMatch(
+    JSON.stringify(activityEntries),
+    /synthetic-private-record-recovery-token/,
+    "The durable activity receipt retry must not store its bearer token.",
+  );
+  assert.equal(
+    await activityReceiptPage.evaluate(() =>
+      window.sessionStorage.getItem(
+        "openescrow:test:activity-transaction-writes",
+      ),
+    ),
+    "1",
+  );
+
+  await activityReceiptPage.goto(`${activityReceiptUrl}&agreement=44`, {
+    waitUntil: "networkidle",
+  });
+  assert.equal(
+    await activityReceiptPage
+      .getByRole("button", { name: "Retry saving activity receipt" })
+      .count(),
+    0,
+    "A different agreement must not inherit another agreement's pending activity receipt.",
+  );
+
+  await activityReceiptPage.goto(activityReceiptUrl, { waitUntil: "networkidle" });
+  await activityReceiptPage.reload({ waitUntil: "networkidle" });
+  const recoveredActivityRetry = activityReceiptPage.getByRole("button", {
+    name: "Retry saving activity receipt",
+  });
+  await recoveredActivityRetry.waitFor({ state: "visible" });
+  await activityReceiptPage
+    .getByText(/recovered a confirmed testnet activity proof/i)
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await recoveredActivityRetry.evaluate(
+      (element) => element === document.activeElement,
+    ),
+    true,
+    "Reload recovery should open the private-activity section and focus its record-only retry.",
+  );
+  await recoveredActivityRetry.press("Enter");
+  await activityReceiptPage
+    .getByRole("button", {
+      name: /(?:Saving|Retry saving) activity receipt/,
+    })
+    .waitFor({ state: "detached" });
+  assert.equal(activityReceiptAttempts(), 2);
+  const remainingActivityEntries = await pendingActivityRecoveryEntries(
+    activityReceiptPage,
+  );
+  assert.equal(
+    remainingActivityEntries.length,
+    0,
+    `The saved activity receipt should clear its exact recovery payload: ${JSON.stringify(remainingActivityEntries)}`,
+  );
+  assert.equal(
+    await activityReceiptPage.evaluate(() =>
+      window.sessionStorage.getItem(
+        "openescrow:test:activity-transaction-writes",
+      ),
+    ),
+    "1",
+    "Retrying the activity receipt must never publish another onchain proof.",
+  );
+  assert.equal(
+    await activityReceiptPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "Durable activity receipt recovery should not overflow a mobile viewport.",
+  );
+  await activityReceiptPage.close();
+
   process.stdout.write(
-    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, and confirmed claims, tenant responses, arbiter rulings, withdrawals, and every deadline outcome survive private-record outages and reloads without another transaction or stored bearer token; terminal retries remain wallet-scoped, time-sensitive responses remain available, retries restore focus, and delivered email is not repeated by a record-only retry.\n",
+    "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, and confirmed claims, tenant responses, arbiter rulings, withdrawals, activity proofs, and every deadline outcome survive private-record outages and reloads without another transaction or stored bearer token; terminal retries remain wallet-scoped, time-sensitive responses remain available, retries restore focus, and delivered email is not repeated by a record-only retry.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

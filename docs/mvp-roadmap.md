@@ -131,6 +131,10 @@ production custody, or reliance on the compliance research as legal advice.
   A reverted or unknown receipt cannot mark a tenant share funded, claim test tokens, save a
   record proof, publish a private-activity receipt, or create a success-recovery record. The
   participant receives a plain-language failure instead, while production money remains disabled.
+- **Verified:** Once a privacy-safe activity proof is confirmed, its publish control stays hidden
+  while the private agreement receipt is saved. A failed save recovers only in the exact agreement,
+  reopens and focuses the one safe retry after reload, stores no agreement-access bearer, and
+  cannot issue a second onchain publication.
 - **Verified:** A durable active sandbox attempt now reports whether it matches the currently
   requested wallet, asset, and amount, and the browser independently confirms that binding. A
   mismatch stays locked, is not copied into the new intent's local recovery key, and offers a

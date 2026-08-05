@@ -52,6 +52,15 @@ export default defineConfig(({ mode }) => {
         ...(privateRecordRecoveryTest
           ? [
               {
+                find: '@privy-io/react-auth',
+                replacement: fileURLToPath(
+                  new URL(
+                    './src/testing/privyPilotLifecycleMock.ts',
+                    import.meta.url,
+                  ),
+                ),
+              },
+              {
                 find: /^wagmi$/,
                 replacement: fileURLToPath(
                   new URL(

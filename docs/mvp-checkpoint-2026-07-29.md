@@ -16,7 +16,7 @@ detailed validation ledger.
   rehearsal summaries, binds their JUnit reports by SHA-256, and records a deterministic digest of
   every packaged Sites file. The live-deploy wrapper runs readiness only after a successful
   publish and passes the new deployment URL positionally to the readiness checker.
-- **Verified:** Twenty-one credential-free rehearsals pass: lifecycle scenarios cover
+- **Verified:** Twenty-two credential-free rehearsals pass: lifecycle scenarios cover
   archive/restore, record proof, disputed claim, accepted claim, and no-claim refund, while a
   rendered Record scenario proves encrypted JSON export, separate-key download, wrong-key
   rejection, keyboard disclosure, narrow-screen layout, and local verification during a public-
@@ -36,7 +36,10 @@ detailed validation ledger.
   A rendered provider-neutral funding rehearsal now also proves sandbox failures can retry,
   unknown results require explicit no-money closure, and an unverified production browser success
   remains locked across wallet refresh and page reload without opening another checkout or
-  exposing a sandbox reset. Production funding remains disabled outside this deterministic test.
+  exposing a sandbox reset. The private-record rehearsal also interrupts a confirmed privacy-safe
+  activity receipt, proves another agreement cannot inherit it, restores keyboard focus to its
+  mobile-size retry after reload, and completes the record without another onchain publication.
+  Production funding remains disabled outside these deterministic tests.
 - **Verified:** A separate 15-scenario incident-response rehearsal passes for identity forgery,
   cross-account isolation, cross-site read isolation, account-session containment, lost-tenant
   invitation recovery, privacy inventory, evidence tamper, retained-key loss/restoration,

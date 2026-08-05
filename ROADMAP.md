@@ -224,7 +224,9 @@ the repository; they are not claims of legal approval or production readiness.
   a newer pending transaction or its feedback
 - [x] Privacy-safe activity publication is exact-payload bound: shared transaction controls retain
   the callback captured at submission, proof inputs lock while the receipt is pending, scope
-  changes reject late completions, and D1 recovery clears only matching structured receipt data
+  changes reject late completions, and D1 recovery clears only matching structured receipt data;
+  a failed private-record save hides the publish control, survives reload only for the exact
+  agreement, opens and focuses its mobile-size record-only retry, and cannot publish twice
 - [x] Standard transaction controls recover from wallet-write, synchronous submission, and mined
   receipt failures: busy state unlocks, stale success callbacks are discarded, and approval and
   finalization failures remain visible for a safe retry

@@ -183,6 +183,17 @@ const expectedScenarios = [
     ],
   },
   {
+    id: "private-activity-receipt-recovery",
+    name: "pilot rehearsal: private activity receipt recovery cannot republish a confirmed proof",
+    covers: [
+      "exact-agreement recovery",
+      "duplicate publication prevention",
+      "bearer exclusion",
+      "reload focus recovery",
+      "mobile touch target",
+    ],
+  },
+  {
     id: "rendered-production-funding-lock",
     name: "pilot rehearsal: unverified production funding results stay locked",
     covers: [
@@ -223,6 +234,12 @@ runServerRehearsal({
       target: "scripts/check-pilot-lifecycle.mjs",
       command: process.execPath,
       args: ["scripts/check-pilot-lifecycle.mjs"],
+    },
+    {
+      name: "pilot rehearsal: private activity receipt recovery cannot republish a confirmed proof",
+      target: "scripts/check-private-record-recovery.mjs",
+      command: process.execPath,
+      args: ["scripts/check-private-record-recovery.mjs"],
     },
     {
       name: "pilot rehearsal: unverified production funding results stay locked",
