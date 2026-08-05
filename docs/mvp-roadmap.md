@@ -49,6 +49,14 @@ production custody, or reliance on the compliance research as legal advice.
   email content is derived from the saved agreement events: the latest claim controls every
   tenant message, while a response notice must match the exact tenant and saved transaction. The
   server constructs the landlord dashboard link rather than accepting client-supplied copy.
+- **Verified:** The core escrow, operations reserve, and activity registry now share a documented
+  secondary-contract security review. Atomic funding records effects before its external calls,
+  every public lifecycle mutation uses one cross-function reentrancy guard, and an adversarial
+  token callback cannot insert an arbiter replacement during funding. The reserve requires a
+  reciprocal immutable escrow binding and accepts payment only in the exact funding phase; an
+  unaccepted, declined, or resigned arbiter cannot publish registry hashes. The complete Foundry
+  suite and Slither rerun cover the hardened source. These protections remain undeployed until a
+  newly reviewed escrow/reserve pair and registry are explicitly approved and broadcast.
 - **Verified:** The release dependency audit blocks every high/critical finding and every unknown
   moderate advisory. The former transitive `uuid` advisory is removed from the locked
   wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector
@@ -250,6 +258,9 @@ production custody, or reliance on the compliance research as legal advice.
 - **Planned:** Review and explicitly approve each newer saved candidate before deployment. The live
   site currently matches the last approved exact source; every future deployment must rerun the
   public readiness and release-provenance checks.
+- **Planned:** Review and broadcast a new mutually bound Base Sepolia escrow/reserve pair, then a
+  registry bound to that exact escrow, before switching the candidate configuration. Existing
+  testnet agreements remain readable on their immutable retired deployment; no state is migrated.
 - **Planned:** Complete the hosted pilot gates listed in
   [owner actions](./owner-actions.md): notification delivery and scheduler, evidence encryption
   and retained-key recovery, version-matched activity registry, address attestation, and a clean,

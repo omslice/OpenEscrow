@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$BroadcastPath = "broadcast/DeployAgreementActivityRegistry.s.sol/84532/run-latest.json",
-    [string]$OutputPath = "deployments/base-sepolia-activity-registry.json"
+    [string]$OutputPath = "deployments/base-sepolia-activity-registry.json",
+    [string]$EscrowManifestPath = "deployments/base-sepolia-latest.json"
 )
 
 $ErrorActionPreference = "Stop"
@@ -9,7 +10,24 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $broadcastFile = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $BroadcastPath))
 $outputFile = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $OutputPath))
-$expectedEscrow = "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99"
+$escrowManifestCandidate = if ([System.IO.Path]::IsPathRooted($EscrowManifestPath)) {
+    $EscrowManifestPath
+} else {
+    Join-Path $repoRoot $EscrowManifestPath
+}
+$escrowManifestFile = [System.IO.Path]::GetFullPath($escrowManifestCandidate)
+
+if (-not (Test-Path -LiteralPath $escrowManifestFile -PathType Leaf)) {
+    throw "Escrow deployment manifest not found: $escrowManifestFile"
+}
+$escrowManifest = Get-Content -LiteralPath $escrowManifestFile -Raw | ConvertFrom-Json
+if ([int64]$escrowManifest.chainId -ne 84532) {
+    throw "Refusing to use escrow manifest for chain $($escrowManifest.chainId); expected Base Sepolia (84532)."
+}
+$expectedEscrow = [string]$escrowManifest.openEscrow.address
+if ($expectedEscrow -notmatch '^0x[0-9a-fA-F]{40}$') {
+    throw "The escrow deployment manifest does not contain a valid OpenEscrow address."
+}
 
 if (-not (Test-Path -LiteralPath $broadcastFile -PathType Leaf)) {
     throw "Broadcast file not found: $broadcastFile"
@@ -40,7 +58,7 @@ if (
     $registryTransaction.arguments.Count -ne 1 -or
     [string]$registryTransaction.arguments[0] -ine $expectedEscrow
 ) {
-    throw "The registry was not constructed with the active OpenEscrow address."
+    throw "The registry was not constructed with the OpenEscrow address in the approved deployment manifest."
 }
 
 $blockNumber = [Convert]::ToInt64(
@@ -56,6 +74,7 @@ $manifest = [ordered]@{
     network = "base-sepolia"
     chainId = 84532
     sourceCommit = $commit
+    escrowSourceCommit = [string]$escrowManifest.sourceCommit
     exportedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
     agreementActivityRegistry = [ordered]@{
         address = [string]$registryTransaction.contractAddress

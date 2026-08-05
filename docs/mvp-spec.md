@@ -25,7 +25,7 @@ This spec supersedes the flow described in `protocol-flow.md` and `technical-ove
 **Operations-reserve addendum (2026-07-25):** decision 8 still governs the core `OpenEscrow`
 contract: no fee is taken from deposit principal and the deposit invariant is unchanged. New
 email-negotiated proposals separately disclose a fixed 5 testUSDC pilot service reserve, paid to an
-independent `OperationsReserve` contract before deposit funding. It covers the product's sponsored
+independent `OperationsReserve` contract atomically with deposit funding. It covers the product's sponsored
 transactions and document-storage budget, has a separate onchain receipt, and is never deductible
 or refundable as part of the security deposit.
 
@@ -127,7 +127,7 @@ Arbiter-replacement (§8) and arbiter-resignation are **not** phase transitions 
 | T3 | `Proposed` | `declineArbiterRole` | `Proposed` (unchanged; landlord must renominate or cancel) | nominated arbiter | records `arbiterDeclined=true`; this nominee cannot later accept unless renominated |
 | T4 | `Proposed` / `ReadyToFund` | `renominateArbiter(newArbiter)` | `Proposed` | landlord | pre-funding only; resets `arbiterAccepted=false` and `arbiterDeclined=false` |
 | T5 | `Proposed` / `ReadyToFund` | `cancelProposal` | `Cancelled` | landlord | pre-funding only |
-| T6 | `ReadyToFund` | `fundTenantShare` (`tenantAcceptAndFund` is the single-tenant-compatible alias) | `ReadyToFund` or `Active` | any recorded tenant | pulls exactly that tenant's approved portion; remains `ReadyToFund` until all portions total the agreed deposit |
+| T6 | `ReadyToFund` | `fundTenantShareWithReserve` (`fundTenantShare` and `tenantAcceptAndFund` remain test-compatible deposit-only aliases) | `ReadyToFund` or `Active` | any recorded tenant | atomically pulls that tenant's approved deposit portion plus disclosed reserve share; remains `ReadyToFund` until all deposit portions total the agreed deposit |
 | T7 | `Active` | `submitClaim(C, evidenceURI)` | `ClaimOpen` | landlord | `now < claimSubmissionDeadline`; `0 < C <= D` |
 | T8 | `Active` | `withdrawNoClaim` | `Closed(NoClaim)` | tenant | `now >= claimSubmissionDeadline`; no claim ever submitted |
 | T9 | `ClaimOpen` | `amendClaim(newC, newEvidence)` | `ClaimOpen` (or `Closed(ClaimRetracted)` if `newC == 0`) | landlord | tenant has not yet responded; `!claimAmended` (at most one amendment, ever); `now < responseDeadline`; `newC <= currentC` (never increases, see §5); `responseDeadline` is **not** touched |
@@ -283,7 +283,7 @@ Rationale: this is a testnet/demo contract with no upgrade path and no real fund
 ### Threat model
 | Threat | Mitigation | Residual risk |
 |---|---|---|
-| Reentrancy on `withdraw` | Pull-payment pattern; only `withdraw` and `tenantAcceptAndFund` touch the token; checks-effects-interactions; `nonReentrant` guard | Low |
+| Reentrancy during funding, reserve transfer, or `withdraw` | Pull-payment withdrawals; all public lifecycle mutations share one `nonReentrant` guard; the shared funding path records effects before token and reserve calls; balance-delta checks cover incoming deposit/reserve transfers | Low |
 | Malicious/inflated landlord claim | Dispute + arbiter mechanism; amend-only-downward; burden of proof stays with landlord on tenant silence | Depends entirely on arbiter honesty (see below) |
 | Unresponsive tenant | `finalizeNoResponse` defaults to full dispute, not auto-accept | None — this is the corrected design |
 | Unresponsive/malicious arbiter | Timeout defaults disputed funds to tenant; mutual-consent replacement path | A colluding arbiter can still rule wrongly *within* their ruling period — there is no appeal in this MVP. This is the single biggest trust dependency in the system and is inherent to the "mutually accepted arbiter, no decentralized arbitration" scope decision, not a bug to fix here. |
@@ -338,7 +338,7 @@ Legend: U = unit, F = fuzz, I = invariant.
 | §8 arbiter timeout | U + F | Fuzz time past `arbiterRulingDeadline`; confirm full `locked` goes to tenant; confirm `resolveDispute` reverts after timeout is claimable |
 | §8 resignation blocks ruling | U | `resolveDispute` reverts `ArbiterHasResigned` after `resignAsArbiter`, until replaced |
 | §10 no admin | U | No function reverts with an authorization error for a "deployer"/"owner" concept because no such role exists; the contract has no constructor argument, storage slot, or function gated to any address other than a specific agreement's landlord/tenant/arbiter |
-| Reentrancy | U | Malicious ERC20 mock (reentering on `transfer`/`transferFrom`) attempts reentry on `withdraw` and on `tenantAcceptAndFund`; must revert |
+| Reentrancy | U | Malicious ERC20 mock (reentering on `transfer`/`transferFrom`) attempts same-function reentry on funding/withdrawal and cross-function lifecycle mutation during funding; every attempt must revert atomically |
 | Token edge cases | U | `depositAmount` = 1 (dust); very large `depositAmount` near `type(uint256).max` guarded by realistic USDC supply assumptions |
 | Gas sanity | U (gas-report) | Not a correctness test, but track gas per action to catch accidental storage-layout regressions |
 
@@ -354,7 +354,8 @@ Legend: U = unit, F = fuzz, I = invariant.
    flow remains implemented, but new tenant/landlord-only pilot proposals omit an arbiter.
 4. **Each tenant: review and fund.** Every tenant approves only their exact onchain deposit portion,
    pays an equal share of the separately disclosed operations reserve, and calls
-   `fundTenantShare`. The dashboard shows partial progress until the agreed total is received.
+   `fundTenantShareWithReserve` once so both transfers succeed or revert together. The dashboard
+   shows partial progress until the agreed deposit total is received.
 5. **Agreement dashboard** (all parties). Current phase, countdown to the next relevant deadline, deposit amount, claimed amount if any, evidence link, withdrawable balance for the connected address with a withdraw button.
 6. **Landlord: submit/amend claim.** Amount + a content hash and a privacy-safe pointer/URI (evidence content itself is uploaded off-chain, e.g. to IPFS via a pinning service, with a clear warning that public IPFS is not private). Once amended, the amendment control disappears — only one is ever allowed, and the response deadline shown to the landlord does not move when they use it.
 7. **Tenant: respond to claim.** Accept in full, accept a partial amount with the rest disputed, or dispute in full — one slider/input driving `respondToClaim(A)`.

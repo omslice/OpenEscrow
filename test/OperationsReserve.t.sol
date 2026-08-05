@@ -6,6 +6,7 @@ import {OpenEscrow} from "../contracts/OpenEscrow.sol";
 import {OperationsReserve} from "../contracts/OperationsReserve.sol";
 import {MockYieldUSDC} from "../contracts/MockYieldUSDC.sol";
 import {MockUSDC} from "./mocks/MockUSDC.sol";
+import {ReentrantToken} from "./mocks/ReentrantToken.sol";
 
 contract OperationsReserveTest is Test {
     MockUSDC internal usdc;
@@ -63,6 +64,34 @@ contract OperationsReserveTest is Test {
             7 days,
             7 days
         );
+    }
+
+    function _createReentrantReserveAgreement()
+        internal
+        returns (
+            ReentrantToken reentrantToken,
+            OperationsReserve reentrantReserve,
+            OpenEscrow reentrantEscrow,
+            uint256 id
+        )
+    {
+        reentrantToken = new ReentrantToken();
+        reentrantReserve = new OperationsReserve(address(reentrantToken), address(yieldToken));
+        reentrantEscrow = new OpenEscrow(address(reentrantToken), address(yieldToken), address(reentrantReserve));
+        reentrantReserve.configureEscrow(address(reentrantEscrow));
+        id = reentrantEscrow.createAgreementWithToken(
+            tenant,
+            address(0),
+            address(reentrantToken),
+            1_000e6,
+            uint64(block.timestamp + 30 days),
+            7 days,
+            7 days,
+            7 days
+        );
+        reentrantToken.mint(tenant, 20e6);
+        vm.prank(tenant);
+        reentrantToken.approve(address(reentrantReserve), type(uint256).max);
     }
 
     function test_plainAgreementReserveUsesPlainToken() public {
@@ -157,6 +186,14 @@ contract OperationsReserveTest is Test {
         new OpenEscrow(address(usdc), address(yieldToken), address(mismatched));
     }
 
+    function test_configurationRejectsEscrowThatDoesNotLinkBack() public {
+        OperationsReserve unlinked = new OperationsReserve(address(usdc), address(yieldToken));
+        OpenEscrow linkedElsewhere = new OpenEscrow(address(usdc), address(yieldToken), address(reserve));
+
+        vm.expectRevert(OperationsReserve.EscrowConfigurationMismatch.selector);
+        unlinked.configureEscrow(address(linkedElsewhere));
+    }
+
     function test_escrowConfigurationIsTreasuryOnlyAndOneTime() public {
         vm.expectRevert(OperationsReserve.AlreadyConfigured.selector);
         reserve.configureEscrow(address(escrow));
@@ -165,6 +202,42 @@ contract OperationsReserveTest is Test {
         vm.prank(tenant);
         vm.expectRevert(OperationsReserve.NotTreasury.selector);
         unconfigured.configureEscrow(address(escrow));
+    }
+
+    function test_reserveCannotBePaidBeforeArbiterAccepts() public {
+        uint256 id = escrow.createAgreementWithToken(
+            tenant,
+            makeAddr("pendingArbiter"),
+            address(usdc),
+            1_000e6,
+            uint64(block.timestamp + 30 days),
+            7 days,
+            7 days,
+            7 days
+        );
+
+        vm.prank(tenant);
+        vm.expectRevert(OperationsReserve.InvalidAgreementPhase.selector);
+        reserve.payReserve(address(escrow), id);
+    }
+
+    function test_reserveCannotBePaidAfterProposalCancellation() public {
+        uint256 id = _createSingleTenantAgreement(address(usdc));
+        escrow.cancelProposal(id);
+
+        vm.prank(tenant);
+        vm.expectRevert(OperationsReserve.InvalidAgreementPhase.selector);
+        reserve.payReserve(address(escrow), id);
+    }
+
+    function test_atomicReserveRecordRejectsCancelledAgreementEvenWithBalance() public {
+        uint256 id = _createSingleTenantAgreement(address(usdc));
+        escrow.cancelProposal(id);
+        usdc.mint(address(reserve), 5e6);
+
+        vm.prank(address(escrow));
+        vm.expectRevert(OperationsReserve.InvalidAgreementPhase.selector);
+        reserve.recordReservePayment(id, tenant, 5e6);
     }
 
     function test_atomicFundingUsesOneEscrowAllowanceAndOneFundingCall() public {
@@ -242,5 +315,38 @@ contract OperationsReserveTest is Test {
         reserve.withdrawReserveToken(address(yieldToken), recipient, 5e6);
         assertEq(usdc.balanceOf(recipient), 5e6);
         assertEq(yieldToken.balanceOf(recipient), 5e6);
+    }
+
+    function test_reentrantReservePaymentRevertsWithoutRecordingFunds() public {
+        (ReentrantToken reentrantToken, OperationsReserve reentrantReserve,, uint256 id) =
+            _createReentrantReserveAgreement();
+        address escrowAddress = address(reentrantReserve.ESCROW());
+        reentrantToken.arm(address(reentrantReserve), abi.encodeCall(reentrantReserve.payReserve, (escrowAddress, id)));
+
+        vm.prank(tenant);
+        vm.expectRevert();
+        reentrantReserve.payReserve(escrowAddress, id);
+
+        assertFalse(reentrantReserve.paid(escrowAddress, id, tenant));
+        assertEq(reentrantReserve.availableBalance(address(reentrantToken)), 0);
+        assertEq(reentrantToken.balanceOf(address(reentrantReserve)), 0);
+    }
+
+    function test_reentrantReserveWithdrawalRevertsWithoutReducingAccounting() public {
+        (ReentrantToken reentrantToken, OperationsReserve reentrantReserve,, uint256 id) =
+            _createReentrantReserveAgreement();
+        address escrowAddress = address(reentrantReserve.ESCROW());
+        vm.prank(tenant);
+        reentrantReserve.payReserve(escrowAddress, id);
+        reentrantToken.arm(
+            address(reentrantReserve), abi.encodeCall(reentrantReserve.withdrawReserve, (recipient, 5e6))
+        );
+
+        vm.expectRevert();
+        reentrantReserve.withdrawReserve(recipient, 5e6);
+
+        assertEq(reentrantReserve.availableBalance(address(reentrantToken)), 5e6);
+        assertEq(reentrantToken.balanceOf(address(reentrantReserve)), 5e6);
+        assertEq(reentrantToken.balanceOf(recipient), 0);
     }
 }

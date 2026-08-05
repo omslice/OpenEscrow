@@ -36,8 +36,19 @@ if ($escrowTransactions.Count -ne 1 -or $reserveTransactions.Count -ne 1) {
 
 $escrowTransaction = $escrowTransactions[0]
 $reserveTransaction = $reserveTransactions[0]
+$configureTransactions = @($broadcast.transactions | Where-Object {
+    $_.transactionType -eq "CALL" -and
+    $_.contractName -eq "OperationsReserve" -and
+    $_.function -eq "configureEscrow(address)" -and
+    $_.contractAddress -and
+    $_.arguments.Count -eq 1
+})
+if ($configureTransactions.Count -ne 1) {
+    throw "Expected exactly one OperationsReserve.configureEscrow call."
+}
+$configureTransaction = $configureTransactions[0]
 
-foreach ($transaction in @($escrowTransaction, $reserveTransaction)) {
+foreach ($transaction in @($escrowTransaction, $reserveTransaction, $configureTransaction)) {
     $receipt = @($broadcast.receipts | Where-Object {
         $_.transactionHash -eq $transaction.hash
     })
@@ -51,6 +62,12 @@ $yieldToken = [string]$escrowTransaction.arguments[1]
 $configuredReserve = [string]$escrowTransaction.arguments[2]
 if ($configuredReserve -ine [string]$reserveTransaction.contractAddress) {
     throw "OpenEscrow was not deployed with the matching OperationsReserve address."
+}
+if (
+    [string]$configureTransaction.contractAddress -ine [string]$reserveTransaction.contractAddress -or
+    [string]$configureTransaction.arguments[0] -ine [string]$escrowTransaction.contractAddress
+) {
+    throw "OperationsReserve.configureEscrow did not link the matching deployed pair."
 }
 if (
     [string]$reserveTransaction.arguments[0] -ine $plainToken -or

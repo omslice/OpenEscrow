@@ -67,7 +67,9 @@ contract AgreementActivityRegistry {
     function _requireAgreementParty(uint256 agreementId) internal view {
         OpenEscrow.Agreement memory agreement = ESCROW.getAgreement(agreementId);
         bool isTenant = ESCROW.tenantShareBps(agreementId, msg.sender) != 0;
-        if (msg.sender != agreement.landlord && !isTenant && msg.sender != agreement.arbiter) {
+        bool isCurrentAcceptedArbiter = msg.sender == agreement.arbiter && agreement.arbiterAccepted
+            && !agreement.arbiterDeclined && !agreement.arbiterResigned;
+        if (msg.sender != agreement.landlord && !isTenant && !isCurrentAcceptedArbiter) {
             revert NotAgreementParty();
         }
     }

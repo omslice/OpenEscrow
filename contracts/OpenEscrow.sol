@@ -239,7 +239,7 @@ contract OpenEscrow is ReentrancyGuard {
         uint64 claimPeriod,
         uint64 responsePeriod,
         uint64 arbiterRulingPeriod
-    ) external returns (uint256 id) {
+    ) external nonReentrant returns (uint256 id) {
         return _createAgreement(
             tenant,
             arbiter,
@@ -264,7 +264,7 @@ contract OpenEscrow is ReentrancyGuard {
         uint64 claimPeriod,
         uint64 responsePeriod,
         uint64 arbiterRulingPeriod
-    ) external returns (uint256 id) {
+    ) external nonReentrant returns (uint256 id) {
         return _createAgreement(
             tenant, arbiter, token, depositAmount, claimWindowStart, claimPeriod, responsePeriod, arbiterRulingPeriod
         );
@@ -284,7 +284,7 @@ contract OpenEscrow is ReentrancyGuard {
         uint64 claimPeriod,
         uint64 responsePeriod,
         uint64 arbiterRulingPeriod
-    ) external returns (uint256 id) {
+    ) external nonReentrant returns (uint256 id) {
         return _createMultiTenantAgreement(
             tenants,
             sharesBps,
@@ -382,7 +382,7 @@ contract OpenEscrow is ReentrancyGuard {
 
     /// @notice Accepts an arbiter nomination (initial) or finalizes an already-confirmed
     ///         mutual replacement (post-funding). Same entry point for both, per spec T2/T16.
-    function acceptArbiterRole(uint256 id) external {
+    function acceptArbiterRole(uint256 id) external nonReentrant {
         Agreement storage a = _agreement(id);
 
         if (a.phase == Phase.Proposed && msg.sender == a.arbiter && !a.arbiterAccepted && !a.arbiterDeclined) {
@@ -408,7 +408,7 @@ contract OpenEscrow is ReentrancyGuard {
         revert NotAuthorized();
     }
 
-    function declineArbiterRole(uint256 id) external {
+    function declineArbiterRole(uint256 id) external nonReentrant {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.Proposed) revert InvalidPhase();
         if (msg.sender != a.arbiter) revert NotAuthorized();
@@ -417,7 +417,7 @@ contract OpenEscrow is ReentrancyGuard {
         emit ArbiterDeclined(id, msg.sender);
     }
 
-    function renominateArbiter(uint256 id, address newArbiter) external {
+    function renominateArbiter(uint256 id, address newArbiter) external nonReentrant {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.Proposed && a.phase != Phase.ReadyToFund) revert InvalidPhase();
         if (msg.sender != a.landlord) revert NotAuthorized();
@@ -438,7 +438,7 @@ contract OpenEscrow is ReentrancyGuard {
         emit ArbiterRenominated(id, old, newArbiter);
     }
 
-    function cancelProposal(uint256 id) external {
+    function cancelProposal(uint256 id) external nonReentrant {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.Proposed && a.phase != Phase.ReadyToFund) revert InvalidPhase();
         if (msg.sender != a.landlord) revert NotAuthorized();
@@ -491,6 +491,19 @@ contract OpenEscrow is ReentrancyGuard {
         if (target == 0) revert NotAuthorized();
         if (tenantContribution[id][msg.sender] != 0) revert TenantAlreadyFunded();
 
+        // Record the full agreement effect before the first external token or reserve
+        // interaction. Any downstream failure reverts these writes atomically, while the
+        // shared nonReentrant guard prevents a configured token or reserve from using the
+        // temporary state to enter another mutating lifecycle function.
+        tenantContribution[id][msg.sender] = target;
+        a.depositAmount += target;
+        a.locked += target;
+        bool activatesAgreement = a.depositAmount == a.agreedAmount;
+        if (activatesAgreement) {
+            a.fundedAt = uint64(block.timestamp);
+            a.phase = Phase.Active;
+        }
+
         IERC20 token = IERC20(a.token);
         uint256 balBefore = token.balanceOf(address(this));
         token.safeTransferFrom(msg.sender, address(this), target + reserveAmount);
@@ -503,17 +516,12 @@ contract OpenEscrow is ReentrancyGuard {
             if (token.balanceOf(OPERATIONS_RESERVE) - reserveBalBefore != reserveAmount) {
                 revert DepositMismatch();
             }
-            IOperationsReserve(OPERATIONS_RESERVE).recordReservePayment(id, msg.sender, reserveAmount);
             if (token.balanceOf(address(this)) - balBefore != target) revert DepositMismatch();
+            IOperationsReserve(OPERATIONS_RESERVE).recordReservePayment(id, msg.sender, reserveAmount);
         }
 
-        tenantContribution[id][msg.sender] = target;
-        a.depositAmount += target;
-        a.locked += target;
         emit TenantShareFunded(id, msg.sender, target, a.depositAmount);
-        if (a.depositAmount == a.agreedAmount) {
-            a.fundedAt = uint64(block.timestamp);
-            a.phase = Phase.Active;
+        if (activatesAgreement) {
             emit AgreementFunded(id, a.depositAmount);
         }
     }
@@ -524,6 +532,7 @@ contract OpenEscrow is ReentrancyGuard {
 
     function submitClaim(uint256 id, uint256 amount, bytes32 contentHash, string calldata uri, uint8 evidenceType)
         external
+        nonReentrant
     {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.Active) revert InvalidPhase();
@@ -550,6 +559,7 @@ contract OpenEscrow is ReentrancyGuard {
     ///      amendment. Reducing to zero retracts the claim entirely.
     function amendClaim(uint256 id, uint256 newAmount, bytes32 contentHash, string calldata uri, uint8 evidenceType)
         external
+        nonReentrant
     {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.ClaimOpen) revert InvalidPhase();
@@ -579,7 +589,10 @@ contract OpenEscrow is ReentrancyGuard {
     }
 
     /// @notice Supplementary evidence from either party while a claim is live.
-    function submitEvidence(uint256 id, bytes32 contentHash, string calldata uri, uint8 evidenceType) external {
+    function submitEvidence(uint256 id, bytes32 contentHash, string calldata uri, uint8 evidenceType)
+        external
+        nonReentrant
+    {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.ClaimOpen && a.phase != Phase.Disputed) revert InvalidPhase();
         if (msg.sender != a.landlord && !_isTenant(id, msg.sender)) revert NotAuthorized();
@@ -595,7 +608,7 @@ contract OpenEscrow is ReentrancyGuard {
     ///         Every tenant records one response. The claim settles only after every tenant
     ///         responds, using the lowest amount accepted by all tenants. Silence by any
     ///         tenant at the deadline makes the full claim disputed.
-    function respondToClaim(uint256 id, uint256 acceptedAmount) external {
+    function respondToClaim(uint256 id, uint256 acceptedAmount) external nonReentrant {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.ClaimOpen) revert InvalidPhase();
         if (!_isTenant(id, msg.sender)) revert NotAuthorized();
@@ -619,7 +632,7 @@ contract OpenEscrow is ReentrancyGuard {
 
     /// @notice Permissionless. Tenant silence past the deadline is treated as a full
     ///         dispute requiring arbiter review - it never auto-awards the landlord.
-    function finalizeNoResponse(uint256 id) external {
+    function finalizeNoResponse(uint256 id) external nonReentrant {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.ClaimOpen) revert InvalidPhase();
         if (block.timestamp < a.responseDeadline) revert ResponseWindowStillOpen();
@@ -651,7 +664,7 @@ contract OpenEscrow is ReentrancyGuard {
         }
     }
 
-    function withdrawNoClaim(uint256 id) external {
+    function withdrawNoClaim(uint256 id) external nonReentrant {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.Active) revert InvalidPhase();
         if (!_isTenant(id, msg.sender)) revert NotAuthorized();
@@ -670,7 +683,7 @@ contract OpenEscrow is ReentrancyGuard {
     // Arbiter ruling / timeout
     // ---------------------------------------------------------------------
 
-    function resolveDispute(uint256 id, uint256 awardToLandlord) external {
+    function resolveDispute(uint256 id, uint256 awardToLandlord) external nonReentrant {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.Disputed) revert InvalidPhase();
         if (msg.sender != a.arbiter) revert NotAuthorized();
@@ -691,7 +704,7 @@ contract OpenEscrow is ReentrancyGuard {
 
     /// @notice Permissionless. If the arbiter never rules, the disputed amount defaults
     ///         to the tenant - an unproven claim is treated as unproven.
-    function claimArbiterTimeout(uint256 id) external {
+    function claimArbiterTimeout(uint256 id) external nonReentrant {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.Disputed) revert InvalidPhase();
         if (block.timestamp < a.arbiterRulingDeadline) revert ArbiterRulingWindowStillOpen();
@@ -711,7 +724,7 @@ contract OpenEscrow is ReentrancyGuard {
 
     /// @dev arbiterRulingDeadline is never touched by a replacement, so neither party
     ///      can use replacement to unilaterally extend a dispute (§decision 5).
-    function proposeArbiterReplacement(uint256 id, address newArbiter) external {
+    function proposeArbiterReplacement(uint256 id, address newArbiter) external nonReentrant {
         Agreement storage a = _agreement(id);
         _requireReplaceablePhase(a.phase);
         if (msg.sender != a.landlord && msg.sender != a.tenant) revert NotAuthorized();
@@ -724,7 +737,7 @@ contract OpenEscrow is ReentrancyGuard {
         emit ArbiterReplacementProposed(id, msg.sender, newArbiter);
     }
 
-    function confirmArbiterReplacement(uint256 id) external {
+    function confirmArbiterReplacement(uint256 id) external nonReentrant {
         Agreement storage a = _agreement(id);
         _requireReplaceablePhase(a.phase);
         if (a.pendingArbiter == address(0)) revert NoReplacementPending();
@@ -736,7 +749,7 @@ contract OpenEscrow is ReentrancyGuard {
         emit ArbiterReplacementConfirmed(id, msg.sender);
     }
 
-    function cancelArbiterReplacementProposal(uint256 id) external {
+    function cancelArbiterReplacementProposal(uint256 id) external nonReentrant {
         Agreement storage a = _agreement(id);
         _requireReplaceablePhase(a.phase);
         if (a.pendingArbiter == address(0)) revert NoReplacementPending();
@@ -746,7 +759,7 @@ contract OpenEscrow is ReentrancyGuard {
         emit ArbiterReplacementCancelled(id);
     }
 
-    function resignAsArbiter(uint256 id) external {
+    function resignAsArbiter(uint256 id) external nonReentrant {
         Agreement storage a = _agreement(id);
         _requireReplaceablePhase(a.phase);
         if (msg.sender != a.arbiter) revert NotAuthorized();
@@ -830,7 +843,7 @@ contract OpenEscrow is ReentrancyGuard {
         if (share == 0) return 0;
         address[] storage tenants = _tenants[id];
         if (tenant == tenants[tenants.length - 1]) {
-            uint256 allocated;
+            uint256 allocated = 0;
             for (uint256 i = 0; i + 1 < tenants.length; ++i) {
                 allocated += (a.agreedAmount * tenantShareBps[id][tenants[i]]) / 10_000;
             }
@@ -876,7 +889,7 @@ contract OpenEscrow is ReentrancyGuard {
         address landlord,
         address arbiter
     ) internal {
-        uint256 totalShares;
+        uint256 totalShares = 0;
         for (uint256 i = 0; i < tenants.length; ++i) {
             address tenant = tenants[i];
             uint16 share = sharesBps[i];
@@ -896,7 +909,7 @@ contract OpenEscrow is ReentrancyGuard {
     function _creditTenants(uint256 id, Agreement storage a, uint256 amount) internal {
         if (amount == 0) return;
         address[] storage tenants = _tenants[id];
-        uint256 allocated;
+        uint256 allocated = 0;
         for (uint256 i = 0; i < tenants.length; ++i) {
             address tenant = tenants[i];
             uint256 shareAmount =

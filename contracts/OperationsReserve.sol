@@ -42,6 +42,8 @@ contract OperationsReserve is ReentrancyGuard {
     error UnsupportedEscrow();
     error UnsupportedToken();
     error TokenConfigurationMismatch();
+    error EscrowConfigurationMismatch();
+    error InvalidAgreementPhase();
     error AlreadyConfigured();
 
     constructor(address token, address yieldToken) {
@@ -64,6 +66,7 @@ contract OperationsReserve is ReentrancyGuard {
         if (address(candidate.TOKEN()) != address(TOKEN) || address(candidate.YIELD_TOKEN()) != address(YIELD_TOKEN)) {
             revert TokenConfigurationMismatch();
         }
+        if (candidate.OPERATIONS_RESERVE() != address(this)) revert EscrowConfigurationMismatch();
         ESCROW = candidate;
         emit EscrowConfigured(escrow);
     }
@@ -92,7 +95,8 @@ contract OperationsReserve is ReentrancyGuard {
         }
         if (payerIndex == type(uint256).max) revert PaymentMismatch();
         uint256 baseShare = RESERVE_AMOUNT / tenants.length;
-        return payerIndex + 1 == tenants.length ? RESERVE_AMOUNT - baseShare * (tenants.length - 1) : baseShare;
+        uint256 remainder = RESERVE_AMOUNT % tenants.length;
+        return payerIndex + 1 == tenants.length ? baseShare + remainder : baseShare;
     }
 
     /// @notice Records reserve tokens transferred atomically by the configured escrow.
@@ -103,6 +107,13 @@ contract OperationsReserve is ReentrancyGuard {
         if (amount != expectedAmount) revert PaymentMismatch();
 
         OpenEscrow.Agreement memory agreement = ESCROW.getAgreement(agreementId);
+        // The escrow records its effects before this external call. Earlier tenant
+        // contributions therefore remain ReadyToFund, while the final contribution
+        // has already advanced the agreement to Active. No other caller can reach
+        // this function, and each payer remains one-time guarded below.
+        if (agreement.phase != OpenEscrow.Phase.ReadyToFund && agreement.phase != OpenEscrow.Phase.Active) {
+            revert InvalidAgreementPhase();
+        }
         address selectedToken = agreement.token;
         if (selectedToken != address(TOKEN) && selectedToken != address(YIELD_TOKEN)) revert UnsupportedToken();
         if (IERC20(selectedToken).balanceOf(address(this)) < availableBalance[selectedToken] + amount) {
@@ -119,6 +130,7 @@ contract OperationsReserve is ReentrancyGuard {
         if (amount == 0 || amount > RESERVE_AMOUNT) revert ZeroAmount();
 
         OpenEscrow.Agreement memory agreement = ESCROW.getAgreement(agreementId);
+        if (agreement.phase != OpenEscrow.Phase.ReadyToFund) revert InvalidAgreementPhase();
         address selectedToken = agreement.token;
         if (selectedToken != address(TOKEN) && selectedToken != address(YIELD_TOKEN)) revert UnsupportedToken();
 

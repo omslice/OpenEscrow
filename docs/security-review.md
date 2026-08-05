@@ -6,7 +6,8 @@ Base Sepolia deployment at `0x4365f7B9632d083F1a03D57AE56a0e6d239ef62F`. The rev
 regression-tested source was redeployed at the currently configured testnet address
 `0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99` after the multi-tenant lifecycle changes. The separate
 `OperationsReserve`, mock-token, and `AgreementActivityRegistry` contracts have automated tests
-but are not covered by the original line-by-line review described below.
+but are not covered by the original line-by-line review described below. They are covered by the
+2026-08-05 secondary-contract addendum near the end of this document.
 **Method:** manual line-by-line review (access control matrix, state-machine transition
 completeness, arithmetic/overflow analysis, external-call/reentrancy analysis, timestamp
 sensitivity, economic/griefing vectors) plus automated static analysis (Slither 0.11.5).
@@ -139,11 +140,12 @@ need revisiting if the pinned token ever changes.
 
 ## Areas reviewed with no issues found
 
-- **Reentrancy:** only two external calls exist (`safeTransferFrom` in `tenantAcceptAndFund`,
-  `safeTransfer` in `withdraw`), both behind `nonReentrant` (a single shared guard across the
-  whole contract, so cross-function reentrancy is blocked too, not just same-function
-  reentrancy), both using OpenZeppelin's `SafeERC20`. Verified further by two dedicated
-  reentrancy tests using a token mock that attempts to reenter mid-transfer.
+- **Reentrancy:** in the core source reviewed at that time, token interaction was limited to
+  `safeTransferFrom` during funding and `safeTransfer` during withdrawal. Both used OpenZeppelin's
+  `SafeERC20` behind one shared `nonReentrant` guard, and malicious-token regressions exercised
+  transfer callbacks. The current multi-tenant and atomic-reserve funding path has additional
+  external interactions; its contract-wide guard, effects-before-interactions ordering, and
+  expanded adversarial coverage are reviewed in the 2026-08-05 addendum below.
 - **Arithmetic:** every subtraction in the fund-accounting paths (`submitClaim`, `amendClaim`,
   `_settleResponse`, `resolveDispute`) is bounded by an explicit prior check or a maintained
   invariant (`locked == claimedAmount` while a claim is open and unamended/unresolved),
@@ -179,13 +181,13 @@ The review also corrected a getter test that claimed to verify nonexistent-agree
 without calling the getter. `getAgreement` now explicitly reverts `AgreementDoesNotExist`, matching
 the test name, the rest of the read API, and frontend expectations.
 
-## Frontend dependency check — 2026-07-25
+## Historical frontend dependency check — 2026-07-25
 
-`npm audit --omit=dev` reports ten moderate `uuid` advisories in transitive MetaMask connector
+On 2026-07-25, `npm audit --omit=dev` reported ten moderate `uuid` advisories in transitive MetaMask connector
 dependencies pulled through Privy/wagmi. The suggested forced remediation would downgrade
 `@privy-io/react-auth` across a breaking boundary, so it was not applied automatically. No high or
-critical advisory was reported. This should be rechecked when Privy/wagmi publish a compatible
-dependency update and is another reason the current build remains testnet-only.
+critical advisory was reported. Those historical advisories are no longer present in the current
+lockfile; the latest audit result is recorded in the 2026-08-05 addendum below.
 
 ## Testnet release gate addendum — 2026-07-26
 
@@ -353,6 +355,47 @@ not deployed until a new version-matched registry is broadcast and validated.
   not truth.
 - Email delivery, evidence-key backup, scheduler operation, and separate-account browser testing
   remain operator responsibilities documented in `pilot-services-setup.md`.
+
+## Secondary contracts and cross-function reentrancy addendum — 2026-08-05
+
+This internal review covered `OperationsReserve`, `AgreementActivityRegistry`, and the
+`OpenEscrow` atomic deposit-plus-reserve boundary. The method combined a manual access-control,
+state-machine, accounting, external-call, reentrancy, deployment-binding, and denial-of-service
+trace with Slither 0.11.5 and adversarial Foundry tests. It remains an AI-assisted internal review,
+not an independent audit.
+
+| Severity | Finding | Resolution |
+| --- | --- | --- |
+| Low / defense in depth | Atomic funding called the reserve before recording the tenant contribution. The entry point was guarded, but a malicious allowlisted token that was itself an agreement party could enter a different, previously unguarded lifecycle function during its transfer callback. | Every externally callable lifecycle mutation now shares the same reentrancy guard, and funding records all agreement effects before token or reserve interactions. A malicious-token regression proves a cross-function arbiter-replacement callback reverts and leaves no contribution, pending replacement, or token balance. Slither no longer reports the funding reentrancy path. |
+| Low | The reserve's one-time `configureEscrow` check matched token addresses but did not require the candidate escrow to point back to that exact reserve. A deployment mistake could therefore bind the reserve permanently to a matching-token escrow that would never call it. | Configuration now requires the reciprocal immutable `OPERATIONS_RESERVE` address. |
+| Low | Standalone reserve payment and the escrow-only record path did not require a fundable agreement phase, so a tenant could send the expressly non-refundable test reserve before arbiter acceptance or after cancellation. | Standalone payments require `ReadyToFund`. The atomic record path accepts `ReadyToFund` for earlier co-tenants or `Active` for the final contribution because escrow effects are now recorded before the external call. Cancelled, proposed, closed, claim, and dispute phases fail closed. |
+| Low | The activity registry treated a named arbiter as a party before acceptance and after decline or resignation. That actor could not move escrow funds but could publish misleading public activity hashes. | Registry authorization now requires the current arbiter to be accepted, not declined, and not resigned. Dedicated unaccepted, declined, and resigned regressions fail closed. |
+
+The reserve still has an immutable treasury that may withdraw only separately disclosed reserve
+balances; it has no path to withdraw refundable principal held by `OpenEscrow`. Direct standalone
+reserve payment remains a testnet compatibility surface and can precede a later landlord
+cancellation, so the current client uses only the atomic deposit-plus-reserve action. A production
+design should remove that unused surface or define an explicit reserve-refund policy after legal
+and provider review.
+
+The registry stores only hashes and events. Parties can spend their own gas publishing repeated
+activity hashes, but this does not grow escrow state or block another party. A hash proves content
+integrity relative to the holder's private bytes; it does not prove truth, authorship beyond the
+calling wallet, legal sufficiency, or confidentiality.
+
+After the fixes, the complete Foundry run passes 230 tests across 20 suites, including six
+32,768-call stateful accounting properties and the existing fuzz cases. One opt-in live Base
+Sepolia Aave adapter fork test remains skipped without an RPC URL. The current production
+dependency audit reports zero known advisories, and the full hosted application gate passes.
+Remaining Slither results are reviewed design signals: day-scale timestamp deadlines, dependency
+pragma ranges, constant naming, and intentionally ignored participant arrays. None is being
+treated as proof that the contracts are vulnerability-free.
+
+These changes are source-level only. The configured Base Sepolia escrow/reserve pair and activity
+registry do not contain this complete addendum's fixes. Because the core and reserve are mutually
+bound and immutable, activating the funding hardening requires a new reviewed pair; the registry
+must then be deployed against that exact escrow. Existing testnet agreements stay on their old
+immutable code and must be treated as a retired cohort rather than silently migrated.
 
 ## Disclaimer
 

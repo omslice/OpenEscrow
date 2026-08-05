@@ -152,6 +152,36 @@ contract WithdrawTest is Base {
         assertEq(rtoken.balanceOf(address(rescrow)), 0);
     }
 
+    function test_crossFunctionReentrancy_duringFunding_isBlocked() public {
+        ReentrantToken rtoken = new ReentrantToken();
+        OpenEscrow rescrow = new OpenEscrow(address(rtoken), address(rtoken), address(0));
+        address replacement = makeAddr("reentrantReplacement");
+
+        rtoken.mint(address(rtoken), DEPOSIT * 2);
+        rtoken.selfApprove(address(rescrow), type(uint256).max);
+
+        vm.prank(landlord);
+        uint256 id = rescrow.createAgreement(
+            address(rtoken), arbiter, DEPOSIT, uint64(block.timestamp), CLAIM_PERIOD, RESPONSE_PERIOD, ARBITER_PERIOD
+        );
+        vm.prank(arbiter);
+        rescrow.acceptArbiterRole(id);
+
+        rtoken.arm(
+            address(rescrow), abi.encodeWithSelector(OpenEscrow.proposeArbiterReplacement.selector, id, replacement)
+        );
+
+        vm.prank(address(rtoken));
+        vm.expectRevert(ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
+        rescrow.tenantAcceptAndFund(id);
+
+        OpenEscrow.Agreement memory agreement = rescrow.getAgreement(id);
+        assertEq(uint8(agreement.phase), uint8(OpenEscrow.Phase.ReadyToFund));
+        assertEq(agreement.pendingArbiter, address(0));
+        assertEq(rescrow.tenantContribution(id, address(rtoken)), 0);
+        assertEq(rtoken.balanceOf(address(rescrow)), 0);
+    }
+
     function test_reentrancy_duringWithdraw_isBlocked() public {
         ReentrantToken rtoken = new ReentrantToken();
         OpenEscrow rescrow = new OpenEscrow(address(rtoken), address(rtoken), address(0));

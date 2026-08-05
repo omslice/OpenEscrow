@@ -22,6 +22,8 @@ contract AgreementActivityRegistryTest is Base {
 
     function test_allAgreementPartiesCanIndependentlyAnchorTheSameSnapshot() public {
         uint256 id = _propose();
+        vm.prank(arbiter);
+        escrow.acceptArbiterRole(id);
 
         vm.prank(landlord);
         registry.anchorSnapshot(id, SNAPSHOT);
@@ -33,6 +35,32 @@ contract AgreementActivityRegistryTest is Base {
         assertTrue(registry.anchoredBy(id, SNAPSHOT, landlord));
         assertTrue(registry.anchoredBy(id, SNAPSHOT, tenant));
         assertTrue(registry.anchoredBy(id, SNAPSHOT, arbiter));
+    }
+
+    function test_unacceptedOrDeclinedArbiterCannotPublish() public {
+        uint256 unacceptedId = _propose();
+        uint8 activityDecision = registry.ACTIVITY_DECISION();
+
+        vm.prank(arbiter);
+        vm.expectRevert(AgreementActivityRegistry.NotAgreementParty.selector);
+        registry.publishActivity(unacceptedId, activityDecision, ACTIVITY);
+
+        vm.prank(arbiter);
+        escrow.declineArbiterRole(unacceptedId);
+        vm.prank(arbiter);
+        vm.expectRevert(AgreementActivityRegistry.NotAgreementParty.selector);
+        registry.anchorSnapshot(unacceptedId, SNAPSHOT);
+    }
+
+    function test_resignedArbiterCannotPublish() public {
+        uint256 id = _propose();
+        uint8 activityDecision = registry.ACTIVITY_DECISION();
+        vm.startPrank(arbiter);
+        escrow.acceptArbiterRole(id);
+        escrow.resignAsArbiter(id);
+        vm.expectRevert(AgreementActivityRegistry.NotAgreementParty.selector);
+        registry.publishActivity(id, activityDecision, ACTIVITY);
+        vm.stopPrank();
     }
 
     function test_everyCoTenantCanAnchorAndPublish() public {

@@ -15,14 +15,22 @@ provider or hosting control that owns the secret.
   public testnet matches the last approved exact source and exposes its release provenance. Newer
   validated work is saved as a separate undeployed candidate; selecting and promoting it remains
   a separate public action, followed by readiness verification.
-- [ ] **Broadcast the version-matched Base Sepolia activity registry.**
-  The candidate registry now recognizes every nonzero-share co-tenant as an agreement party; the
-  prior deployed/retired registry must not be reused for a multi-tenant pilot.
-  From a private local PowerShell terminal, run
-  `.\scripts\Broadcast-AgreementActivityRegistryBaseSepolia.ps1` and enter the
-  encrypted `openescrow-base-sepolia` keystore password only at the local
-  Foundry prompt. Send Codex the resulting public transaction hash or confirm
-  that `deployments/base-sepolia-activity-registry.json` was created. See
+- [ ] **Review and broadcast a hardened Base Sepolia escrow/reserve pair.** The latest source adds
+  reciprocal immutable deployment binding, exact reserve phase gates, checks-effects-interactions
+  funding, and a contract-wide cross-function reentrancy lock. The existing escrow and reserve are
+  immutable and cannot be upgraded in place. After reviewing the exact candidate, use the private
+  local deployment procedure to create a new pair; share only its public transaction hashes and
+  generated manifest, never the keystore password. Do not change the app configuration or retire
+  the existing testnet cohort until the new bytecode and mutual bindings have been verified. See
+  [`base-sepolia-deployment.md`](./base-sepolia-deployment.md).
+- [ ] **Broadcast the activity registry only after the hardened escrow address is final.** The
+  latest registry recognizes every nonzero-share co-tenant and only an accepted, non-declined,
+  non-resigned current arbiter. The currently configured registry is bound to a retired escrow,
+  and broadcasting the script before the new escrow is configured would repeat that mismatch.
+  After Codex updates and validates the deployment input for the approved escrow, run
+  `.\scripts\Broadcast-AgreementActivityRegistryBaseSepolia.ps1` from a private local PowerShell
+  terminal and enter the encrypted `openescrow-base-sepolia` keystore password only at the local
+  Foundry prompt. Share the public transaction hash or generated manifest. See
   [`agreement-activity-registry-deployment.md`](./agreement-activity-registry-deployment.md).
 - [ ] **Choose the first pilot markets for local-rule coverage.**
   State law is routed nationwide, but only Chicago, Seattle, and Portland have

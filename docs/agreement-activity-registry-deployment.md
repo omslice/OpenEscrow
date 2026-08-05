@@ -8,10 +8,10 @@ arbiter of that exact contract. Agreement IDs begin
 again at zero after an escrow redeployment, so a registry from an earlier release
 must never be reused for a newer escrow.
 
-The retired registry at `0xC004dF4C43146FE55e5761EA1BB3C14f01161951`
-is bound to retired escrow `0x83faBc39c4FcccB6a4e42c568E9750D1a24FF11f`.
-It is not valid for the active escrow at
-`0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99`.
+The registry currently configured by the hosted testnet is bound to a retired escrow and fails
+the readiness check. It must not be reused. The next registry target is read from the validated
+`deployments/base-sepolia-latest.json` pair manifest so a stale address is not embedded in the
+broadcast helper or exporter.
 
 The frontend now reads `ESCROW()` before loading, publishing, anchoring, verifying,
 or notifying on registry events. A mismatch fails closed with a service-unavailable
@@ -24,7 +24,8 @@ Run the contract suite and a no-broadcast simulation:
 
 ```powershell
 $env:BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org"
-$env:ESCROW_ADDRESS = "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99"
+$pair = Get-Content .\deployments\base-sepolia-latest.json -Raw | ConvertFrom-Json
+$env:ESCROW_ADDRESS = [string]$pair.openEscrow.address
 $deployer = & "$env:USERPROFILE\.foundry\bin\cast.exe" wallet address `
   --account openescrow-base-sepolia
 
@@ -47,9 +48,19 @@ From a private local PowerShell terminal:
 .\scripts\Broadcast-AgreementActivityRegistryBaseSepolia.ps1
 ```
 
-The script prompts locally for the encrypted `openescrow-base-sepolia` keystore
-password. Do not place that password or a private key in chat, an environment
-variable, a project file, or a command-line argument.
+The script loads the escrow address from the validated pair manifest, derives the public deployer
+address from the encrypted `openescrow-base-sepolia` keystore, and prompts locally for its
+password. Before asking for a signature it also reads both deployed contracts and fails unless
+their reciprocal reserve/escrow and token bindings match the manifest. Run the same read-only
+preflight without a broadcast or keystore prompt with:
+
+```powershell
+.\scripts\Broadcast-AgreementActivityRegistryBaseSepolia.ps1 -ValidateOnly
+```
+
+Do not place the password or a private key in chat, an environment variable, a project file, or a
+command-line argument. Use `-EscrowManifestPath` only when an explicitly reviewed manifest has a
+different location.
 
 After a successful receipt, the script writes a validated public manifest to
 `deployments/base-sepolia-activity-registry.json`.

@@ -434,7 +434,17 @@
   },
   {
     "type": "error",
+    "name": "EscrowConfigurationMismatch",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidContract",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "InvalidAgreementPhase",
     "inputs": []
   },
   {
