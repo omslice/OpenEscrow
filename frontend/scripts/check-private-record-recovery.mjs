@@ -389,7 +389,7 @@ async function exerciseTerminalReceiptRecovery(
     true,
     "Terminal receipt recovery should not overflow a mobile viewport.",
   );
-  await page.close();
+  await page.context().close();
 }
 
 const server = spawn(
@@ -611,6 +611,7 @@ try {
     2,
     "Refreshing the private record must never resend the tenant email.",
   );
+  await claimPage.context().close();
 
   const claimReceiptPage = await browser.newPage({
     viewport: { width: 390, height: 844 },
@@ -756,6 +757,7 @@ try {
     true,
     "Durable claim receipt recovery should not overflow a mobile viewport.",
   );
+  await claimReceiptPage.context().close();
 
   const responsePage = await browser.newPage({ viewport: { width: 390, height: 844 } });
   await routePrivateRecord(responsePage);
@@ -810,6 +812,7 @@ try {
     true,
     "Response recovery should not overflow a mobile viewport.",
   );
+  await responsePage.context().close();
 
   const responseReceiptPage = await browser.newPage({
     viewport: { width: 390, height: 844 },
@@ -948,6 +951,7 @@ try {
     true,
     "Durable response receipt recovery should not overflow a mobile viewport.",
   );
+  await responseReceiptPage.context().close();
 
   const rulingReceiptPage = await browser.newPage({
     viewport: { width: 390, height: 844 },
@@ -963,6 +967,9 @@ try {
     `${baseUrl}/testing/private-record-recovery.html?role=arbiter&flow=ruling-receipt&tx=ruling-success`,
     { waitUntil: "networkidle" },
   );
+  await rulingReceiptPage
+    .getByRole("heading", { name: "Resolve dispute" })
+    .waitFor({ state: "visible" });
   await rulingReceiptPage.getByLabel(/Award to landlord/).fill("0.25");
   await rulingReceiptPage
     .getByLabel("Ruling note")
@@ -1065,6 +1072,7 @@ try {
     true,
     "Durable ruling receipt recovery should not overflow a mobile viewport.",
   );
+  await rulingReceiptPage.context().close();
 
   await exerciseTerminalReceiptRecovery(browser, {
     flow: "withdrawal-receipt",
@@ -1233,7 +1241,7 @@ try {
     true,
     "Durable activity receipt recovery should not overflow a mobile viewport.",
   );
-  await activityReceiptPage.close();
+  await activityReceiptPage.context().close();
 
   process.stdout.write(
     "Private-record recovery browser check passed: claim requirements fail closed, line-item edits announce changes and retain keyboard focus with mobile-size controls, notification failures use error semantics and focus 44px retry/fallback actions, and confirmed claims, tenant responses, arbiter rulings, withdrawals, activity proofs, and every deadline outcome survive private-record outages and reloads without another transaction or stored bearer token; terminal retries remain wallet-scoped, time-sensitive responses remain available, and delivered email is not repeated by a record-only retry.\n",

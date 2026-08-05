@@ -131,6 +131,10 @@ detailed validation ledger.
   claim-email failure containing “sent,” proves it remains an assertive error and restores the
   enabled send control, then proves a response-email outage focuses a full-width 44-pixel manual
   fallback. Access-scope changes clear old feedback and discard late async completion.
+- **Verified:** The long-form private-record browser rehearsal now closes each isolated browser
+  context as soon as its scenario finishes and explicitly proves the arbiter resolution view is
+  ready before exercising it. The complete release sequence reaches the late ruling, deadline,
+  activity-proof, lifecycle, build, and landing-load gates without accumulating stale test pages.
   If local and session storage are blocked, the invitation, proposal bundle, jurisdiction,
   tracked-agreement, preference, and notification caches degrade to current-page state instead
   of blanking the page or making a completed action look failed. Worker authorization remains
