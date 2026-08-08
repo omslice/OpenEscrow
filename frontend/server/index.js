@@ -2041,6 +2041,23 @@ function emailSenderReadiness(env, provider) {
   };
 }
 
+function publicAppOrigin(env, fallbackOrigin) {
+  const fallback = new URL(fallbackOrigin).origin;
+  const configured = cleanText(env.PUBLIC_APP_URL, 500);
+  if (!configured) return fallback;
+  try {
+    const url = new URL(configured);
+    if (url.protocol !== "https:" || url.username || url.password) return fallback;
+    return url.origin;
+  } catch {
+    return fallback;
+  }
+}
+
+function publicAppOriginForRequest(request, env) {
+  return publicAppOrigin(env, new URL(request.url).origin);
+}
+
 const RESEND_WEBHOOK_TOLERANCE_SECONDS = 5 * 60;
 const RESEND_DELIVERY_STATUSES = Object.freeze({
   "email.sent": "sent",
@@ -5959,7 +5976,7 @@ async function removeTenant(request, env, id, tenantId) {
 
 async function sendLandlordReadyNotification(request, env, row) {
   if (!emailProvider(env)) return null;
-  const workspaceUrl = new URL(request.url).origin;
+  const workspaceUrl = publicAppOriginForRequest(request, env);
   const subject = `OpenEscrow proposal ${row.id} is approved and ready to finalize`;
   const text = [
     `Every tenant${row.arbiter_email ? " and the optional arbiter have" : " has"} approved revision ${row.revision} of OpenEscrow proposal ${row.id}.`,
@@ -6065,7 +6082,7 @@ async function sendOptedInAgreementActivityEmails(
   }[eventType];
   if (!notification) return [];
 
-  const appUrl = new URL(request.url).origin;
+  const appUrl = publicAppOriginForRequest(request, env);
   const results = [];
   for (const [recipientRole, email] of notification.recipients) {
     if (!email) continue;
@@ -6656,9 +6673,10 @@ async function runScheduledNotifications(env, now = new Date()) {
       "SELECT * FROM agreement_negotiations WHERE status = 'finalized' ORDER BY updated_at ASC LIMIT 250",
     )
     .all();
-  const appUrl =
-    cleanText(env.PUBLIC_APP_URL, 500) ||
-    "https://openescrow-demo.omrigross.chatgpt.site/";
+  const appUrl = publicAppOrigin(
+    env,
+    "https://openescrow-demo.omrigross.chatgpt.site/",
+  );
   for (const row of result.results || []) {
     let events = await eventsFor(env.DB, row.id);
     await recordClaimPeriodTransitions(env, row, events, now);
@@ -9699,6 +9717,7 @@ async function sendClaimNotification(request, env) {
     );
   }
   const requestOrigin = new URL(request.url).origin;
+  const appOrigin = publicAppOriginForRequest(request, env);
   const tenantResult = await env.DB
     .prepare(
       `SELECT id, name, email, token_hash
@@ -9744,11 +9763,15 @@ async function sendClaimNotification(request, env) {
       return json({ error: "A tenant review link is invalid." }, 400);
     }
     seenTenantIds.add(tenantId);
+    const deliveryUrl = new URL(
+      `${reviewUrl.pathname}${reviewUrl.search}${reviewUrl.hash}`,
+      `${appOrigin}/`,
+    );
     reviewLinks.push({
       tenantId,
       name: cleanText(tenant.name, 160),
       email,
-      url: reviewUrl.toString(),
+      url: deliveryUrl.toString(),
       credentialHash: reviewTokenHash,
     });
   }
@@ -9909,7 +9932,7 @@ async function sendClaimResponseNotification(request, env) {
       503,
     );
   }
-  const reviewUrl = new URL(new URL(request.url).origin);
+  const reviewUrl = new URL(publicAppOriginForRequest(request, env));
   reviewUrl.searchParams.set("id", agreementId);
 
   const decisionSummary =

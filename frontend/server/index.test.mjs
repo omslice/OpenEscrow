@@ -9721,6 +9721,7 @@ test("the landlord is notified when all required approvals make a proposal ready
         {
           RESEND_API_KEY: "test-resend-key",
           NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+          PUBLIC_APP_URL: "https://openescrow.io/",
         },
       ),
     );
@@ -9729,6 +9730,8 @@ test("the landlord is notified when all required approvals make a proposal ready
     assert.deepEqual(sentEmail.to, ["landlord@example.com"]);
     assert.match(sentEmail.subject, /ready to finalize/);
     assert.match(sentEmail.text, /submit the finalized terms onchain/);
+    assert.match(sentEmail.text, /https:\/\/openescrow\.io/);
+    assert.doesNotMatch(sentEmail.text, /openescrow\.example/);
     assert.deepEqual(
       {
         ...db
@@ -9788,12 +9791,14 @@ test("opted-in agreement activity email is privacy-minimal and idempotent", asyn
       await act(db, created.record.id, created.access.tenant, action, {
         RESEND_API_KEY: "test-resend-key",
         NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+        PUBLIC_APP_URL: "https://openescrow.io/",
       }),
     );
     assert.equal(deliveries.length, 1);
     assert.deepEqual(deliveries[0].body.to, ["landlord@example.com"]);
     assert.match(deliveries[0].body.subject, /funded/);
     assert.doesNotMatch(deliveries[0].body.text, /1200|ipfs|invoice|tenant@example/i);
+    assert.match(deliveries[0].body.text, /https:\/\/openescrow\.io/);
     assert.equal(
       funded.events.filter((event) => event.action === "agreement_funded").length,
       1,
@@ -9809,6 +9814,7 @@ test("opted-in agreement activity email is privacy-minimal and idempotent", asyn
       await act(db, created.record.id, created.access.tenant, action, {
         RESEND_API_KEY: "test-resend-key",
         NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+        PUBLIC_APP_URL: "https://openescrow.io/",
       }),
     );
     assert.equal(deliveries.length, 1);
@@ -10146,6 +10152,7 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
         DB: db,
         RESEND_API_KEY: "test-resend-key",
         NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+        PUBLIC_APP_URL: "https://openescrow.io/",
       },
     );
     assert.equal(rejectedCrossTenantLink.status, 400);
@@ -10168,6 +10175,7 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
         DB: db,
         RESEND_API_KEY: "test-resend-key",
         NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+        PUBLIC_APP_URL: "https://openescrow.io/",
       },
     );
     assert.equal(rejectedQueryCredential.status, 400);
@@ -10183,6 +10191,7 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
         DB: db,
         RESEND_API_KEY: "test-resend-key",
         NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+        PUBLIC_APP_URL: "https://openescrow.io/",
       },
     );
     assert.equal(response.status, 200);
@@ -10191,6 +10200,8 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
       const sent = sentEmails[index];
       assert.deepEqual(sent.body.to, [tenant.email]);
       assert.match(sent.body.text, new RegExp(`#token=${tenant.token}`));
+      assert.match(sent.body.text, /https:\/\/openescrow\.io/);
+      assert.doesNotMatch(sent.body.text, /openescrow\.example/);
       assert.equal(sent.body.text.includes("?token="), false);
       for (const otherTenant of created.access.tenants) {
         if (otherTenant.id !== tenant.id) {
@@ -10244,6 +10255,7 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
         DB: db,
         RESEND_API_KEY: "test-resend-key",
         NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+        PUBLIC_APP_URL: "https://openescrow.io/",
       },
     );
     assert.equal(duplicateResponse.status, 200);
@@ -10464,6 +10476,7 @@ test("claim response notices bind to the exact recorded tenant decision", async 
       DB: db,
       RESEND_API_KEY: "test-resend-key",
       NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      PUBLIC_APP_URL: "https://openescrow.io/",
     };
     const unrecordedResponse = await worker.fetch(
       request("/api/notifications/claim-response", "POST", {
@@ -10495,6 +10508,7 @@ test("claim response notices bind to the exact recorded tenant decision", async 
     assert.match(sentEmail.text, /different unit/);
     assert.match(sentEmail.subject, /agreement #77/);
     assert.match(sentEmail.text, /\?id=77/);
+    assert.match(sentEmail.text, /https:\/\/openescrow\.io/);
     assert.doesNotMatch(sentEmail.text, /999|Injected response text|token=injected/);
     assert.deepEqual(
       {
