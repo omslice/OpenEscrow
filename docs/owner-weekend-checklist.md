@@ -22,8 +22,9 @@ linked deployment and pilot runbooks.
   [`base-sepolia-deployment.md`](./base-sepolia-deployment.md) procedure. Do not switch the app or
   retire the old cohort until the public manifest and all reciprocal bindings are verified.
 
-Do not treat these paths as one automatic action. A new contract broadcast and a Sites deployment
-are separate approvals with separate rollback evidence.
+Do not treat these paths as one automatic action. A new contract broadcast and a synchronized
+Cloudflare/ChatGPT Sites application release are separate approvals with separate rollback
+evidence.
 
 ## Credentialed setup
 

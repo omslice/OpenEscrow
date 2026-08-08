@@ -22,7 +22,11 @@ const explicitArtifactPath = artifactPathArg
   ? artifactPathArg.slice("--artifact-path=".length)
   : null;
 const baseUrlArg = args.find((arg) => arg && !arg.startsWith("-"));
-const baseUrl = (baseUrlArg || process.env.OPENESCROW_BASE_URL || "https://openescrow-demo.omrigross.chatgpt.site/").replace(/\/+$/, "");
+const baseUrl = (
+  baseUrlArg ||
+  process.env.OPENESCROW_BASE_URL ||
+  "https://openescrow.omslice.workers.dev/"
+).replace(/\/+$/, "");
 
 let readiness = {};
 let readinessEndpointError = null;
@@ -167,7 +171,7 @@ const checks = [
         "registry binding not verified",
     required: true,
     action:
-      "Set VERIFY_ACTIVITY_REGISTRY_BINDING=true and confirm expected escrow contract binding in deployment settings.",
+      "Deploy the reviewed registry bound to the active escrow, set ACTIVITY_REGISTRY_ADDRESS to that verified address, and keep VERIFY_ACTIVITY_REGISTRY_BINDING=true.",
     validate:
       "readiness.recordIntegrity.activityRegistry.configured === true and readiness.recordIntegrity.activityRegistry.ready === true",
   },

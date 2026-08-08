@@ -317,8 +317,8 @@ production custody, or reliance on the compliance research as legal advice.
   2026-08-08 and exposed the same exact release provenance. Cloudflare scheduler health, evidence
   encryption/keyring, address attestation, Google sign-in origin, private R2 storage, D1, static
   assets, and the fifteen-minute trigger are configured. Pilot readiness remains fail-closed for
-  notification delivery, the version-matched activity registry, and completion of the fresh
-  official-source baseline.
+  notification delivery and the version-matched activity registry; the official-source gate is
+  current across all 61 profiles, including the disclosed time-limited New Hampshire review.
 - **Verified:** The latest approved public deployment matches its exact release-checked and pushed
   source. Each subsequent coherent slice is validated and saved separately for explicit review;
   D1, R2, hosted data, runtime secrets, and configuration remain unchanged.

@@ -7,22 +7,20 @@ the private vault until each section passes its verification checklist.
 ## Morning owner checklist
 
 The application code, private R2 binding, D1 records, account sign-in, embedded wallets, manual
-email fallbacks, provider adapters, lifecycle state guards, transaction-receipt verification, and
-deterministic lifecycle tests are already in place. The readiness check shows four owner actions
-before a controlled pilot:
+email fallbacks, provider adapters, lifecycle state guards, transaction-receipt verification,
+evidence encryption/key recovery, address attestation, and deterministic lifecycle tests are
+already in place. The hosted scheduler is running and the nationwide compliance-source gate is
+current. The strict Cloudflare pilot readiness check now shows two owner actions:
 
-1. **Verify a sending domain in Resend** and create a sending-only API key.
-2. **Add the three email runtime values** listed below to the existing Sites deployment.
-3. **Activate the 15-minute Cron Trigger** and wait for its first successful run.
-4. **Generate and back up the evidence master key**, then add it as
-   `EVIDENCE_ENCRYPTION_KEY`.
-5. **Wait for every official compliance source to establish a baseline** and
-   resolve any source marked changed, pending, stale, or persistently
-   unreachable before using address-routed profiles in a pilot.
+1. **Verify a sending domain in Resend**, create a sending-only API key, and add the email values
+   below to the canonical Cloudflare Worker.
+2. **Review and broadcast the hardened Base Sepolia escrow/reserve/registry cohort**, then verify
+   that the registry is bound to that exact escrow before changing the app configuration.
 
-Do email first, encryption second, and the optional fiat sandbox last. Do not send API keys or
-the evidence master key in chat, screenshots, email, or Git. Enter them only in the provider and
-hosting secret controls.
+Complete email independently of the contract promotion; neither action requires recreating R2,
+the evidence keyring, address attestation, or the Cron Trigger. Keep the optional fiat sandbox
+disabled. Do not send API keys, signing keys, or evidence recovery material in chat, screenshots,
+email, or Git. Enter secrets only in the provider and hosting controls that own them.
 
 After the settings are saved and the site is redeployed, ask Codex to run the pilot readiness
 check, or run:
@@ -123,25 +121,23 @@ for the public deployment or a controlled pilot.
 3. Add the SPF and DKIM records shown by Resend to the domain's DNS settings.
 4. Wait until Resend shows the domain as verified.
 5. Create a sending-only API key.
-6. Add these hosted runtime values to the OpenEscrow Sites deployment:
+6. Add these two runtime values to the `openescrow` staging Worker in Cloudflare. Store
+   `RESEND_API_KEY` as an encrypted secret and `NOTIFICATION_FROM_EMAIL` as a runtime variable:
 
 ```dotenv
 RESEND_API_KEY=re_replace_with_your_key
 NOTIFICATION_FROM_EMAIL=OpenEscrow <notifications@notify.your-domain.example>
-PUBLIC_APP_URL=https://openescrow-demo.omrigross.chatgpt.site/
-COMPLIANCE_SOURCE_MONITOR_ENABLED=true
-ADDRESS_ATTESTATION_SECRET=replace_with_at_least_32_random_bytes
 ```
 
-Do not put `RESEND_API_KEY` or `ADDRESS_ATTESTATION_SECRET` in a `VITE_`
-variable, in Git, or in a browser-visible settings file. The address secret is
-used only by the Worker to sign normalized geocoder results. Generate it from
-at least 32 random bytes and keep the same value for the lifetime of agreements
-created under that deployment so their address attestations remain verifiable.
+`PUBLIC_APP_URL` is already pinned to `https://openescrow.omslice.workers.dev/` in the reviewed
+staging configuration. The compliance monitor, address-attestation secret, evidence keyring, and
+Cron Trigger are also already configured and verified; do not replace or duplicate them while
+adding email. Never put `RESEND_API_KEY` in a `VITE_` variable, Git, or a browser-visible settings
+file.
 
-### Scheduler setup
+### Scheduler behavior
 
-The Worker already exports its scheduled notification job. Add one hosted Cron Trigger:
+The canonical Cloudflare Worker already runs this Cron Trigger:
 
 ```cron
 */15 * * * *
@@ -162,9 +158,9 @@ overlay sources have fresh successful checks. A source-page signature change
 requires a reviewed, newly versioned rule profile; do not bypass the gate by
 turning monitoring off.
 
-If the Sites dashboard does not expose Cron Triggers, add the trigger from the underlying
-Cloudflare Worker dashboard after deployment. Normal homepage traffic also performs a safe
-fallback check, but that fallback should not be the only scheduler for a real pilot.
+Do not add a second trigger. Normal homepage traffic also performs a safe fallback check, but the
+hosted Cron Trigger remains the pilot scheduler and must continue reporting a recent successful
+run in readiness.
 
 ### Verify
 

@@ -22,8 +22,9 @@ provider or hosting control that owns the secret.
    bindings, prepare the reversible configuration switch, and preserve the current cohort.
 4. Run the separate-account synthetic pilot and the incident/privacy drill after the new site
    candidate is explicitly approved and deployed.
-5. Configure email, evidence encryption, address attestation, and the hosted scheduler when the
-   matching release is ready; keep every secret in its owning dashboard.
+5. Configure only the remaining sending-email values when ready. Evidence encryption, address
+   attestation, private R2, and the hosted scheduler are already configured and verified; preserve
+   those existing controls and keep every secret in its owning dashboard.
 
 ## Actionable now
 
