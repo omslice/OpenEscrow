@@ -107,6 +107,23 @@ const checks = [
     validate: "readiness.email.configured === true",
   },
   {
+    label: "Email delivery-status tracking",
+    ready:
+      readiness.email?.configured !== true ||
+      readiness.email?.deliveryStatusConfigured === true,
+    detail:
+      readiness.email?.configured !== true
+        ? "checked when a sender is configured"
+        : readiness.email?.deliveryStatusConfigured
+          ? "signed provider events enabled"
+          : "signed provider events not configured",
+    required: true,
+    action:
+      "For Resend, register /api/notifications/provider/resend and store its signing secret as RESEND_WEBHOOK_SECRET.",
+    validate:
+      "readiness.email.configured !== true or readiness.email.deliveryStatusConfigured === true",
+  },
+  {
     label: "Hosted notification scheduler",
     ready: readiness.email?.schedulerHealthy === true,
     detail: readiness.email?.schedulerLastRunAt

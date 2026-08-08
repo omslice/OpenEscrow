@@ -88,12 +88,16 @@ export interface NotificationPreferences {
   deadlineReminders: boolean;
   consentedAt?: string | null;
   updatedAt?: string | null;
+  deliveryPaused?: boolean;
+  deliveryPauseReason?: "bounced" | "complained" | "suppressed" | null;
+  deliveryPausedAt?: string | null;
 }
 
 export interface ServiceReadiness {
   email: {
     configured: boolean;
     provider: "resend" | "webhook" | null;
+    deliveryStatusConfigured?: boolean;
     schedulerConfigured: boolean;
     schedulerLastRunAt: string | null;
     schedulerHealthy: boolean;

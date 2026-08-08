@@ -49,9 +49,16 @@ provider or hosting control that owns the secret.
   browser error. The deploy verifier now fails closed if a future hosted origin is not accepted.
 - [ ] **Configure the notification provider.** Evidence encryption/keyring, address attestation,
   RPC, private R2, scheduler, and the current Privy origin are configured. The remaining runtime
-  provider gap is sending-only email through Resend or the documented webhook equivalent. Keep
-  that credential in the Worker secret control. Add any future custom-domain origin to Privy and
-  other provider allowlists before promoting it; never expose a secret in a client build variable.
+  provider gap is sending-only email through Resend or the documented webhook equivalent. For
+  Resend, store the sending-only key as `RESEND_API_KEY`, set `NOTIFICATION_FROM_EMAIL` to the
+  verified sender, register `https://openescrow.omslice.workers.dev/api/notifications/provider/resend`
+  for sent, delivered, delayed, failed, bounced, complained, and suppressed events, and store the
+  endpoint's signing secret as `RESEND_WEBHOOK_SECRET`. Keep both credentials in Worker secret
+  controls. A custom `EMAIL_WEBHOOK_URL` integration must implement equivalent signed
+  delivery-status and suppression handling before setting `EMAIL_WEBHOOK_STATUS_TRACKING=true`;
+  otherwise readiness intentionally remains blocked. Add any future custom-domain origin to Privy
+  and other provider allowlists before promoting it; never expose a secret in a client build
+  variable.
 - [x] **Publish one clean release to both interim hosts — completed 2026-08-08.** Cloudflare and
   ChatGPT Sites now serve the same exact source and expose clean release provenance. Continue to
   publish both hosts from one commit and run the dual-host verifier until the owner explicitly
@@ -86,7 +93,10 @@ provider or hosting control that owns the secret.
   deadline should treat daylight-saving transitions. Select this with the address provider and
   qualified reviewer before relying on calculated deadlines in a supervised pilot.
 - [ ] **Verify a notification sending domain and create a sending-only Resend
-  key.** Prefer a dedicated subdomain such as `notify.openescrow.org`.
+  key.** Prefer a dedicated subdomain such as `notify.openescrow.org`. Cloudflare's native Email
+  Sending currently requires its paid Workers plan and a conventional Cloudflare-DNS domain, so
+  Resend's free transactional tier is the lower-cost pilot path. An ENS name cannot supply the
+  required SPF/DKIM DNS records.
 - [x] **Create and safely store the Cloudflare evidence and address secrets — completed
   2026-08-08.** Hosted readiness verifies tamper-resistant address profiles, encrypted private-R2
   evidence, the active key ID, and a complete retained keyring with zero missing, unverified, or

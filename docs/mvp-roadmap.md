@@ -316,6 +316,12 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** The clean signed-out landing page omits the empty agreement-notification bell.
   Provider-independent rendered coverage proves notification access remains available after
   authentication and on valid role-locked invitation workspaces.
+- **Verified:** The outbound-email boundary now keeps a D1 delivery ledger and accepts only
+  timestamp-bounded, HMAC-verified Resend delivery events. Provider retries are deduplicated;
+  only message identifiers, event type, status, and timestamps are retained, not webhook subjects
+  or diagnostic content. Hard bounces, spam complaints, and provider suppressions turn off
+  optional preferences and block further automatic delivery to that address. The pilot gate
+  requires signed delivery-status tracking once a Resend sender is enabled.
 - **Verified:** Both public app hosts and their readiness endpoints returned HTTP 200 on
   2026-08-08 and exposed the same exact release provenance. Cloudflare scheduler health, evidence
   encryption/keyring, address attestation, Google sign-in origin, private R2 storage, D1, static
@@ -331,7 +337,8 @@ production custody, or reliance on the compliance research as legal advice.
   Worker must have its public route disabled.
 - **Verified:** The unified app is deployed to the owner's Cloudflare account without changing the
   Sites-hosted data boundary:
-  separate staging and production-testnet D1 databases exist, all 21 migrations are applied only
+  separate staging and production-testnet D1 databases exist, all deployed repository migrations
+  are applied only
   to staging, and the MVP Cloudflare package preserves the `DB`, `EVIDENCE`, `ASSETS`, and
   15-minute scheduler contracts. R2 is activated; separate empty staging and production-testnet
   evidence buckets are verified private with public URLs disabled and no custom domains. The

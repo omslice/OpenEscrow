@@ -50,6 +50,12 @@ export function assertCloudflareDeployedReadiness(
     );
     collectFailure(
       failures,
+      readiness.email?.configured !== true ||
+        readiness.email?.deliveryStatusConfigured === true,
+      "Notification delivery-status tracking is not configured.",
+    );
+    collectFailure(
+      failures,
       readiness.email?.schedulerConfigured === true &&
         readiness.email?.schedulerHealthy === true,
       "The notification scheduler is not healthy.",

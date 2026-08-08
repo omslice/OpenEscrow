@@ -19,6 +19,7 @@ worker-configuration.d.ts
 .pilot-candidate
 .contract-assurance
 .deployment-rehearsal
+.pilot-readiness
 
 # Editor directories and files
 .vscode/*

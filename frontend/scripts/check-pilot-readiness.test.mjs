@@ -21,6 +21,7 @@ function readyResponse() {
     email: {
       configured: true,
       provider: "test-provider",
+      deliveryStatusConfigured: true,
       schedulerConfigured: true,
       schedulerHealthy: true,
       schedulerLastRunAt: "2026-07-30T18:00:00.000Z",

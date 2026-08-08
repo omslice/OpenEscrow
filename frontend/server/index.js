@@ -294,6 +294,40 @@ const NOTIFICATION_DELIVERIES_INDEX = `
 CREATE INDEX IF NOT EXISTS notification_deliveries_negotiation_id_idx
 ON notification_deliveries (negotiation_id, created_at)`;
 
+const NOTIFICATION_DELIVERIES_PROVIDER_INDEX = `
+CREATE INDEX IF NOT EXISTS notification_deliveries_provider_message_idx
+ON notification_deliveries (provider_message_id)
+WHERE provider_message_id IS NOT NULL`;
+
+const NOTIFICATION_DELIVERY_EVENTS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS notification_delivery_events (
+  provider_event_id TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  provider_message_id TEXT NOT NULL,
+  event_type TEXT NOT NULL,
+  status TEXT NOT NULL,
+  occurred_at TEXT NOT NULL,
+  received_at TEXT NOT NULL
+)`;
+
+const NOTIFICATION_DELIVERY_EVENTS_INDEX = `
+CREATE INDEX IF NOT EXISTS notification_delivery_events_message_idx
+ON notification_delivery_events (provider_message_id, occurred_at)`;
+
+const NOTIFICATION_SUPPRESSIONS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS notification_suppressions (
+  email TEXT PRIMARY KEY,
+  provider TEXT NOT NULL,
+  reason TEXT NOT NULL,
+  provider_event_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+)`;
+
+const NOTIFICATION_SUPPRESSIONS_INDEX = `
+CREATE INDEX IF NOT EXISTS notification_suppressions_updated_idx
+ON notification_suppressions (updated_at)`;
+
 const NEGOTIATION_TENANTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS negotiation_tenants (
   id TEXT PRIMARY KEY,
@@ -586,6 +620,7 @@ const ADDRESS_SUGGESTION_CACHE_TTL_MS = 10 * 60 * 1000;
 const ADDRESS_SUGGESTION_CACHE_LIMIT = 200;
 const ADDRESS_GEOCODER_TIMEOUT_MS = 3_000;
 const DEFAULT_API_BODY_LIMIT_BYTES = 512 * 1024;
+const PROVIDER_WEBHOOK_BODY_LIMIT_BYTES = 64 * 1024;
 const EVIDENCE_UPLOAD_BODY_LIMIT_BYTES = 11 * 1024 * 1024;
 const EVIDENCE_DOWNLOAD_BODY_LIMIT_BYTES = 16 * 1024;
 const PRIVY_JWKS_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -691,6 +726,9 @@ function json(data, status = 200) {
 }
 
 function requestBodyLimitBytes(url) {
+  if (url.pathname === "/api/notifications/provider/resend") {
+    return PROVIDER_WEBHOOK_BODY_LIMIT_BYTES;
+  }
   if (url.pathname === "/api/evidence") return EVIDENCE_UPLOAD_BODY_LIMIT_BYTES;
   if (/^\/api\/evidence\/[a-fA-F0-9-]+$/.test(url.pathname)) {
     return EVIDENCE_DOWNLOAD_BODY_LIMIT_BYTES;
@@ -1975,6 +2013,236 @@ function emailProvider(env) {
   return null;
 }
 
+const RESEND_WEBHOOK_TOLERANCE_SECONDS = 5 * 60;
+const RESEND_DELIVERY_STATUSES = Object.freeze({
+  "email.sent": "sent",
+  "email.delivered": "delivered",
+  "email.delivery_delayed": "delayed",
+  "email.bounced": "bounced",
+  "email.complained": "complained",
+  "email.failed": "provider_failed",
+  "email.suppressed": "suppressed",
+});
+const NOTIFICATION_SUPPRESSION_STATUSES = new Set([
+  "bounced",
+  "complained",
+  "suppressed",
+]);
+
+function equalBytes(left, right) {
+  if (left.length !== right.length) return false;
+  let difference = 0;
+  for (let index = 0; index < left.length; index += 1) {
+    difference |= left[index] ^ right[index];
+  }
+  return difference === 0;
+}
+
+async function verifyResendWebhook(request, env) {
+  const secret = cleanText(env.RESEND_WEBHOOK_SECRET, 500);
+  if (!secret.startsWith("whsec_")) {
+    return {
+      ok: false,
+      response: json({ error: "Email delivery events are not configured." }, 503),
+    };
+  }
+  const messageId = cleanText(request.headers.get("svix-id"), 200);
+  const timestampText = cleanText(request.headers.get("svix-timestamp"), 40);
+  const signatureHeader = cleanText(request.headers.get("svix-signature"), 1000);
+  if (!messageId || !/^\d{10,13}$/.test(timestampText) || !signatureHeader) {
+    return {
+      ok: false,
+      response: json({ error: "The email delivery event signature is missing." }, 400),
+    };
+  }
+  const timestampSeconds = Number(timestampText);
+  if (
+    !Number.isSafeInteger(timestampSeconds) ||
+    Math.abs(Math.floor(Date.now() / 1000) - timestampSeconds) >
+      RESEND_WEBHOOK_TOLERANCE_SECONDS
+  ) {
+    return {
+      ok: false,
+      response: json({ error: "The email delivery event has expired." }, 400),
+    };
+  }
+  let secretBytes;
+  try {
+    secretBytes = decodeBase64(secret.slice("whsec_".length));
+  } catch {
+    return {
+      ok: false,
+      response: json({ error: "Email delivery events are not configured." }, 503),
+    };
+  }
+  if (secretBytes.length < 16) {
+    return {
+      ok: false,
+      response: json({ error: "Email delivery events are not configured." }, 503),
+    };
+  }
+  const rawBody = await request.text();
+  const signingKey = await crypto.subtle.importKey(
+    "raw",
+    secretBytes,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const expected = new Uint8Array(
+    await crypto.subtle.sign(
+      "HMAC",
+      signingKey,
+      encoder.encode(`${messageId}.${timestampText}.${rawBody}`),
+    ),
+  );
+  const signatures = signatureHeader
+    .split(/\s+/)
+    .map((entry) => entry.split(",", 2))
+    .filter(([version, signature]) => version === "v1" && signature);
+  const verified = signatures.some(([, signature]) => {
+    try {
+      return equalBytes(expected, decodeBase64(signature));
+    } catch {
+      return false;
+    }
+  });
+  if (!verified) {
+    return {
+      ok: false,
+      response: json({ error: "The email delivery event signature is invalid." }, 400),
+    };
+  }
+  let event;
+  try {
+    event = JSON.parse(rawBody);
+  } catch {
+    return {
+      ok: false,
+      response: json({ error: "The email delivery event is not valid JSON." }, 400),
+    };
+  }
+  return { ok: true, event, providerEventId: messageId };
+}
+
+async function isNotificationSuppressed(db, email) {
+  if (!db) return false;
+  const row = await db
+    .prepare("SELECT email FROM notification_suppressions WHERE email = ?")
+    .bind(normalizeEmail(email))
+    .first();
+  return Boolean(row);
+}
+
+async function resendDeliveryWebhook(request, env) {
+  if (!env.DB) {
+    return json({ error: "Notification delivery storage is not available." }, 503);
+  }
+  const verified = await verifyResendWebhook(request, env);
+  if (!verified.ok) return verified.response;
+  const eventType = cleanText(verified.event?.type, 80);
+  const status = RESEND_DELIVERY_STATUSES[eventType];
+  if (!status) {
+    return json({ received: true, ignored: true });
+  }
+  const providerMessageId = cleanText(verified.event?.data?.email_id, 200);
+  const occurredAt = cleanText(verified.event?.created_at, 80);
+  if (!providerMessageId || !Number.isFinite(Date.parse(occurredAt))) {
+    return json({ error: "The email delivery event is incomplete." }, 400);
+  }
+  const delivery = await env.DB
+    .prepare(
+      `SELECT idempotency_key, recipient_email
+       FROM notification_deliveries
+       WHERE provider_message_id = ?
+       LIMIT 1`,
+    )
+    .bind(providerMessageId)
+    .first();
+  if (!delivery) {
+    return json({ received: true, matched: false });
+  }
+  const recipientEmail = normalizeEmail(delivery.recipient_email);
+  const eventRecipients = Array.isArray(verified.event?.data?.to)
+    ? verified.event.data.to.map(normalizeEmail).filter(Boolean)
+    : [];
+  if (eventRecipients.length > 0 && !eventRecipients.includes(recipientEmail)) {
+    return json({ error: "The email delivery event recipient does not match." }, 400);
+  }
+  const priorEvent = await env.DB
+    .prepare(
+      "SELECT provider_event_id FROM notification_delivery_events WHERE provider_event_id = ?",
+    )
+    .bind(verified.providerEventId)
+    .first();
+  if (priorEvent) {
+    return json({ received: true, matched: true, duplicate: true });
+  }
+
+  const receivedAt = new Date().toISOString();
+  const statements = [
+    env.DB
+      .prepare(
+        `INSERT OR IGNORE INTO notification_delivery_events
+         (provider_event_id, provider, provider_message_id, event_type, status,
+          occurred_at, received_at)
+         VALUES (?, 'resend', ?, ?, ?, ?, ?)`,
+      )
+      .bind(
+        verified.providerEventId,
+        providerMessageId,
+        eventType,
+        status,
+        new Date(occurredAt).toISOString(),
+        receivedAt,
+      ),
+    env.DB
+      .prepare(
+        "UPDATE notification_deliveries SET status = ? WHERE provider_message_id = ?",
+      )
+      .bind(status, providerMessageId),
+  ];
+  if (NOTIFICATION_SUPPRESSION_STATUSES.has(status)) {
+    statements.push(
+      env.DB
+        .prepare(
+          `INSERT INTO notification_suppressions
+           (email, provider, reason, provider_event_id, created_at, updated_at)
+           VALUES (?, 'resend', ?, ?, ?, ?)
+           ON CONFLICT(email) DO UPDATE SET
+             provider = excluded.provider,
+             reason = excluded.reason,
+             provider_event_id = excluded.provider_event_id,
+             updated_at = excluded.updated_at`,
+        )
+        .bind(
+          recipientEmail,
+          status,
+          verified.providerEventId,
+          receivedAt,
+          receivedAt,
+        ),
+      env.DB
+        .prepare(
+          `UPDATE notification_preferences
+           SET agreement_activity = 0,
+               deadline_reminders = 0,
+               consented_at = NULL,
+               updated_at = ?
+           WHERE lower(email) = ?`,
+        )
+        .bind(receivedAt, recipientEmail),
+    );
+  }
+  await env.DB.batch(statements);
+  return json({
+    received: true,
+    matched: true,
+    duplicate: false,
+    status,
+  });
+}
+
 async function deliverEmail(
   env,
   { to, subject, text, idempotencyKey },
@@ -1988,6 +2256,9 @@ async function deliverEmail(
     ),
   ];
   if (!provider || recipients.length === 0) return null;
+  for (const recipient of recipients) {
+    if (await isNotificationSuppressed(env.DB, recipient)) return null;
+  }
 
   try {
     if (provider === "resend") {
@@ -3213,6 +3484,11 @@ async function initialize(db) {
     db.prepare(NOTIFICATION_UNSUBSCRIBE_SCHEMA),
     db.prepare(NOTIFICATION_DELIVERIES_SCHEMA),
     db.prepare(NOTIFICATION_DELIVERIES_INDEX),
+    db.prepare(NOTIFICATION_DELIVERIES_PROVIDER_INDEX),
+    db.prepare(NOTIFICATION_DELIVERY_EVENTS_SCHEMA),
+    db.prepare(NOTIFICATION_DELIVERY_EVENTS_INDEX),
+    db.prepare(NOTIFICATION_SUPPRESSIONS_SCHEMA),
+    db.prepare(NOTIFICATION_SUPPRESSIONS_INDEX),
     db.prepare(NEGOTIATION_TENANTS_SCHEMA),
     db.prepare(NEGOTIATION_TENANTS_INDEX),
     db.prepare(NEGOTIATION_TENANTS_DISCOVERY_INDEX),
@@ -3327,12 +3603,19 @@ async function notificationPreferences(request, env) {
     .prepare("SELECT * FROM notification_preferences WHERE user_id = ?")
     .bind(identity.userId)
     .first();
+  const suppression = await env.DB
+    .prepare("SELECT reason, updated_at FROM notification_suppressions WHERE email = ?")
+    .bind(identity.emails[0])
+    .first();
   if (request.method === "GET") {
     return json({
       agreementActivity: existing?.agreement_activity === 1,
       deadlineReminders: existing?.deadline_reminders === 1,
       consentedAt: existing?.consented_at || null,
       updatedAt: existing?.updated_at || null,
+      deliveryPaused: Boolean(suppression),
+      deliveryPauseReason: suppression?.reason || null,
+      deliveryPausedAt: suppression?.updated_at || null,
     });
   }
 
@@ -3345,6 +3628,18 @@ async function notificationPreferences(request, env) {
   }
   const now = new Date().toISOString();
   const enabled = body.agreementActivity || body.deadlineReminders;
+  if (enabled && suppression) {
+    return json(
+      {
+        error:
+          suppression.reason === "complained"
+            ? "Email notifications stay off because this address marked a prior OpenEscrow message as spam."
+            : "Email notifications stay off because the email provider could not safely deliver to this address.",
+        code: "email-delivery-paused",
+      },
+      409,
+    );
+  }
   const consentedAt = enabled ? existing?.consented_at || now : null;
   await env.DB
     .prepare(
@@ -3559,6 +3854,12 @@ async function serviceReadiness(env) {
     email: {
       configured: Boolean(provider),
       provider,
+      deliveryStatusConfigured: Boolean(
+        provider === "resend"
+          ? cleanText(env.RESEND_WEBHOOK_SECRET, 500).startsWith("whsec_")
+          : provider === "webhook" &&
+              cleanText(env.EMAIL_WEBHOOK_STATUS_TRACKING, 20).toLowerCase() === "true",
+      ),
       schedulerConfigured: Boolean(env.DB),
       schedulerLastRunAt,
       schedulerHealthy,
@@ -10222,6 +10523,13 @@ const worker = {
       }
       if (env.DB) await initialize(env.DB);
       return sendTestEmail(request, env);
+    }
+    if (
+      url.pathname === "/api/notifications/provider/resend" &&
+      request.method === "POST"
+    ) {
+      if (env.DB) await initialize(env.DB);
+      return resendDeliveryWebhook(request, env);
     }
     if (
       url.pathname === "/api/notifications/unsubscribe" &&

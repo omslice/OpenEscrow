@@ -41,6 +41,33 @@ import { createFundingIntent } from "../shared/funding-routes.js";
 const TEST_ADDRESS_ATTESTATION_SECRET =
   "openescrow-test-address-attestation-secret-2026";
 
+async function resendWebhookHeaders(secret, payload, {
+  messageId = "msg_openescrow_delivery_event",
+  timestamp = Math.floor(Date.now() / 1000),
+} = {}) {
+  const secretBytes = Buffer.from(secret.slice("whsec_".length), "base64");
+  const key = await crypto.subtle.importKey(
+    "raw",
+    secretBytes,
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign"],
+  );
+  const signature = Buffer.from(
+    await crypto.subtle.sign(
+      "HMAC",
+      key,
+      new TextEncoder().encode(`${messageId}.${timestamp}.${payload}`),
+    ),
+  ).toString("base64");
+  return {
+    "content-type": "application/json",
+    "svix-id": messageId,
+    "svix-timestamp": String(timestamp),
+    "svix-signature": `v1,${signature}`,
+  };
+}
+
 test("the packaged D1 migration applies cleanly", () => {
   const database = new DatabaseSync(":memory:");
   const applyMigration = (migrationName) => {
@@ -74,11 +101,13 @@ test("the packaged D1 migration applies cleanly", () => {
     "0018_finalization_receipt_assignment_guard.sql",
     "0019_api_rate_limits.sql",
     "0020_query_path_indexes.sql",
+    "0021_notification_delivery_events.sql",
   ]) {
     applyMigration(migrationName);
   }
   applyMigration("0001_negotiation_account_access.sql");
   applyMigration("0020_query_path_indexes.sql");
+  applyMigration("0021_notification_delivery_events.sql");
   const tables = database
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
     .all()
@@ -89,6 +118,8 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.ok(tables.includes("notification_preferences"));
   assert.ok(tables.includes("evidence_files"));
   assert.ok(tables.includes("notification_deliveries"));
+  assert.ok(tables.includes("notification_delivery_events"));
+  assert.ok(tables.includes("notification_suppressions"));
   assert.ok(tables.includes("notification_unsubscribe_tokens"));
   assert.ok(tables.includes("scheduled_job_runs"));
   assert.ok(tables.includes("compliance_source_checks"));
@@ -99,6 +130,24 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.ok(tables.includes("arbiter_replacement_account_access"));
   assert.ok(tables.includes("negotiation_receipt_guards"));
   assert.ok(tables.includes("api_rate_limits"));
+  const deliveryIndexes = database
+    .prepare("PRAGMA index_list(notification_deliveries)")
+    .all()
+    .map((row) => row.name);
+  assert.equal(
+    deliveryIndexes.includes("notification_deliveries_provider_message_idx"),
+    true,
+  );
+  assert.match(
+    database
+      .prepare(
+        "EXPLAIN QUERY PLAN SELECT * FROM notification_deliveries WHERE provider_message_id = ?",
+      )
+      .all("provider-message")
+      .map((row) => row.detail)
+      .join(" "),
+    /notification_deliveries_provider_message_idx/,
+  );
   const rateLimitIndexes = database
     .prepare("PRAGMA index_list(api_rate_limits)")
     .all()
@@ -1821,6 +1870,17 @@ test("API abuse controls bound request bodies and persist hashed edge rate limit
   const streamedSizeResponse = await requestBodyLimitResponse(streamedOversized);
   assert.equal(streamedSizeResponse.status, 413);
   assert.equal((await streamedSizeResponse.json()).code, "request-too-large");
+
+  const oversizedProviderEvent = new Request(
+    "https://openescrow.example/api/notifications/provider/resend",
+    {
+      method: "POST",
+      body: new Uint8Array(64 * 1024 + 1),
+    },
+  );
+  const providerSizeResponse = await requestBodyLimitResponse(oversizedProviderEvent);
+  assert.equal(providerSizeResponse.status, 413);
+  assert.equal((await providerSizeResponse.json()).maximumBytes, 64 * 1024);
 
   const streamedGateResponse = await applyApiAbuseControls(
     new Request("https://openescrow.example/api/negotiations", {
@@ -6774,6 +6834,7 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     });
     assert.equal(readiness.email.configured, true);
     assert.equal(readiness.email.provider, "resend");
+    assert.equal(readiness.email.deliveryStatusConfigured, false);
     assert.equal(readiness.evidence.contentTypeValidation, true);
     assert.equal(readiness.recordIntegrity.lifecycleStateGuards, true);
     assert.equal(readiness.recordIntegrity.activityRegistry.ready, true);
@@ -6793,6 +6854,15 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
       readiness.recordIntegrity.transactionReceiptVerification,
       true,
     );
+    const trackedReadiness = await jsonResponse(
+      await worker.fetch(request("/api/system/readiness"), {
+        ...resendEnv,
+        RESEND_WEBHOOK_SECRET: `whsec_${Buffer.from(
+          "openescrow-resend-webhook-readiness-secret",
+        ).toString("base64")}`,
+      }),
+    );
+    assert.equal(trackedReadiness.email.deliveryStatusConfigured, true);
     const mismatchedReadiness = await jsonResponse(
       await worker.fetch(
         request("/api/system/readiness"),
@@ -6867,9 +6937,141 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     assert.equal(webhookResponse.provider, "webhook");
     assert.equal(deliveries.at(-1).url, "https://mailer.example/send");
     assert.equal(deliveries.at(-1).authorization, "Bearer webhook-secret");
+    const webhookReadinessEnv = {
+      DB: webhookDb,
+      EMAIL_WEBHOOK_URL: "https://mailer.example/send",
+      EMAIL_WEBHOOK_TOKEN: "webhook-secret",
+      NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+    };
+    const webhookReadiness = await jsonResponse(
+      await worker.fetch(
+        request("/api/system/readiness"),
+        webhookReadinessEnv,
+      ),
+    );
+    assert.equal(webhookReadiness.email.deliveryStatusConfigured, false);
+    const trackedWebhookReadiness = await jsonResponse(
+      await worker.fetch(request("/api/system/readiness"), {
+        ...webhookReadinessEnv,
+        EMAIL_WEBHOOK_STATUS_TRACKING: "true",
+      }),
+    );
+    assert.equal(trackedWebhookReadiness.email.deliveryStatusConfigured, true);
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("signed Resend delivery events update status idempotently and suppress unsafe recipients", async () => {
+  const db = new TestD1();
+  const secret = `whsec_${Buffer.from("openescrow-resend-webhook-test-secret").toString("base64")}`;
+  const env = {
+    DB: db,
+    RESEND_WEBHOOK_SECRET: secret,
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  };
+  await jsonResponse(await worker.fetch(request("/api/system/readiness"), env));
+  db.prepare(
+    `INSERT INTO notification_preferences
+     (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+     VALUES (?, ?, 1, 1, ?, ?)`,
+  )
+    .bind(
+      "resend-webhook-user",
+      "tenant@example.com",
+      "2026-08-08T00:00:00.000Z",
+      "2026-08-08T00:00:00.000Z",
+    )
+    .run();
+  db.prepare(
+    `INSERT INTO notification_deliveries
+     (idempotency_key, negotiation_id, recipient_email, notification_type,
+      scheduled_for, status, provider_message_id, created_at, sent_at)
+     VALUES (?, NULL, ?, 'email_configuration_test', NULL, 'sent', ?, ?, ?)`,
+  )
+    .bind(
+      "resend-webhook-delivery",
+      "tenant@example.com",
+      "email-resend-1",
+      "2026-08-08T00:00:00.000Z",
+      "2026-08-08T00:00:00.000Z",
+    )
+    .run();
+
+  const payload = JSON.stringify({
+    type: "email.bounced",
+    created_at: new Date().toISOString(),
+    data: {
+      email_id: "email-resend-1",
+      to: ["tenant@example.com"],
+      subject: "This must not be stored",
+      bounce: { message: "This must not be stored either" },
+    },
+  });
+  const makeRequest = async (overrides = {}) =>
+    new Request("https://openescrow.example/api/notifications/provider/resend", {
+      method: "POST",
+      headers: await resendWebhookHeaders(secret, payload, overrides),
+      body: payload,
+    });
+  const first = await jsonResponse(await worker.fetch(await makeRequest(), env));
+  const duplicate = await jsonResponse(await worker.fetch(await makeRequest(), env));
+  assert.equal(first.status, "bounced");
+  assert.equal(first.duplicate, false);
+  assert.equal(duplicate.duplicate, true);
+  assert.equal(
+    db.prepare("SELECT status FROM notification_deliveries WHERE provider_message_id = ?")
+      .bind("email-resend-1")
+      .first().status,
+    "bounced",
+  );
+  assert.deepEqual(
+    {
+      ...db.prepare("SELECT email, reason FROM notification_suppressions WHERE email = ?")
+        .bind("tenant@example.com")
+        .first(),
+    },
+    { email: "tenant@example.com", reason: "bounced" },
+  );
+  assert.deepEqual(
+    {
+      ...db.prepare(
+        `SELECT agreement_activity, deadline_reminders, consented_at
+         FROM notification_preferences WHERE user_id = ?`,
+      )
+        .bind("resend-webhook-user")
+        .first(),
+    },
+    { agreement_activity: 0, deadline_reminders: 0, consented_at: null },
+  );
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM notification_delivery_events").first().count,
+    1,
+  );
+  const storedEvent = db
+    .prepare("SELECT * FROM notification_delivery_events")
+    .first();
+  assert.equal(JSON.stringify(storedEvent).includes("must not be stored"), false);
+
+  const invalid = await worker.fetch(
+    new Request("https://openescrow.example/api/notifications/provider/resend", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "svix-id": "msg_invalid",
+        "svix-timestamp": String(Math.floor(Date.now() / 1000)),
+        "svix-signature": "v1,AAAA",
+      },
+      body: payload,
+    }),
+    env,
+  );
+  assert.equal(invalid.status, 400);
+  assert.equal(
+    db.prepare("SELECT COUNT(*) AS count FROM notification_delivery_events").first().count,
+    1,
+  );
 });
 
 test("readiness tracks notification scheduler freshness against the 15-minute cadence", async () => {

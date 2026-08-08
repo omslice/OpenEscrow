@@ -279,6 +279,8 @@ export function PrivyAccountCenter({
       ) {
         return;
       }
+      setPreferences(preferences);
+      writeRecoveryJson(preferenceKey, preferences);
       setPreferenceNotice({
         message:
           error instanceof Error
@@ -702,7 +704,7 @@ export function PrivyAccountCenter({
           <input
             type="checkbox"
             checked={preferences.agreementActivity}
-            disabled={!email}
+            disabled={!email || preferences.deliveryPaused}
             aria-describedby={`notification-preference-boundary${
               preferenceNotice ? " notification-preference-status" : ""
             }`}
@@ -716,7 +718,7 @@ export function PrivyAccountCenter({
           <input
             type="checkbox"
             checked={preferences.deadlineReminders}
-            disabled={!email}
+            disabled={!email || preferences.deliveryPaused}
             aria-describedby={`notification-preference-boundary${
               preferenceNotice ? " notification-preference-status" : ""
             }`}
@@ -730,14 +732,32 @@ export function PrivyAccountCenter({
           Preferences follow your verified account. Every optional message includes an unsubscribe
           link and intentionally omits private agreement details.
         </p>
+        {preferences.deliveryPaused && (
+          <p className="notification-boundary" role="status">
+            {preferences.deliveryPauseReason === "complained"
+              ? "Automatic email is paused because this address marked an OpenEscrow message as spam. Contact OpenEscrow if that was a mistake."
+              : "Automatic email is paused because the provider could not safely deliver to this address. Confirm the address, then contact OpenEscrow to restore delivery."}
+          </p>
+        )}
         {serviceReadiness?.email.configured ? (
-          <div className="notification-delivery-status ready">
+          <div
+            className={`notification-delivery-status${
+              serviceReadiness.email.deliveryStatusConfigured ? " ready" : ""
+            }`}
+          >
             <div>
-              <strong>Automatic delivery ready</strong>
+              <strong>
+                {serviceReadiness.email.deliveryStatusConfigured
+                  ? "Automatic delivery ready"
+                  : "Email sending configured"}
+              </strong>
               <span>
                 {serviceReadiness.email.provider === "resend"
                   ? "Resend"
                   : "Configured email webhook"}
+                {serviceReadiness.email.deliveryStatusConfigured
+                  ? " · delivery confirmation ready"
+                  : " · delivery confirmation setup is incomplete"}
                 {serviceReadiness.email.schedulerHealthy
                   ? ` · scheduler healthy (${serviceReadiness.email.schedulerExpectedIntervalMinutes} min cadence)`
                   : " · scheduler stale"}
