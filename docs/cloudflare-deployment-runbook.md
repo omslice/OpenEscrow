@@ -67,8 +67,9 @@ public shell, security headers, exact commit, private evidence binding, encrypti
 address-attestation, receipt verification, the activity-registry verification boundary, and the
 compliance monitor. A dirty-source package is available solely for local dry runs and is stamped
 `sourceDirty: true`. The stricter pilot verifier and readiness command remain separate gates
-because notification delivery, version-matched registry state, scheduler health, and the complete
-source baseline require a real hosted run after deployment.
+because notification delivery and a version-matched registry still require owner-controlled
+configuration. Scheduler health and all 61 compliance-source gates are currently passing but stay
+in the strict check so later regressions fail closed.
 
 The one-time staging bootstrap refuses to run if the `openescrow` Worker already exists. It creates
 fresh staging-only evidence-encryption and address-attestation secrets, verifies a Windows
@@ -100,15 +101,21 @@ R2 bytes without publishing their values; it never imports, overwrites, or delet
 Enter secrets with Wrangler or the Cloudflare dashboard. Do not add their values to
 `wrangler.jsonc`, `.env.production`, chat, screenshots, or build artifacts.
 
-Required before staging readiness can pass:
+Already configured and required for Cloudflare core readiness:
 
 - `EVIDENCE_ENCRYPTION_KEY`
 - `EVIDENCE_ENCRYPTION_KEY_ID`
 - `ADDRESS_ATTESTATION_SECRET`
-- notification provider values (`RESEND_API_KEY`, or the documented webhook alternative)
 
-Provider-side actions are also required: add the staging and final MVP origins to Privy and any
-OAuth allowlists. Keep Base Sepolia and synthetic-data restrictions in place.
+Still required for strict pilot readiness:
+
+- notification provider values (`RESEND_API_KEY`, or the documented webhook alternative);
+- a verified `ACTIVITY_REGISTRY_ADDRESS` bound to the active escrow while
+  `VERIFY_ACTIVITY_REGISTRY_BINDING=true` remains enabled.
+
+The canonical staging origin is already accepted by Privy and its Google chooser has been
+verified. Add any future custom-domain origin to Privy and applicable OAuth allowlists before it is
+used. Keep Base Sepolia and synthetic-data restrictions in place.
 
 ## Promotion and rollback
 

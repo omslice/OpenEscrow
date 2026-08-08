@@ -73,6 +73,25 @@ The single application includes:
 - No migration step may overwrite either source or destination without verified backup and an
   explicit continuity decision.
 
+## Current evidence snapshot (2026-08-08)
+
+- Cloudflare and ChatGPT Sites both serve exact clean commit
+  `c171c37a08d04cee9c1a1fc9d661056950e6abea`; the fail-closed dual-host verifier passed.
+- The Cloudflare core deployment verifier passed with the exact staging D1, private R2, static
+  assets, application-layer evidence encryption/keyring, address attestation, receipt checks,
+  compliance monitor, and `*/15` scheduled handler intact. All 21 staging migrations are current.
+- Hosted pilot readiness reports 61/61 compliance-source gates current and a healthy scheduler.
+  The only two failed runtime gates are automatic email delivery and the version-matched activity
+  registry.
+- The credential-free pilot rehearsal passed 23/23 lifecycle, outage, archive, proof, funding,
+  and recovery scenarios. The credential-free incident rehearsal passed 19/19 isolation,
+  privacy, tamper, key-rotation, outage, receipt, and RPC scenarios.
+- Accessibility, visible load-failure recovery, private-record recovery, private-activity recovery,
+  evidence recovery, and funding recovery browser checks passed. These checks do not replace the
+  remaining separate-account, human-supervised pilot.
+- Google account selection was previously verified from the Cloudflare origin after that exact
+  origin was added to Privy. Future custom domains must be allowlisted before use.
+
 ## Acceptance criteria
 
 - Exactly one Cloudflare public site serves the full MVP and About tab.
@@ -88,10 +107,12 @@ The single application includes:
 
 ## Owner-only actions still required
 
-- Add the final Cloudflare origin to Privy and any OAuth allowlists if provider login rejects it.
 - Configure the notification provider secret and sender identity.
+- Review and broadcast the hardened Base Sepolia escrow/reserve/registry cohort, return only its
+  public manifest and transaction hashes, and approve the verified configuration switch.
 - Decide whether existing synthetic Sites records must migrate or may remain historical.
-- Run the supervised separate-account pilot and approve any future custom-domain cutover.
+- Run the supervised separate-account pilot and incident/privacy drill, and approve any future
+  custom-domain cutover.
 
 ## Material unknowns
 
