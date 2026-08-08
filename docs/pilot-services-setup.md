@@ -149,12 +149,14 @@ The Worker already exports its scheduled notification job. Add one hosted Cron T
 
 This checks every fifteen minutes. The job refuses to run more than once every ten minutes, and
 each logical notice has an idempotency key, so repeated checks do not create duplicate email.
-When the compliance monitor is enabled, the same trigger starts at most one rotating
-official-source batch per day. Source monitoring stores signatures and status metadata in D1;
-it does not change an agreement or compliance profile automatically.
+When the compliance monitor is enabled, the same trigger checks the next small official-source
+batch every fifteen minutes while an initial baseline is incomplete. After every registered source
+has an initial result, it automatically returns to at most one rotating batch per day. Source
+monitoring stores signatures and status metadata in D1; it does not change an agreement or
+compliance profile automatically.
 
-The monitor checks four sources per daily batch, so the first nationwide
-baseline takes multiple scheduled runs. While monitoring is enabled, a
+The monitor checks four sources per batch, so the first nationwide baseline normally completes in
+about four hours when the trigger remains healthy. While monitoring is enabled, a
 state-profile proposal is blocked until its exact statewide and applicable
 overlay sources have fresh successful checks. A source-page signature change
 requires a reviewed, newly versioned rule profile; do not bypass the gate by

@@ -608,8 +608,8 @@ const ACTIVITY_REGISTRY_ESCROW_SELECTOR = "0xe681c4aa";
 const ACTIVITY_REGISTRY_READINESS_TTL_MS = 60_000;
 const HOSTED_NOTIFICATION_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000;
 const HOSTED_NOTIFICATION_SCHEDULER_GRACE_MS = 2 * HOSTED_NOTIFICATION_SCHEDULER_INTERVAL_MS;
+const COMPLIANCE_SOURCE_BOOTSTRAP_INTERVAL_MS = 15 * 60 * 1000;
 const COMPLIANCE_SOURCE_MONITOR_INTERVAL_MS = 24 * 60 * 60 * 1000;
-const COMPLIANCE_SOURCE_MONITOR_GRACE_MS = 2 * COMPLIANCE_SOURCE_MONITOR_INTERVAL_MS;
 const RECEIPT_EVENT_TOPICS = Object.freeze({
   agreementProposed:
     "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6",
@@ -3377,11 +3377,17 @@ async function serviceReadiness(env) {
     Number.isFinite(schedulerLastRunMs) &&
     nowMs - schedulerLastRunMs <= HOSTED_NOTIFICATION_SCHEDULER_GRACE_MS &&
     nowMs >= schedulerLastRunMs;
+  const complianceSourceBootstrapInProgress =
+    complianceSourceStats.tracked < COMPLIANCE_SOURCE_REGISTRY.length ||
+    complianceSourceStats.pending > 0;
+  const complianceSourceCurrentIntervalMs = complianceSourceBootstrapInProgress
+    ? COMPLIANCE_SOURCE_BOOTSTRAP_INTERVAL_MS
+    : COMPLIANCE_SOURCE_MONITOR_INTERVAL_MS;
   const complianceSourceMonitorHealthy =
     env.DB &&
     env.COMPLIANCE_SOURCE_MONITOR_ENABLED === "true" &&
     Number.isFinite(complianceSourceLastRunMs) &&
-    nowMs - complianceSourceLastRunMs <= COMPLIANCE_SOURCE_MONITOR_GRACE_MS &&
+    nowMs - complianceSourceLastRunMs <= 2 * complianceSourceCurrentIntervalMs &&
     nowMs >= complianceSourceLastRunMs;
   const schedulerAgeMinutes =
     !Number.isFinite(schedulerLastRunMs)
@@ -3483,6 +3489,9 @@ async function serviceReadiness(env) {
       monitorHealthy: complianceSourceMonitorHealthy,
       monitorExpectedIntervalMinutes:
         COMPLIANCE_SOURCE_MONITOR_INTERVAL_MS / (60 * 1000),
+      monitorCurrentIntervalMinutes:
+        complianceSourceCurrentIntervalMs / (60 * 1000),
+      bootstrapInProgress: complianceSourceBootstrapInProgress,
       monitorLastRunAgeMinutes: complianceSourceMonitorAgeMinutes,
       maxVerificationAgeDays:
         COMPLIANCE_SOURCE_FRESHNESS_MS / (24 * 60 * 60 * 1000),
@@ -6388,6 +6397,19 @@ function checkComplianceSourceOnce(db, sourceRow, now) {
 async function runComplianceSourceAudit(env, now = new Date()) {
   if (!env.DB || env.COMPLIANCE_SOURCE_MONITOR_ENABLED !== "true") return;
   await initialize(env.DB);
+  const sourceProgress = await env.DB
+    .prepare(
+      `SELECT COUNT(*) AS tracked,
+              SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending
+       FROM compliance_source_checks`,
+    )
+    .first();
+  const bootstrapInProgress =
+    Number(sourceProgress?.tracked || 0) < COMPLIANCE_SOURCE_REGISTRY.length ||
+    Number(sourceProgress?.pending || 0) > 0;
+  const minimumInterval = bootstrapInProgress
+    ? COMPLIANCE_SOURCE_BOOTSTRAP_INTERVAL_MS
+    : COMPLIANCE_SOURCE_MONITOR_INTERVAL_MS;
   const prior = await env.DB
     .prepare("SELECT last_started_at FROM scheduled_job_runs WHERE name = ?")
     .bind("compliance-source-monitor")
@@ -6395,7 +6417,7 @@ async function runComplianceSourceAudit(env, now = new Date()) {
   const lastStarted = prior?.last_started_at
     ? new Date(prior.last_started_at).getTime()
     : 0;
-  if (now.getTime() - lastStarted < 24 * 60 * 60 * 1000) return;
+  if (now.getTime() - lastStarted < minimumInterval) return;
   await seedComplianceSources(env.DB);
   await env.DB
     .prepare(

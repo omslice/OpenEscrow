@@ -6402,7 +6402,7 @@ test("readiness reports compliance monitor freshness and configuration", async (
   await jsonResponse(await worker.fetch(request("/api/system/readiness"), baseEnv));
   db.prepare(
     "INSERT OR REPLACE INTO scheduled_job_runs (name, last_started_at) VALUES (?, ?)",
-  ).bind("compliance-source-monitor", new Date(now - 65 * 60 * 1000).toISOString())
+  ).bind("compliance-source-monitor", new Date(now - 5 * 60 * 1000).toISOString())
     .run();
 
   const originalDateNow = Date.now;
@@ -6414,7 +6414,9 @@ test("readiness reports compliance monitor freshness and configuration", async (
     assert.equal(readiness.complianceSources.configured, true);
     assert.equal(readiness.complianceSources.monitorHealthy, true);
     assert.equal(readiness.complianceSources.monitorExpectedIntervalMinutes, 1440);
-    assert.equal(readiness.complianceSources.monitorLastRunAgeMinutes, 65);
+    assert.equal(readiness.complianceSources.monitorCurrentIntervalMinutes, 15);
+    assert.equal(readiness.complianceSources.bootstrapInProgress, true);
+    assert.equal(readiness.complianceSources.monitorLastRunAgeMinutes, 5);
     assert.equal(readiness.complianceSources.ready, false);
 
     db.prepare(
@@ -6422,7 +6424,7 @@ test("readiness reports compliance monitor freshness and configuration", async (
     )
       .bind(
         "compliance-source-monitor",
-        new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString(),
+        new Date(now - 65 * 60 * 1000).toISOString(),
       )
       .run();
     const staleReadiness = await jsonResponse(
@@ -6430,7 +6432,7 @@ test("readiness reports compliance monitor freshness and configuration", async (
     );
     assert.equal(staleReadiness.complianceSources.configured, true);
     assert.equal(staleReadiness.complianceSources.monitorHealthy, false);
-    assert.equal(staleReadiness.complianceSources.monitorLastRunAgeMinutes, 4320);
+    assert.equal(staleReadiness.complianceSources.monitorLastRunAgeMinutes, 65);
   } finally {
     Date.now = originalDateNow;
   }
@@ -6440,6 +6442,11 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
   const db = new TestD1();
   const originalFetch = globalThis.fetch;
   const checkedUrls = [];
+  const officialSourceUrls = new Set(
+    COMPLIANCE_SOURCE_REGISTRY.map((source) => source.url),
+  );
+  const complianceCheckCount = () =>
+    checkedUrls.filter((url) => officialSourceUrls.has(url)).length;
   globalThis.fetch = async (input) => {
     checkedUrls.push(String(input));
     return new Response(`<html><body>${String(input)}</body></html>`, {
@@ -6466,7 +6473,7 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
       },
     );
     await Promise.all(waits);
-    assert.equal(checkedUrls.length, 4);
+    assert.equal(complianceCheckCount(), 4);
     const counts = await db
       .prepare(
         `SELECT COUNT(*) AS total,
@@ -6514,7 +6521,7 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
       .run();
     const nextWaits = [];
     await worker.scheduled(
-      { scheduledTime: Date.parse("2027-07-03T12:00:00.000Z") },
+      { scheduledTime: Date.parse("2027-07-02T12:15:00.000Z") },
       {
         DB: db,
         COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
@@ -6527,6 +6534,7 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
       },
     );
     await Promise.all(nextWaits);
+    assert.equal(complianceCheckCount(), 8);
     const refreshed = await db
       .prepare(
         `SELECT profile_version, status, last_verified_at
@@ -6536,7 +6544,58 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
       .first();
     assert.equal(refreshed.profile_version, expectedSource.version);
     assert.equal(refreshed.status, "unchanged");
-    assert.equal(refreshed.last_verified_at, "2027-07-03T12:00:00.000Z");
+    assert.equal(refreshed.last_verified_at, "2027-07-02T12:15:00.000Z");
+
+    await db
+      .prepare(
+        `UPDATE compliance_source_checks
+         SET status = 'unchanged', baseline_signature = 'stable',
+             current_signature = 'stable', last_verified_at = ?`,
+      )
+      .bind("2027-07-02T12:15:00.000Z")
+      .run();
+    const steadyReadiness = await jsonResponse(
+      await worker.fetch(request("/api/system/readiness"), {
+        DB: db,
+        COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+      }),
+    );
+    assert.equal(steadyReadiness.complianceSources.bootstrapInProgress, false);
+    assert.equal(steadyReadiness.complianceSources.monitorCurrentIntervalMinutes, 1440);
+
+    const tooSoonWaits = [];
+    await worker.scheduled(
+      { scheduledTime: Date.parse("2027-07-02T12:30:00.000Z") },
+      {
+        DB: db,
+        COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+        VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+      },
+      {
+        waitUntil(promise) {
+          tooSoonWaits.push(promise);
+        },
+      },
+    );
+    await Promise.all(tooSoonWaits);
+    assert.equal(complianceCheckCount(), 8);
+
+    const dailyWaits = [];
+    await worker.scheduled(
+      { scheduledTime: Date.parse("2027-07-03T12:15:00.000Z") },
+      {
+        DB: db,
+        COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+        VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+      },
+      {
+        waitUntil(promise) {
+          dailyWaits.push(promise);
+        },
+      },
+    );
+    await Promise.all(dailyWaits);
+    assert.equal(complianceCheckCount(), 12);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -6593,7 +6652,7 @@ test("homepage traffic safely advances an enabled compliance-source baseline", a
     assert.equal(
       checkedUrls.length,
       4,
-      "repeat homepage traffic must not run a second source batch inside 24 hours",
+      "repeat homepage traffic must not run a second source batch inside 15 minutes",
     );
   } finally {
     globalThis.fetch = originalFetch;

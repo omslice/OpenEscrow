@@ -188,6 +188,12 @@ production custody, or reliance on the compliance research as legal advice.
   sources are shown as needing attention, a failed retry cannot
   leave a stale green result beside its error, simultaneous requests share one bounded check, and
   an older late completion cannot overwrite a newer durable result. No rule content is rewritten.
+- **Verified:** A new or version-expanded official-source registry now advances in bounded
+  four-source batches on the existing fifteen-minute scheduler until every source has an initial
+  result, then automatically returns to the daily monitoring cadence. Readiness distinguishes
+  bootstrap and steady-state cadence, and regression coverage proves immediate duplicate runs are
+  suppressed in both modes. This shortens a fresh nationwide baseline from roughly sixteen days
+  to about four hours without increasing batch size or allowing the monitor to rewrite legal rules.
 - **Verified:** Compliance event inputs now reject impossible dates and timestamps without an
   explicit timezone before they can be stored. Business-day rules reject a malformed holiday
   calendar instead of silently dropping bad dates, inherited event fields are ignored, combined

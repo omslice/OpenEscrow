@@ -163,7 +163,7 @@ try {
     "A clean logged-out visit must not show an empty workspace notification control.",
   );
   const copyDonationAddress = landingPage.getByRole("button", {
-    name: "Copy donation address 0x0C33BC6449d134782a95167658303F9d87dd7D79",
+    name: "Copy donation address openescrow.eth",
   });
   await copyDonationAddress.waitFor({ state: "visible" });
   await copyDonationAddress.click();
@@ -181,8 +181,13 @@ try {
   );
   assert.equal(
     await landingPage.evaluate(() => navigator.clipboard.readText()),
-    "0x0C33BC6449d134782a95167658303F9d87dd7D79",
-    "The public donation control must copy the exact ENS address.",
+    "openescrow.eth",
+    "The public donation control must copy the displayed ENS name.",
+  );
+  assert.equal(
+    await landingPage.locator(".donation-address").getAttribute("title"),
+    "Resolves to 0x0C33BC6449d134782a95167658303F9d87dd7D79",
+    "The displayed ENS name must retain its exact destination address.",
   );
   await landingPage.evaluate(() => {
     Object.defineProperty(navigator, "clipboard", {
@@ -203,7 +208,7 @@ try {
     .getByRole("alert")
     .filter({
       hasText:
-        "Select 0x0C33BC6449d134782a95167658303F9d87dd7D79 and copy it manually.",
+        "Select openescrow.eth and copy it manually.",
     })
     .waitFor({ state: "visible" });
   assert.equal(
