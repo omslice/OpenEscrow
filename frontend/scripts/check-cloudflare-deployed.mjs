@@ -65,6 +65,12 @@ await verifyPrivyGoogleOrigin({
 
 const readinessResult = await waitForExpectedRelease({
   expectedCommit,
+  onRetry: ({ attempt, attempts, delayMs, lastResult }) => {
+    const observed = lastResult?.readiness?.release?.commitSha || "unavailable";
+    console.log(
+      `Waiting for Cloudflare release propagation (${attempt}/${attempts - 1}); observed ${observed}. Retrying in ${delayMs}ms.`,
+    );
+  },
   readAttempt: async (attempt) => {
     const readinessResponse = await fetch(
       releaseReadinessUrl(baseUrl, expectedCommit, `${Date.now().toString(36)}-${attempt}`),

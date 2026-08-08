@@ -1,6 +1,6 @@
 export const RELEASE_SCHEMA = "openescrow-release/v1";
-export const RELEASE_PROPAGATION_ATTEMPTS = 10;
-export const RELEASE_PROPAGATION_DELAY_MS = 1_500;
+export const RELEASE_PROPAGATION_ATTEMPTS = 20;
+export const RELEASE_PROPAGATION_DELAY_MS = 2_500;
 
 const defaultWait = (delayMs) =>
   new Promise((resolve) => setTimeout(resolve, delayMs));
@@ -39,6 +39,7 @@ export async function waitForExpectedRelease({
   attempts = RELEASE_PROPAGATION_ATTEMPTS,
   delayMs = RELEASE_PROPAGATION_DELAY_MS,
   wait = defaultWait,
+  onRetry,
 }) {
   if (!/^[0-9a-f]{40}$/.test(expectedCommit || "")) {
     throw new Error("Expected release commit must be a full Git SHA.");
@@ -61,7 +62,10 @@ export async function waitForExpectedRelease({
     } catch (error) {
       lastError = error;
     }
-    if (attempt < attempts) await wait(delayMs);
+    if (attempt < attempts) {
+      await onRetry?.({ attempt, attempts, delayMs, lastResult, lastError });
+      await wait(delayMs);
+    }
   }
   if (lastResult) return lastResult;
   throw lastError || new Error("Release readiness could not be read.");

@@ -54,11 +54,19 @@ test("waits through bounded release propagation and stops on the expected commit
   const staleCommit = "b".repeat(40);
   const attempts = [];
   const waits = [];
+  const retries = [];
   const result = await waitForExpectedRelease({
     expectedCommit: commitSha,
     attempts: 5,
     delayMs: 25,
     wait: async (delayMs) => waits.push(delayMs),
+    onRetry: async ({ attempt, attempts, delayMs, lastResult }) =>
+      retries.push({
+        attempt,
+        attempts,
+        delayMs,
+        commit: lastResult.readiness.release.commitSha,
+      }),
     readAttempt: async (attempt) => {
       attempts.push(attempt);
       return {
@@ -72,6 +80,10 @@ test("waits through bounded release propagation and stops on the expected commit
   assert.equal(result.readiness.release.commitSha, commitSha);
   assert.deepEqual(attempts, [1, 2, 3]);
   assert.deepEqual(waits, [25, 25]);
+  assert.deepEqual(retries, [
+    { attempt: 1, attempts: 5, delayMs: 25, commit: staleCommit },
+    { attempt: 2, attempts: 5, delayMs: 25, commit: staleCommit },
+  ]);
 });
 
 test("returns the last readable stale release and preserves a terminal request error", async () => {
