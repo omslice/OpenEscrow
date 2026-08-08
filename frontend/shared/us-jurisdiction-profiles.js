@@ -294,8 +294,8 @@ const PROFILE_METADATA_OVERRIDES = Object.freeze({
     researchedOn: "2026-08-08",
   }),
   NH: Object.freeze({
-    version: "nh-rules-2026-08-08.v7",
-    statuteUrl: "https://gc.nh.gov/legislation/2006/SB0336.html",
+    version: "nh-rules-2026-08-08.v8",
+    statuteUrl: "https://www.gc.nh.gov/legislation/2006/SB0336.html",
     researchedOn: "2026-08-08",
   }),
   NJ: Object.freeze({
