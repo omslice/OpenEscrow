@@ -53,22 +53,32 @@ From a private local PowerShell terminal:
 .\scripts\Broadcast-AgreementActivityRegistryBaseSepolia.ps1
 ```
 
-The script loads the escrow address from the validated pair manifest, derives the public deployer
-address from the encrypted `openescrow-base-sepolia` keystore, and prompts locally for its
-password. Before asking for a signature it also reads both deployed contracts and fails unless
-their reciprocal reserve/escrow and token bindings match the manifest. Run the same read-only
+The script loads the escrow address from the validated pair manifest, proves the candidate source
+is clean and unchanged, runs exact-commit contract assurance, verifies pinned dependencies,
+rehearses deployment, derives the public deployer address from the encrypted
+`openescrow-base-sepolia` keystore, and prompts locally for its password. Before asking for a
+signature it also reads both deployed contracts and fails unless their reciprocal reserve/escrow
+and token bindings match the manifest. Run the same read-only
 preflight without a broadcast or keystore prompt with:
 
 ```powershell
 .\scripts\Broadcast-AgreementActivityRegistryBaseSepolia.ps1 -ValidateOnly
 ```
 
+That fast check validates the currently deployed pair. Before the signing session, run the full
+exact-commit assurance and no-broadcast deployment simulation without touching the keystore:
+
+```powershell
+.\scripts\Broadcast-AgreementActivityRegistryBaseSepolia.ps1 -PreflightOnly
+```
+
 Do not place the password or a private key in chat, an environment variable, a project file, or a
 command-line argument. Use `-EscrowManifestPath` only when an explicitly reviewed manifest has a
 different location.
 
-After a successful receipt, the script writes a validated public manifest to
-`deployments/base-sepolia-activity-registry.json`.
+After a successful receipt, the script rejects stale broadcast artifacts, rechecks the exact source
+commit, reads the deployed bytecode and immutable `ESCROW()` binding from Base Sepolia, and only
+then writes a validated public manifest to `deployments/base-sepolia-activity-registry.json`.
 
 ## Release checklist
 
@@ -77,7 +87,8 @@ Before publishing the frontend:
 1. Confirm the manifest address contains code on Base Sepolia.
 2. Confirm `ESCROW()` equals the active OpenEscrow address.
 3. Update `AGREEMENT_ACTIVITY_REGISTRY_ADDRESS` and
-   `ACTIVITY_REGISTRY_DEPLOYMENT_BLOCK` in `frontend/src/contracts/config.ts`.
+   `ACTIVITY_REGISTRY_DEPLOYMENT_BLOCK` in
+   `frontend/src/contracts/activityRegistryConfig.ts`.
 4. Update `DEFAULT_ACTIVITY_REGISTRY_ADDRESS` in `frontend/server/index.js`.
 5. Update the hosted `ACTIVITY_REGISTRY_ADDRESS` runtime value if one is set.
 6. Regenerate `AgreementActivityRegistryABI.json`.

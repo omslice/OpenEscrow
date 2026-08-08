@@ -2,14 +2,22 @@
 param(
     [string]$BroadcastPath = "broadcast/DeployAgreementActivityRegistry.s.sol/84532/run-latest.json",
     [string]$OutputPath = "deployments/base-sepolia-activity-registry.json",
-    [string]$EscrowManifestPath = "deployments/base-sepolia-latest.json"
+    [string]$EscrowManifestPath = "deployments/base-sepolia-latest.json",
+    [string]$ExpectedCommit,
+    [datetime]$BroadcastNotBeforeUtc
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$foundryBin = Join-Path $env:USERPROFILE ".foundry\bin"
+$rpcUrl = "https://sepolia.base.org"
 $broadcastFile = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $BroadcastPath))
 $outputFile = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $OutputPath))
+$repoPrefix = $repoRoot.TrimEnd([System.IO.Path]::DirectorySeparatorChar) + [System.IO.Path]::DirectorySeparatorChar
+if (-not $outputFile.StartsWith($repoPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    throw "Refusing to write the registry manifest outside the repository."
+}
 $escrowManifestCandidate = if ([System.IO.Path]::IsPathRooted($EscrowManifestPath)) {
     $EscrowManifestPath
 } else {
@@ -31,6 +39,9 @@ if ($expectedEscrow -notmatch '^0x[0-9a-fA-F]{40}$') {
 
 if (-not (Test-Path -LiteralPath $broadcastFile -PathType Leaf)) {
     throw "Broadcast file not found: $broadcastFile"
+}
+if ($BroadcastNotBeforeUtc -and (Get-Item -LiteralPath $broadcastFile).LastWriteTimeUtc -lt $BroadcastNotBeforeUtc.ToUniversalTime()) {
+    throw "The activity-registry broadcast artifact predates the current deployment attempt."
 }
 
 $broadcast = Get-Content -LiteralPath $broadcastFile -Raw | ConvertFrom-Json
@@ -61,13 +72,30 @@ if (
     throw "The registry was not constructed with the OpenEscrow address in the approved deployment manifest."
 }
 
+$registryAddress = [string]$registryTransaction.contractAddress
+$registryCode = & "$foundryBin\cast.exe" code $registryAddress --rpc-url $rpcUrl
+if ($LASTEXITCODE -ne 0 -or [string]$registryCode -eq '0x') {
+    throw "The exported AgreementActivityRegistry address has no readable Base Sepolia code."
+}
+$liveEscrow = & "$foundryBin\cast.exe" call $registryAddress 'ESCROW()(address)' --rpc-url $rpcUrl
+if ($LASTEXITCODE -ne 0 -or [string]$liveEscrow -notmatch '^0x[0-9a-fA-F]{40}$') {
+    throw "Could not read the deployed registry's immutable escrow binding."
+}
+$liveEscrow = ([string]$liveEscrow).Trim()
+if ($liveEscrow -ine $expectedEscrow) {
+    throw "The deployed registry's live ESCROW binding does not match the approved escrow manifest."
+}
+
 $blockNumber = [Convert]::ToInt64(
     ([string]$receipts[0].blockNumber).Replace("0x", ""),
     16
 )
-$commit = (& git -C $repoRoot rev-parse HEAD 2>$null)
-if ($LASTEXITCODE -ne 0) {
-    $commit = $null
+$commit = (& git -C $repoRoot rev-parse HEAD 2>$null).Trim()
+if ($LASTEXITCODE -ne 0 -or $commit -notmatch '^[0-9a-f]{40}$') {
+    throw "Could not determine the source commit for the registry manifest."
+}
+if ($ExpectedCommit -and $commit -ne $ExpectedCommit) {
+    throw "The source commit changed before registry manifest export."
 }
 
 $manifest = [ordered]@{
@@ -77,10 +105,10 @@ $manifest = [ordered]@{
     escrowSourceCommit = [string]$escrowManifest.sourceCommit
     exportedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
     agreementActivityRegistry = [ordered]@{
-        address = [string]$registryTransaction.contractAddress
+        address = $registryAddress
         transactionHash = [string]$registryTransaction.hash
         deploymentBlock = $blockNumber
-        escrowAddress = [string]$registryTransaction.arguments[0]
+        escrowAddress = $liveEscrow
     }
 }
 
