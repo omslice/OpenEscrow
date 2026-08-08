@@ -928,6 +928,32 @@
   transform: translateY(-2px);
 }
 
+.about-download-coming-soon {
+  display: inline-flex;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 13px;
+  border: 1px solid var(--disabled-border);
+  border-radius: 9px;
+  background: var(--disabled-bg);
+  color: var(--disabled-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: not-allowed;
+  opacity: 0.82;
+}
+
+.about-download-coming-soon small {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--disabled-text) 12%, transparent);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .tabs {
   display: flex;
   gap: 8px;

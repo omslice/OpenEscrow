@@ -253,6 +253,14 @@ try {
     "https://linktr.ee/omslice",
     "The About tab should link to Omri's Linktree.",
   );
+  const selfHostDownload = page.getByRole("button", {
+    name: "Download self-hosted OpenEscrow (coming soon)",
+  });
+  assert.equal(
+    await selfHostDownload.isDisabled(),
+    true,
+    "The self-host download should remain explicitly unavailable until a supported package exists.",
+  );
 
   const yieldSummary = page.getByText("Earn yield?", { exact: true });
   await yieldSummary.focus();

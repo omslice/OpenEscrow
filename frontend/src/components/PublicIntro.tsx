@@ -324,6 +324,15 @@ export function PublicIntro({
               >
                 LinkedIn
               </a>
+              <button
+                className="about-download-coming-soon"
+                type="button"
+                disabled
+                aria-label="Download self-hosted OpenEscrow (coming soon)"
+              >
+                <span>Download self-hosted app</span>
+                <small>Coming soon</small>
+              </button>
             </div>
           </article>
 
