@@ -374,6 +374,11 @@ production custody, or reliance on the compliance research as legal advice.
   every D1 evidence reference, omits raw private values from manifests, and distinguishes a match,
   mismatch, and incomplete provider export. It performs no import or provider mutation. Sites
   export availability and the owner's continuity choice remain external gates.
+- **Verified:** A 2026-08-08 read-only Cloudflare staging backup rehearsal exported the complete D1
+  database, restored it into isolated memory, fingerprinted all 221 rows without exposing values,
+  and matched every D1 evidence reference against a provider-verified complete empty R2 inventory.
+  Private artifacts remain outside the repository. This proves Cloudflare backup readability, not
+  continuity with the separately managed Sites dataset.
 - **Verified:** The unified application now treats the project explanation as public app content
   and an authenticated `About` workspace tab. It is the sole intended Cloudflare website; the
   standalone landing Worker is not a public fallback.

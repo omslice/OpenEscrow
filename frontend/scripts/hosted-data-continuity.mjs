@@ -52,6 +52,15 @@ function writeNewJson(outputPath, value) {
   });
 }
 
+function readPrivateJson(inputPath, label) {
+  const source = readFileSync(inputPath, "utf8").replace(/^\uFEFF/, "");
+  try {
+    return JSON.parse(source);
+  } catch {
+    throw new Error(`${label} must contain valid UTF-8 JSON.`);
+  }
+}
+
 function createManifest(options) {
   const d1Path = assertPrivatePath(required(options, "d1-export"), "D1 export");
   const r2Path = assertPrivatePath(
@@ -62,7 +71,7 @@ function createManifest(options) {
   const outputPath = assertPrivatePath(required(options, "output"), "Manifest");
   const manifest = buildContinuityManifest({
     d1Sql: readFileSync(d1Path, "utf8"),
-    r2Inventory: JSON.parse(readFileSync(r2Path, "utf8")),
+    r2Inventory: readPrivateJson(r2Path, "R2 inventory"),
     r2InventoryPath: r2Path,
     hmacKey: readFileSync(keyPath),
     sourceLabel: required(options, "label"),
@@ -83,8 +92,8 @@ function compareManifests(options) {
     "Destination manifest",
   );
   const comparison = compareContinuityManifests(
-    JSON.parse(readFileSync(sourcePath, "utf8")),
-    JSON.parse(readFileSync(destinationPath, "utf8")),
+    readPrivateJson(sourcePath, "Source manifest"),
+    readPrivateJson(destinationPath, "Destination manifest"),
   );
   if (options.output) {
     writeNewJson(

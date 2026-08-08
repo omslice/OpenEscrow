@@ -93,6 +93,18 @@ existing report. Exit code `0` means `match`, `1` means a verified mismatch, and
 evidence is incomplete. Only a `match` result from complete provider exports may support a data-
 continuity claim.
 
+The parser accepts UTF-8 JSON with or without the byte-order mark written by Windows PowerShell.
+
+## Current Cloudflare backup rehearsal
+
+On 2026-08-08, the current Cloudflare staging D1 database was exported read-only and loaded into
+the verifier's isolated in-memory SQLite environment. The complete keyed manifest covered all 221
+D1 rows without writing row values to the report. Cloudflare reported the private staging R2 bucket
+at zero objects and zero bytes; the complete empty inventory had no missing D1 evidence references.
+The SQL export, provider output, one-time HMAC key, inventory, and manifest remain outside the Git
+repository under the owner's private local application-data directory. This validates a current
+Cloudflare backup, not continuity with the separately managed Sites dataset.
+
 ## Decision gate
 
 Before any import, the owner must choose one path:
