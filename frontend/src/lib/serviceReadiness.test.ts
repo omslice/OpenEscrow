@@ -12,6 +12,8 @@ const baseReadiness = (): ServiceReadiness => ({
   email: {
     configured: true,
     provider: "resend",
+    participantDeliveryReady: true,
+    senderMode: "participant-capable",
     schedulerConfigured: true,
     schedulerLastRunAt: "2026-07-26T00:00:00.000Z",
     schedulerHealthy: true,
@@ -143,6 +145,22 @@ test("getServiceReadinessActions returns remediation guidance", () => {
     actions.find((action) => action.label === "Configure mail delivery")?.detail ?? "",
     /RESEND_API_KEY|EMAIL_WEBHOOK/,
   );
+});
+
+test("readiness distinguishes an account-only test sender from participant delivery", () => {
+  const degraded = baseReadiness();
+  degraded.email.participantDeliveryReady = false;
+  degraded.email.senderMode = "account-test-only";
+
+  const summary = summarizeServiceReadiness(degraded);
+  assert.equal(summary.ready, false);
+  assert.equal(summary.issueCount, 1);
+  assert.match(summary.blockers[0], /landlord and tenant notifications/i);
+
+  const actions = getServiceReadinessActions(degraded);
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].label, "Verify participant email domain");
+  assert.match(actions[0].detail, /updates\.openescrow\.io/);
 });
 
 test("readiness blocks an incomplete retained evidence keyring", () => {

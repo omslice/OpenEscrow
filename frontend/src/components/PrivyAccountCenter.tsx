@@ -742,19 +742,28 @@ export function PrivyAccountCenter({
         {serviceReadiness?.email.configured ? (
           <div
             className={`notification-delivery-status${
-              serviceReadiness.email.deliveryStatusConfigured ? " ready" : ""
+              serviceReadiness.email.deliveryStatusConfigured &&
+              serviceReadiness.email.participantDeliveryReady
+                ? " ready"
+                : ""
             }`}
           >
             <div>
               <strong>
-                {serviceReadiness.email.deliveryStatusConfigured
+                {serviceReadiness.email.deliveryStatusConfigured &&
+                serviceReadiness.email.participantDeliveryReady
                   ? "Automatic delivery ready"
-                  : "Email sending configured"}
+                  : serviceReadiness.email.participantDeliveryReady
+                    ? "Email sending configured"
+                    : "Test email only"}
               </strong>
               <span>
                 {serviceReadiness.email.provider === "resend"
                   ? "Resend"
                   : "Configured email webhook"}
+                {!serviceReadiness.email.participantDeliveryReady
+                  ? " · verified participant sending domain needed"
+                  : ""}
                 {serviceReadiness.email.deliveryStatusConfigured
                   ? " · delivery confirmation ready"
                   : " · delivery confirmation setup is incomplete"}

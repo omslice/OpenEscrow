@@ -6,6 +6,7 @@ function readinessFixture() {
   return {
     email: {
       configured: false,
+      participantDeliveryReady: false,
       deliveryStatusConfigured: false,
       schedulerConfigured: true,
       schedulerHealthy: true,
@@ -62,6 +63,14 @@ test("strict pilot verification requires notification, scheduler, registry, and 
   );
 
   readiness.email.configured = true;
+  assert.throws(
+    () =>
+      assertCloudflareDeployedReadiness(readiness, {
+        requirePilotServices: true,
+      }),
+    /provider account/i,
+  );
+  readiness.email.participantDeliveryReady = true;
   readiness.email.deliveryStatusConfigured = true;
   readiness.email.schedulerHealthy = false;
   assert.throws(

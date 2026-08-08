@@ -21,6 +21,7 @@ function readyResponse() {
     email: {
       configured: true,
       provider: "test-provider",
+      participantDeliveryReady: true,
       deliveryStatusConfigured: true,
       schedulerConfigured: true,
       schedulerHealthy: true,

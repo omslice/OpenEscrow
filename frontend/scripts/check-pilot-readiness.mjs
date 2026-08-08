@@ -124,6 +124,23 @@ const checks = [
       "readiness.email.configured !== true or readiness.email.deliveryStatusConfigured === true",
   },
   {
+    label: "Participant email sender",
+    ready:
+      readiness.email?.configured !== true ||
+      readiness.email?.participantDeliveryReady === true,
+    detail:
+      readiness.email?.configured !== true
+        ? "checked when a sender is configured"
+        : readiness.email?.participantDeliveryReady
+          ? "verified-domain sender enabled"
+          : "provider account test sender only",
+    required: true,
+    action:
+      "Verify an owned sending domain and replace the provider's account-test sender before inviting participants.",
+    validate:
+      "readiness.email.configured !== true or readiness.email.participantDeliveryReady === true",
+  },
+  {
     label: "Hosted notification scheduler",
     ready: readiness.email?.schedulerHealthy === true,
     detail: readiness.email?.schedulerLastRunAt

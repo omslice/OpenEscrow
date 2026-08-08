@@ -56,6 +56,12 @@ export function assertCloudflareDeployedReadiness(
     );
     collectFailure(
       failures,
+      readiness.email?.configured !== true ||
+        readiness.email?.participantDeliveryReady === true,
+      "The notification sender is limited to the provider account instead of verified participant delivery.",
+    );
+    collectFailure(
+      failures,
       readiness.email?.schedulerConfigured === true &&
         readiness.email?.schedulerHealthy === true,
       "The notification scheduler is not healthy.",

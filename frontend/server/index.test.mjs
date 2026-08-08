@@ -6834,6 +6834,8 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     });
     assert.equal(readiness.email.configured, true);
     assert.equal(readiness.email.provider, "resend");
+    assert.equal(readiness.email.participantDeliveryReady, true);
+    assert.equal(readiness.email.senderMode, "participant-capable");
     assert.equal(readiness.email.deliveryStatusConfigured, false);
     assert.equal(readiness.evidence.contentTypeValidation, true);
     assert.equal(readiness.recordIntegrity.lifecycleStateGuards, true);
@@ -6863,6 +6865,15 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
       }),
     );
     assert.equal(trackedReadiness.email.deliveryStatusConfigured, true);
+    const accountTestSenderReadiness = await jsonResponse(
+      await worker.fetch(request("/api/system/readiness"), {
+        ...resendEnv,
+        NOTIFICATION_FROM_EMAIL: "OpenEscrow <onboarding@resend.dev>",
+      }),
+    );
+    assert.equal(accountTestSenderReadiness.email.configured, true);
+    assert.equal(accountTestSenderReadiness.email.participantDeliveryReady, false);
+    assert.equal(accountTestSenderReadiness.email.senderMode, "account-test-only");
     const mismatchedReadiness = await jsonResponse(
       await worker.fetch(
         request("/api/system/readiness"),

@@ -18,6 +18,10 @@ function summarizeScheduleAndDeliveryIssues(readiness: ServiceReadiness): string
     blockers.push(
       "Configure an automatic email provider (for production delivery and test-email checks).",
     );
+  } else if (!readiness.email.participantDeliveryReady) {
+    blockers.push(
+      "Verify an OpenEscrow sending domain so landlord and tenant notifications can reach addresses beyond the email-provider account.",
+    );
   }
 
   if (readiness.email.schedulerConfigured && !readiness.email.schedulerHealthy) {
@@ -81,6 +85,12 @@ export function getServiceReadinessActions(
       label: "Configure mail delivery",
       detail:
         "Add RESEND_API_KEY (or EMAIL_WEBHOOK_URL + EMAIL_WEBHOOK_TOKEN) in hosted runtime secrets, then redeploy.",
+    });
+  } else if (!serviceReadiness.email.participantDeliveryReady) {
+    actions.push({
+      label: "Verify participant email domain",
+      detail:
+        "Verify updates.openescrow.io in Resend, then set NOTIFICATION_FROM_EMAIL to OpenEscrow <notifications@updates.openescrow.io> and redeploy.",
     });
   }
 

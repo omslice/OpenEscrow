@@ -97,6 +97,12 @@ export interface ServiceReadiness {
   email: {
     configured: boolean;
     provider: "resend" | "webhook" | null;
+    participantDeliveryReady: boolean;
+    senderMode:
+      | "unconfigured"
+      | "invalid"
+      | "account-test-only"
+      | "participant-capable";
     deliveryStatusConfigured?: boolean;
     schedulerConfigured: boolean;
     schedulerLastRunAt: string | null;

@@ -2013,6 +2013,34 @@ function emailProvider(env) {
   return null;
 }
 
+function emailSenderReadiness(env, provider) {
+  if (!provider) {
+    return {
+      participantDeliveryReady: false,
+      senderMode: "unconfigured",
+    };
+  }
+  const configuredFrom = cleanText(env.NOTIFICATION_FROM_EMAIL, 320);
+  const bracketedAddress = configuredFrom.match(/<([^<>\s]+@[^<>\s]+)>\s*$/)?.[1];
+  const bareAddress = configuredFrom.match(/^([^<>\s]+@[^<>\s]+)$/)?.[1];
+  const address = cleanText(bracketedAddress || bareAddress, 254).toLowerCase();
+  const domain = address.split("@")[1] || "";
+  const providerTestSender =
+    provider === "resend" &&
+    (domain === "resend.dev" || domain.endsWith(".resend.dev"));
+  const participantDeliveryReady = Boolean(
+    address && domain && !providerTestSender,
+  );
+  return {
+    participantDeliveryReady,
+    senderMode: !address || !domain
+      ? "invalid"
+      : providerTestSender
+        ? "account-test-only"
+        : "participant-capable",
+  };
+}
+
 const RESEND_WEBHOOK_TOLERANCE_SECONDS = 5 * 60;
 const RESEND_DELIVERY_STATUSES = Object.freeze({
   "email.sent": "sent",
@@ -3955,11 +3983,14 @@ async function serviceReadiness(env) {
           ? "encrypted-ipfs"
           : "unconfigured";
   const registryReadiness = await activityRegistryReadiness(env);
+  const senderReadiness = emailSenderReadiness(env, provider);
   return json({
     release: RELEASE_PROVENANCE,
     email: {
       configured: Boolean(provider),
       provider,
+      participantDeliveryReady: senderReadiness.participantDeliveryReady,
+      senderMode: senderReadiness.senderMode,
       deliveryStatusConfigured: Boolean(
         provider === "resend"
           ? cleanText(env.RESEND_WEBHOOK_SECRET, 500).startsWith("whsec_")
