@@ -96,7 +96,7 @@ export function Layout({
         <div>
           <h1 className="app-title">
             <img
-              src="/openescrow-wordmark.svg"
+              src="/openescrow-logo-tapered-dark.png"
               alt="OpenEscrow"
               className="app-wordmark-logo"
             />

@@ -306,11 +306,10 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** The latest approved public deployment matches its exact release-checked and pushed
   source. Each subsequent coherent slice is validated and saved separately for explicit review;
   D1, R2, hosted data, runtime secrets, and configuration remain unchanged.
-- **Verified:** The public project landing page is now a separate, responsive Cloudflare Worker
-  package that reuses the outlined OpenEscrow wordmark, purple and near-black design system,
-  consumer-friendly copy, testnet warning, open-source link, and donation footer. Its automated
-  checks cover keyboard focus, reduced motion, mobile layout, branded assets, security headers,
-  link targets, and exact-source release provenance without giving it D1, R2, or secrets.
+- **Reported:** The earlier standalone Cloudflare landing package remains in source only as a
+  rollback artifact. The product decision now requires exactly one public Cloudflare site: the
+  complete MVP with its signed-out introduction and authenticated About tab. The old landing
+  Worker must have its public route disabled.
 - **Verified:** The owner Cloudflare boundary is prepared without changing the Sites deployment:
   separate staging and production-testnet D1 databases exist, all 21 migrations are applied only
   to staging, and the MVP Cloudflare package preserves the `DB`, `EVIDENCE`, `ASSETS`, and
@@ -325,16 +324,15 @@ production custody, or reliance on the compliance research as legal advice.
   updated from one clean commit before a normal release is reported delivered; hosted data and
   rollback histories remain independent.
 - **Verified:** The unified application now treats the project explanation as public app content
-  and an authenticated `About` workspace tab. The standalone landing Worker remains only a
-  staging fallback during transition; it is no longer the intended second production website.
+  and an authenticated `About` workspace tab. It is the sole intended Cloudflare website; the
+  standalone landing Worker is not a public fallback.
 
 ## Remaining
 
 - **Planned:** Finish the reversible migration of the unified testnet MVP into the owner's Cloudflare
-  account after choosing private evidence storage and the hosted-data continuity policy. The
-  staging landing fallback will be retired only after the unified MVP passes
-  readiness, authentication, scheduled-job, and supervised-pilot checks. The current Sites
-  deployment remains the rollback and hosted-data reference. See
+  account after validating private evidence storage and the hosted-data continuity policy. Keep
+  the old landing Worker route disabled. The current Sites deployment remains the synchronized
+  rollback and hosted-data reference. See
   [the Cloudflare landing and MVP deployment plan](./cloudflare-landing-and-mvp-plan.md).
 - **Planned:** Review and explicitly approve each newer saved candidate before deployment. The live
   site currently matches the last approved exact source; every future deployment must rerun the

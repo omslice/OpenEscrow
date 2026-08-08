@@ -35,6 +35,7 @@
   width: clamp(230px, 28vw, 275px);
   max-width: 100%;
   height: auto;
+  border-radius: 10px;
 }
 
 .header-actions {

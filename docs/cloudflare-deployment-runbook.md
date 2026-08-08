@@ -1,9 +1,10 @@
 # OpenEscrow Cloudflare deployment runbook
 
-This runbook keeps the standalone landing fallback and the unified Base Sepolia MVP as independent
-Cloudflare Workers during staging. The MVP's signed-out introduction and authenticated About tab
-are the intended public project experience. The existing ChatGPT Sites deployment remains
-unchanged until the owner-hosted MVP passes the complete pilot acceptance gate.
+This runbook operates one public-facing Cloudflare application: the complete Base Sepolia MVP,
+including its signed-out project introduction and authenticated **About** tab. The old standalone
+landing Worker is retained only as a disabled rollback artifact and must not expose a public route.
+The existing ChatGPT Sites deployment is a synchronized second host for the same application
+source during transition.
 
 ## Account boundary
 
@@ -14,15 +15,15 @@ unchanged until the owner-hosted MVP passes the complete pilot acceptance gate.
 - Wrangler's OAuth credential is stored in the user's local Wrangler configuration, not this
   repository. Never commit or paste it.
 
-## Independent Workers
+## Cloudflare deployables
 
 | Deployable | Staging Worker | Production-testnet Worker | Stateful bindings |
 | --- | --- | --- | --- |
-| Landing fallback | `openescrow-landing-staging` | Not planned while the unified app is canonical | None |
+| Retired landing artifact (public route disabled) | `openescrow-landing-staging` | None | None |
 | Unified MVP | `openescrow` | `openescrow-mvp-testnet` | `DB`, `EVIDENCE`, `ASSETS` |
 
-The landing page can be deployed without changing the MVP database, evidence bucket, secrets, or
-scheduled jobs.
+Do not deploy or publicly route the retired landing artifact during a normal release. Its source is
+kept only for rollback history and does not replace the signed-out introduction or About tab.
 
 ## Provisioned resources
 
@@ -43,15 +44,6 @@ must be encrypted at the application layer and pass the retained-key recovery ga
 does not replace that control.
 
 ## Local validation and deployment
-
-From `landing`:
-
-```powershell
-npm run check
-npm run cloudflare:dry-run
-npm run cloudflare:deploy:staging
-npm run test:deployed
-```
 
 From `frontend`:
 
@@ -113,7 +105,7 @@ OAuth allowlists. Keep Base Sepolia and synthetic-data restrictions in place.
 
 ## Promotion and rollback
 
-1. Verify staging landing and MVP URLs, `/api/system/readiness`, the exact release commit, D1/R2
+1. Verify the unified MVP URL, `/api/system/readiness`, the exact release commit, D1/R2
    bindings, evidence encryption, and the 15-minute scheduled job.
 2. Complete the separate-account synthetic landlord/tenant pilot and incident/privacy drill.
 3. Attach the selected primary hostname to the unified MVP Worker; optionally redirect an
