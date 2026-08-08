@@ -54,15 +54,15 @@ export const FEDERAL_COMPLIANCE_OVERLAYS = Object.freeze([
     id: "federal-fha-assistance-animal",
     scope: "federal",
     label: "Fair Housing Act assistance-animal accommodation",
-    version: "fha-assistance-animal-2026-07-26.v1",
+    version: "fha-assistance-animal-2026-08-08.v2",
     condition: Object.freeze({
       fact: "assistanceAnimalAccommodation",
       equals: true,
     }),
     sources: Object.freeze([
       source(
-        "Fair Housing Act reasonable-accommodation requirements; HUD FHEO-2020-01",
-        "https://www.hud.gov/helping-americans/assistance-animals",
+        "Fair Housing Act reasonable-accommodation requirements; HUD/DOJ Joint Statement, Q&A 11",
+        "https://www.hud.gov/sites/documents/huddojstatement.pdf",
       ),
     ]),
     requirements: Object.freeze([
@@ -79,12 +79,12 @@ export const FEDERAL_COMPLIANCE_OVERLAYS = Object.freeze([
     id: "federal-scra-lease-termination",
     scope: "federal",
     label: "Servicemembers Civil Relief Act lease termination",
-    version: "scra-50-usc-3955-2026-07-26.v1",
+    version: "scra-50-usc-3955-2026-08-08.v2",
     condition: Object.freeze({ fact: "scraQualifiedTermination", equals: true }),
     sources: Object.freeze([
       source(
-        "50 U.S.C. § 3955",
-        "https://uscode.house.gov/view.xhtml?req=%28title%3A50+section%3A3955+edition%3Aprelim%29",
+        "50 U.S.C. § 3955 (GovInfo)",
+        "https://www.govinfo.gov/link/uscode/50/3955?link-type=html&year=mostrecent",
       ),
     ]),
     requirements: Object.freeze([
@@ -222,12 +222,12 @@ export const FEDERAL_COMPLIANCE_OVERLAYS = Object.freeze([
     id: "federal-usda-rural",
     scope: "federal-program",
     label: "USDA Rural Development multifamily housing",
-    version: "7-cfr-3560.204-2026-07-26.v1",
+    version: "7-cfr-3560.204-2026-08-08.v2",
     condition: Object.freeze({ fact: "housingProgram", equals: "usda-rural" }),
     sources: Object.freeze([
       source(
         "7 C.F.R. § 3560.204",
-        "https://www.rd.usda.gov/media/file/download/3560-2chapter07.pdf",
+        "https://www.govinfo.gov/link/cfr/7/3560?link-type=pdf&year=mostrecent",
       ),
     ]),
     requirements: Object.freeze([
@@ -249,13 +249,13 @@ export const LOCAL_COMPLIANCE_OVERLAYS = Object.freeze([
     id: "local-il-chicago-rlto",
     scope: "city",
     label: "Chicago Residential Landlord and Tenant Ordinance",
-    version: "chicago-rlto-5-12-080-2026-07-26.v1",
+    version: "chicago-rlto-5-12-080-2026-08-08.v2",
     localityKeys: Object.freeze(["us:il:city:chicago"]),
     condition: null,
     sources: Object.freeze([
       source(
         "Chicago Municipal Code § 5-12-080",
-        "https://codelibrary.amlegal.com/codes/chicago/latest/chicago_il/0-0-0-2639124",
+        "https://www.chicago.gov/city/en/depts/doh/provdrs/landlords/svcs/residential-landlord-and-tenant-ordinance.html",
       ),
     ]),
     requirements: Object.freeze([

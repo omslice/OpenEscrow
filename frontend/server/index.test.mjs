@@ -912,6 +912,36 @@ test("the compliance source registry maps every versioned profile and overlay so
       assert.equal(sourceItem.url, source.url);
     });
   }
+  const reviewedReplacements = [
+    {
+      key: "overlay:federal-fha-assistance-animal:1",
+      version: "fha-assistance-animal-2026-08-08.v2",
+      url: "https://www.hud.gov/sites/documents/huddojstatement.pdf",
+    },
+    {
+      key: "overlay:federal-scra-lease-termination:1",
+      version: "scra-50-usc-3955-2026-08-08.v2",
+      url: "https://www.govinfo.gov/link/uscode/50/3955?link-type=html&year=mostrecent",
+    },
+    {
+      key: "overlay:federal-usda-rural:1",
+      version: "7-cfr-3560.204-2026-08-08.v2",
+      url: "https://www.govinfo.gov/link/cfr/7/3560?link-type=pdf&year=mostrecent",
+    },
+    {
+      key: "overlay:local-il-chicago-rlto:1",
+      version: "chicago-rlto-5-12-080-2026-08-08.v2",
+      url: "https://www.chicago.gov/city/en/depts/doh/provdrs/landlords/svcs/residential-landlord-and-tenant-ordinance.html",
+    },
+  ];
+  for (const replacement of reviewedReplacements) {
+    const sourceItem = COMPLIANCE_SOURCE_REGISTRY.find(
+      (candidate) => candidate.key === replacement.key,
+    );
+    assert.ok(sourceItem, `Missing reviewed source ${replacement.key}.`);
+    assert.equal(sourceItem.version, replacement.version);
+    assert.equal(sourceItem.url, replacement.url);
+  }
 });
 
 test("the compliance evaluator schedules all statewide profiles deterministically", () => {
@@ -3548,6 +3578,54 @@ test("a user-triggered state source check reports provenance without rewriting a
     env,
   );
   assert.equal(unknown.status, 404);
+});
+
+test("compliance checks reject known challenge and error-page redirects", async () => {
+  const originalFetch = globalThis.fetch;
+  const rejectedDestinations = [
+    "https://unblock.federalregister.gov/",
+    "https://www.govinfo.gov/error",
+    "https://www.example.gov/cdn-cgi/challenge-platform/h/g/orchestrate/chl_page/v1",
+  ];
+
+  try {
+    for (const finalUrl of rejectedDestinations) {
+      const db = new TestD1();
+      globalThis.fetch = async () => {
+        const response = new Response("This is not the cited legal source.", {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        });
+        Object.defineProperty(response, "url", { value: finalUrl });
+        return response;
+      };
+      const checked = await jsonResponse(
+        await worker.fetch(
+          request("/api/compliance/source-status", "POST", {
+            jurisdiction: newYorkProfile.code,
+            profileVersion: newYorkProfile.version,
+          }),
+          {
+            DB: db,
+            COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+          },
+        ),
+      );
+      assert.equal(checked.source.status, "unreachable");
+      assert.equal(checked.source.requiresReview, true);
+      const stored = await db
+        .prepare(
+          "SELECT status, baseline_signature, last_verified_at, error FROM compliance_source_checks WHERE source_key = 'state:ny'",
+        )
+        .first();
+      assert.equal(stored.status, "unreachable");
+      assert.equal(stored.baseline_signature, null);
+      assert.equal(stored.last_verified_at, null);
+      assert.match(stored.error, /challenge or error page/i);
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("simultaneous state source requests share one bounded external check", async () => {
@@ -6514,7 +6592,11 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
     await db
       .prepare(
         `UPDATE compliance_source_checks
-         SET profile_version = 'retired-version', status = 'changed'
+         SET profile_version = 'retired-version',
+             url = 'https://example.com/retired-source',
+             baseline_signature = 'retired-baseline',
+             current_signature = 'retired-current',
+             status = 'changed', error = 'retired source'
          WHERE source_key = ?`,
       )
       .bind(earliestRow.source_key)
@@ -6537,14 +6619,19 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
     assert.equal(complianceCheckCount(), 8);
     const refreshed = await db
       .prepare(
-        `SELECT profile_version, status, last_verified_at
+        `SELECT profile_version, url, baseline_signature, current_signature,
+                status, last_verified_at, error
          FROM compliance_source_checks WHERE source_key = ?`,
       )
       .bind(earliestRow.source_key)
       .first();
     assert.equal(refreshed.profile_version, expectedSource.version);
+    assert.equal(refreshed.url, expectedSource.url);
+    assert.notEqual(refreshed.baseline_signature, "retired-baseline");
+    assert.equal(refreshed.current_signature, refreshed.baseline_signature);
     assert.equal(refreshed.status, "unchanged");
     assert.equal(refreshed.last_verified_at, "2027-07-02T12:15:00.000Z");
+    assert.equal(refreshed.error, null);
 
     await db
       .prepare(

@@ -202,9 +202,12 @@ supported market.
 Migration `drizzle/0006_compliance_source_monitor.sql` adds a
 `compliance_source_checks` table. When
 `COMPLIANCE_SOURCE_MONITOR_ENABLED=true`, the existing scheduler checks a
-rotating batch of four official sources once per day. It samples response
-metadata and up to 256 KiB, stores a SHA-256 signature, and marks a source
-`changed`, `unchanged`, or `unreachable`. It never automatically edits a rule.
+rotating batch of four official sources every 15 minutes while any registered
+source still needs its first baseline, then returns to one batch per day. It
+samples response metadata and up to 256 KiB, stores a SHA-256 signature, and
+marks a source `changed`, `unchanged`, or `unreachable`. Known challenge and
+error-page redirects are rejected instead of being accepted as legal-source
+content. The monitor never automatically edits a rule.
 The public readiness response reports the configured state, source count,
 changed count, unreachable count, pending count, stale count, blocking count,
 and last run time.
@@ -213,12 +216,32 @@ The first successful check establishes a baseline. A later signature change is
 an alert for a new official-source review and profile version, not proof that
 the law changed.
 
+### Reviewed source maintenance (2026-08-08)
+
+Four unreachable source destinations were replaced with current official
+government publications. Their overlay versions advanced to `v2` so the new
+URLs must establish fresh monitor baselines; no requirement or deadline text
+changed in this maintenance release:
+
+- HUD assistance-animal accommodation: the
+  [HUD/DOJ Joint Statement](https://www.hud.gov/sites/documents/huddojstatement.pdf).
+- SCRA lease termination: [50 U.S.C. section
+  3955](https://www.govinfo.gov/link/uscode/50/3955?link-type=html&year=mostrecent)
+  through GovInfo.
+- USDA Rural Development multifamily housing: [7 C.F.R. part
+  3560](https://www.govinfo.gov/link/cfr/7/3560?link-type=pdf&year=mostrecent)
+  through GovInfo.
+- Chicago RLTO: the [City of Chicago Department of Housing RLTO source
+  hub](https://www.chicago.gov/city/en/depts/doh/provdrs/landlords/svcs/residential-landlord-and-tenant-ordinance.html).
+
 When monitoring is enabled, new, revised, and finalizing address-routed
 agreements fail closed unless every statewide and applicable overlay source in
 their exact snapshot has a successful verification no more than 21 days old.
 A detected change blocks that profile until its rule review produces a new
-profile or overlay version. Updating a source URL or version clears the old
-baseline so the replacement must be checked from scratch. A temporary source
+profile or overlay version. Replacing an official source URL is an auditable
+overlay or profile release and therefore requires a new version even when the
+reviewed rule text does not change. Updating a source URL or version clears the
+old baseline so the replacement must be checked from scratch. A temporary source
 outage may use the last successful signature during the 21-day window; once
 that window expires, the profile is blocked until the source can be verified
 again. Generic test agreements are not subject to this release gate.

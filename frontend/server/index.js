@@ -6288,6 +6288,36 @@ async function digestSourceResponse(response) {
     .join("");
 }
 
+function validateComplianceSourceDestination(response) {
+  const finalUrlText = cleanText(response?.url, 2_000);
+  if (!finalUrlText) return;
+
+  let finalUrl;
+  try {
+    finalUrl = new URL(finalUrlText);
+  } catch {
+    throw new Error("Official source resolved to an invalid destination.");
+  }
+  if (finalUrl.protocol !== "https:") {
+    throw new Error("Official source redirected outside HTTPS.");
+  }
+
+  const hostname = finalUrl.hostname.toLowerCase();
+  const pathname = finalUrl.pathname.toLowerCase();
+  const isKnownChallenge =
+    hostname === "unblock.federalregister.gov" ||
+    hostname === "challenges.cloudflare.com" ||
+    pathname.includes("/cdn-cgi/challenge-platform/");
+  const isKnownErrorPage =
+    (hostname === "govinfo.gov" || hostname === "www.govinfo.gov") &&
+    (pathname === "/error" || pathname.startsWith("/error/"));
+  if (isKnownChallenge || isKnownErrorPage) {
+    throw new Error(
+      "Official source resolved to a challenge or error page instead of the cited requirements.",
+    );
+  }
+}
+
 async function checkComplianceSource(db, sourceRow, now) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
@@ -6307,6 +6337,7 @@ async function checkComplianceSource(db, sourceRow, now) {
     if (!response.ok) {
       throw new Error(`Official source returned HTTP ${response.status}.`);
     }
+    validateComplianceSourceDestination(response);
     const signature = await digestSourceResponse(response);
     await db
       .prepare(
