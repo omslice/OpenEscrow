@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   normalizeBaseUrl,
+  releaseReadinessUrl,
   validateDualHostRelease,
   validateHostedRelease,
 } from "./dual-host-release-core.mjs";
@@ -34,6 +35,13 @@ test("normalizes HTTPS deployment URLs to an origin root", () => {
   assert.throws(
     () => normalizeBaseUrl("http://example.test", "Host"),
     /must use HTTPS/,
+  );
+});
+
+test("cache-busts readiness by the exact expected release", () => {
+  assert.equal(
+    releaseReadinessUrl(new URL("https://example.test/"), commitSha).href,
+    `https://example.test/api/system/readiness?release_check=${commitSha}`,
   );
 });
 

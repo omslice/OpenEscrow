@@ -4,6 +4,7 @@ import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
 import {
   normalizeBaseUrl,
+  releaseReadinessUrl,
   validateDualHostRelease,
   validateHostedRelease,
 } from "./dual-host-release-core.mjs";
@@ -52,15 +53,12 @@ async function inspectHost(label, baseUrl) {
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),
     });
-    readinessResponse = await fetch(
-      new URL("api/system/readiness", baseUrl),
-      {
-        headers: { accept: "application/json" },
-        redirect: "error",
-        cache: "no-store",
-        signal: AbortSignal.timeout(10_000),
-      },
-    );
+    readinessResponse = await fetch(releaseReadinessUrl(baseUrl, expectedCommit), {
+      headers: { accept: "application/json" },
+      redirect: "error",
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
   } catch (error) {
     const detail = error instanceof Error ? error.message : "request failed";
     throw new Error(`${label} could not be reached: ${detail}`);

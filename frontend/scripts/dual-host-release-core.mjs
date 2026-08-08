@@ -16,6 +16,12 @@ export function normalizeBaseUrl(value, label) {
   return url;
 }
 
+export function releaseReadinessUrl(baseUrl, expectedCommit) {
+  const url = new URL("api/system/readiness", baseUrl);
+  if (expectedCommit) url.searchParams.set("release_check", expectedCommit);
+  return url;
+}
+
 export function validateHostedRelease({
   label,
   baseUrl,

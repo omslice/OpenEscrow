@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { releaseReadinessUrl } from "./dual-host-release-core.mjs";
 import { verifyPrivyGoogleOrigin } from "./verify-privy-oauth-origin.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -58,7 +59,7 @@ await verifyPrivyGoogleOrigin({
   origin: baseUrl.origin,
 });
 
-const readinessResponse = await fetch(new URL("api/system/readiness", baseUrl), {
+const readinessResponse = await fetch(releaseReadinessUrl(baseUrl, expectedCommit), {
   headers: { accept: "application/json" },
   redirect: "error",
   cache: "no-store",
