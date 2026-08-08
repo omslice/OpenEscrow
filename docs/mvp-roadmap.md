@@ -417,6 +417,13 @@ production custody, or reliance on the compliance research as legal advice.
 - **Planned:** Validate managed hosting, professional workflows, integrations, and support as
   optional monetization paths while preserving the free, self-hostable core and free access to
   essential records.
+- **Planned:** Add a prominent **Download / self-host OpenEscrow** action only after a supported,
+  reproducible release package exists. The first supported path will package the complete
+  Cloudflare Worker application with reviewed D1 migrations, private R2 configuration, safe
+  testnet defaults, a guided setup checker, backup/restore instructions, release checksums, an
+  SBOM, and signed upgrade notes. A later provider-neutral package may add Docker, SQLite, and
+  S3-compatible storage, but it must preserve the same private-record, encryption, receipt,
+  migration, and rollback boundaries rather than presenting a source archive as a one-click app.
 
 ## Material unknowns
 
@@ -436,6 +443,10 @@ production custody, or reliance on the compliance research as legal advice.
 - Results of separate-account and moderated human pilot sessions.
 - First customer segment willing to pay for a managed outcome, and the cost to serve it without
   weakening consumer-protection or open-source commitments.
+- Whether the first downloadable edition should support only a guided Cloudflare deployment or
+  also include a provider-neutral container stack. Cloudflare is substantially closer because it
+  matches the reviewed Worker, D1, R2, cron, and static-asset architecture already in the
+  repository.
 
 ## Validation and delivery evidence
 
