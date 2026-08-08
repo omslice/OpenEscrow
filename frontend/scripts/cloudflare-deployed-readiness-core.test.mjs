@@ -51,7 +51,13 @@ test("strict pilot verification requires notification, scheduler, registry, and 
       assertCloudflareDeployedReadiness(readiness, {
         requirePilotServices: true,
       }),
-    /notification delivery/i,
+    (error) => {
+      assert.match(error.message, /3 blockers/i);
+      assert.match(error.message, /notification delivery/i);
+      assert.match(error.message, /not bound/i);
+      assert.match(error.message, /compliance source baseline/i);
+      return true;
+    },
   );
 
   readiness.email.configured = true;
