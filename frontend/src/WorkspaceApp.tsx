@@ -463,6 +463,29 @@ function AppView({
   }, [inviteRole, proposalAccess]);
 
   useEffect(() => {
+    if (!address) return;
+    let active = true;
+    const requestedAccountIdentity = accountIdentity;
+
+    async function discoverConnectedWalletAgreements() {
+      const found = await discover(address as `0x${string}`);
+      if (
+        !active ||
+        !accountScopeActive.current ||
+        activeAccountIdentity.current !== requestedAccountIdentity
+      ) {
+        return;
+      }
+      found.forEach(addId);
+    }
+
+    void discoverConnectedWalletAgreements();
+    return () => {
+      active = false;
+    };
+  }, [accountIdentity, addId, address, discover]);
+
+  useEffect(() => {
     if (!workspaceRole) return;
     let active = true;
     let nextAccountDiscoveryAt = 0;
@@ -594,11 +617,11 @@ function AppView({
       );
       accountAgreementIds.forEach(addId);
       let onchainCount = accountAgreementIds.length;
-      if (!ACCOUNT_AUTH_ENABLED && address) {
+      if (address) {
         const found = await discover(address);
         if (!requestIsCurrent()) return;
         found.forEach(addId);
-        onchainCount = found.length;
+        onchainCount = mergeAgreementIds(accountAgreementIds, found).length;
       }
       const skipped = loaded.filter((result) => result.status === "rejected").length;
       setScanMessage(
@@ -953,9 +976,9 @@ function AppView({
         >
           {isScanning || isFinding ? "Refreshing..." : "Refresh deposits"}
         </button>
-        {!ACCOUNT_AUTH_ENABLED && !address && (
+        {!address && (
           <p className="field-help">
-            Connect your wallet to scan for finalized onchain agreements.
+            Connect or finish loading your wallet to scan for finalized onchain agreements.
           </p>
         )}
         {scanMessage && (

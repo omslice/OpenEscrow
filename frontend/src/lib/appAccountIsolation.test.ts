@@ -42,6 +42,18 @@ test("account changes clear discovered records and invalidate background polling
   );
 });
 
+test("authenticated accounts merge host records with wallet-discovered agreements", () => {
+  assert.match(
+    appSource,
+    /async function discoverConnectedWalletAgreements\(\)[\s\S]*?const found = await discover\(address as `0x\$\{string\}`\);[\s\S]*?activeAccountIdentity\.current !== requestedAccountIdentity[\s\S]*?found\.forEach\(addId\);/,
+  );
+  assert.match(
+    appSource,
+    /if \(address\) \{\s*const found = await discover\(address\);[\s\S]*?onchainCount = mergeAgreementIds\(accountAgreementIds, found\)\.length;/,
+  );
+  assert.doesNotMatch(appSource, /if \(!ACCOUNT_AUTH_ENABLED && address\)/);
+});
+
 test("manual discovery and archive completions check their requesting account", () => {
   const guardCreations = appSource.match(
     /createAccountOperationGuard\(\s*\(\) => activeAccountIdentity\.current,\s*requestedAccountIdentity,\s*\(\) => accountScopeActive\.current,\s*\)/g,
