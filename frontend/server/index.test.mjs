@@ -748,7 +748,21 @@ test("the implemented registry covers every state and the District of Columbia",
       (profile) =>
         profile.statuteUrl.startsWith("https://") &&
         profile.statuteCitation.length >= 8 &&
-        profile.version.endsWith("rules-2026-07-26.v4"),
+        /^\w{2}-rules-\d{4}-\d{2}-\d{2}\.v\d+$/.test(profile.version),
+    ),
+  );
+  const hawaiiProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "HI",
+  );
+  assert.equal(hawaiiProfile.version, "hi-rules-2026-08-08.v5");
+  assert.equal(
+    hawaiiProfile.statuteUrl,
+    "https://cca.hawaii.gov/ocp/landlord-tenant-residential-code/",
+  );
+  assert.equal(hawaiiProfile.researchedOn, "2026-08-08");
+  assert.ok(
+    US_JURISDICTION_PROFILES.filter((profile) => profile.postalCode !== "HI").every(
+      (profile) => profile.version.endsWith("rules-2026-07-26.v4"),
     ),
   );
   assert.ok(US_JURISDICTION_PROFILES.every((profile) => profile.legalReviewRequired));

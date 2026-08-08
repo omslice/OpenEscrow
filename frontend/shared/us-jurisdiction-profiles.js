@@ -267,6 +267,11 @@ const PROFILE_METADATA_OVERRIDES = Object.freeze({
         "Two months' rent; a separate refundable pet-deposit limit and narrow exceptions apply.",
     }),
   }),
+  HI: Object.freeze({
+    version: "hi-rules-2026-08-08.v5",
+    statuteUrl: "https://cca.hawaii.gov/ocp/landlord-tenant-residential-code/",
+    researchedOn: "2026-08-08",
+  }),
   IL: Object.freeze({
     statuteUrl:
       "https://ilga.gov/Legislation/ILCS/Articles?ActID=2202&Chapter=PROPERTY&ChapterID=62&MajorTopic=RIGHTS+AND+REMEDIES",
