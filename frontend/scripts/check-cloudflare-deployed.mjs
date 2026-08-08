@@ -1,7 +1,9 @@
 import { execFile } from "node:child_process";
+import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
+import { verifyPrivyGoogleOrigin } from "./verify-privy-oauth-origin.mjs";
 
 const execFileAsync = promisify(execFile);
 const scripts = path.dirname(fileURLToPath(import.meta.url));
@@ -18,6 +20,15 @@ const { stdout: commitOutput } = await execFileAsync("git", ["rev-parse", "HEAD"
 });
 const expectedCommit = commitOutput.trim();
 const requirePilotServices = process.argv.includes("--require-pilot-services");
+
+function publicEnvValue(source, name) {
+  return source
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .find((line) => line.startsWith(`${name}=`))
+    ?.slice(name.length + 1)
+    .trim();
+}
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -38,6 +49,14 @@ for (const [name, expected] of [
     `Cloudflare MVP is missing the required ${name} security header.`,
   );
 }
+
+const productionEnv = await readFile(path.join(frontend, ".env.production"), "utf8");
+const privyAppId = publicEnvValue(productionEnv, "VITE_PRIVY_APP_ID");
+assert(privyAppId, "The production build is missing its public Privy app ID.");
+await verifyPrivyGoogleOrigin({
+  appId: privyAppId,
+  origin: baseUrl.origin,
+});
 
 const readinessResponse = await fetch(new URL("api/system/readiness", baseUrl), {
   headers: { accept: "application/json" },

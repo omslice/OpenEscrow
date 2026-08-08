@@ -40,14 +40,18 @@ provider or hosting control that owns the secret.
   owner-hosted Cloudflare pilot starts with a clearly disclosed fresh synthetic dataset. No
   migration or destination overwrite should occur until a complete export and comparison are
   verified.
-- [ ] **Enter Cloudflare runtime secrets and update provider origins only after staging exists.**
-  Keep notification, Privy, RPC, evidence-encryption, and address-attestation values in their
-  owning private controls. Add the staging and final `app` origins to Privy/OAuth/provider
-  allowlists without exposing a secret in a client build variable.
-- [ ] **Review and explicitly approve the newest exact Sites candidate before deployment.** The
-  public testnet matches the last approved exact source and exposes its release provenance. Newer
-  validated work is saved as a separate undeployed candidate; selecting and promoting it remains
-  a separate public action, followed by readiness verification.
+- [x] **Add the canonical Cloudflare app origin to Privy — completed 2026-08-08.**
+  `https://openescrow.omslice.workers.dev` is now an allowed origin for the existing OpenEscrow
+  Privy application. The live Google account chooser was verified from Cloudflare without a
+  browser error. The deploy verifier now fails closed if a future hosted origin is not accepted.
+- [ ] **Finish the remaining Cloudflare runtime-provider setup.** Keep notification, RPC,
+  evidence-encryption, address-attestation, and any future provider values in their owning private
+  controls. Add a future custom-domain origin to Privy and other provider allowlists before
+  promoting it; never expose a secret in a client build variable.
+- [x] **Publish one clean release to both interim hosts — completed 2026-08-08.** Cloudflare and
+  ChatGPT Sites now serve the same exact source and expose clean release provenance. Continue to
+  publish both hosts from one commit and run the dual-host verifier until the owner explicitly
+  retires the Sites rollback.
 - [ ] **Review and broadcast a hardened Base Sepolia escrow/reserve/registry cohort.** The latest source adds
   reciprocal immutable deployment binding, exact reserve phase gates, checks-effects-interactions
   funding, and a contract-wide cross-function reentrancy lock. The existing escrow and reserve are
