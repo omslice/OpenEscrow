@@ -781,10 +781,10 @@ test("the implemented registry covers every state and the District of Columbia",
   const newHampshireProfile = US_JURISDICTION_PROFILES.find(
     (profile) => profile.postalCode === "NH",
   );
-  assert.equal(newHampshireProfile.version, "nh-rules-2026-08-08.v6");
+  assert.equal(newHampshireProfile.version, "nh-rules-2026-08-08.v7");
   assert.equal(
     newHampshireProfile.statuteUrl,
-    "https://www.courts.nh.gov/sites/g/files/ehbemt471/files/documents/2021-04/540-a-checklist.pdf",
+    "https://gc.nh.gov/legislation/2006/SB0336.html",
   );
   assert.equal(newHampshireProfile.researchedOn, "2026-08-08");
   const nevadaProfile = US_JURISDICTION_PROFILES.find(
