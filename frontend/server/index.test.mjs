@@ -10965,8 +10965,17 @@ test("static assets receive safe cache policies and browser privacy headers", as
   for (const path of ["/", "/missing", "/openescrow-logo.svg"]) {
     const response = await worker.fetch(request(path), { ASSETS: assets });
     assert.equal(response.status, 200);
+    assert.match(
+      response.headers.get("content-security-policy"),
+      /default-src 'self'/,
+    );
+    assert.match(
+      response.headers.get("content-security-policy"),
+      /frame-src https:\/\/auth\.privy\.io/,
+    );
     assert.equal(response.headers.get("referrer-policy"), "no-referrer");
     assert.equal(response.headers.get("x-content-type-options"), "nosniff");
+    assert.equal(response.headers.get("x-frame-options"), "DENY");
     assert.equal(response.headers.get("cache-control"), "no-cache");
   }
 

@@ -878,6 +878,23 @@ export async function applyApiAbuseControls(
 
 const VERSIONED_STATIC_ASSET_PATH = /^\/assets\/.+-[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9]+$/;
 
+const APP_CONTENT_SECURITY_POLICY = [
+  "default-src 'self'",
+  "script-src 'self' https://challenges.cloudflare.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  "child-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org",
+  "frame-src https://auth.privy.io https://verify.walletconnect.com https://verify.walletconnect.org https://challenges.cloudflare.com",
+  "connect-src 'self' https://auth.privy.io wss://relay.walletconnect.com wss://relay.walletconnect.org wss://www.walletlink.org https://*.rpc.privy.systems https://explorer-api.walletconnect.com https://sepolia.base.org https://base-sepolia-rpc.publicnode.com",
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+].join("; ");
+
 function staticAssetCacheControl(requestUrl, responseOk, spaFallback = false) {
   if (spaFallback || !responseOk) return "no-cache";
   const pathname = new URL(requestUrl).pathname;
@@ -888,11 +905,20 @@ function staticAssetCacheControl(requestUrl, responseOk, spaFallback = false) {
 
 function secureResponse(response, requestUrl, spaFallback = false) {
   const headers = new Headers(response.headers);
+  if (
+    headers.get("content-type")?.toLowerCase().includes("text/html") &&
+    !headers.has("content-security-policy")
+  ) {
+    headers.set("content-security-policy", APP_CONTENT_SECURITY_POLICY);
+  }
   if (!headers.has("referrer-policy")) {
     headers.set("referrer-policy", "no-referrer");
   }
   if (!headers.has("x-content-type-options")) {
     headers.set("x-content-type-options", "nosniff");
+  }
+  if (!headers.has("x-frame-options")) {
+    headers.set("x-frame-options", "DENY");
   }
   headers.set(
     "cache-control",
