@@ -63,18 +63,22 @@ npm run check:dual-host
 
 The staging MVP deploy command packages an exact clean Git commit, proves the pinned D1 and R2
 resources exist before migration, verifies migrations afterward, deploys, and then verifies the
-public shell, security headers, exact commit, private evidence binding, encryption, notification,
-address-attestation, receipt, and registry state. A dirty-source package is available solely for
-local dry runs and is stamped `sourceDirty: true`. The readiness command remains a separate gate
-because scheduler and source-monitor health require a real hosted run after deployment.
+public shell, security headers, exact commit, private evidence binding, encryption,
+address-attestation, receipt verification, the activity-registry verification boundary, and the
+compliance monitor. A dirty-source package is available solely for local dry runs and is stamped
+`sourceDirty: true`. The stricter pilot verifier and readiness command remain separate gates
+because notification delivery, version-matched registry state, scheduler health, and the complete
+source baseline require a real hosted run after deployment.
 
 The one-time staging bootstrap refuses to run if the `openescrow` Worker already exists. It creates
 fresh staging-only evidence-encryption and address-attestation secrets, verifies a Windows
 DPAPI-protected recovery copy under the current user's `.openescrow/recovery` directory, uploads
 the secrets with the first Worker version, and removes the plaintext temporary file. The core
 deployment verifier requires private R2, encryption/keyring readiness, address attestation,
-receipt verification, and registry binding. Email delivery and scheduler/source-monitor freshness
-remain separate pilot gates and must pass before promotion.
+receipt verification, an enabled registry verification boundary, and the compliance monitor.
+`npm run check:cloudflare-deployed:staging:pilot` additionally requires notification delivery,
+scheduler health, a registry bound to the active escrow release, and a clean compliance-source
+baseline before promotion.
 
 ## Exact-source dual-host rule
 

@@ -335,6 +335,18 @@ production custody, or reliance on the compliance research as legal advice.
   expected local release commit. The transitional release rule requires both public hosts to be
   updated from one clean commit before a normal release is reported delivered; hosted data and
   rollback histories remain independent.
+- **Verified:** Cloudflare release verification now distinguishes a safely published core release
+  from a supervised-pilot-ready environment. Every deployment still requires private R2,
+  application-layer evidence encryption and retained-key recovery, address attestation, onchain
+  receipt verification, an enabled activity-registry verification boundary, and the compliance
+  monitor. The stricter pilot check additionally fails closed until notification delivery, the
+  scheduler, the version-matched activity registry, and the complete official-source baseline are
+  healthy.
+- **Verified:** The first complete nationwide official-source monitoring pass has finished. Every
+  source except New Hampshire is currently verified; the New Hampshire General Court page remains
+  fail-visible because its server rejects the Cloudflare-origin monitor even though the same
+  official page is reachable outside that network path. This external-source condition is not an
+  owner configuration task and remains scheduled for bounded retries rather than being bypassed.
 - **Verified:** Hosted-data continuity now has a private, fail-closed verification tool and
   operator procedure. It loads a complete D1 SQL export into isolated memory, creates keyed
   schema/table fingerprints, hashes complete R2 object identifiers and encrypted bytes, checks
@@ -358,10 +370,11 @@ production custody, or reliance on the compliance research as legal advice.
 - **Planned:** Review and broadcast a new mutually bound Base Sepolia escrow/reserve pair, then a
   registry bound to that exact escrow, before switching the candidate configuration. Existing
   testnet agreements remain readable on their immutable retired deployment; no state is migrated.
-- **Planned:** Complete the hosted pilot gates listed in
-  [owner actions](./owner-actions.md): notification delivery and scheduler, evidence encryption
-  and retained-key recovery, version-matched activity registry, address attestation, and a clean,
-  fresh official-source baseline.
+- **Planned:** Complete the remaining hosted pilot gates listed in
+  [owner actions](./owner-actions.md): notification delivery and a version-matched activity
+  registry. Keep the already verified scheduler, private-R2 evidence encryption and retained-key
+  recovery, and address attestation healthy. Continue bounded retries for the one externally
+  unreachable official source without weakening the fail-closed source gate.
 - **Planned:** Run the separate-account landlord/tenant pilot, moderated accessibility/usability
   sessions, and the owner-led incident/privacy drill. Record stop conditions and remediation.
 - **Planned:** Evaluate one eligible provider sandbox using worthless testnet assets only.

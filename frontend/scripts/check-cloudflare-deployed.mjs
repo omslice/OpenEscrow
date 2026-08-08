@@ -7,6 +7,7 @@ import {
   releaseReadinessUrl,
   waitForExpectedRelease,
 } from "./dual-host-release-core.mjs";
+import { assertCloudflareDeployedReadiness } from "./cloudflare-deployed-readiness-core.mjs";
 import { verifyPrivyGoogleOrigin } from "./verify-privy-oauth-origin.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -97,30 +98,7 @@ assert(
   `Cloudflare release ${readiness.release?.commitSha || "missing"} does not match ${expectedCommit}.`,
 );
 assert(readiness.release?.sourceDirty === false, "Cloudflare release was built from dirty source.");
-assert(
-  readiness.evidence?.configured === true && readiness.evidence?.mode === "private-r2",
-  "Cloudflare EVIDENCE is not bound to private R2.",
-);
-assert(
-  readiness.evidence?.encryptedAtRest === true && readiness.evidence?.keyringReady === true,
-  "Cloudflare evidence encryption and key recovery are not ready.",
-);
-assert(readiness.addressValidation?.configured === true, "Address attestation is not configured.");
-if (requirePilotServices) {
-  assert(readiness.email?.configured === true, "Notification delivery is not configured.");
-}
-assert(
-  readiness.recordIntegrity?.transactionReceiptVerification === true,
-  "Onchain receipt verification is not enabled.",
-);
-assert(
-  readiness.recordIntegrity?.activityRegistry?.ready === true,
-  "The activity registry is not bound to the active escrow release.",
-);
-assert(
-  readiness.complianceSources?.configured === true,
-  "The compliance source monitor is not enabled.",
-);
+assertCloudflareDeployedReadiness(readiness, { requirePilotServices });
 
 console.log(
   `OpenEscrow Cloudflare ${requirePilotServices ? "pilot" : "core deployment"} verified: ${baseUrl.origin} (${expectedCommit}).`,

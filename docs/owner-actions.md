@@ -92,12 +92,6 @@ provider or hosting control that owns the secret.
   through that API limiter. Keep sponsorship testnet-only, restrict eligible methods/contracts if
   the dashboard supports it, and choose a spend threshold that stops abuse without affecting the
   synthetic pilot.
-- [ ] **Let the official-source baseline complete and resolve every blocking
-  source alert.** Ask Codex for the deployed readiness report after each
-  scheduled batch; a changed source needs a new official-source review and
-  versioned rule update, not a configuration bypass. The proposal's source
-  recheck also remains unavailable until the hosted monitor and D1 storage are
-  enabled.
 - [ ] **Run the separate-account operator test.** Use invented identities,
   separate landlord and tenant Google accounts, and worthless Base Sepolia
   tokens; follow [`testnet-pilot-runbook.md`](./testnet-pilot-runbook.md).
