@@ -24,7 +24,7 @@ if (!existsSync(htmlPath)) {
     "Three clear steps. One shared record.",
     "Private details, public verification",
     "Test tokens only",
-    "omslice.eth",
+    "0x0C33BC6449d134782a95167658303F9d87dd7D79",
   ];
   for (const text of requiredText) {
     if (!html.includes(text)) errors.push(`Landing page is missing required copy: ${text}`);

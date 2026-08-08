@@ -1,8 +1,9 @@
 # OpenEscrow Cloudflare deployment runbook
 
-This runbook keeps the public project landing page and the authenticated Base Sepolia MVP as
-independent Cloudflare Workers. The existing ChatGPT Sites deployment remains unchanged until the
-owner-hosted MVP passes the complete pilot acceptance gate.
+This runbook keeps the standalone landing fallback and the unified Base Sepolia MVP as independent
+Cloudflare Workers during staging. The MVP's signed-out introduction and authenticated About tab
+are the intended public project experience. The existing ChatGPT Sites deployment remains
+unchanged until the owner-hosted MVP passes the complete pilot acceptance gate.
 
 ## Account boundary
 
@@ -16,8 +17,8 @@ owner-hosted MVP passes the complete pilot acceptance gate.
 
 | Deployable | Staging Worker | Production-testnet Worker | Stateful bindings |
 | --- | --- | --- | --- |
-| Landing page | `openescrow-landing-staging` | `openescrow-landing` | None |
-| MVP | `openescrow-mvp-staging` | `openescrow-mvp-testnet` | `DB`, `EVIDENCE`, `ASSETS` |
+| Landing fallback | `openescrow-landing-staging` | Not planned while the unified app is canonical | None |
+| Unified MVP | `openescrow-mvp-staging` | `openescrow-mvp-testnet` | `DB`, `EVIDENCE`, `ASSETS` |
 
 The landing page can be deployed without changing the MVP database, evidence bucket, secrets, or
 scheduled jobs.
@@ -33,11 +34,12 @@ scheduled jobs.
 All 21 repository D1 migrations have been applied to the staging D1 database. Production-testnet
 migrations remain intentionally unapplied until the data-continuity decision and release gate.
 
-The prepared Worker configuration expects private R2 bindings, but R2 has not been activated and
-no account/billing action has been authorized. Before deploying the MVP, the owner must either
-approve R2 activation, choose a compatible private object store and let the application adapter be
-updated, or keep evidence on Sites during the first owner-hosted phase. Any new evidence store must
-keep public access disabled and pass the encryption, recovery, and data-continuity gates.
+On 2026-08-08 the owner activated R2 in the pinned account. The two named buckets above were then
+created through Wrangler and verified empty and private: their `r2.dev` URLs are disabled and they
+have no custom domains. The remote staging preflight now proves both exact binding targets exist
+and that all staging migrations are current before any deployment command can run. Evidence still
+must be encrypted at the application layer and pass the retained-key recovery gate; bucket privacy
+does not replace that control.
 
 ## Local validation and deployment
 
@@ -55,12 +57,31 @@ From `frontend`:
 ```powershell
 npm run release:check
 npm run cloudflare:dry-run
+npm run check:cloudflare-remote:staging
 npm run cloudflare:deploy:staging
+npm run cloudflare:readiness:staging
+# Run only after the identical clean commit is published to ChatGPT Sites:
+npm run check:dual-host
 ```
 
-The staging MVP deploy command packages an exact clean Git commit, applies pending migrations to
-the staging D1 database, and deploys only after both steps succeed. A dirty-source package is
-available solely for local dry runs and is stamped `sourceDirty: true`.
+The staging MVP deploy command packages an exact clean Git commit, proves the pinned D1 and R2
+resources exist before migration, verifies migrations afterward, deploys, and then verifies the
+public shell, security headers, exact commit, private evidence binding, encryption, notification,
+address-attestation, receipt, and registry state. A dirty-source package is available solely for
+local dry runs and is stamped `sourceDirty: true`. The readiness command remains a separate gate
+because scheduler and source-monitor health require a real hosted run after deployment.
+
+## Exact-source dual-host rule
+
+Until Cloudflare completes the supervised pilot and rollback exercise, every normal public release
+must be published to both the Cloudflare MVP and the existing ChatGPT Sites project from the same
+clean Git commit. Do not describe a release as delivered until `npm run check:dual-host` proves that
+both homepages and readiness endpoints are reachable, both report `sourceDirty: false`, and both
+report the expected full commit SHA. If either host cannot be updated, hold the normal release or
+record an explicit emergency exception; never silently let the two public applications drift.
+
+The two hosts retain independent deployments, databases, object stores, secrets, and rollback
+histories. Matching application source does not imply that their hosted records have been copied.
 
 ## Secrets and provider configuration
 
@@ -82,8 +103,11 @@ OAuth allowlists. Keep Base Sepolia and synthetic-data restrictions in place.
 1. Verify staging landing and MVP URLs, `/api/system/readiness`, the exact release commit, D1/R2
    bindings, evidence encryption, and the 15-minute scheduled job.
 2. Complete the separate-account synthetic landlord/tenant pilot and incident/privacy drill.
-3. Attach the selected primary hostname to the landing Worker and `app.<domain>` to the MVP.
+3. Attach the selected primary hostname to the unified MVP Worker; optionally redirect an
+   `app.<domain>` alias to that canonical origin.
 4. Keep the existing Sites URL available until the owner accepts the Cloudflare pilot and a
    rollback exercise succeeds.
 5. If hosted D1/R2 export cannot be verified, start Cloudflare with a disclosed fresh synthetic
    dataset and retain Sites as the historical-data reference. Never imply that records migrated.
+6. For each interim release, publish one clean commit to both hosts and run
+   `npm run check:dual-host` before reporting delivery.

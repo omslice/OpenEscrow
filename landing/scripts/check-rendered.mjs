@@ -97,7 +97,10 @@ try {
 
   await desktopPage.getByRole("button", { name: "Copy address" }).click();
   await desktopPage.getByText("Donation address copied.").waitFor({ state: "visible" });
-  assert.equal(await desktopPage.evaluate(() => navigator.clipboard.readText()), "omslice.eth");
+  assert.equal(
+    await desktopPage.evaluate(() => navigator.clipboard.readText()),
+    "0x0C33BC6449d134782a95167658303F9d87dd7D79",
+  );
 
   await desktopPage.evaluate(() => {
     Object.defineProperty(navigator, "clipboard", {
@@ -111,7 +114,9 @@ try {
   });
   await desktopPage.getByRole("button", { name: "Copy address" }).click();
   await desktopPage
-    .getByText("Select omslice.eth and copy it manually.")
+    .getByText(
+      "Select 0x0C33BC6449d134782a95167658303F9d87dd7D79 and copy it manually.",
+    )
     .waitFor({ state: "visible" });
 
   const assetBytes = (

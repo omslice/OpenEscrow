@@ -3,6 +3,8 @@ import { ConnectWallet } from "./ConnectWallet";
 import { copyTextToClipboard } from "../lib/browserActions";
 import { readRecoveryJson, writeRecoveryJson } from "../lib/browserRecovery";
 
+const DONATION_ADDRESS = "0x0C33BC6449d134782a95167658303F9d87dd7D79";
+
 export type AppNotification = {
   id: string;
   createdAt: string;
@@ -75,14 +77,14 @@ export function Layout({
 
   async function copyDonationAddress() {
     try {
-      await copyTextToClipboard("omslice.eth");
+      await copyTextToClipboard(DONATION_ADDRESS);
       setDonationCopyStatus({
         message: "Donation address copied.",
         error: false,
       });
     } catch {
       setDonationCopyStatus({
-        message: "We could not copy the address. Select omslice.eth and copy it manually.",
+        message: `We could not copy the address. Select ${DONATION_ADDRESS} and copy it manually.`,
         error: true,
       });
     }
@@ -177,11 +179,11 @@ export function Layout({
             OpenEscrow development.
           </span>
           <span className="donation-address-control">
-            <span className="donation-address">omslice.eth</span>
+            <span className="donation-address">{DONATION_ADDRESS}</span>
             <button
               className="donation-copy-button"
               type="button"
-              aria-label="Copy donation address omslice.eth"
+              aria-label={`Copy donation address ${DONATION_ADDRESS}`}
               onClick={() => void copyDonationAddress()}
             >
               Copy address

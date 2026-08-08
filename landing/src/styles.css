@@ -738,6 +738,7 @@ h3 {
   background: var(--bg-soft);
   font-size: 0.82rem;
   font-weight: 780;
+  overflow-wrap: anywhere;
 }
 
 .donation-control button {

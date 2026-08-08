@@ -75,7 +75,7 @@ const checks = [
         : "exact packaged source commit is missing or invalid",
     required: true,
     action:
-      "Build and publish the candidate through the exact-source Sites workflow, then rerun this check.",
+      "Build and publish the candidate through an exact-source OpenEscrow release workflow, then rerun this check.",
     validate:
       "readiness.release.schemaVersion === openescrow-release/v1 and readiness.release.commitSha is a full Git SHA",
   },
@@ -95,7 +95,7 @@ const checks = [
       : "no hosted run recorded",
     required: true,
     action:
-      "Create a host cron for `*/15 * * * *` hitting deployed `/api/system/run-scheduler` and keep it running in deployment.",
+      "Enable the deployment's `*/15 * * * *` scheduled handler and confirm a successful hosted run.",
     validate:
       "readiness.email.schedulerConfigured === true and readiness.email.schedulerHealthy === true",
   },

@@ -99,14 +99,19 @@ const TestFunds = lazy(() =>
   })),
 );
 
-type WorkspaceTab = "overview" | "proposals" | "agreements" | "record";
+type WorkspaceTab = "overview" | "proposals" | "agreements" | "record" | "about";
 type SavedProposal = SavedRecord;
 const WORKSPACE_TABS: WorkspaceTab[] = [
   "overview",
   "proposals",
   "agreements",
   "record",
+  "about",
 ];
+
+function initialWorkspaceTab(): WorkspaceTab {
+  return window.location.hash === "#yield-stablecoins" ? "about" : "overview";
+}
 
 function savedRecordKey(item: SavedProposal) {
   return `proposal:${item.access.proposalId}:${item.access.role}`;
@@ -225,7 +230,7 @@ function AppView({
     }
     return initialAccess;
   });
-  const [tab, setTab] = useState<WorkspaceTab>("overview");
+  const [tab, setTab] = useState<WorkspaceTab>(initialWorkspaceTab);
   const workspaceTabRefs = useRef<Partial<Record<WorkspaceTab, HTMLButtonElement | null>>>(
     {},
   );
@@ -886,6 +891,7 @@ function AppView({
           proposals: "Proposals",
           agreements: "Deposits",
           record: "Record",
+          about: "About",
         }
       : workspaceRole === "tenant"
         ? {
@@ -893,12 +899,14 @@ function AppView({
             proposals: "Proposals",
             agreements: "Deposits",
             record: "Record",
+            about: "About",
           }
         : {
             overview: "Overview",
             proposals: "Reviews",
             agreements: "Cases",
             record: "Record",
+            about: "About",
           };
   const sortedAccountProposals = [...savedRecords].sort(
     (left, right) =>
@@ -925,6 +933,7 @@ function AppView({
     agreements:
       workspaceRole === "landlord" ? "💼" : workspaceRole === "tenant" ? "🏦" : "⚖️",
     record: "📜",
+    about: "ⓘ",
   };
 
   function renderAgreementDiscovery() {
@@ -1586,7 +1595,6 @@ function AppView({
       notifications={notifications}
       notificationStorageScope={address}
     >
-      <PublicIntro onStart={startDemo} />
       <p className="sr-only" role="status" aria-live="polite" aria-atomic="true">
         {recordArchiveAnnouncement}
       </p>
@@ -1905,6 +1913,19 @@ function AppView({
           hidden={tab !== "record"}
         >
           {tab === "record" && renderRecordWorkspace()}
+        </div>
+      )}
+
+      {workspaceRole && (
+        <div
+          id="workspace-panel-about"
+          className="workspace-panel workspace-about-panel"
+          role="tabpanel"
+          aria-labelledby="workspace-tab-about"
+          tabIndex={0}
+          hidden={tab !== "about"}
+        >
+          {tab === "about" && <PublicIntro onStart={startDemo} showAboutDetails />}
         </div>
       )}
 

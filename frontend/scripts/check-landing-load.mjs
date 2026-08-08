@@ -163,7 +163,7 @@ try {
     "A clean logged-out visit must not show an empty workspace notification control.",
   );
   const copyDonationAddress = landingPage.getByRole("button", {
-    name: "Copy donation address omslice.eth",
+    name: "Copy donation address 0x0C33BC6449d134782a95167658303F9d87dd7D79",
   });
   await copyDonationAddress.waitFor({ state: "visible" });
   await copyDonationAddress.click();
@@ -181,7 +181,7 @@ try {
   );
   assert.equal(
     await landingPage.evaluate(() => navigator.clipboard.readText()),
-    "omslice.eth",
+    "0x0C33BC6449d134782a95167658303F9d87dd7D79",
     "The public donation control must copy the exact ENS address.",
   );
   await landingPage.evaluate(() => {
@@ -201,7 +201,10 @@ try {
   await copyDonationAddress.click();
   await landingPage
     .getByRole("alert")
-    .filter({ hasText: "Select omslice.eth and copy it manually." })
+    .filter({
+      hasText:
+        "Select 0x0C33BC6449d134782a95167658303F9d87dd7D79 and copy it manually.",
+    })
     .waitFor({ state: "visible" });
   assert.equal(
     await landingPage.getByRole("button", { name: /I am a landlord/ }).count(),

@@ -27,13 +27,14 @@ provider or hosting control that owns the secret.
 
 ## Actionable now
 
-- [ ] **Choose the OpenEscrow Cloudflare domain layout.** The recommended structure is the primary
-  domain for the public landing page and `app.<domain>` for the Base Sepolia MVP. Confirm that the
-  domain is an active zone in the intended Cloudflare account; do not share account credentials.
-- [ ] **Choose the private evidence-storage path.** Cloudflare R2 requires an owner-reviewed
-  account activation even when usage stays inside its included allowance; it has not been
-  activated. Choose among private R2, a compatible owner-controlled object store, or retaining
-  evidence on Sites for the first owner-hosted phase. Keep every public-access control disabled.
+- [ ] **Choose the OpenEscrow Cloudflare domain.** The primary domain will serve both the public
+  project introduction and the Base Sepolia MVP. If `app.<domain>` is reserved, it should redirect
+  to the primary domain rather than host a second application. Confirm that the domain is an active
+  zone in the intended Cloudflare account; do not share account credentials.
+- [x] **Activate private Cloudflare R2 — completed 2026-08-08.** The owner activated R2 in the
+  intended account. Codex created separate staging and production-testnet evidence buckets and
+  verified that public `r2.dev` access is disabled, no custom domains are attached, and both
+  buckets are empty. Application-layer encryption and recovery checks remain mandatory.
 - [ ] **Choose the hosted-data continuity policy.** Decide whether the current synthetic Sites D1
   records and R2 evidence must be migrated or may remain in the rollback deployment while the
   owner-hosted Cloudflare pilot starts with a clearly disclosed fresh synthetic dataset. No

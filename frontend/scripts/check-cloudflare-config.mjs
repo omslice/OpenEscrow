@@ -13,6 +13,23 @@ function assert(condition, message) {
   if (!condition) errors.push(message);
 }
 
+function isHttpsOrigin(value) {
+  try {
+    const url = new URL(value);
+    return (
+      url.protocol === "https:" &&
+      Boolean(url.hostname) &&
+      !url.username &&
+      !url.password &&
+      url.pathname === "/" &&
+      !url.search &&
+      !url.hash
+    );
+  } catch {
+    return false;
+  }
+}
+
 const config = JSON.parse(await readFile(path.join(frontend, "wrangler.jsonc"), "utf8"));
 const sites = JSON.parse(
   await readFile(path.join(repository, ".openai", "hosting.json"), "utf8"),
@@ -57,8 +74,8 @@ if (requestedEnvironment === "staging") {
   );
 } else {
   assert(
-    /^https:\/\/app\.[a-z0-9.-]+\/$/.test(vars.PUBLIC_APP_URL || ""),
-    "Production-testnet PUBLIC_APP_URL must be the selected HTTPS app subdomain before deployment.",
+    isHttpsOrigin(vars.PUBLIC_APP_URL || ""),
+    "Production-testnet PUBLIC_APP_URL must be the selected canonical HTTPS origin before deployment.",
   );
 }
 

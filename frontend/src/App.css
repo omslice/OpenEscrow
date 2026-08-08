@@ -288,6 +288,7 @@
   font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.02em;
+  overflow-wrap: anywhere;
 }
 
 .donation-copy-button {
@@ -331,7 +332,14 @@
 @media (max-width: 520px) {
   .donation-address-control {
     width: 100%;
+    align-items: stretch;
+    flex-direction: column;
     justify-content: center;
+  }
+
+  .donation-address {
+    justify-content: center;
+    border-radius: 10px;
   }
 }
 
@@ -825,6 +833,83 @@
   border-top: 1px solid var(--border);
   color: var(--warning);
   font-size: 12px;
+}
+
+.about-details {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.about-card {
+  padding: 22px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 90%, var(--accent) 10%);
+}
+
+.about-card h3 {
+  margin: 6px 0 12px;
+  color: var(--text-h);
+  font-size: clamp(22px, 3vw, 30px);
+  letter-spacing: -0.025em;
+}
+
+.about-card > p:not(.eyebrow) {
+  margin: 0 0 12px;
+  color: var(--muted);
+  line-height: 1.65;
+}
+
+.about-card cite {
+  color: var(--text-h);
+  font-style: normal;
+  font-weight: 750;
+}
+
+.about-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+  margin-top: 18px;
+}
+
+.about-links a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 42px;
+  padding: 9px 13px;
+  border: 1px solid var(--accent-border);
+  border-radius: 9px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration: none;
+  transition:
+    border-color 160ms ease,
+    background 160ms ease,
+    transform 160ms ease;
+}
+
+.about-links a:hover,
+.about-links a:focus-visible {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, var(--surface));
+  transform: translateY(-2px);
+}
+
+.about-independence-note {
+  grid-column: 1 / -1;
+  margin: 0;
+  padding: 14px 16px;
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent-bg);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
 }
 
 .tabs {
@@ -4247,6 +4332,10 @@ a.btn.disabled {
     grid-template-columns: 1fr;
   }
 
+  .about-details {
+    grid-template-columns: 1fr;
+  }
+
   .account-center-recovery {
     align-items: flex-start;
     flex-direction: column;
@@ -4412,6 +4501,15 @@ a.btn.disabled {
 
   .how-it-works li:hover,
   .how-it-works li:focus-within {
+    transform: none;
+  }
+
+  .about-links a {
+    transition: none;
+  }
+
+  .about-links a:hover,
+  .about-links a:focus-visible {
     transform: none;
   }
 }

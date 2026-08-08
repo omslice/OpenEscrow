@@ -5,7 +5,13 @@ import {
 } from "../lib/browserActions";
 import { replaceRecoveryUrl } from "../lib/browserRecovery";
 
-export function PublicIntro({ onStart }: { onStart: () => void }) {
+export function PublicIntro({
+  onStart,
+  showAboutDetails = false,
+}: {
+  onStart: () => void;
+  showAboutDetails?: boolean;
+}) {
   const yieldDialogRef = useRef<HTMLDialogElement>(null);
   const yieldSummaryRef = useRef<HTMLElement>(null);
   const shouldRestoreYieldFocusRef = useRef(false);
@@ -85,8 +91,8 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
         <p className="eyebrow">Open-source public-interest prototype</p>
         <h2 id="public-intro-title">A better way to handle rental deposits.</h2>
         <p className="intro-summary">
-          A clear, documented process from agreement to refund, with fair dispute resolution.
-          Tracked, secured, and powered by Ethereum.
+          A clear, documented process from agreement to refund, with fair dispute resolution and
+          optional yield. Tracked, secured, and powered by Ethereum.
         </p>
         <div className="intro-actions">
           <button className="btn btn-primary" onClick={onStart}>
@@ -283,6 +289,78 @@ export function PublicIntro({ onStart }: { onStart: () => void }) {
           </section>
         </div>
       </dialog>
+
+      {showAboutDetails && (
+        <section className="about-details" aria-labelledby="about-project-title">
+          <article className="about-card about-project-card">
+            <p className="eyebrow">About the project</p>
+            <h3 id="about-project-title">Public-interest infrastructure for rental deposits</h3>
+            <p>
+              OpenEscrow is free, open-source software exploring a clearer shared process for
+              landlords and tenants—from agreeing on terms and protecting funds through claims,
+              refunds, and resolution. Ethereum supplies tamper-resistant receipts; private
+              housing details stay in the participant-controlled record.
+            </p>
+            <p>
+              The goal is practical trust and accountability, not speculative crypto. The current
+              application is a Base Sepolia testnet prototype built for learning, testing, and
+              responsible public collaboration.
+            </p>
+            <div className="about-links" aria-label="OpenEscrow project links">
+              <a
+                href="https://github.com/omslice/OpenEscrow"
+                target="_blank"
+                rel="noreferrer"
+              >
+                View the source on GitHub
+              </a>
+              <a
+                href="https://www.linkedin.com/company/openescrow"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Follow OpenEscrow
+              </a>
+            </div>
+          </article>
+
+          <article className="about-card">
+            <p className="eyebrow">About the builder</p>
+            <h3>Built by Omri Gross</h3>
+            <p>
+              Omri works at the intersection of housing policy, public-interest technology, and
+              blockchain. He created OpenEscrow to demonstrate how verifiable shared systems can
+              reduce confusion and conflict around an everyday housing process.
+            </p>
+            <p>
+              His essay <cite>On Blockchain&apos;s Importance for Housing</cite> explains the broader
+              case for applying smart contracts and decentralized records to housing with an
+              emphasis on transparency, security, and responsible implementation.
+            </p>
+            <div className="about-links" aria-label="Omri Gross links">
+              <a
+                href="https://medium.com/emerging-govtech/on-blockchains-importance-for-housing-4fd4e4c06530"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Read the housing article
+              </a>
+              <a
+                href="https://www.linkedin.com/in/omri-gross"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Connect with Omri
+              </a>
+            </div>
+          </article>
+
+          <p className="about-independence-note">
+            OpenEscrow is an independent open-source project. It is not an official government
+            service, legal advice, or a licensed escrow provider.
+          </p>
+        </section>
+      )}
 
       <p className="intro-boundary">
         This is a Base Sepolia demonstration using worthless test tokens. It is not a bank,

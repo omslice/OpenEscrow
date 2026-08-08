@@ -30,7 +30,7 @@ if (currentYear) currentYear.textContent = String(new Date().getFullYear());
 
 const copyButton = document.querySelector("#copy-donation");
 const copyStatus = document.querySelector("#copy-status");
-const donationAddress = "omslice.eth";
+const donationAddress = "0x0C33BC6449d134782a95167658303F9d87dd7D79";
 
 copyButton?.addEventListener("click", async () => {
   if (!copyStatus) return;
@@ -42,6 +42,6 @@ copyButton?.addEventListener("click", async () => {
   } catch {
     copyStatus.classList.add("error");
     copyStatus.textContent =
-      "We could not copy the address. Select omslice.eth and copy it manually.";
+      `We could not copy the address. Select ${donationAddress} and copy it manually.`;
   }
 });

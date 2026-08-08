@@ -294,8 +294,8 @@ production custody, or reliance on the compliance research as legal advice.
   the provider module finishes loading, and fail closed before workspace or wallet code during an
   outage. Mobile sign-in, retry, focus, and same-tab workspace-download recovery remain covered.
 - **Verified:** The shared public/workspace footer explains testnet file safety in plain language
-  and offers an accessible, mobile-size control to copy the optional `omslice.eth` donation
-  address. Donations are explicitly separate from deposits and product access.
+  and offers an accessible, mobile-size control to copy the owner-selected donation address.
+  Donations are explicitly separate from deposits and product access.
 - **Verified:** The clean signed-out landing page omits the empty agreement-notification bell.
   Provider-independent rendered coverage proves notification access remains available after
   authentication and on valid role-locked invitation workspaces.
@@ -314,14 +314,25 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** The owner Cloudflare boundary is prepared without changing the Sites deployment:
   separate staging and production-testnet D1 databases exist, all 21 migrations are applied only
   to staging, and the MVP Cloudflare package preserves the `DB`, `EVIDENCE`, `ASSETS`, and
-  15-minute scheduler contracts. Configuration, provenance, build, and Wrangler dry-run checks
-  pass; no Cloudflare MVP or production database deployment has occurred.
+  15-minute scheduler contracts. R2 is activated; separate empty staging and production-testnet
+  evidence buckets are verified private with public URLs disabled and no custom domains. The
+  staging remote preflight now passes with exact D1/R2 targets and current migrations.
+  Configuration, provenance, build, and Wrangler dry-run checks pass; no Cloudflare MVP or
+  production database deployment has occurred.
+- **Verified:** A fail-closed dual-host verifier checks the Cloudflare and ChatGPT Sites homepages,
+  readiness schema, clean-source flag, full commit SHA, exact agreement between hosts, and the
+  expected local release commit. The transitional release rule requires both public hosts to be
+  updated from one clean commit before a normal release is reported delivered; hosted data and
+  rollback histories remain independent.
+- **Verified:** The unified application now treats the project explanation as public app content
+  and an authenticated `About` workspace tab. The standalone landing Worker remains only a
+  staging fallback during transition; it is no longer the intended second production website.
 
 ## Remaining
 
-- **Planned:** Finish the reversible migration of the testnet MVP into the owner's Cloudflare
+- **Planned:** Finish the reversible migration of the unified testnet MVP into the owner's Cloudflare
   account after choosing private evidence storage and the hosted-data continuity policy. The
-  landing page will switch its primary link only after the independently deployed MVP passes
+  staging landing fallback will be retired only after the unified MVP passes
   readiness, authentication, scheduled-job, and supervised-pilot checks. The current Sites
   deployment remains the rollback and hosted-data reference. See
   [the Cloudflare landing and MVP deployment plan](./cloudflare-landing-and-mvp-plan.md).
@@ -351,8 +362,6 @@ production custody, or reliance on the compliance research as legal advice.
 
 - The exact OpenEscrow domain, Cloudflare zone, canonical landing hostname, and MVP `app`
   hostname.
-- Whether private evidence objects will use activated Cloudflare R2, a compatible owner-controlled
-  object store, or remain on Sites during the first owner-hosted application phase.
 - Whether the Sites-managed D1 and R2 resources expose a complete owner-accessible export path;
   without a verified export, the Cloudflare pilot must use a disclosed fresh synthetic dataset
   while the Sites deployment remains the historical record.

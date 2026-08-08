@@ -204,6 +204,31 @@ try {
 
   await page.goto(baseUrl, { waitUntil: "networkidle" });
 
+  await page.getByRole("button", { name: /I am a landlord/ }).click();
+  const workspaceTablist = page.getByRole("tablist", {
+    name: "Landlord workspace",
+  });
+  const workspaceTabs = workspaceTablist.getByRole("tab");
+  assert.equal(await workspaceTabs.count(), 5, "The workspace should expose five tabs.");
+  const aboutTab = workspaceTablist.getByRole("tab", { name: "About" });
+  await aboutTab.click();
+  assert.equal(
+    await aboutTab.getAttribute("aria-selected"),
+    "true",
+    "The project explanation should open in the About workspace tab.",
+  );
+  await page.getByRole("heading", { name: "Built by Omri Gross" }).waitFor();
+  assert.equal(
+    await page.getByRole("link", { name: "Read the housing article" }).getAttribute("href"),
+    "https://medium.com/emerging-govtech/on-blockchains-importance-for-housing-4fd4e4c06530",
+    "The About tab should link to Omri's housing article.",
+  );
+  assert.equal(
+    await page.getByRole("link", { name: "View the source on GitHub" }).getAttribute("href"),
+    "https://github.com/omslice/OpenEscrow",
+    "The About tab should link to the public source repository.",
+  );
+
   const yieldSummary = page.getByText("Earn yield?", { exact: true });
   await yieldSummary.focus();
   await yieldSummary.press("Enter");
@@ -260,13 +285,6 @@ try {
     true,
     "Closing the yield dialog should restore focus to the visible tooltip control.",
   );
-
-  await page.getByRole("button", { name: /I am a landlord/ }).click();
-  const workspaceTablist = page.getByRole("tablist", {
-    name: "Landlord workspace",
-  });
-  const workspaceTabs = workspaceTablist.getByRole("tab");
-  assert.equal(await workspaceTabs.count(), 4, "The workspace should expose four tabs.");
 
   const overviewTab = workspaceTablist.getByRole("tab", { name: "Overview" });
   await overviewTab.focus();

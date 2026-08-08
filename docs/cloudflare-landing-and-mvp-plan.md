@@ -6,11 +6,16 @@ Publish a simple, branded OpenEscrow landing page and operate the existing testn
 project owner's Cloudflare account without weakening the current testnet boundary or losing D1,
 R2, secret, configuration, or hosted-record continuity.
 
-The landing page and MVP will be separate deployables:
+Architecture update (2026-08-07): the public project explanation will live in the application as
+the signed-out introduction and an authenticated **About** tab. The owner-hosted Cloudflare MVP
+will therefore be the canonical public deployment rather than requiring a second production
+website. The already-deployed standalone landing Worker remains staging-only as a temporary
+fallback until the unified application is verified.
 
-- the public landing site will be a small static Cloudflare Worker at the primary OpenEscrow
-  domain, with a clear link to the testnet MVP;
-- the MVP will remain a full Cloudflare Worker at an `app` subdomain, with the existing server,
+The transition currently retains two deployables:
+
+- the staging-only landing preview remains isolated and carries no stateful bindings;
+- the MVP will become the primary Cloudflare Worker, with the existing server,
   scheduled jobs, D1 `DB` binding, and private R2 `EVIDENCE` binding; and
 - the current Sites deployment will remain unchanged as the rollback target until the Cloudflare
   deployment passes data, readiness, authentication, and supervised-pilot checks.
@@ -19,8 +24,8 @@ Production fiat, mainnet contracts, FRNT, USDY, and yield-bearing funding routes
 
 ## Proposed public structure
 
-- Primary domain: the single-page project landing site.
-- `app` subdomain: the OpenEscrow Base Sepolia MVP.
+- Primary domain: the unified OpenEscrow project introduction and Base Sepolia MVP.
+- Optional `app` subdomain: redirect to the primary domain rather than a second application.
 - Existing Sites URL: retained temporarily as the rollback and data-reference deployment.
 
 The exact domain is an owner decision. Until it is selected, development and verification can use
@@ -38,7 +43,8 @@ It should remain short and consumer-friendly:
    without implying legal approval, insurance, guaranteed outcomes, or production readiness.
 4. Testnet safety notice and a secondary link to the source repository when its public URL is
    confirmed.
-5. Footer with project links and the optional `omslice.eth` donation message.
+5. Footer with project links and the optional
+   `0x0C33BC6449d134782a95167658303F9d87dd7D79` donation address.
 
 The landing site needs no database, object storage, account system, or runtime secret.
 
@@ -80,10 +86,9 @@ The landing site needs no database, object storage, account system, or runtime s
   API token in Git or chat.
 - **Verified:** Separate staging and production-testnet D1 databases exist.
 - **Verified:** All 21 migrations are applied to staging D1; production-testnet remains untouched.
-- **Owner action:** Choose the private evidence-storage path. Cloudflare R2 requires account-level
-  activation even when usage stays in its included allowance; no activation or charge has been
-  authorized. The alternatives are a compatible owner-controlled private object store or retaining
-  evidence on Sites until a later migration.
+- **Verified:** The owner activated Cloudflare R2. Separate staging and production-testnet evidence
+  buckets now exist in the pinned account with public `r2.dev` access disabled and no custom
+  domains. The staging remote preflight verifies the exact `EVIDENCE` target before deployment.
 - Enter notification, Privy, RPC, evidence-encryption, address-attestation, and other runtime
   secrets through Cloudflare's private controls.
 - Configure the 15-minute Cron Trigger and conservative observability/usage alerts.
@@ -108,6 +113,9 @@ The landing site needs no database, object storage, account system, or runtime s
 - Add the staging origin to Privy and any OAuth/provider allowlists.
 - Run the automated release, pilot, incident, accessibility, and recovery suites against the
   Cloudflare candidate.
+- Publish the identical clean commit to ChatGPT Sites during the transition and run the fail-closed
+  dual-host checker. Matching source provenance is required; databases and object stores remain
+  independent unless a separate verified migration occurs.
 
 ### 7. Attach domains and perform the reversible cutover
 
@@ -139,6 +147,8 @@ The landing site needs no database, object storage, account system, or runtime s
   starts with a new synthetic dataset while the old Sites deployment remains available.
 - Separate-account pilot, incident, accessibility, recovery, and testnet-boundary checks pass.
 - The existing Sites deployment can be restored or revisited without a data-destructive action.
+- Until Cloudflare passes the supervised pilot and rollback exercise, both public hosts serve the
+  same clean release commit and pass `npm run check:dual-host` after every normal release.
 
 ## Owner-only inputs and actions
 

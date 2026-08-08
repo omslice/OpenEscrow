@@ -31,6 +31,10 @@
     "check:sites-provenance": "node scripts/check-sites-provenance.mjs",
     "check:cloudflare-provenance": "node scripts/check-cloudflare-provenance.mjs",
     "check:cloudflare-config": "node scripts/check-cloudflare-config.mjs",
+    "check:cloudflare-remote:staging": "node scripts/check-cloudflare-remote-preflight.mjs",
+    "check:cloudflare-remote:staging:current": "node scripts/check-cloudflare-remote-preflight.mjs --require-current-migrations",
+    "check:cloudflare-deployed:staging": "node scripts/check-cloudflare-deployed.mjs https://openescrow-mvp-staging.omrigross.workers.dev/",
+    "check:dual-host": "node scripts/check-dual-host-release.mjs",
     "contract:assure": "node scripts/check-contract-release.mjs",
     "contract:dependencies:verify": "node scripts/check-contract-release.mjs --verify-dependencies",
     "deploy:rehearse": "node scripts/rehearse-contract-deployment.mjs",
@@ -45,13 +49,15 @@
     "deploy:pilot-live": "node scripts/deploy-live.mjs",
     "cloudflare:types": "wrangler types worker-configuration.d.ts --env staging",
     "cloudflare:dry-run": "npm run build:cloudflare:dev && npm run check:cloudflare-config && wrangler deploy --dry-run --env staging",
-    "cloudflare:migrate:staging": "wrangler d1 migrations apply DB --remote --env staging",
-    "cloudflare:deploy:staging": "npm run build:cloudflare && npm run check:cloudflare-config && npm run cloudflare:migrate:staging && wrangler deploy --env staging",
+    "cloudflare:migrate:staging": "npm run check:cloudflare-remote:staging && wrangler d1 migrations apply DB --remote --env staging && npm run check:cloudflare-remote:staging:current",
+    "cloudflare:deploy:staging": "npm run build:cloudflare && npm run check:cloudflare-config && npm run cloudflare:migrate:staging && wrangler deploy --env staging && npm run check:cloudflare-deployed:staging",
+    "cloudflare:readiness:staging": "node scripts/check-pilot-readiness.mjs https://openescrow-mvp-staging.omrigross.workers.dev/ --artifact",
     "cloudflare:migrate:testnet": "wrangler d1 migrations apply DB --remote",
     "cloudflare:deploy:testnet": "npm run build:cloudflare && node scripts/check-cloudflare-config.mjs --production && npm run cloudflare:migrate:testnet && wrangler deploy",
     "test:server": "node --test server/index.test.mjs",
     "e2e:live": "node e2e-full-flow.mjs",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "brand:ens-banner": "node scripts/create-ens-banner.mjs"
   },
   "dependencies": {
     "@privy-io/react-auth": "^3.35.2",
@@ -70,6 +76,7 @@
     "dotenv": "^17.4.2",
     "oxlint": "^1.71.0",
     "playwright": "^1.61.1",
+    "sharp": "0.35.2",
     "typescript": "~5.9.3",
     "vite": "^8.1.1",
     "wrangler": "^4.120.0"
