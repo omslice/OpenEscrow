@@ -1,6 +1,6 @@
 # OpenEscrow testnet MVP roadmap
 
-Updated 2026-08-05. This is the canonical high-level project status. The
+Updated 2026-08-07. This is the canonical high-level project status. The
 [validation ledger](./mvp-checkpoint-2026-07-29.md) contains detailed evidence, and
 [owner actions](./owner-actions.md) contains only work that needs credentials, signatures,
 external professional review, or an owner decision.
@@ -309,6 +309,13 @@ production custody, or reliance on the compliance research as legal advice.
 
 ## Remaining
 
+- **Planned:** Make the next delivery item a branded, single-page OpenEscrow project site and a
+  reversible migration of the testnet MVP into the owner's Cloudflare account. The landing site
+  will link to a separately deployed MVP, while the MVP preserves the `DB` and `EVIDENCE` binding
+  names, private secrets, scheduled jobs, and exact-release checks. The current Sites deployment
+  remains the rollback and hosted-data reference until continuity, readiness, authentication, and
+  supervised pilot checks pass. See
+  [the Cloudflare landing and MVP deployment plan](./cloudflare-landing-and-mvp-plan.md).
 - **Planned:** Review and explicitly approve each newer saved candidate before deployment. The live
   site currently matches the last approved exact source; every future deployment must rerun the
   public readiness and release-provenance checks.
@@ -333,6 +340,11 @@ production custody, or reliance on the compliance research as legal advice.
 
 ## Material unknowns
 
+- The exact OpenEscrow domain, Cloudflare zone, canonical landing hostname, and MVP `app`
+  hostname.
+- Whether the Sites-managed D1 and R2 resources expose a complete owner-accessible export path;
+  without a verified export, the Cloudflare pilot must use a disclosed fresh synthetic dataset
+  while the Sites deployment remains the historical record.
 - First pilot cities/counties and tenancy segment.
 - The authoritative property-timezone source and qualified local civil-time/DST interpretation
   for each pilot market. The candidate stores explicit instants deterministically but does not

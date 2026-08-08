@@ -27,6 +27,21 @@ provider or hosting control that owns the secret.
 
 ## Actionable now
 
+- [ ] **Choose the OpenEscrow Cloudflare domain layout.** The recommended structure is the primary
+  domain for the public landing page and `app.<domain>` for the Base Sepolia MVP. Confirm that the
+  domain is an active zone in the intended Cloudflare account; do not share account credentials.
+- [ ] **Authorize the local Cloudflare deployment session when prompted.** Complete Wrangler's
+  browser login inside the owner's Cloudflare account. Never paste an API token, session value, or
+  recovery code into chat, Git, a screenshot, or a build artifact.
+- [ ] **Choose the hosted-data continuity policy.** Decide whether the current synthetic Sites D1
+  records and R2 evidence must be migrated or may remain in the rollback deployment while the
+  owner-hosted Cloudflare pilot starts with a clearly disclosed fresh synthetic dataset. No
+  migration or destination overwrite should occur until a complete export and comparison are
+  verified.
+- [ ] **Enter Cloudflare runtime secrets and update provider origins only after staging exists.**
+  Keep notification, Privy, RPC, evidence-encryption, and address-attestation values in their
+  owning private controls. Add the staging and final `app` origins to Privy/OAuth/provider
+  allowlists without exposing a secret in a client build variable.
 - [ ] **Review and explicitly approve the newest exact Sites candidate before deployment.** The
   public testnet matches the last approved exact source and exposes its release provenance. Newer
   validated work is saved as a separate undeployed candidate; selecting and promoting it remains
