@@ -73,7 +73,7 @@ $protected = [Security.Cryptography.ProtectedData]::Protect(
   $null,
   [Security.Cryptography.DataProtectionScope]::CurrentUser
 )
-[IO.File]::WriteAllBytes($args[0], $protected)
+[IO.File]::WriteAllBytes($env:OPENESCROW_RECOVERY_PATH, $protected)
 $roundTrip = [Security.Cryptography.ProtectedData]::Unprotect(
   $protected,
   $null,
@@ -83,15 +83,22 @@ $roundTrip = [Security.Cryptography.ProtectedData]::Unprotect(
 `;
 const protectedBackup = spawnSync(
   "powershell.exe",
-  ["-NoProfile", "-NonInteractive", "-Command", dpapiScript, recoveryPath],
+  ["-NoProfile", "-NonInteractive", "-Command", dpapiScript],
   {
     input: JSON.stringify(payload),
     encoding: "utf8",
+    env: {
+      ...process.env,
+      OPENESCROW_RECOVERY_PATH: recoveryPath,
+    },
     windowsHide: true,
   },
 );
 if (protectedBackup.status !== 0) {
-  throw new Error("Windows could not create the DPAPI-protected staging secret backup.");
+  const diagnostic = `${protectedBackup.stderr || ""}`.trim();
+  throw new Error(
+    `Windows could not create the DPAPI-protected staging secret backup.${diagnostic ? `\n${diagnostic}` : ""}`,
+  );
 }
 const recovered = JSON.parse(protectedBackup.stdout);
 validateStagingSecretPayload(recovered, { accountId, workerName });
