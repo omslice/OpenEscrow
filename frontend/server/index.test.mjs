@@ -778,9 +778,48 @@ test("the implemented registry covers every state and the District of Columbia",
     "https://bulletins.ncrec.gov/north-carolina-tenant-security-deposit-act-a-simple-guide-for-nc-landlords-and-property-managers/",
   );
   assert.equal(northCarolinaProfile.researchedOn, "2026-08-08");
+  const newHampshireProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "NH",
+  );
+  assert.equal(newHampshireProfile.version, "nh-rules-2026-08-08.v5");
+  assert.equal(
+    newHampshireProfile.statuteUrl,
+    "https://gc.nh.gov/rsa/html/LV/540-A/540-A-7.htm",
+  );
+  assert.equal(newHampshireProfile.researchedOn, "2026-08-08");
+  const nevadaProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "NV",
+  );
+  assert.equal(nevadaProfile.version, "nv-rules-2026-08-08.v5");
+  assert.equal(
+    nevadaProfile.statuteUrl,
+    "https://www.dcfs.nv.gov/siteassets/dcfs.nv.gov/content/programs/cws/il/SurvivalGuide-Final.pdf",
+  );
+  assert.equal(nevadaProfile.researchedOn, "2026-08-08");
+  const newYorkProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "NY",
+  );
+  assert.equal(newYorkProfile.version, "ny-rules-2026-08-08.v5");
+  assert.equal(
+    newYorkProfile.statuteUrl,
+    "https://ag.ny.gov/press-release/2026/attorney-general-james-releases-top-10-consumer-complaints-2025",
+  );
+  assert.equal(newYorkProfile.researchedOn, "2026-08-08");
+  const ohioProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "OH",
+  );
+  assert.equal(ohioProfile.version, "oh-rules-2026-08-08.v5");
+  assert.equal(
+    ohioProfile.statuteUrl,
+    "https://www.supremecourt.ohio.gov/rod/docs/pdf/10/2025/2025-Ohio-2840.pdf",
+  );
+  assert.equal(ohioProfile.researchedOn, "2026-08-08");
   assert.ok(
     US_JURISDICTION_PROFILES.filter(
-      (profile) => !["HI", "MS", "NC"].includes(profile.postalCode),
+      (profile) =>
+        !["HI", "MS", "NC", "NH", "NV", "NY", "OH"].includes(
+          profile.postalCode,
+        ),
     ).every((profile) => profile.version.endsWith("rules-2026-07-26.v4")),
   );
   assert.ok(US_JURISDICTION_PROFILES.every((profile) => profile.legalReviewRequired));

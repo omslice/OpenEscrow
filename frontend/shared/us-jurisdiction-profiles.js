@@ -293,12 +293,31 @@ const PROFILE_METADATA_OVERRIDES = Object.freeze({
       "https://bulletins.ncrec.gov/north-carolina-tenant-security-deposit-act-a-simple-guide-for-nc-landlords-and-property-managers/",
     researchedOn: "2026-08-08",
   }),
+  NH: Object.freeze({
+    version: "nh-rules-2026-08-08.v5",
+    statuteUrl: "https://gc.nh.gov/rsa/html/LV/540-A/540-A-7.htm",
+    researchedOn: "2026-08-08",
+  }),
   NJ: Object.freeze({
     statuteUrl: "https://www.nj.gov/dca/codes/publications/pdf_lti/sdepsit_law.pdf",
   }),
-  OH: Object.freeze({
+  NV: Object.freeze({
+    version: "nv-rules-2026-08-08.v5",
     statuteUrl:
-      "https://codes.ohio.gov/ohio-revised-code/section-section-5321.16",
+      "https://www.dcfs.nv.gov/siteassets/dcfs.nv.gov/content/programs/cws/il/SurvivalGuide-Final.pdf",
+    researchedOn: "2026-08-08",
+  }),
+  NY: Object.freeze({
+    version: "ny-rules-2026-08-08.v5",
+    statuteUrl:
+      "https://ag.ny.gov/press-release/2026/attorney-general-james-releases-top-10-consumer-complaints-2025",
+    researchedOn: "2026-08-08",
+  }),
+  OH: Object.freeze({
+    version: "oh-rules-2026-08-08.v5",
+    statuteUrl:
+      "https://www.supremecourt.ohio.gov/rod/docs/pdf/10/2025/2025-Ohio-2840.pdf",
+    researchedOn: "2026-08-08",
   }),
   PA: Object.freeze({
     statuteUrl:
