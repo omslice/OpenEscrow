@@ -296,13 +296,13 @@ export const LOCAL_COMPLIANCE_OVERLAYS = Object.freeze([
     id: "local-wa-seattle-move-in-charges",
     scope: "city",
     label: "Seattle move-in charges and deposit rules",
-    version: "seattle-smc-7.24-2026-07-26.v1",
+    version: "seattle-smc-7.24-2026-08-08.v2",
     localityKeys: Object.freeze(["us:wa:city:seattle"]),
     condition: null,
     sources: Object.freeze([
       source(
-        "Seattle Municipal Code chapter 7.24; Seattle SDCI move-in-charge guidance",
-        "https://www.seattle.gov/sdci/codes/common-code-questions/move-in-charges",
+        "Seattle Municipal Code §§ 7.24.035 and 7.24.038 (current code via the City's official codifier)",
+        "https://library.municode.com/WA/Seattle/codes/Municipal_Code?nodeId=TIT7COPR_CH7.24REAGRE_7.24.035SENOMOVIFE",
       ),
     ]),
     requirements: Object.freeze([
@@ -319,13 +319,13 @@ export const LOCAL_COMPLIANCE_OVERLAYS = Object.freeze([
     id: "local-or-portland-security-deposit",
     scope: "city",
     label: "Portland security-deposit and prepaid-rent protections",
-    version: "portland-pcc-30.01.087-2026-07-26.v1",
+    version: "portland-pcc-30.01.087-2026-08-08.v2",
     localityKeys: Object.freeze(["us:or:city:portland"]),
     condition: null,
     sources: Object.freeze([
       source(
         "Portland City Code § 30.01.087",
-        "https://www.portland.gov/code/30/01",
+        "https://www.portland.gov/code/30/01/087",
       ),
     ]),
     requirements: Object.freeze([
