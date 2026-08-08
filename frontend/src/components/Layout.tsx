@@ -4,6 +4,7 @@ import { copyTextToClipboard } from "../lib/browserActions";
 import { readRecoveryJson, writeRecoveryJson } from "../lib/browserRecovery";
 
 const DONATION_ADDRESS = "0x0C33BC6449d134782a95167658303F9d87dd7D79";
+const DONATION_NAME = "openescrow.eth";
 
 export type AppNotification = {
   id: string;
@@ -77,14 +78,14 @@ export function Layout({
 
   async function copyDonationAddress() {
     try {
-      await copyTextToClipboard(DONATION_ADDRESS);
+      await copyTextToClipboard(DONATION_NAME);
       setDonationCopyStatus({
         message: "Donation address copied.",
         error: false,
       });
     } catch {
       setDonationCopyStatus({
-        message: `We could not copy the address. Select ${DONATION_ADDRESS} and copy it manually.`,
+        message: `We could not copy the address. Select ${DONATION_NAME} and copy it manually.`,
         error: true,
       });
     }
@@ -179,11 +180,16 @@ export function Layout({
             OpenEscrow development.
           </span>
           <span className="donation-address-control">
-            <span className="donation-address">{DONATION_ADDRESS}</span>
+            <span
+              className="donation-address"
+              title={`Resolves to ${DONATION_ADDRESS}`}
+            >
+              {DONATION_NAME}
+            </span>
             <button
               className="donation-copy-button"
               type="button"
-              aria-label={`Copy donation address ${DONATION_ADDRESS}`}
+              aria-label={`Copy donation address ${DONATION_NAME}`}
               onClick={() => void copyDonationAddress()}
             >
               Copy address
