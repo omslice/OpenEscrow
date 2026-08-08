@@ -6428,6 +6428,7 @@ function checkComplianceSourceOnce(db, sourceRow, now) {
 async function runComplianceSourceAudit(env, now = new Date()) {
   if (!env.DB || env.COMPLIANCE_SOURCE_MONITOR_ENABLED !== "true") return;
   await initialize(env.DB);
+  await seedComplianceSources(env.DB);
   const sourceProgress = await env.DB
     .prepare(
       `SELECT COUNT(*) AS tracked,
@@ -6449,7 +6450,6 @@ async function runComplianceSourceAudit(env, now = new Date()) {
     ? new Date(prior.last_started_at).getTime()
     : 0;
   if (now.getTime() - lastStarted < minimumInterval) return;
-  await seedComplianceSources(env.DB);
   await env.DB
     .prepare(
       `INSERT INTO scheduled_job_runs (name, last_started_at)

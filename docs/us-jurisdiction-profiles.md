@@ -207,7 +207,9 @@ source still needs its first baseline, then returns to one batch per day. It
 samples response metadata and up to 256 KiB, stores a SHA-256 signature, and
 marks a source `changed`, `unchanged`, or `unreachable`. Known challenge and
 error-page redirects are rejected instead of being accepted as legal-source
-content. The monitor never automatically edits a rule.
+content. Registry changes are seeded before the cadence check so a replacement
+source enters the 15-minute bootstrap path immediately rather than waiting for
+the next daily pass. The monitor never automatically edits a rule.
 The public readiness response reports the configured state, source count,
 changed count, unreachable count, pending count, stale count, blocking count,
 and last run time.

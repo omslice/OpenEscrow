@@ -6667,9 +6667,51 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
     await Promise.all(tooSoonWaits);
     assert.equal(complianceCheckCount(), 8);
 
+    await db
+      .prepare(
+        `UPDATE compliance_source_checks
+         SET profile_version = 'retired-after-baseline',
+             url = 'https://example.com/retired-after-baseline',
+             status = 'unchanged'
+         WHERE source_key = ?`,
+      )
+      .bind(earliestRow.source_key)
+      .run();
+    const replacementWaits = [];
+    await worker.scheduled(
+      { scheduledTime: Date.parse("2027-07-02T12:45:00.000Z") },
+      {
+        DB: db,
+        COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+        VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+      },
+      {
+        waitUntil(promise) {
+          replacementWaits.push(promise);
+        },
+      },
+    );
+    await Promise.all(replacementWaits);
+    assert.equal(
+      complianceCheckCount(),
+      12,
+      "A replacement source must enter the 15-minute bootstrap path immediately.",
+    );
+    const replacement = await db
+      .prepare(
+        `SELECT profile_version, url, status, last_verified_at
+         FROM compliance_source_checks WHERE source_key = ?`,
+      )
+      .bind(earliestRow.source_key)
+      .first();
+    assert.equal(replacement.profile_version, expectedSource.version);
+    assert.equal(replacement.url, expectedSource.url);
+    assert.equal(replacement.status, "unchanged");
+    assert.equal(replacement.last_verified_at, "2027-07-02T12:45:00.000Z");
+
     const dailyWaits = [];
     await worker.scheduled(
-      { scheduledTime: Date.parse("2027-07-03T12:15:00.000Z") },
+      { scheduledTime: Date.parse("2027-07-03T12:45:00.000Z") },
       {
         DB: db,
         COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
@@ -6682,7 +6724,7 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
       },
     );
     await Promise.all(dailyWaits);
-    assert.equal(complianceCheckCount(), 12);
+    assert.equal(complianceCheckCount(), 16);
   } finally {
     globalThis.fetch = originalFetch;
   }
