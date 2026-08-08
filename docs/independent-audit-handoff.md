@@ -37,10 +37,13 @@ creation bytecode hashes, function selectors/collisions, and storage-layout hash
 also checks the actual Foundry/OpenZeppelin source trees against their reviewed
 gitlink and SHA-256 manifests. Evidence is written to the ignored local file
 `frontend/.contract-assurance/latest.json` and later bound into pilot-candidate
-schema v5 alongside the separate deployment-rehearsal evidence. Schema v5 also
+schema v6 alongside the separate deployment-rehearsal evidence. Schema v6 also
 hashes the npm manifest and v3 lockfile and includes a commit-bound production
 software inventory: the Node runtime, every direct runtime resolution, and every
 non-development package path with its exact version, integrity value, and license.
+It also hashes every Cloudflare and Sites package byte and records the reviewed
+Cloudflare Worker, origin, `DB`/`EVIDENCE`/`ASSETS` bindings, scheduler, and safety
+variables without including runtime secrets.
 
 Any dependency-lock change, ABI change, bytecode change, selector change, storage
 layout change, compiler-profile change, test failure, or runtime margin below 2,048
@@ -50,7 +53,8 @@ For the complete undeployed application envelope, run `npm run
 deploy:pilot-candidate` after committing the reviewed source. The resulting ignored
 local JSON binds the contract assurance, two-cohort deployment/rollback rehearsal,
 pilot and incident JUnit evidence, software inventory, preserved Sites bindings,
-release provenance, and every packaged Sites byte to that exact commit.
+both release-provenance records, every packaged Cloudflare and Sites byte, and the
+reviewed Cloudflare staging boundary to that exact commit.
 
 ## Highest-priority audit questions
 

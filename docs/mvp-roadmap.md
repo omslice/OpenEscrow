@@ -86,12 +86,15 @@ production custody, or reliance on the compliance research as legal advice.
   creation bytecode, storage-layout, selector-collision, EVM-size-margin, and dependency-tree
   evidence. Three new reserve invariants pass 98,304 stateful calls, and an overlapping-ID cohort
   regression proves retired and candidate deployments cannot share funds, roles, reserve
-  receipts, or registry authority. Pilot-candidate schema v5 rejects dirty source, rechecks it
+  receipts, or registry authority. Pilot-candidate schema v6 rejects dirty source, rechecks it
   after the build, and binds this evidence plus the deployment rehearsal to the exact commit.
-  Candidate schema v5 also records the exact Node runtime, hashes `package.json` and the v3
+  Candidate schema v6 also records the exact Node runtime, hashes `package.json` and the v3
   lockfile, resolves every direct runtime dependency, and inventories every non-development npm
-  component with its version, integrity, license, and package path. The threat model and independent-
-  audit handoff are ready; professional audit and any broadcast remain owner/external gates.
+  component with its version, integrity, license, and package path. It now hashes every packaged
+  Cloudflare and Sites byte and binds the Cloudflare account, Worker, canonical origin,
+  `DB`/`EVIDENCE`/`ASSETS` targets, scheduler, and safety variables into the same evidence. The
+  threat model and independent-audit handoff are ready; professional audit and any broadcast
+  remain owner/external gates.
 - **Verified:** A credential-free deployment rehearsal now starts ephemeral local Anvil with Base
   Sepolia's chain ID, deploys two complete escrow/reserve/registry cohorts from compiled release
   artifacts, funds overlapping agreement ID `0`, proves reciprocal/token/treasury/runtime and
@@ -424,7 +427,9 @@ production custody, or reliance on the compliance research as legal advice.
 - `npm run deploy:pilot-candidate` runs the credential-free release, rehearsal, incident, and
   exact-source packaging gates in dependency order. Its machine-readable evidence binds both
   rehearsal summaries, their JUnit reports, the full production software inventory, and every
-  packaged Sites byte to the candidate commit without querying or changing the live site.
+  packaged Cloudflare and Sites byte to the candidate commit. It also binds the reviewed
+  Cloudflare staging account, origin, stateful/static bindings, scheduler, and safety variables
+  without querying or changing the live site.
 - `npm run pilot:check` evaluates the currently deployed readiness endpoint and intentionally
   exits unsuccessfully while required hosted gates remain.
 - `npm run build:sites` builds the candidate and verifies exact Git provenance before packaging.

@@ -51,7 +51,7 @@ test("candidate verification runs every credential-free gate in dependency order
   assert.equal(evidence.ok, true);
   assert.equal(
     evidence.artifactSchemaVersion,
-    "openescrow-pilot-candidate/v5",
+    "openescrow-pilot-candidate/v6",
   );
   assert.equal(evidence.testnetBoundary.releaseMode, "testnet");
   assert.equal(evidence.testnetBoundary.productionMoneyEnabled, false);
@@ -79,7 +79,12 @@ test("candidate verification stops after the first failed gate and records skips
   assert.equal(evidence.ok, false);
   assert.deepEqual(
     evidence.steps.map((step) => step.status),
-    ["passed", "passed", "failed", "skipped", "skipped"],
+    [
+      "passed",
+      "passed",
+      "failed",
+      ...Array(PILOT_CANDIDATE_STEPS.length - 3).fill("skipped"),
+    ],
   );
   assert.equal(evidence.steps[2].exitCode, 7);
 });
@@ -256,6 +261,72 @@ function writeDeploymentRehearsalFixture(frontendRoot) {
   );
 }
 
+function writeCloudflareFixture(frontendRoot) {
+  const cloudflareRoot = path.join(frontendRoot, "cloudflare-dist");
+  mkdirSync(path.join(cloudflareRoot, "server"), { recursive: true });
+  mkdirSync(path.join(cloudflareRoot, "client"), { recursive: true });
+  writeFileSync(
+    path.join(cloudflareRoot, "release-manifest.json"),
+    `${JSON.stringify({
+      schemaVersion: "openescrow-release/v1",
+      commitSha,
+      sourceDirty: false,
+      generatedAt: "2026-08-08T12:00:00.000Z",
+    })}\n`,
+  );
+  writeFileSync(
+    path.join(cloudflareRoot, "server", "index.js"),
+    "export default {};\n",
+  );
+  writeFileSync(
+    path.join(cloudflareRoot, "client", "index.html"),
+    "<!doctype html><title>OpenEscrow Cloudflare</title>\n",
+  );
+  writeFileSync(
+    path.join(frontendRoot, "wrangler.jsonc"),
+    `${JSON.stringify({
+      name: "openescrow-mvp-testnet",
+      account_id: "ac83ad901f0f00358a9b59e81487d354",
+      main: "cloudflare-dist/server/index.js",
+      env: {
+        staging: {
+          name: "openescrow",
+          workers_dev: true,
+          assets: {
+            directory: "./cloudflare-dist/client",
+            binding: "ASSETS",
+            not_found_handling: "single-page-application",
+            run_worker_first: true,
+          },
+          d1_databases: [
+            {
+              binding: "DB",
+              database_name: "openescrow-mvp-staging",
+              database_id: "60dae94f-334d-4d71-89e2-6ce9e386fd9d",
+              migrations_dir: "../drizzle",
+            },
+          ],
+          r2_buckets: [
+            {
+              binding: "EVIDENCE",
+              bucket_name: "openescrow-mvp-evidence-staging",
+            },
+          ],
+          triggers: { crons: ["*/15 * * * *"] },
+          vars: {
+            API_RATE_LIMIT_ENABLED: "true",
+            COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+            EVIDENCE_STORAGE_MODE: "private-r2",
+            PUBLIC_APP_URL: "https://openescrow.omslice.workers.dev/",
+            VERIFY_ACTIVITY_REGISTRY_BINDING: "true",
+            VERIFY_TRANSACTION_RECEIPTS: "true",
+          },
+        },
+      },
+    })}\n`,
+  );
+}
+
 function candidateArtifactFixture(t) {
   const repositoryRoot = mkdtempSync(
     path.join(tmpdir(), "openescrow-candidate-"),
@@ -348,6 +419,7 @@ function candidateArtifactFixture(t) {
     })}\n`,
   );
   writeDeploymentRehearsalFixture(frontendRoot);
+  writeCloudflareFixture(frontendRoot);
   writeRehearsalFixture({
     frontendRoot,
     directory: ".pilot-rehearsal",
@@ -394,7 +466,7 @@ export const RELEASE_PROVENANCE = Object.freeze({
   return { frontendRoot, repositoryRoot };
 }
 
-test("candidate artifacts bind both rehearsals and every packaged Sites byte", (t) => {
+test("candidate artifacts bind both rehearsals and every packaged host byte", (t) => {
   const fixture = candidateArtifactFixture(t);
   const first = collectCandidateArtifacts({
     ...fixture,
@@ -430,6 +502,38 @@ test("candidate artifacts bind both rehearsals and every packaged Sites byte", (
   assert.equal(first.sitesBuild.hosting.r2, "EVIDENCE");
   assert.equal(first.sitesBuild.fileCount, 4);
   assert.match(first.sitesBuild.sha256, /^sha256:[0-9a-f]{64}$/);
+  assert.equal(first.cloudflareBuild.release.commitSha, commitSha);
+  assert.equal(first.cloudflareBuild.release.sourceDirty, false);
+  assert.equal(first.cloudflareBuild.worker, "openescrow");
+  assert.equal(first.cloudflareBuild.configuration.path, "frontend/wrangler.jsonc");
+  assert.match(
+    first.cloudflareBuild.configuration.sha256,
+    /^sha256:[0-9a-f]{64}$/,
+  );
+  assert.equal(first.cloudflareBuild.bindings.d1.binding, "DB");
+  assert.equal(first.cloudflareBuild.bindings.r2.binding, "EVIDENCE");
+  assert.equal(first.cloudflareBuild.bindings.assets, "ASSETS");
+  assert.equal(first.cloudflareBuild.schedule, "*/15 * * * *");
+  assert.equal(first.cloudflareBuild.fileCount, 3);
+  assert.match(first.cloudflareBuild.sha256, /^sha256:[0-9a-f]{64}$/);
+
+  writeFileSync(
+    path.join(
+      fixture.frontendRoot,
+      "cloudflare-dist",
+      "client",
+      "index.html",
+    ),
+    "<!doctype html><title>Changed Cloudflare candidate</title>\n",
+  );
+  const cloudflareChanged = collectCandidateArtifacts({
+    ...fixture,
+    commitSha,
+  });
+  assert.notEqual(
+    cloudflareChanged.cloudflareBuild.sha256,
+    first.cloudflareBuild.sha256,
+  );
 
   writeFileSync(
     path.join(fixture.repositoryRoot, "dist", "client", "index.html"),
@@ -440,6 +544,49 @@ test("candidate artifacts bind both rehearsals and every packaged Sites byte", (
     commitSha,
   });
   assert.notEqual(changed.sitesBuild.sha256, first.sitesBuild.sha256);
+});
+
+test("candidate artifacts reject Cloudflare binding drift", (t) => {
+  const fixture = candidateArtifactFixture(t);
+  const configPath = path.join(fixture.frontendRoot, "wrangler.jsonc");
+  const config = JSON.parse(readFileSync(configPath, "utf8"));
+  config.env.staging.r2_buckets[0].binding = "FILES";
+  writeFileSync(configPath, `${JSON.stringify(config)}\n`);
+
+  assert.throws(
+    () => collectCandidateArtifacts({ ...fixture, commitSha }),
+    /Cloudflare staging bindings, origin, scheduler, or safety variables drifted/,
+  );
+});
+
+test("candidate artifacts reject a dirty Cloudflare release", (t) => {
+  const fixture = candidateArtifactFixture(t);
+  const manifestPath = path.join(
+    fixture.frontendRoot,
+    "cloudflare-dist",
+    "release-manifest.json",
+  );
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.sourceDirty = true;
+  writeFileSync(manifestPath, `${JSON.stringify(manifest)}\n`);
+
+  assert.throws(
+    () => collectCandidateArtifacts({ ...fixture, commitSha }),
+    /Cloudflare release provenance does not match the clean candidate commit/,
+  );
+});
+
+test("candidate artifacts reject incomplete Cloudflare output", (t) => {
+  const fixture = candidateArtifactFixture(t);
+  writeFileSync(
+    path.join(fixture.frontendRoot, "cloudflare-dist", "server", "index.js"),
+    "",
+  );
+
+  assert.throws(
+    () => collectCandidateArtifacts({ ...fixture, commitSha }),
+    /Cloudflare Worker output is incomplete/,
+  );
 });
 
 test("candidate artifacts reject rehearsal evidence from another commit", (t) => {

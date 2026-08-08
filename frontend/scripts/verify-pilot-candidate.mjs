@@ -13,7 +13,7 @@ import { validateDeploymentManifest } from "./deployment-config-plan.mjs";
 import { buildReleaseSoftwareInventory } from "./release-software-inventory.mjs";
 
 export const PILOT_CANDIDATE_SCHEMA_VERSION =
-  "openescrow-pilot-candidate/v5";
+  "openescrow-pilot-candidate/v6";
 
 export const PILOT_CANDIDATE_STEPS = Object.freeze([
   Object.freeze({
@@ -35,6 +35,16 @@ export const PILOT_CANDIDATE_STEPS = Object.freeze([
     id: "incident-rehearsal",
     script: "incident:rehearse",
     label: "Credential-free incident rehearsal",
+  }),
+  Object.freeze({
+    id: "cloudflare-build",
+    script: "build:cloudflare",
+    label: "Exact-source Cloudflare Worker build",
+  }),
+  Object.freeze({
+    id: "cloudflare-config",
+    script: "check:cloudflare-config",
+    label: "Cloudflare binding and safety configuration",
   }),
   Object.freeze({
     id: "sites-build",
@@ -518,6 +528,119 @@ function digestDirectory(directory) {
   };
 }
 
+function verifiedCloudflareBuild({
+  frontendRoot,
+  repositoryRoot,
+  commitSha,
+}) {
+  const cloudflareDirectory = path.join(frontendRoot, "cloudflare-dist");
+  const releaseManifestPath = path.join(
+    cloudflareDirectory,
+    "release-manifest.json",
+  );
+  const releaseManifest = JSON.parse(
+    readFileSync(releaseManifestPath, "utf8"),
+  );
+  if (
+    releaseManifest.schemaVersion !== "openescrow-release/v1" ||
+    releaseManifest.commitSha !== commitSha ||
+    releaseManifest.sourceDirty !== false
+  ) {
+    throw new Error(
+      "Packaged Cloudflare release provenance does not match the clean candidate commit.",
+    );
+  }
+  for (const requiredPath of [
+    path.join(cloudflareDirectory, "server", "index.js"),
+    path.join(cloudflareDirectory, "client", "index.html"),
+  ]) {
+    if (readFileSync(requiredPath).length === 0) {
+      throw new Error("Packaged Cloudflare Worker output is incomplete.");
+    }
+  }
+
+  const configPath = path.join(frontendRoot, "wrangler.jsonc");
+  const configBytes = readFileSync(configPath);
+  const config = JSON.parse(configBytes.toString("utf8"));
+  const staging = { ...config, ...config.env?.staging };
+  const d1 = staging.d1_databases || [];
+  const r2 = staging.r2_buckets || [];
+  const vars = staging.vars || {};
+  const secretLikeVariables = Object.keys(vars).filter((key) =>
+    /(?:SECRET|TOKEN|PASSWORD|PRIVATE|API_KEY|JWT)/i.test(key),
+  );
+  const configReady =
+    config.account_id === "ac83ad901f0f00358a9b59e81487d354" &&
+    staging.main === "cloudflare-dist/server/index.js" &&
+    staging.name === "openescrow" &&
+    staging.workers_dev === true &&
+    staging.assets?.directory === "./cloudflare-dist/client" &&
+    staging.assets?.binding === "ASSETS" &&
+    staging.assets?.not_found_handling === "single-page-application" &&
+    staging.assets?.run_worker_first === true &&
+    d1.length === 1 &&
+    d1[0]?.binding === "DB" &&
+    d1[0]?.database_name === "openescrow-mvp-staging" &&
+    d1[0]?.database_id === "60dae94f-334d-4d71-89e2-6ce9e386fd9d" &&
+    d1[0]?.migrations_dir === "../drizzle" &&
+    r2.length === 1 &&
+    r2[0]?.binding === "EVIDENCE" &&
+    r2[0]?.bucket_name === "openescrow-mvp-evidence-staging" &&
+    staging.triggers?.crons?.length === 1 &&
+    staging.triggers.crons[0] === "*/15 * * * *" &&
+    vars.API_RATE_LIMIT_ENABLED === "true" &&
+    vars.COMPLIANCE_SOURCE_MONITOR_ENABLED === "true" &&
+    vars.EVIDENCE_STORAGE_MODE === "private-r2" &&
+    vars.PUBLIC_APP_URL === "https://openescrow.omslice.workers.dev/" &&
+    vars.VERIFY_ACTIVITY_REGISTRY_BINDING === "true" &&
+    vars.VERIFY_TRANSACTION_RECEIPTS === "true" &&
+    secretLikeVariables.length === 0;
+  if (!configReady) {
+    throw new Error(
+      "Cloudflare staging bindings, origin, scheduler, or safety variables drifted from the reviewed boundary.",
+    );
+  }
+
+  return {
+    path: relativeArtifactPath(repositoryRoot, cloudflareDirectory),
+    release: {
+      schemaVersion: releaseManifest.schemaVersion,
+      commitSha: releaseManifest.commitSha,
+      sourceDirty: releaseManifest.sourceDirty,
+    },
+    worker: staging.name,
+    accountId: config.account_id,
+    configuration: {
+      path: relativeArtifactPath(repositoryRoot, configPath),
+      sha256: sha256(configBytes),
+    },
+    bindings: {
+      d1: {
+        binding: d1[0].binding,
+        databaseName: d1[0].database_name,
+        databaseId: d1[0].database_id,
+      },
+      r2: {
+        binding: r2[0].binding,
+        bucketName: r2[0].bucket_name,
+      },
+      assets: staging.assets.binding,
+    },
+    publicAppUrl: vars.PUBLIC_APP_URL,
+    schedule: staging.triggers.crons[0],
+    safetyVariables: Object.fromEntries(
+      [
+        "API_RATE_LIMIT_ENABLED",
+        "COMPLIANCE_SOURCE_MONITOR_ENABLED",
+        "EVIDENCE_STORAGE_MODE",
+        "VERIFY_ACTIVITY_REGISTRY_BINDING",
+        "VERIFY_TRANSACTION_RECEIPTS",
+      ].map((key) => [key, vars[key]]),
+    ),
+    ...digestDirectory(cloudflareDirectory),
+  };
+}
+
 export function collectCandidateArtifacts({
   frontendRoot,
   repositoryRoot,
@@ -536,6 +659,11 @@ export function collectCandidateArtifacts({
     }),
     softwareInventory: buildReleaseSoftwareInventory({
       frontendRoot,
+      commitSha,
+    }),
+    cloudflareBuild: verifiedCloudflareBuild({
+      frontendRoot,
+      repositoryRoot,
       commitSha,
     }),
   };

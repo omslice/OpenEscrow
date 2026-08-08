@@ -415,9 +415,10 @@ operations-reserve handler adds three stateful invariants covering net token
 accounting, exact unique tenant shares with agreement-token binding, and immutable
 escrow/reserve/treasury bindings.
 
-Pilot-candidate schema v5 binds this contract-assurance evidence to the exact source
+Pilot-candidate schema v6 binds this contract-assurance evidence to the exact source
 commit together with the deployment rehearsal, both operational rehearsals, the hashed npm
-manifest/lockfile and exact production software inventory, and every packaged Sites byte.
+manifest/lockfile and exact production software inventory, every packaged Cloudflare and Sites
+byte, and the reviewed Cloudflare Worker/origin/binding/scheduler safety boundary.
 The detailed assumptions, residual risks, reproduction commands, and independent
 review questions are in `contract-threat-model.md` and
 `independent-audit-handoff.md`.
