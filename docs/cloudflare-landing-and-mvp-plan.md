@@ -75,8 +75,10 @@ The single application includes:
 
 ## Current evidence snapshot (2026-08-08)
 
-- Cloudflare and ChatGPT Sites both serve exact clean commit
-  `c171c37a08d04cee9c1a1fc9d661056950e6abea`; the fail-closed dual-host verifier passed.
+- Cloudflare and ChatGPT Sites serve the same exact clean commit and the fail-closed dual-host
+  verifier passes. The full current commit is read from each live readiness endpoint instead of
+  being copied into this source document, which would become stale on the next documentation-only
+  release.
 - The Cloudflare core deployment verifier passed with the exact staging D1, private R2, static
   assets, application-layer evidence encryption/keyring, address attestation, receipt checks,
   compliance monitor, and `*/15` scheduled handler intact. All 21 staging migrations are current.
