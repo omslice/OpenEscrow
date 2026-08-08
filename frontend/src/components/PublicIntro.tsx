@@ -95,7 +95,10 @@ export function PublicIntro({
           optional yield. Tracked, secured, and powered by Ethereum.
         </p>
         <div className="intro-actions">
-          <button className="btn btn-primary" onClick={onStart}>
+          <button
+            className={`btn btn-primary intro-demo-cta${showAboutDetails ? " about-demo-cta" : ""}`}
+            onClick={onStart}
+          >
             Try the testnet demo
           </button>
         </div>
@@ -312,14 +315,14 @@ export function PublicIntro({
                 target="_blank"
                 rel="noreferrer"
               >
-                View the source on GitHub
+                GitHub
               </a>
               <a
                 href="https://www.linkedin.com/company/openescrow"
                 target="_blank"
                 rel="noreferrer"
               >
-                Follow OpenEscrow
+                LinkedIn
               </a>
             </div>
           </article>
@@ -345,10 +348,10 @@ export function PublicIntro({
                 target="_blank"
                 rel="noreferrer"
               >
-                Read the housing article
+                Housing Blockchain Article
               </a>
               <a
-                href="https://www.linkedin.com/in/omri-gross"
+                href="https://linktr.ee/omslice"
                 target="_blank"
                 rel="noreferrer"
               >
@@ -357,17 +360,9 @@ export function PublicIntro({
             </div>
           </article>
 
-          <p className="about-independence-note">
-            OpenEscrow is an independent open-source project. It is not an official government
-            service, legal advice, or a licensed escrow provider.
-          </p>
         </section>
       )}
 
-      <p className="intro-boundary">
-        This is a Base Sepolia demonstration using worthless test tokens. It is not a bank,
-        licensed escrow service, legal process, or production product.
-      </p>
     </section>
   );
 }

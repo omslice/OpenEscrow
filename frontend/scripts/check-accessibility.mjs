@@ -234,14 +234,24 @@ try {
   );
   await page.getByRole("heading", { name: "Built by Omri Gross" }).waitFor();
   assert.equal(
-    await page.getByRole("link", { name: "Read the housing article" }).getAttribute("href"),
+    await page.getByRole("link", { name: "Housing Blockchain Article" }).getAttribute("href"),
     "https://medium.com/emerging-govtech/on-blockchains-importance-for-housing-4fd4e4c06530",
     "The About tab should link to Omri's housing article.",
   );
   assert.equal(
-    await page.getByRole("link", { name: "View the source on GitHub" }).getAttribute("href"),
+    await page.getByRole("link", { name: "GitHub" }).getAttribute("href"),
     "https://github.com/omslice/OpenEscrow",
     "The About tab should link to the public source repository.",
+  );
+  assert.equal(
+    await page.getByRole("link", { name: "LinkedIn" }).getAttribute("href"),
+    "https://www.linkedin.com/company/openescrow",
+    "The About tab should link to the OpenEscrow LinkedIn page.",
+  );
+  assert.equal(
+    await page.getByRole("link", { name: "Connect with Omri" }).getAttribute("href"),
+    "https://linktr.ee/omslice",
+    "The About tab should link to Omri's Linktree.",
   );
 
   const yieldSummary = page.getByText("Earn yield?", { exact: true });
@@ -301,7 +311,12 @@ try {
     "Closing the yield dialog should restore focus to the visible tooltip control.",
   );
 
-  const overviewTab = workspaceTablist.getByRole("tab", { name: "Overview" });
+  const overviewTab = workspaceTablist.getByRole("tab", { name: "Dashboard" });
+  assert.deepEqual(
+    await workspaceTablist.locator('[role="tab"] .tab-label').allTextContents(),
+    ["About", "Dashboard", "Proposals", "Deposits", "Record"],
+    "The workspace tabs should begin with About, followed by Dashboard and the workflow tabs.",
+  );
   await overviewTab.focus();
   await overviewTab.press("ArrowRight");
   const proposalsTab = workspaceTablist.getByRole("tab", { name: "Proposals" });

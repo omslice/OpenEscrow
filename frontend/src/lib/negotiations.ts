@@ -999,6 +999,19 @@ export function sendNotificationTest(identityToken: string) {
   });
 }
 
+export function sendLandlordInvite(identityToken: string, landlordEmail: string) {
+  return request<{
+    sent: boolean;
+    duplicate: boolean;
+    provider: "resend" | "webhook";
+    messageId: string;
+  }>("/api/profile/landlord-invite", {
+    method: "POST",
+    headers: { "privy-id-token": identityToken },
+    body: JSON.stringify({ landlordEmail }),
+  });
+}
+
 export function createDurableFundingCheckout(
   access: NegotiationAccess,
   intent: FundingIntent,

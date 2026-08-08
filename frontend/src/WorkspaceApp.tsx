@@ -102,11 +102,11 @@ const TestFunds = lazy(() =>
 type WorkspaceTab = "overview" | "proposals" | "agreements" | "record" | "about";
 type SavedProposal = SavedRecord;
 const WORKSPACE_TABS: WorkspaceTab[] = [
+  "about",
   "overview",
   "proposals",
   "agreements",
   "record",
-  "about",
 ];
 
 function initialWorkspaceTab(): WorkspaceTab {
@@ -910,7 +910,7 @@ function AppView({
   const workspaceTabLabels =
     workspaceRole === "landlord"
       ? {
-          overview: "Overview",
+          overview: "Dashboard",
           proposals: "Proposals",
           agreements: "Deposits",
           record: "Record",
@@ -918,14 +918,14 @@ function AppView({
         }
       : workspaceRole === "tenant"
         ? {
-            overview: "Overview",
+            overview: "Dashboard",
             proposals: "Proposals",
             agreements: "Deposits",
             record: "Record",
             about: "About",
           }
         : {
-            overview: "Overview",
+            overview: "Dashboard",
             proposals: "Reviews",
             agreements: "Cases",
             record: "Record",

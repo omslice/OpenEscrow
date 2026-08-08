@@ -30,12 +30,24 @@
   line-height: 0;
 }
 
+.app-title picture {
+  display: block;
+}
+
 .app-wordmark-logo {
   display: block;
   width: clamp(230px, 28vw, 275px);
   max-width: 100%;
   height: auto;
   border-radius: 10px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .app-wordmark-logo {
+    /* The supplied tapered PNG has an opaque #14151b canvas. Lighten keeps the
+       exact artwork while allowing the app's #16171d background to show through. */
+    mix-blend-mode: lighten;
+  }
 }
 
 .header-actions {
@@ -238,7 +250,7 @@
 
 .app-footer {
   display: grid;
-  gap: 16px;
+  gap: 10px;
   margin-top: 40px;
   font-size: 12px;
   color: var(--text);
@@ -250,14 +262,10 @@
   margin: 0;
 }
 
-.footer-safety-note {
-  line-height: 1.55;
-}
-
 .donation-message {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
   gap: 10px 16px;
   flex-wrap: wrap;
   padding: 14px 16px;
@@ -265,7 +273,7 @@
   border-radius: 12px;
   background: color-mix(in srgb, var(--accent) 7%, var(--surface));
   color: var(--muted);
-  text-align: center;
+  text-align: left;
 }
 
 .donation-message strong {
@@ -293,8 +301,11 @@
 }
 
 .donation-copy-button {
+  display: inline-grid;
+  width: 44px;
   min-height: 44px;
-  padding: 8px 12px;
+  padding: 0;
+  place-items: center;
   border: 1px solid color-mix(in srgb, var(--accent) 52%, var(--border));
   border-radius: 10px;
   background: transparent;
@@ -314,12 +325,6 @@
   outline-offset: 3px;
 }
 
-.donation-message small {
-  flex-basis: 100%;
-  color: var(--text);
-  font-size: 11px;
-}
-
 .donation-copy-status {
   flex-basis: 100%;
   color: var(--success);
@@ -332,15 +337,20 @@
 
 @media (max-width: 520px) {
   .donation-address-control {
-    width: 100%;
+    width: auto;
     align-items: stretch;
-    flex-direction: column;
+    flex-direction: row;
     justify-content: center;
   }
 
   .donation-address {
     justify-content: center;
-    border-radius: 10px;
+    border-radius: 999px;
+  }
+
+  .donation-message {
+    justify-content: center;
+    text-align: center;
   }
 }
 
@@ -377,6 +387,31 @@
   gap: 10px;
   flex-wrap: wrap;
   margin-top: 20px;
+}
+
+.intro-demo-cta {
+  min-height: 48px;
+  padding: 12px 22px;
+  font-size: 16px;
+  font-weight: 750;
+}
+
+.about-demo-cta {
+  min-height: 56px;
+  padding: 15px 28px;
+  border-color: color-mix(in srgb, var(--accent) 78%, white);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--accent) 30%, transparent);
+  font-size: clamp(17px, 1.5vw, 20px);
+}
+
+.about-demo-cta:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+
+.about-demo-cta:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 50%, white);
+  outline-offset: 4px;
 }
 
 .intro-actions a {
@@ -828,14 +863,6 @@
   font-weight: 700;
 }
 
-.intro-boundary {
-  grid-column: 1 / -1;
-  padding-top: 12px;
-  border-top: 1px solid var(--border);
-  color: var(--warning);
-  font-size: 12px;
-}
-
 .about-details {
   display: grid;
   grid-column: 1 / -1;
@@ -899,18 +926,6 @@
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 16%, var(--surface));
   transform: translateY(-2px);
-}
-
-.about-independence-note {
-  grid-column: 1 / -1;
-  margin: 0;
-  padding: 14px 16px;
-  border-left: 3px solid var(--accent);
-  border-radius: 8px;
-  background: var(--accent-bg);
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.55;
 }
 
 .tabs {

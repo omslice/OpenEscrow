@@ -96,11 +96,14 @@ export function Layout({
       <header className="app-header">
         <div>
           <h1 className="app-title">
-            <img
-              src="/openescrow-logo-tapered-dark.png"
-              alt="OpenEscrow"
-              className="app-wordmark-logo"
-            />
+            <picture>
+              <source media="(prefers-color-scheme: light)" srcSet="/openescrow-wordmark.svg" />
+              <img
+                src="/openescrow-logo-tapered-dark.png"
+                alt="OpenEscrow"
+                className="app-wordmark-logo"
+              />
+            </picture>
           </h1>
           <p className="tagline">
             OpenEscrow is a free, open-source platform for fair and transparent management of rental
@@ -163,20 +166,14 @@ export function Layout({
         </div>
       </header>
       <div className="demo-notice" role="status">
-        <strong>Testnet demonstration.</strong> Test tokens only. Do not upload personal information
-        or use this app for a real tenancy.
+        <strong>Public Base Sepolia testnet prototype.</strong> Test tokens only; use invented
+        information and test files. OpenEscrow is not legal advice or a licensed escrow provider.
       </div>
       <main className="app-main">{children}</main>
       <footer className="app-footer">
-        <p className="footer-safety-note">
-          OpenEscrow is a testnet demo. Use only invented information and test files—never upload
-          real leases, identity documents, invoices, or photographs. Private demo files require an
-          authorized agreement link. A file added with a public IPFS link is public and permanent,
-          while its digital fingerprint can help confirm whether it changed.
-        </p>
         <div className="donation-message">
           <span>
-            <strong>Support the open-source project.</strong> Optional donations help fund continued
+            <strong>Support the open-source project.</strong> Donations help fund continued
             OpenEscrow development.
           </span>
           <span className="donation-address-control">
@@ -190,12 +187,25 @@ export function Layout({
               className="donation-copy-button"
               type="button"
               aria-label={`Copy donation address ${DONATION_NAME}`}
+              title={`Copy ${DONATION_NAME}`}
               onClick={() => void copyDonationAddress()}
             >
-              Copy address
+              <svg
+                aria-hidden="true"
+                viewBox="0 0 24 24"
+                width="20"
+                height="20"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <rect x="9" y="9" width="11" height="11" rx="2" />
+                <path d="M15 9V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v7a2 2 0 0 0 2 2h3" />
+              </svg>
             </button>
           </span>
-          <small>Donations are separate from rental deposits and never affect access.</small>
           {donationCopyStatus && (
             <span
               className={`donation-copy-status${donationCopyStatus.error ? " error" : ""}`}

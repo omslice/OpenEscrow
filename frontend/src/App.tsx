@@ -1,5 +1,5 @@
 import { lazy, useEffect, useRef, useState } from "react";
-import { usePrivy } from "@privy-io/react-auth";
+import { useLoginWithOAuth, usePrivy } from "@privy-io/react-auth";
 import { DeferredLoadBoundary } from "./components/DeferredLoadBoundary";
 import { PublicLanding } from "./components/PublicLanding";
 import { ACCOUNT_AUTH_ENABLED } from "./lib/accountConfig";
@@ -127,6 +127,7 @@ function AccountApp({
   initialLoginMethod?: AccountLoginMethod | null;
 }) {
   const { ready, authenticated, login } = usePrivy();
+  const { initOAuth } = useLoginWithOAuth();
   const loginAttempted = useRef(false);
   const [signInError, setSignInError] = useState<string | null>(null);
 
@@ -152,12 +153,15 @@ function AccountApp({
       );
     };
     try {
-      const loginResult = login({ loginMethods: [initialLoginMethod] });
+      const loginResult =
+        initialLoginMethod === "google"
+          ? initOAuth({ provider: "google" })
+          : login({ loginMethods: ["wallet"] });
       void Promise.resolve(loginResult).catch(reportSignInError);
     } catch {
       reportSignInError();
     }
-  }, [authenticated, entryContext.roleLocked, initialLoginMethod, login, ready]);
+  }, [authenticated, entryContext.roleLocked, initialLoginMethod, initOAuth, login, ready]);
 
   if (!ready) {
     return entryContext.roleLocked ? (

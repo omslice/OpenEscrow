@@ -1,14 +1,16 @@
 import { useState } from "react";
-import {
-  copyTextToClipboard,
-  openExternalWindow,
-} from "../lib/browserActions";
+import { useIdentityToken } from "@privy-io/react-auth";
+import { copyTextToClipboard } from "../lib/browserActions";
+import { sendLandlordInvite } from "../lib/negotiations";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export function TenantLandlordInvite() {
+  const { identityToken } = useIdentityToken();
   const [landlordEmail, setLandlordEmail] = useState("");
   const [copied, setCopied] = useState(false);
+  const [sending, setSending] = useState(false);
+  const [sent, setSent] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
   const normalizedEmail = landlordEmail.trim().toLowerCase();
   const isValid = EMAIL_PATTERN.test(normalizedEmail);
@@ -27,10 +29,6 @@ export function TenantLandlordInvite() {
     "",
     "This is currently a Base Sepolia testnet demonstration. Do not send real funds.",
   ].join("\n");
-  const gmailUrl = `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(
-    normalizedEmail,
-  )}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
-
   async function copyInvite() {
     setActionError(null);
     try {
@@ -46,14 +44,20 @@ export function TenantLandlordInvite() {
     }
   }
 
-  function openGmailInvite() {
+  async function sendInvite() {
+    if (!identityToken || !isValid || sending) return;
     setActionError(null);
+    setSent(false);
+    setSending(true);
     try {
-      openExternalWindow(gmailUrl);
+      await sendLandlordInvite(identityToken, normalizedEmail);
+      setSent(true);
     } catch (error) {
       setActionError(
-        error instanceof Error ? error.message : "The landlord invitation could not be opened.",
+        error instanceof Error ? error.message : "The landlord invitation could not be sent.",
       );
+    } finally {
+      setSending(false);
     }
   }
 
@@ -72,6 +76,7 @@ export function TenantLandlordInvite() {
           onChange={(event) => {
             setLandlordEmail(event.target.value);
             setCopied(false);
+            setSent(false);
             setActionError(null);
           }}
           type="email"
@@ -85,10 +90,10 @@ export function TenantLandlordInvite() {
         <button
           className="btn btn-primary"
           type="button"
-          disabled={!isValid}
-          onClick={openGmailInvite}
+          disabled={!isValid || !identityToken || sending}
+          onClick={() => void sendInvite()}
         >
-          Open landlord invite in Gmail
+          {sending ? "Sending invite..." : sent ? "Landlord invite sent" : "Send landlord invite"}
         </button>
         <button
           className="btn btn-secondary"
@@ -102,6 +107,11 @@ export function TenantLandlordInvite() {
       {actionError && (
         <p className="tx-error" role="alert" aria-live="assertive">
           {actionError}
+        </p>
+      )}
+      {sent && (
+        <p className="tx-success" role="status" aria-live="polite">
+          Invitation sent to {normalizedEmail}.
         </p>
       )}
       <p className="field-help">

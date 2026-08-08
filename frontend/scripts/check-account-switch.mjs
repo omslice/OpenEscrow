@@ -577,7 +577,7 @@ try {
     "A rejected provider-on-demand sign-in must retain the public explanation.",
   );
   assert.equal(
-    await rejectedLoginPage.getByRole("tab", { name: "Overview" }).count(),
+    await rejectedLoginPage.getByRole("tab", { name: "Dashboard" }).count(),
     0,
     "A rejected sign-in must not load an authenticated workspace.",
   );

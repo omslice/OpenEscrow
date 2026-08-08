@@ -7,6 +7,15 @@ const accountCenterSource = readFileSync(
   "utf8",
 );
 const appStyles = readFileSync(new URL("../App.css", import.meta.url), "utf8");
+const appSource = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+const connectWalletSource = readFileSync(
+  new URL("../components/PrivyConnectWallet.tsx", import.meta.url),
+  "utf8",
+);
+const layoutSource = readFileSync(
+  new URL("../components/Layout.tsx", import.meta.url),
+  "utf8",
+);
 
 test("account security controls retain their accessible descriptions and atomic status", () => {
   assert.match(
@@ -51,6 +60,14 @@ test("account security controls retain their accessible descriptions and atomic 
 });
 
 test("notification outcomes use explicit accessible error state", () => {
+  assert.match(
+    accountCenterSource,
+    /const DEFAULT_PREFERENCES: NotificationPreferences = \{\s*agreementActivity: true,\s*deadlineReminders: true,/s,
+  );
+  assert.match(
+    accountCenterSource,
+    /Both are on by default for a new verified account/,
+  );
   assert.match(
     accountCenterSource,
     /id="notification-preference-boundary"/,
@@ -121,4 +138,19 @@ test("mobile account security recovery actions retain full-width touch targets",
     appStyles,
     /\.account-security-settings \.settings-actions \.btn\s*\{[^}]*flex:\s*1 1 100%;[^}]*min-height:\s*44px;/s,
   );
+});
+
+test("Google sign-in starts direct OAuth while wallet sign-in retains the wallet chooser", () => {
+  for (const source of [appSource, connectWalletSource]) {
+    assert.match(source, /useLoginWithOAuth/);
+    assert.match(source, /initOAuth\(\{ provider: "google" \}\)/);
+    assert.match(source, /login\(\{ loginMethods: \["wallet"\] \}\)/);
+  }
+});
+
+test("the header wordmark and compact donation copy control retain accessible treatment", () => {
+  assert.match(layoutSource, /src="\/openescrow-logo-tapered-dark\.png"/);
+  assert.match(layoutSource, /aria-label=\{`Copy donation address/);
+  assert.match(layoutSource, /<svg[\s\S]*aria-hidden="true"/);
+  assert.match(appStyles, /\.app-wordmark-logo[\s\S]*mix-blend-mode:\s*lighten/);
 });

@@ -804,6 +804,7 @@ const API_RATE_LIMIT_POLICIES = Object.freeze({
   "evidence-upload": Object.freeze({ limit: 12, windowMs: 10 * 60_000 }),
   "evidence-download": Object.freeze({ limit: 120, windowMs: 60_000 }),
   notification: Object.freeze({ limit: 20, windowMs: 60_000 }),
+  "profile-invite": Object.freeze({ limit: 5, windowMs: 10 * 60_000 }),
   profile: Object.freeze({ limit: 120, windowMs: 60_000 }),
   "negotiation-write": Object.freeze({ limit: 180, windowMs: 60_000 }),
   "negotiation-read": Object.freeze({ limit: 300, windowMs: 60_000 }),
@@ -818,6 +819,7 @@ export function apiRateLimitPolicy(request, url = new URL(request.url)) {
     return "evidence-download";
   }
   if (url.pathname.startsWith("/api/notifications/")) return "notification";
+  if (url.pathname === "/api/profile/landlord-invite") return "profile-invite";
   if (url.pathname.startsWith("/api/profile/")) return "profile";
   if (url.pathname.startsWith("/api/negotiations")) {
     return request.method === "GET" ? "negotiation-read" : "negotiation-write";
@@ -3750,7 +3752,7 @@ async function notificationPreferences(request, env) {
     );
   }
 
-  const existing = await env.DB
+  let existing = await env.DB
     .prepare("SELECT * FROM notification_preferences WHERE user_id = ?")
     .bind(identity.userId)
     .first();
@@ -3759,6 +3761,33 @@ async function notificationPreferences(request, env) {
     .bind(identity.emails[0])
     .first();
   if (request.method === "GET") {
+    if (!existing) {
+      const now = new Date().toISOString();
+      const enabledByDefault = !suppression;
+      await env.DB
+        .prepare(
+          `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?)
+           ON CONFLICT(user_id) DO NOTHING`,
+        )
+        .bind(
+          identity.userId,
+          identity.emails[0],
+          enabledByDefault ? 1 : 0,
+          enabledByDefault ? 1 : 0,
+          enabledByDefault ? now : null,
+          now,
+        )
+        .run();
+      existing = await env.DB
+        .prepare("SELECT * FROM notification_preferences WHERE user_id = ?")
+        .bind(identity.userId)
+        .first();
+      if (enabledByDefault) {
+        await ensureUnsubscribeToken(env.DB, identity.userId);
+      }
+    }
     return json({
       agreementActivity: existing?.agreement_activity === 1,
       deadlineReminders: existing?.deadline_reminders === 1,
@@ -4113,6 +4142,64 @@ async function sendTestEmail(request, env) {
   });
   if (!delivered?.id) {
     return json({ error: "The email provider rejected the test message." }, 502);
+  }
+  return json({
+    sent: true,
+    duplicate: Boolean(delivered.duplicate),
+    provider: delivered.provider,
+    messageId: delivered.id,
+  });
+}
+
+async function sendLandlordIntroduction(request, env) {
+  if (!env.DB) return json({ error: "Email delivery tracking is not available." }, 503);
+  const provider = emailProvider(env);
+  if (!provider) {
+    return json({ error: "Automatic email delivery is not configured yet." }, 503);
+  }
+  if (!emailSenderReadiness(env, provider).participantDeliveryReady) {
+    return json(
+      { error: "Participant email delivery is waiting for the OpenEscrow sending domain." },
+      503,
+    );
+  }
+
+  let identity;
+  try {
+    identity = await verifyPrivyIdentity(request, env);
+  } catch (error) {
+    return json(
+      { error: error instanceof Error ? error.message : "Sign in again to send this invitation." },
+      401,
+    );
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const recipientEmail = normalizeEmail(body.landlordEmail);
+  if (!EMAIL_PATTERN.test(recipientEmail)) {
+    return json({ error: "Enter a valid landlord email address." }, 400);
+  }
+  const inviterEmail = identity.emails[0];
+  const recipientKey = (await hashToken(recipientEmail)).slice(0, 24);
+  const inviterKey = (await hashToken(identity.userId)).slice(0, 24);
+  const timeBucket = Math.floor(Date.now() / (10 * 60 * 1000));
+  const appUrl = publicAppOriginForRequest(request, env);
+  const delivered = await deliverTrackedEmail(env, {
+    recipientEmail,
+    notificationType: "landlord_introduction",
+    subject: "Your tenant invited you to OpenEscrow",
+    text: [
+      `A tenant signed in as ${inviterEmail} invited you to try OpenEscrow, a free and open-source security-deposit application.`,
+      "OpenEscrow helps landlords and tenants agree on deposit terms, document deductions, and keep a timestamped record of approvals and disputes.",
+      `Open OpenEscrow and sign in with this email address: ${appUrl}`,
+      "Choose “I am a landlord,” create the proposal, and send the tenant their private review invitation.",
+      "This introduction does not grant access to the tenant's account or any agreement record.",
+      "OpenEscrow is a Base Sepolia testnet prototype. Do not send real funds or upload real tenancy documents.",
+    ].join("\n\n"),
+    idempotencyKey: `landlord-introduction:${inviterKey}:${recipientKey}:${timeBucket}`,
+  });
+  if (!delivered?.id) {
+    return json({ error: "The email provider could not deliver this invitation." }, 502);
   }
   return json({
     sent: true,
@@ -10625,6 +10712,13 @@ const worker = {
       }
       if (env.DB) await initialize(env.DB);
       return sendTestEmail(request, env);
+    }
+    if (url.pathname === "/api/profile/landlord-invite" && request.method === "POST") {
+      if (!sameOriginPost(request)) {
+        return json({ error: "Cross-origin writes are not allowed." }, 403);
+      }
+      if (env.DB) await initialize(env.DB);
+      return sendLandlordIntroduction(request, env);
     }
     if (
       url.pathname === "/api/notifications/provider/resend" &&

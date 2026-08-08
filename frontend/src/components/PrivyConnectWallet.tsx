@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { usePrivy } from "@privy-io/react-auth";
+import { useLoginWithOAuth, usePrivy } from "@privy-io/react-auth";
 import { useInviteRole } from "../lib/inviteContext";
 import { reloadBrowserPage } from "../lib/browserActions";
 
@@ -71,6 +71,7 @@ function AccountConnectionControls() {
 
 export function PrivyConnectWallet() {
   const { ready, authenticated, login } = usePrivy();
+  const { initOAuth } = useLoginWithOAuth();
   const inviteRole = useInviteRole();
   const [loginError, setLoginError] = useState<string | null>(null);
 
@@ -82,7 +83,10 @@ export function PrivyConnectWallet() {
       );
     };
     try {
-      const loginResult = login({ loginMethods: [method] });
+      const loginResult =
+        method === "google"
+          ? initOAuth({ provider: "google" })
+          : login({ loginMethods: ["wallet"] });
       void Promise.resolve(loginResult).catch(reportLoginError);
     } catch {
       reportLoginError();

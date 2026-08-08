@@ -35,8 +35,8 @@ import {
 import { createAccountOperationGuard } from "../lib/accountOperationGuard";
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
-  agreementActivity: false,
-  deadlineReminders: false,
+  agreementActivity: true,
+  deadlineReminders: true,
 };
 
 type PreferenceNotice = {
@@ -729,7 +729,8 @@ export function PrivyAccountCenter({
           Upcoming claim, response, and arbiter deadlines
         </label>
         <p id="notification-preference-boundary" className="notification-boundary">
-          Preferences follow your verified account. Every optional message includes an unsubscribe
+          Both are on by default for a new verified account. You can turn either one off at any
+          time. Preferences follow your account, and every optional message includes an unsubscribe
           link and intentionally omits private agreement details.
         </p>
         {preferences.deliveryPaused && (

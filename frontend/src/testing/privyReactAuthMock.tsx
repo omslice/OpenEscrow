@@ -219,6 +219,15 @@ export function usePrivy() {
   };
 }
 
+export function useLoginWithOAuth() {
+  const { login } = useMockPrivyContext();
+  return {
+    initOAuth: () => login({ loginMethods: ["google"] }),
+    loading: false,
+    state: "initial",
+  };
+}
+
 export function useIdentityToken() {
   const { account } = useMockPrivyContext();
   return { identityToken: account.token };

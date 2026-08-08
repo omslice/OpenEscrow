@@ -5477,6 +5477,42 @@ test("verified Privy accounts discover finalized landlord and tenant agreements"
       0,
     );
 
+    const defaultPreferences = await jsonResponse(
+      await worker.fetch(
+        new Request(
+          "https://openescrow.example/api/profile/notification-preferences",
+          { headers: { "privy-id-token": identityToken } },
+        ),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(defaultPreferences.agreementActivity, true);
+    assert.equal(defaultPreferences.deadlineReminders, true);
+    assert.ok(defaultPreferences.consentedAt);
+    assert.deepEqual(
+      {
+        ...db.database
+          .prepare(
+            `SELECT agreement_activity, deadline_reminders, consented_at
+             FROM notification_preferences WHERE user_id = ?`,
+          )
+          .get("did:privy:test-landlord"),
+      },
+      {
+        agreement_activity: 1,
+        deadline_reminders: 1,
+        consented_at: defaultPreferences.consentedAt,
+      },
+    );
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM notification_unsubscribe_tokens WHERE user_id = ?",
+        )
+        .get("did:privy:test-landlord").count,
+      1,
+    );
+
     const savedPreferences = await jsonResponse(
       await worker.fetch(
         new Request(
@@ -5510,6 +5546,41 @@ test("verified Privy accounts discover finalized landlord and tenant agreements"
     );
     assert.equal(restoredPreferences.deadlineReminders, true);
     assert.equal(restoredPreferences.consentedAt, savedPreferences.consentedAt);
+
+    const disabledPreferences = await jsonResponse(
+      await worker.fetch(
+        new Request(
+          "https://openescrow.example/api/profile/notification-preferences",
+          {
+            method: "PUT",
+            headers: {
+              "content-type": "application/json",
+              "privy-id-token": identityToken,
+            },
+            body: JSON.stringify({
+              agreementActivity: false,
+              deadlineReminders: false,
+            }),
+          },
+        ),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(disabledPreferences.agreementActivity, false);
+    assert.equal(disabledPreferences.deadlineReminders, false);
+    assert.equal(disabledPreferences.consentedAt, null);
+    const restoredDisabledPreferences = await jsonResponse(
+      await worker.fetch(
+        new Request(
+          "https://openescrow.example/api/profile/notification-preferences",
+          { headers: { "privy-id-token": identityToken } },
+        ),
+        { DB: db, PRIVY_APP_ID: appId },
+      ),
+    );
+    assert.equal(restoredDisabledPreferences.agreementActivity, false);
+    assert.equal(restoredDisabledPreferences.deadlineReminders, false);
+    assert.equal(restoredDisabledPreferences.consentedAt, null);
     assert.equal(jwksFetchCount, 1);
   } finally {
     globalThis.fetch = originalFetch;
@@ -6922,6 +6993,65 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     assert.equal(deliveries.length, 1);
     assert.equal(deliveries[0].url, "https://api.resend.com/emails");
     assert.deepEqual(deliveries[0].body.to, ["tenant@example.com"]);
+
+    const landlordInviteRequest = () =>
+      new Request("https://openescrow.example/api/profile/landlord-invite", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "privy-id-token": identityToken,
+        },
+        body: JSON.stringify({ landlordEmail: "landlord@example.com" }),
+      });
+    const landlordInvite = await jsonResponse(
+      await worker.fetch(landlordInviteRequest(), resendEnv),
+    );
+    const duplicateLandlordInvite = await jsonResponse(
+      await worker.fetch(landlordInviteRequest(), resendEnv),
+    );
+    assert.equal(landlordInvite.sent, true);
+    assert.equal(landlordInvite.duplicate, false);
+    assert.equal(duplicateLandlordInvite.duplicate, true);
+    assert.equal(deliveries.length, 2);
+    assert.deepEqual(deliveries[1].body.to, ["landlord@example.com"]);
+    assert.match(deliveries[1].body.subject, /tenant invited you/i);
+    assert.match(deliveries[1].body.text, /https:\/\/openescrow\.example/);
+    assert.deepEqual(
+      {
+        ...db.database
+          .prepare(
+            `SELECT recipient_email, notification_type, status, provider_message_id
+             FROM notification_deliveries
+             WHERE notification_type = 'landlord_introduction'`,
+          )
+          .get(),
+      },
+      {
+        recipient_email: "landlord@example.com",
+        notification_type: "landlord_introduction",
+        status: "sent",
+        provider_message_id: "email-test-2",
+      },
+    );
+
+    const invalidLandlordInvite = await worker.fetch(
+      new Request("https://openescrow.example/api/profile/landlord-invite", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "privy-id-token": identityToken,
+        },
+        body: JSON.stringify({ landlordEmail: "not-an-email" }),
+      }),
+      resendEnv,
+    );
+    assert.equal(invalidLandlordInvite.status, 400);
+
+    const unverifiedSenderInvite = await worker.fetch(landlordInviteRequest(), {
+      ...resendEnv,
+      NOTIFICATION_FROM_EMAIL: "OpenEscrow <onboarding@resend.dev>",
+    });
+    assert.equal(unverifiedSenderInvite.status, 503);
 
     const webhookDb = new TestD1();
     const webhookIdentity = await identityTokenFor(
