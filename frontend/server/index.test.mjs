@@ -814,10 +814,19 @@ test("the implemented registry covers every state and the District of Columbia",
     "https://www.supremecourt.ohio.gov/rod/docs/pdf/10/2025/2025-Ohio-2840.pdf",
   );
   assert.equal(ohioProfile.researchedOn, "2026-08-08");
+  const tennesseeProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "TN",
+  );
+  assert.equal(tennesseeProfile.version, "tn-rules-2026-08-08.v5");
+  assert.equal(
+    tennesseeProfile.statuteUrl,
+    "https://www.capitol.tn.gov/Bills/107/Bill/HB1760.pdf",
+  );
+  assert.equal(tennesseeProfile.researchedOn, "2026-08-08");
   assert.ok(
     US_JURISDICTION_PROFILES.filter(
       (profile) =>
-        !["HI", "MS", "NC", "NH", "NV", "NY", "OH"].includes(
+        !["HI", "MS", "NC", "NH", "NV", "NY", "OH", "TN"].includes(
           profile.postalCode,
         ),
     ).every((profile) => profile.version.endsWith("rules-2026-07-26.v4")),

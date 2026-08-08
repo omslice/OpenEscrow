@@ -331,6 +331,11 @@ const PROFILE_METADATA_OVERRIDES = Object.freeze({
     deadlineSummary:
       "Twenty-one-day return or withholding-notice period; detailed itemization is due within 45 days when requested.",
   }),
+  TN: Object.freeze({
+    version: "tn-rules-2026-08-08.v5",
+    statuteUrl: "https://www.capitol.tn.gov/Bills/107/Bill/HB1760.pdf",
+    researchedOn: "2026-08-08",
+  }),
   VT: Object.freeze({
     deadlineSummary:
       "Fourteen-day return and itemization period; qualifying seasonal non-primary occupancy uses 60 days.",
