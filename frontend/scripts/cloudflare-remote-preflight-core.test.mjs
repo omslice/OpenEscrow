@@ -16,7 +16,7 @@ const config = {
   r2_buckets: [{ binding: "EVIDENCE", bucket_name: "prod-evidence" }],
   env: {
     staging: {
-      name: "openescrow-mvp-staging",
+      name: "openescrow",
       d1_databases: [
         { binding: "DB", database_id: "stage-id", database_name: "stage-db" },
       ],
@@ -30,7 +30,7 @@ test("remote preflight resolves the exact staging account and bindings", () => {
     schemaVersion: "openescrow-cloudflare-preflight/v1",
     environment: "staging",
     accountId: "owner-account",
-    workerName: "openescrow-mvp-staging",
+    workerName: "openescrow",
     database: {
       binding: "DB",
       database_id: "stage-id",

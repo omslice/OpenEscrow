@@ -10,13 +10,14 @@ const repository = path.resolve(frontend, "..");
 const baseUrl = new URL(
   process.argv.find((arg) => /^https:\/\//.test(arg)) ||
     process.env.OPENESCROW_CLOUDFLARE_URL ||
-    "https://openescrow-mvp-staging.omrigross.workers.dev/",
+    "https://openescrow.omslice.workers.dev/",
 );
 const { stdout: commitOutput } = await execFileAsync("git", ["rev-parse", "HEAD"], {
   cwd: repository,
   encoding: "utf8",
 });
 const expectedCommit = commitOutput.trim();
+const requirePilotServices = process.argv.includes("--require-pilot-services");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -66,7 +67,9 @@ assert(
   "Cloudflare evidence encryption and key recovery are not ready.",
 );
 assert(readiness.addressValidation?.configured === true, "Address attestation is not configured.");
-assert(readiness.email?.configured === true, "Notification delivery is not configured.");
+if (requirePilotServices) {
+  assert(readiness.email?.configured === true, "Notification delivery is not configured.");
+}
 assert(
   readiness.recordIntegrity?.transactionReceiptVerification === true,
   "Onchain receipt verification is not enabled.",
@@ -81,5 +84,5 @@ assert(
 );
 
 console.log(
-  `OpenEscrow Cloudflare deployment verified: ${baseUrl.origin} (${expectedCommit}).`,
+  `OpenEscrow Cloudflare ${requirePilotServices ? "pilot" : "core deployment"} verified: ${baseUrl.origin} (${expectedCommit}).`,
 );

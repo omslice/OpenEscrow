@@ -9,6 +9,7 @@ unchanged until the owner-hosted MVP passes the complete pilot acceptance gate.
 
 - Authorized account: `Omrigross@gmail.com's Account`
 - Cloudflare account ID: `ac83ad901f0f00358a9b59e81487d354`
+- Workers account subdomain: `omslice.workers.dev`
 - Do not deploy, create resources, or change DNS in the unrelated `Piper` account.
 - Wrangler's OAuth credential is stored in the user's local Wrangler configuration, not this
   repository. Never commit or paste it.
@@ -18,7 +19,7 @@ unchanged until the owner-hosted MVP passes the complete pilot acceptance gate.
 | Deployable | Staging Worker | Production-testnet Worker | Stateful bindings |
 | --- | --- | --- | --- |
 | Landing fallback | `openescrow-landing-staging` | Not planned while the unified app is canonical | None |
-| Unified MVP | `openescrow-mvp-staging` | `openescrow-mvp-testnet` | `DB`, `EVIDENCE`, `ASSETS` |
+| Unified MVP | `openescrow` | `openescrow-mvp-testnet` | `DB`, `EVIDENCE`, `ASSETS` |
 
 The landing page can be deployed without changing the MVP database, evidence bucket, secrets, or
 scheduled jobs.
@@ -58,6 +59,10 @@ From `frontend`:
 npm run release:check
 npm run cloudflare:dry-run
 npm run check:cloudflare-remote:staging
+npm run build:cloudflare
+# First deployment only; generates security keys, stores a Windows-DPAPI recovery copy,
+# and uploads the keys with the first Worker version without printing their values:
+npm run cloudflare:bootstrap:staging
 npm run cloudflare:deploy:staging
 npm run cloudflare:readiness:staging
 # Run only after the identical clean commit is published to ChatGPT Sites:
@@ -70,6 +75,14 @@ public shell, security headers, exact commit, private evidence binding, encrypti
 address-attestation, receipt, and registry state. A dirty-source package is available solely for
 local dry runs and is stamped `sourceDirty: true`. The readiness command remains a separate gate
 because scheduler and source-monitor health require a real hosted run after deployment.
+
+The one-time staging bootstrap refuses to run if the `openescrow` Worker already exists. It creates
+fresh staging-only evidence-encryption and address-attestation secrets, verifies a Windows
+DPAPI-protected recovery copy under the current user's `.openescrow/recovery` directory, uploads
+the secrets with the first Worker version, and removes the plaintext temporary file. The core
+deployment verifier requires private R2, encryption/keyring readiness, address attestation,
+receipt verification, and registry binding. Email delivery and scheduler/source-monitor freshness
+remain separate pilot gates and must pass before promotion.
 
 ## Exact-source dual-host rule
 

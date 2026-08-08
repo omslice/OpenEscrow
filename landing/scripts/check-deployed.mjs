@@ -1,6 +1,6 @@
 const baseUrl = new URL(
   process.env.OPENESCROW_LANDING_URL ||
-    "https://openescrow-landing-staging.omrigross.workers.dev/",
+    "https://openescrow-landing-staging.omslice.workers.dev/",
 );
 
 function assert(condition, message) {

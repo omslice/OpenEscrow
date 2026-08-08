@@ -47,7 +47,7 @@
   },
   "env": {
     "staging": {
-      "name": "openescrow-mvp-staging",
+      "name": "openescrow",
       "workers_dev": true,
       "preview_urls": true,
       "assets": {
@@ -75,7 +75,7 @@
         "API_RATE_LIMIT_ENABLED": "true",
         "COMPLIANCE_SOURCE_MONITOR_ENABLED": "true",
         "EVIDENCE_STORAGE_MODE": "private-r2",
-        "PUBLIC_APP_URL": "https://openescrow-mvp-staging.omrigross.workers.dev/",
+        "PUBLIC_APP_URL": "https://openescrow.omslice.workers.dev/",
         "VERIFY_ACTIVITY_REGISTRY_BINDING": "true",
         "VERIFY_TRANSACTION_RECEIPTS": "true"
       },

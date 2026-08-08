@@ -41,7 +41,7 @@ const selected =
 
 assert(config.account_id === "ac83ad901f0f00358a9b59e81487d354", "Cloudflare owner account is not pinned.");
 assert(config.name === "openescrow-mvp-testnet", "Production-testnet Worker name is invalid.");
-assert(config.env?.staging?.name === "openescrow-mvp-staging", "Staging Worker name is invalid.");
+assert(config.env?.staging?.name === "openescrow", "Staging Worker name is invalid.");
 assert(selected.assets?.binding === "ASSETS", "Static asset binding must remain ASSETS.");
 assert(selected.assets?.run_worker_first === true, "MVP Worker must retain first-request handling.");
 
@@ -69,7 +69,7 @@ assert(vars.VERIFY_ACTIVITY_REGISTRY_BINDING === "true", "Registry binding verif
 
 if (requestedEnvironment === "staging") {
   assert(
-    vars.PUBLIC_APP_URL === "https://openescrow-mvp-staging.omrigross.workers.dev/",
+    vars.PUBLIC_APP_URL === "https://openescrow.omslice.workers.dev/",
     "Staging public application URL is invalid.",
   );
 } else {

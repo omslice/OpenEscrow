@@ -30,7 +30,7 @@ const cloudflareUrl = normalizeBaseUrl(
   argument(
     "cloudflare",
     process.env.OPENESCROW_CLOUDFLARE_URL ||
-      "https://openescrow-mvp-staging.omrigross.workers.dev/",
+      "https://openescrow.omslice.workers.dev/",
   ),
   "Cloudflare URL",
 );
