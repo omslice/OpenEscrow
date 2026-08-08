@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useIdentityToken } from "@privy-io/react-auth";
 import { copyTextToClipboard } from "../lib/browserActions";
 import { sendLandlordInvite } from "../lib/negotiations";
+import { publicAppOrigin } from "../lib/publicAppOrigin";
 
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -25,7 +26,7 @@ export function TenantLandlordInvite() {
     "2. Choose “I am a landlord” and create the agreement proposal.",
     "3. Save the proposal, then send the tenant the role-locked review invitation.",
     "",
-    `${window.location.origin}/`,
+    `${publicAppOrigin()}/`,
     "",
     "This is currently a Base Sepolia testnet demonstration. Do not send real funds.",
   ].join("\n");

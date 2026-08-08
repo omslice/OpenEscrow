@@ -324,6 +324,13 @@ export function PublicIntro({
               >
                 LinkedIn
               </a>
+              <a
+                href="https://farcaster.xyz/openescrow"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Farcaster
+              </a>
               <button
                 className="about-download-coming-soon"
                 type="button"

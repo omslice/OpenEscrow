@@ -11,6 +11,7 @@ import {
   type BrowserRecoveryStorageKind,
 } from "./browserRecovery.ts";
 import { recoverUniqueNegotiationAccessForProposal } from "./negotiationAccessRecovery.ts";
+import { publicAppOrigin } from "./publicAppOrigin.ts";
 import {
   clearInvitationCredential,
   readInvitationCredential,
@@ -275,6 +276,22 @@ export interface CreatedNegotiation {
     arbiter: string | null;
   };
 }
+
+export type ProposalInvitationResult =
+  | {
+      sent: true;
+      duplicate: boolean;
+      provider: "resend" | "webhook";
+      messageId: string;
+      recipientEmail: string;
+    }
+  | {
+      sent: false;
+      pending: true;
+      duplicate: true;
+      provider: "resend" | "webhook";
+      recipientEmail: string;
+    };
 
 type SerializableFundingIntent = Omit<FundingIntent, "amountMicros"> & {
   amountMicros: string;
@@ -769,7 +786,7 @@ export function buildNegotiationInviteUrl(
   proposalId: string,
   token: string,
 ) {
-  const url = new URL(window.location.origin);
+  const url = new URL(publicAppOrigin());
   url.searchParams.set("invite", role);
   url.searchParams.set("proposal", proposalId);
   setInvitationCredential(url, token);
@@ -803,6 +820,26 @@ export async function createNegotiation(input: {
     method: "POST",
     body: JSON.stringify(input),
   });
+}
+
+export function sendNegotiationInvitation(
+  access: NegotiationAccess,
+  invitation: {
+    invitedRole: InviteRole;
+    invitedTenantId?: string;
+    invitationUrl: string;
+  },
+) {
+  return request<ProposalInvitationResult>(
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}/invitations`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        token: access.token,
+        ...invitation,
+      }),
+    },
+  );
 }
 
 export function addNegotiationTenant(

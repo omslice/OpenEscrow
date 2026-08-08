@@ -3,6 +3,7 @@ import { useAccount, useReadContract } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
 import { agreementReference } from "../lib/displayIds";
 import { formatUSDC, parseUSDC } from "../lib/format";
+import { publicAppOrigin } from "../lib/publicAppOrigin";
 import {
   copyTextToClipboard,
   openExternalWindow,
@@ -311,7 +312,7 @@ export function ResponseSection({
   const validExplanation = mode === "accept" || note.trim().length > 0;
 
   function landlordReviewUrl() {
-    const url = new URL(window.location.origin);
+    const url = new URL(publicAppOrigin());
     url.searchParams.set("id", id.toString());
     return url.toString();
   }

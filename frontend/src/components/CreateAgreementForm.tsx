@@ -53,7 +53,6 @@ import {
 import {
   confirmBrowserAction,
   copyTextToClipboard,
-  openExternalWindow,
 } from "../lib/browserActions";
 import { preferredScrollBehavior } from "../lib/accessibility";
 import { createAsyncOperationScope } from "../lib/asyncOperationScope";
@@ -75,6 +74,7 @@ import {
   removeNegotiationTenant,
   resetNegotiationArbiterInvite,
   resetNegotiationTenantInvite,
+  sendNegotiationInvitation,
   updateNegotiationTenant,
   clearLandlordBundle,
   createNegotiation,
@@ -336,13 +336,11 @@ function TenantFundingDue({
 }
 
 function inviteContent(
-  email: string,
   role: InviteRole,
   proposalId: string,
   token: string,
 ) {
   const inviteUrl = buildNegotiationInviteUrl(role, proposalId, token);
-  const subject = `Review OpenEscrow agreement proposal ${proposalId}`;
   const body = [
     `You have been invited to review an OpenEscrow security-deposit proposal as the ${role}.`,
     "",
@@ -356,7 +354,7 @@ function inviteContent(
   ].join("\n");
   return {
     body,
-    gmailUrl: `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(email)}&su=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`,
+    url: inviteUrl,
   };
 }
 
@@ -449,6 +447,8 @@ function AgreementForm({
   const [formMessage, setFormMessage] = useState<string | null>(null);
   const [invalidField, setInvalidField] = useState<ProposalField | null>(null);
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null);
+  const [sendingInvite, setSendingInvite] = useState<string | null>(null);
+  const [sentInvite, setSentInvite] = useState<string | null>(null);
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isPreflightingFinalization, setIsPreflightingFinalization] =
     useState(false);
@@ -1447,7 +1447,7 @@ function AgreementForm({
   function arbiterInvite() {
     if (!draft || !accessBundle) return null;
     return accessBundle.arbiter && draft.arbiterEmail
-      ? inviteContent(draft.arbiterEmail, "arbiter", draft.id, accessBundle.arbiter)
+      ? inviteContent("arbiter", draft.id, accessBundle.arbiter)
       : null;
   }
 
@@ -1458,7 +1458,7 @@ function AgreementForm({
       accessBundle.tenants?.find((item) => item.id === tenantId)?.token ||
       (tenant?.isFundingTenant ? accessBundle.tenant : null);
     return tenant && token
-      ? inviteContent(tenant.email, "tenant", draft.id, token)
+      ? inviteContent("tenant", draft.id, token)
       : null;
   }
 
@@ -1496,6 +1496,7 @@ function AgreementForm({
       setAccessBundle(nextBundle);
       rememberLandlordBundle({ record: result.record, access: nextBundle });
       setCopiedInvite(null);
+      setSentInvite(null);
       setFormMessage(
         `Reset the link for ${tenant.email}. Send the new link; every prior copy is invalid.`,
       );
@@ -1533,6 +1534,7 @@ function AgreementForm({
       setAccessBundle(nextBundle);
       rememberLandlordBundle({ record: result.record, access: nextBundle });
       setCopiedInvite(null);
+      setSentInvite(null);
       setFormMessage(
         `Reset the link for ${result.invite.email}. Send the new link; every prior copy is invalid.`,
       );
@@ -1549,7 +1551,6 @@ function AgreementForm({
 
   async function recordInvitation(
     role: InviteRole,
-    method: "gmail" | "copy",
     invitedTenantId?: string,
   ) {
     if (!landlordAccess) return;
@@ -1558,7 +1559,7 @@ function AgreementForm({
         type: "invitation_prepared",
         invitedRole: role,
         invitedTenantId,
-        method,
+        method: "copy",
       });
     } catch {
       setFormError(
@@ -1574,7 +1575,7 @@ function AgreementForm({
     try {
       await copyTextToClipboard(invitation.body);
       setCopiedInvite(tenantId);
-      void recordInvitation("tenant", "copy", tenantId);
+      void recordInvitation("tenant", tenantId);
     } catch (cause) {
       setFormError(
         cause instanceof Error ? cause.message : "The tenant invitation could not be copied.",
@@ -1582,17 +1583,37 @@ function AgreementForm({
     }
   }
 
-  function openTenantInvite(tenantId: string) {
+  async function sendTenantInvite(tenantId: string) {
     const invitation = tenantInvite(tenantId);
-    if (!invitation) return;
+    const tenant = draft?.tenants.find((item) => item.id === tenantId);
+    if (!invitation || !tenant || !landlordAccess) return;
     setFormError(null);
+    setFormMessage(null);
+    setSendingInvite(tenantId);
     try {
-      openExternalWindow(invitation.gmailUrl);
-      void recordInvitation("tenant", "gmail", tenantId);
+      const result = await sendNegotiationInvitation(landlordAccess, {
+        invitedRole: "tenant",
+        invitedTenantId: tenantId,
+        invitationUrl: invitation.url,
+      });
+      if (!result.sent) {
+        setFormMessage(
+          `OpenEscrow is already sending the current invitation to ${result.recipientEmail}.`,
+        );
+        return;
+      }
+      setSentInvite(tenantId);
+      setFormMessage(
+        result.duplicate
+          ? `The current invitation for ${result.recipientEmail} was already sent recently.`
+          : `Sent the current invitation to ${result.recipientEmail}.`,
+      );
     } catch (cause) {
       setFormError(
-        cause instanceof Error ? cause.message : "The tenant invitation could not be opened.",
+        cause instanceof Error ? cause.message : "The tenant invitation could not be sent.",
       );
+    } finally {
+      setSendingInvite(null);
     }
   }
 
@@ -1603,7 +1624,7 @@ function AgreementForm({
     try {
       await copyTextToClipboard(invitation.body);
       setCopiedInvite("arbiter");
-      void recordInvitation("arbiter", "copy");
+      void recordInvitation("arbiter");
     } catch (cause) {
       setFormError(
         cause instanceof Error ? cause.message : "The arbiter invitation could not be copied.",
@@ -1611,17 +1632,35 @@ function AgreementForm({
     }
   }
 
-  function openArbiterInvite() {
+  async function sendArbiterInvite() {
     const invitation = arbiterInvite();
-    if (!invitation) return;
+    if (!invitation || !draft?.arbiterEmail || !landlordAccess) return;
     setFormError(null);
+    setFormMessage(null);
+    setSendingInvite("arbiter");
     try {
-      openExternalWindow(invitation.gmailUrl);
-      void recordInvitation("arbiter", "gmail");
+      const result = await sendNegotiationInvitation(landlordAccess, {
+        invitedRole: "arbiter",
+        invitationUrl: invitation.url,
+      });
+      if (!result.sent) {
+        setFormMessage(
+          `OpenEscrow is already sending the current invitation to ${result.recipientEmail}.`,
+        );
+        return;
+      }
+      setSentInvite("arbiter");
+      setFormMessage(
+        result.duplicate
+          ? `The current invitation for ${result.recipientEmail} was already sent recently.`
+          : `Sent the current invitation to ${result.recipientEmail}.`,
+      );
     } catch (cause) {
       setFormError(
-        cause instanceof Error ? cause.message : "The arbiter invitation could not be opened.",
+        cause instanceof Error ? cause.message : "The arbiter invitation could not be sent.",
       );
+    } finally {
+      setSendingInvite(null);
     }
   }
 
@@ -3343,22 +3382,30 @@ function AgreementForm({
                 </div>
                 <div className="invite-actions">
                   <button
-                    className="btn btn-secondary"
+                    className="btn btn-primary"
                     type="button"
-                    disabled={!tenantInvite(tenant.id)}
+                    disabled={!tenantInvite(tenant.id) || sendingInvite !== null}
                     title={
                       !tenantInvite(tenant.id)
                         ? "The original invitation token is not available on this device. Reset the link to create a new one, or the tenant can sign in with the invited email."
                         : undefined
                     }
-                    onClick={() => openTenantInvite(tenant.id)}
+                    onClick={() => void sendTenantInvite(tenant.id)}
                   >
-                    {tenant.approved ? "Open record email" : "Open invite in Gmail"}
+                    {sendingInvite === tenant.id
+                      ? "Sending..."
+                      : sentInvite === tenant.id
+                        ? draft.status === "finalized"
+                          ? "Record link sent"
+                          : "Invite sent"
+                        : draft.status === "finalized"
+                          ? "Send record link"
+                          : "Send invite"}
                   </button>
                   <button
                     className="btn btn-secondary"
                     type="button"
-                    disabled={!tenantInvite(tenant.id)}
+                    disabled={!tenantInvite(tenant.id) || sendingInvite !== null}
                     onClick={() => void copyTenantInvite(tenant.id)}
                   >
                     {copiedInvite === tenant.id
@@ -3370,7 +3417,7 @@ function AgreementForm({
                   <button
                     className="btn btn-ghost"
                     type="button"
-                    disabled={isSavingDraft}
+                    disabled={isSavingDraft || sendingInvite !== null}
                     title="Create a new link and invalidate every prior copy."
                     onClick={() => void resetTenantInvite(tenant.id)}
                   >
@@ -3396,22 +3443,30 @@ function AgreementForm({
                 </div>
                 <div className="invite-actions">
                 <button
-                  className="btn btn-secondary"
+                  className="btn btn-primary"
                   type="button"
-                  disabled={!arbiterInvite()}
+                  disabled={!arbiterInvite() || sendingInvite !== null}
                   title={
                     !arbiterInvite()
                       ? "The original invitation token is not available on this device. Reset the link to create a new one, or the arbiter can sign in with the invited email."
                       : undefined
                   }
-                  onClick={openArbiterInvite}
+                  onClick={() => void sendArbiterInvite()}
                 >
-                  {draft.arbiterApproved ? "Open record email" : "Open arbiter invite in Gmail"}
+                  {sendingInvite === "arbiter"
+                    ? "Sending..."
+                    : sentInvite === "arbiter"
+                      ? draft.status === "finalized"
+                        ? "Record link sent"
+                        : "Invite sent"
+                      : draft.status === "finalized"
+                        ? "Send record link"
+                        : "Send invite"}
                 </button>
                 <button
                   className="btn btn-secondary"
                   type="button"
-                  disabled={!arbiterInvite()}
+                  disabled={!arbiterInvite() || sendingInvite !== null}
                   onClick={() => void copyArbiterInvite()}
                 >
                   {copiedInvite === "arbiter"
@@ -3423,7 +3478,7 @@ function AgreementForm({
                 <button
                   className="btn btn-ghost"
                   type="button"
-                  disabled={isSavingDraft}
+                  disabled={isSavingDraft || sendingInvite !== null}
                   title="Create a new link and invalidate every prior copy."
                   onClick={() => void resetArbiterInvite()}
                 >

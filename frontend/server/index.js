@@ -805,6 +805,7 @@ const API_RATE_LIMIT_POLICIES = Object.freeze({
   "evidence-download": Object.freeze({ limit: 120, windowMs: 60_000 }),
   notification: Object.freeze({ limit: 20, windowMs: 60_000 }),
   "profile-invite": Object.freeze({ limit: 5, windowMs: 10 * 60_000 }),
+  "proposal-invite": Object.freeze({ limit: 10, windowMs: 10 * 60_000 }),
   profile: Object.freeze({ limit: 120, windowMs: 60_000 }),
   "negotiation-write": Object.freeze({ limit: 180, windowMs: 60_000 }),
   "negotiation-read": Object.freeze({ limit: 300, windowMs: 60_000 }),
@@ -821,6 +822,9 @@ export function apiRateLimitPolicy(request, url = new URL(request.url)) {
   if (url.pathname.startsWith("/api/notifications/")) return "notification";
   if (url.pathname === "/api/profile/landlord-invite") return "profile-invite";
   if (url.pathname.startsWith("/api/profile/")) return "profile";
+  if (/^\/api\/negotiations\/[a-zA-Z0-9-]+\/invitations$/.test(url.pathname)) {
+    return "proposal-invite";
+  }
   if (url.pathname.startsWith("/api/negotiations")) {
     return request.method === "GET" ? "negotiation-read" : "negotiation-write";
   }
@@ -2046,7 +2050,16 @@ function emailSenderReadiness(env, provider) {
 function publicAppOrigin(env, fallbackOrigin) {
   const fallback = new URL(fallbackOrigin).origin;
   const configured = cleanText(env.PUBLIC_APP_URL, 500);
-  if (!configured) return fallback;
+  if (!configured) {
+    const fallbackHostname = new URL(fallback).hostname.toLowerCase();
+    if (
+      fallbackHostname === "openescrow-demo.omrigross.chatgpt.site" ||
+      fallbackHostname === "openescrow.omslice.workers.dev"
+    ) {
+      return "https://openescrow.io";
+    }
+    return fallback;
+  }
   try {
     const url = new URL(configured);
     if (url.protocol !== "https:" || url.username || url.password) return fallback;
@@ -2373,46 +2386,25 @@ async function deliverTrackedEmail(
 ) {
   const email = normalizeEmail(recipientEmail);
   if (!email || !idempotencyKey) return null;
-
-  const prior = env.DB
-    ? await env.DB
-        .prepare(
-          `SELECT status, provider_message_id
-           FROM notification_deliveries
-           WHERE idempotency_key = ?`,
-        )
-        .bind(idempotencyKey)
-        .first()
-    : null;
-  if (
-    NOTIFICATION_ACCEPTED_STATUSES.has(prior?.status) &&
-    prior?.provider_message_id
-  ) {
-    return {
-      id: String(prior.provider_message_id),
-      provider: emailProvider(env),
-      duplicate: true,
-      status: prior.status,
-    };
-  }
-  if (NOTIFICATION_SUPPRESSION_STATUSES.has(prior?.status)) return null;
+  const provider = emailProvider(env);
+  const deliveryResult = (row, duplicate = true) => ({
+    id: row?.provider_message_id ? String(row.provider_message_id) : null,
+    provider,
+    duplicate,
+    pending: row?.status === "sending",
+    status: row?.status || null,
+    sentAt: row?.sent_at || null,
+    idempotencyKey,
+  });
 
   if (env.DB) {
-    const startedAt = new Date().toISOString();
-    await env.DB
+    const startedAt = new Date(Date.now()).toISOString();
+    const inserted = await env.DB
       .prepare(
-        `INSERT INTO notification_deliveries
+        `INSERT OR IGNORE INTO notification_deliveries
          (idempotency_key, negotiation_id, recipient_email, notification_type,
           scheduled_for, status, provider_message_id, created_at, sent_at)
-         VALUES (?, ?, ?, ?, ?, 'sending', NULL, ?, NULL)
-         ON CONFLICT(idempotency_key) DO UPDATE SET
-           negotiation_id = excluded.negotiation_id,
-           recipient_email = excluded.recipient_email,
-           notification_type = excluded.notification_type,
-           scheduled_for = excluded.scheduled_for,
-           status = 'sending',
-           provider_message_id = NULL,
-           sent_at = NULL`,
+         VALUES (?, ?, ?, ?, ?, 'sending', NULL, ?, NULL)`,
       )
       .bind(
         idempotencyKey,
@@ -2423,6 +2415,67 @@ async function deliverTrackedEmail(
         startedAt,
       )
       .run();
+    let ownsSend = Number(inserted?.meta?.changes ?? inserted?.changes ?? 0) > 0;
+    if (!ownsSend) {
+      const prior = await env.DB
+        .prepare(
+          `SELECT status, provider_message_id, created_at, sent_at
+           FROM notification_deliveries
+           WHERE idempotency_key = ?`,
+        )
+        .bind(idempotencyKey)
+        .first();
+      if (
+        NOTIFICATION_ACCEPTED_STATUSES.has(prior?.status) &&
+        prior?.provider_message_id
+      ) {
+        return deliveryResult(prior);
+      }
+      if (NOTIFICATION_SUPPRESSION_STATUSES.has(prior?.status)) return null;
+
+      const staleBefore = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+      const claimed = await env.DB
+        .prepare(
+          `UPDATE notification_deliveries
+           SET negotiation_id = ?, recipient_email = ?, notification_type = ?,
+               scheduled_for = ?, status = 'sending', provider_message_id = NULL,
+               created_at = ?, sent_at = NULL
+           WHERE idempotency_key = ?
+             AND (
+               status IN ('failed', 'provider_failed')
+               OR (status = 'sending' AND created_at <= ?)
+             )`,
+        )
+        .bind(
+          negotiationId,
+          email,
+          notificationType,
+          scheduledFor,
+          startedAt,
+          idempotencyKey,
+          staleBefore,
+        )
+        .run();
+      ownsSend = Number(claimed?.meta?.changes ?? claimed?.changes ?? 0) > 0;
+      if (!ownsSend) {
+        const active = await env.DB
+          .prepare(
+            `SELECT status, provider_message_id, created_at, sent_at
+             FROM notification_deliveries
+             WHERE idempotency_key = ?`,
+          )
+          .bind(idempotencyKey)
+          .first();
+        if (
+          NOTIFICATION_ACCEPTED_STATUSES.has(active?.status) &&
+          active?.provider_message_id
+        ) {
+          return deliveryResult(active);
+        }
+        if (NOTIFICATION_SUPPRESSION_STATUSES.has(active?.status)) return null;
+        return deliveryResult(active);
+      }
+    }
   }
 
   const delivered = await deliverEmail(env, {
@@ -2431,33 +2484,43 @@ async function deliverTrackedEmail(
     text,
     idempotencyKey,
   });
-  if (!env.DB) return delivered;
+  if (!env.DB) {
+    return delivered
+      ? {
+          ...delivered,
+          duplicate: false,
+          pending: false,
+          status: "sent",
+          sentAt: new Date(Date.now()).toISOString(),
+          idempotencyKey,
+        }
+      : null;
+  }
 
-  const now = new Date().toISOString();
+  const now = new Date(Date.now()).toISOString();
   await env.DB
     .prepare(
-      `INSERT INTO notification_deliveries
-       (idempotency_key, negotiation_id, recipient_email, notification_type,
-        scheduled_for, status, provider_message_id, created_at, sent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(idempotency_key) DO UPDATE SET
-         status = excluded.status,
-         provider_message_id = excluded.provider_message_id,
-         sent_at = excluded.sent_at`,
+      `UPDATE notification_deliveries
+       SET status = ?, provider_message_id = ?, sent_at = ?
+       WHERE idempotency_key = ? AND status = 'sending'`,
     )
     .bind(
-      idempotencyKey,
-      negotiationId,
-      email,
-      notificationType,
-      scheduledFor,
       delivered?.id ? "sent" : "failed",
       delivered?.id || null,
-      now,
       delivered?.id ? now : null,
+      idempotencyKey,
     )
     .run();
-  return delivered ? { ...delivered, duplicate: false, status: "sent" } : null;
+  return delivered
+    ? {
+        ...delivered,
+        duplicate: false,
+        pending: false,
+        status: "sent",
+        sentAt: now,
+        idempotencyKey,
+      }
+    : null;
 }
 
 function cleanText(value, max = 500) {
@@ -4206,6 +4269,223 @@ async function sendLandlordIntroduction(request, env) {
     duplicate: Boolean(delivered.duplicate),
     provider: delivered.provider,
     messageId: delivered.id,
+  });
+}
+
+async function sendProposalInvitation(request, env, proposalId) {
+  if (!env.DB) return json({ error: "Email delivery tracking is not available." }, 503);
+  const body = await request.json().catch(() => ({}));
+  const row = await rowFor(env.DB, proposalId);
+  const role = await authorize(env.DB, row, cleanText(body.token, 500));
+  if (role !== "landlord") {
+    return json({ error: "Only the landlord may send proposal invitations." }, 403);
+  }
+  if (row.status === "cancelled" || row.status === "superseded") {
+    return json({ error: "This proposal no longer accepts invitation emails." }, 409);
+  }
+
+  const provider = emailProvider(env);
+  if (!provider) {
+    return json({ error: "Automatic email delivery is not configured yet." }, 503);
+  }
+  if (!emailSenderReadiness(env, provider).participantDeliveryReady) {
+    return json(
+      { error: "Participant email delivery is waiting for the OpenEscrow sending domain." },
+      503,
+    );
+  }
+
+  const invitedRole = body.invitedRole;
+  if (invitedRole !== "tenant" && invitedRole !== "arbiter") {
+    return json({ error: "Choose a valid participant invitation." }, 400);
+  }
+
+  let recipientEmail;
+  let expectedTokenHash;
+  let invitedTenant = null;
+  if (invitedRole === "tenant") {
+    const invitedTenantId = cleanText(body.invitedTenantId, 100);
+    if (!invitedTenantId) {
+      return json({ error: "Choose the tenant who should receive this invitation." }, 400);
+    }
+    invitedTenant = await env.DB
+      .prepare(
+        `SELECT id, email, token_hash, approved_revision
+         FROM negotiation_tenants
+         WHERE negotiation_id = ? AND id = ?`,
+      )
+      .bind(proposalId, invitedTenantId)
+      .first();
+    if (!invitedTenant) {
+      return json({ error: "The selected tenant is not part of this proposal." }, 404);
+    }
+    recipientEmail = normalizeEmail(invitedTenant.email);
+    expectedTokenHash = cleanText(invitedTenant.token_hash, 200);
+  } else {
+    if (cleanText(body.invitedTenantId, 100)) {
+      return json({ error: "An arbiter invitation cannot target a tenant." }, 400);
+    }
+    recipientEmail = normalizeEmail(row.arbiter_email);
+    expectedTokenHash = cleanText(row.arbiter_token_hash, 200);
+    if (!recipientEmail || !expectedTokenHash) {
+      return json({ error: "This proposal does not include an arbiter." }, 404);
+    }
+  }
+
+  let suppliedUrl;
+  try {
+    suppliedUrl = new URL(cleanText(body.invitationUrl, 2000));
+  } catch {
+    return json({ error: "Create a new invitation link before sending this email." }, 400);
+  }
+  const queryKeys = [...new Set([...suppliedUrl.searchParams.keys()])].sort();
+  const fragment = new URLSearchParams(
+    suppliedUrl.hash.startsWith("#") ? suppliedUrl.hash.slice(1) : suppliedUrl.hash,
+  );
+  const fragmentKeys = [...new Set([...fragment.keys()])].sort();
+  const invitationToken = invitationTokenFromFragment(suppliedUrl);
+  if (
+    suppliedUrl.protocol !== "https:" ||
+    suppliedUrl.username ||
+    suppliedUrl.password ||
+    (suppliedUrl.pathname !== "/" && suppliedUrl.pathname !== "/index.html") ||
+    suppliedUrl.searchParams.getAll("invite").length !== 1 ||
+    suppliedUrl.searchParams.get("invite") !== invitedRole ||
+    suppliedUrl.searchParams.getAll("proposal").length !== 1 ||
+    suppliedUrl.searchParams.get("proposal") !== proposalId ||
+    queryKeys.join(",") !== "invite,proposal" ||
+    fragmentKeys.join(",") !== "token" ||
+    !invitationToken
+  ) {
+    return json({ error: "The participant invitation link does not match this proposal." }, 400);
+  }
+  const suppliedTokenHash = await hashToken(invitationToken);
+  if (!expectedTokenHash || suppliedTokenHash !== expectedTokenHash) {
+    return json({ error: "This invitation link was replaced. Send the current link instead." }, 409);
+  }
+
+  const canonicalUrl = new URL(publicAppOriginForRequest(request, env));
+  canonicalUrl.pathname = "/";
+  canonicalUrl.searchParams.set("invite", invitedRole);
+  canonicalUrl.searchParams.set("proposal", proposalId);
+  canonicalUrl.hash = `token=${encodeURIComponent(invitationToken)}`;
+
+  const participantLabel = invitedRole === "tenant" ? "tenant" : "optional arbiter";
+  const recordReady = row.status === "finalized";
+  const targetKey = invitedRole === "tenant" ? invitedTenant.id : "arbiter";
+  const notificationType =
+    invitedRole === "tenant" ? "proposal_invitation_tenant" : "proposal_invitation_arbiter";
+  const deliveryKeyPrefix =
+    `proposal-invitation:${proposalId}:${invitedRole}:${targetKey}:` +
+    `${suppliedTokenHash.slice(0, 24)}:`;
+  const cooldownStartedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
+  const recentDelivery = await env.DB
+    .prepare(
+      `SELECT idempotency_key, status, provider_message_id, sent_at
+       FROM notification_deliveries
+       WHERE negotiation_id = ?
+         AND recipient_email = ?
+         AND notification_type = ?
+         AND idempotency_key LIKE ?
+         AND status IN ('sent', 'delivered', 'delayed')
+         AND provider_message_id IS NOT NULL
+         AND sent_at >= ?
+       ORDER BY sent_at DESC
+       LIMIT 1`,
+    )
+    .bind(
+      proposalId,
+      recipientEmail,
+      notificationType,
+      `${deliveryKeyPrefix}%`,
+      cooldownStartedAt,
+    )
+    .first();
+  const timeBucket = Math.floor(Date.now() / (10 * 60 * 1000));
+  const delivered = recentDelivery
+    ? {
+        id: String(recentDelivery.provider_message_id),
+        provider,
+        duplicate: true,
+        pending: false,
+        status: recentDelivery.status,
+        sentAt: recentDelivery.sent_at,
+        idempotencyKey: recentDelivery.idempotency_key,
+      }
+    : await deliverTrackedEmail(env, {
+        negotiationId: proposalId,
+        recipientEmail,
+        notificationType,
+        subject: recordReady
+          ? "Open your OpenEscrow agreement record"
+          : "Review an OpenEscrow agreement proposal",
+        text: [
+          recordReady
+            ? `You have access to an OpenEscrow agreement record as the ${participantLabel}.`
+            : `A landlord invited you to review an OpenEscrow security-deposit proposal as the ${participantLabel}.`,
+          recordReady
+            ? `Open your record: ${canonicalUrl.toString()}`
+            : `Review the terms, request a change, or approve the current revision: ${canonicalUrl.toString()}`,
+          "This role-locked link is intended only for the invited participant. Do not forward it.",
+          "Sign in using the invited email address to keep access connected to your OpenEscrow account.",
+          "OpenEscrow is a Base Sepolia testnet prototype. Do not send real funds or upload real tenancy documents.",
+        ].join("\n\n"),
+        idempotencyKey: `${deliveryKeyPrefix}${timeBucket}`,
+      });
+  if (delivered?.pending) {
+    return json(
+      {
+        sent: false,
+        pending: true,
+        duplicate: true,
+        provider: delivered.provider,
+        recipientEmail,
+      },
+      202,
+    );
+  }
+  if (!delivered?.id) {
+    return json({ error: "The email provider could not deliver this invitation." }, 502);
+  }
+
+  const eventAt = delivered.sentAt || new Date(Date.now()).toISOString();
+  const eventMetadata = {
+    invitedRole,
+    tenantId: invitedTenant?.id || null,
+    provider: delivered.provider,
+    messageId: delivered.id,
+    deliveryKey: delivered.idempotencyKey,
+  };
+  await env.DB
+    .prepare(
+      `INSERT INTO negotiation_events
+       (negotiation_id, created_at, actor_role, action, summary, revision, metadata_json)
+       SELECT ?, ?, 'landlord', 'invitation_sent', ?, ?, ?
+       WHERE NOT EXISTS (
+         SELECT 1
+         FROM negotiation_events
+         WHERE negotiation_id = ?
+           AND action = 'invitation_sent'
+           AND json_extract(metadata_json, '$.deliveryKey') = ?
+       )`,
+    )
+    .bind(
+      proposalId,
+      eventAt,
+      `Sent the ${participantLabel} invitation email.`,
+      Number(row.revision),
+      JSON.stringify(eventMetadata),
+      proposalId,
+      delivered.idempotencyKey,
+    )
+    .run();
+
+  return json({
+    sent: true,
+    duplicate: Boolean(delivered.duplicate),
+    provider: delivered.provider,
+    messageId: delivered.id,
+    recipientEmail,
   });
 }
 
@@ -10832,6 +11112,13 @@ const worker = {
       }
       if (url.pathname === "/api/negotiations/discover" && request.method === "POST") {
         return discoverNegotiations(request, env);
+      }
+
+      const invitationMatch = url.pathname.match(
+        /^\/api\/negotiations\/([a-zA-Z0-9-]+)\/invitations$/,
+      );
+      if (invitationMatch && request.method === "POST") {
+        return await sendProposalInvitation(request, env, invitationMatch[1]);
       }
 
       const fundingCheckoutEventMatch = url.pathname.match(

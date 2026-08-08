@@ -1825,6 +1825,15 @@ test("API abuse controls bound request bodies and persist hashed edge rate limit
     });
 
   assert.equal(apiRateLimitPolicy(clientRequest(), url), "compliance-refresh");
+  assert.equal(
+    apiRateLimitPolicy(
+      new Request(
+        "https://openescrow.example/api/negotiations/proposal-1/invitations",
+        { method: "POST" },
+      ),
+    ),
+    "proposal-invite",
+  );
   const start = Date.parse("2026-08-05T12:00:00.000Z");
   for (let index = 0; index < 6; index += 1) {
     assert.equal(await applyApiAbuseControls(clientRequest(), env, url, start), null);
@@ -7100,6 +7109,335 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     );
     assert.equal(trackedWebhookReadiness.email.deliveryStatusConfigured, true);
   } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("proposal invitations are recipient-bound, canonical, tracked, and duplicate-safe", async () => {
+  const db = new TestD1();
+  const created = await create(db, "arbiter@example.com");
+  const tenant = created.access.tenants[0];
+  const deliveries = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, options) => {
+    assert.equal(String(input), "https://api.resend.com/emails");
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `proposal-invite-${deliveries.length}` });
+  };
+  const env = {
+    DB: db,
+    RESEND_API_KEY: "test-resend-key",
+    NOTIFICATION_FROM_EMAIL: "OpenEscrow <notifications@updates.openescrow.io>",
+  };
+  const originalDateNow = Date.now;
+  const bucketEdge =
+    Math.floor(originalDateNow() / (10 * 60 * 1000)) * (10 * 60 * 1000) +
+    10 * 60 * 1000 -
+    1_000;
+  const invitationRequest = ({
+    role = "tenant",
+    tenantId = tenant.id,
+    invitationToken = tenant.token,
+    accessToken = created.access.landlord,
+    query = `invite=${role}&proposal=${created.record.id}`,
+    fragment = `token=${invitationToken}`,
+  } = {}) =>
+    new Request(
+      `https://openescrow-demo.omrigross.chatgpt.site/api/negotiations/${created.record.id}/invitations`,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          token: accessToken,
+          invitedRole: role,
+          ...(role === "tenant" ? { invitedTenantId: tenantId } : {}),
+          invitationUrl: `https://untrusted-client-origin.example/?${query}#${fragment}`,
+        }),
+      },
+    );
+
+  try {
+    Date.now = () => bucketEdge;
+    const first = await jsonResponse(await worker.fetch(invitationRequest(), env));
+    Date.now = () => bucketEdge + 2_000;
+    const duplicate = await jsonResponse(await worker.fetch(invitationRequest(), env));
+    assert.equal(first.sent, true);
+    assert.equal(first.duplicate, false);
+    assert.equal(first.recipientEmail, "tenant@example.com");
+    assert.equal(duplicate.duplicate, true);
+    assert.equal(deliveries.length, 1);
+    assert.deepEqual(deliveries[0].to, ["tenant@example.com"]);
+    assert.match(
+      deliveries[0].text,
+      new RegExp(
+        `https://openescrow\\.io/\\?invite=tenant&proposal=${created.record.id}#token=`,
+      ),
+    );
+    assert.equal(deliveries[0].text.includes("untrusted-client-origin.example"), false);
+
+    const arbiter = await jsonResponse(
+      await worker.fetch(
+        invitationRequest({
+          role: "arbiter",
+          invitationToken: created.access.arbiter,
+          query: `invite=arbiter&proposal=${created.record.id}`,
+        }),
+        env,
+      ),
+    );
+    assert.equal(arbiter.recipientEmail, "arbiter@example.com");
+    assert.equal(deliveries.length, 2);
+    assert.deepEqual(deliveries[1].to, ["arbiter@example.com"]);
+
+    const tracked = db.database
+      .prepare(
+        `SELECT recipient_email, notification_type, status, provider_message_id
+         FROM notification_deliveries
+         WHERE notification_type LIKE 'proposal_invitation_%'
+         ORDER BY recipient_email`,
+      )
+      .all()
+      .map((row) => ({ ...row }));
+    assert.deepEqual(tracked, [
+      {
+        recipient_email: "arbiter@example.com",
+        notification_type: "proposal_invitation_arbiter",
+        status: "sent",
+        provider_message_id: "proposal-invite-2",
+      },
+      {
+        recipient_email: "tenant@example.com",
+        notification_type: "proposal_invitation_tenant",
+        status: "sent",
+        provider_message_id: "proposal-invite-1",
+      },
+    ]);
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM negotiation_events WHERE action = 'invitation_sent'",
+        )
+        .get().count,
+      2,
+    );
+    const storedInvitationState = JSON.stringify({
+      deliveries: db.database
+        .prepare(
+          `SELECT idempotency_key, recipient_email, notification_type,
+                  provider_message_id
+           FROM notification_deliveries
+           WHERE notification_type LIKE 'proposal_invitation_%'`,
+        )
+        .all(),
+      events: db.database
+        .prepare(
+          `SELECT summary, metadata_json
+           FROM negotiation_events
+           WHERE action = 'invitation_sent'`,
+        )
+        .all(),
+    });
+    assert.equal(storedInvitationState.includes(tenant.token), false);
+    assert.equal(storedInvitationState.includes(created.access.arbiter), false);
+
+    const wrongRoleCredential = await worker.fetch(
+      invitationRequest({ accessToken: tenant.token }),
+      env,
+    );
+    assert.equal(wrongRoleCredential.status, 403);
+    const wrongParticipantToken = await worker.fetch(
+      invitationRequest({ invitationToken: created.access.arbiter }),
+      env,
+    );
+    assert.equal(wrongParticipantToken.status, 409);
+    const wrongProposal = await worker.fetch(
+      invitationRequest({ query: "invite=tenant&proposal=another-proposal" }),
+      env,
+    );
+    assert.equal(wrongProposal.status, 400);
+    const queryCredential = await worker.fetch(
+      invitationRequest({
+        query: `invite=tenant&proposal=${created.record.id}&token=${tenant.token}`,
+        fragment: "",
+      }),
+      env,
+    );
+    assert.equal(queryCredential.status, 400);
+    const extraQuery = await worker.fetch(
+      invitationRequest({
+        query: `invite=tenant&proposal=${created.record.id}&recipient=attacker@example.com`,
+      }),
+      env,
+    );
+    assert.equal(extraQuery.status, 400);
+    const unknownTenant = await worker.fetch(
+      invitationRequest({ tenantId: "not-a-tenant" }),
+      env,
+    );
+    assert.equal(unknownTenant.status, 404);
+    const accountTestSender = await worker.fetch(invitationRequest(), {
+      ...env,
+      NOTIFICATION_FROM_EMAIL: "OpenEscrow <onboarding@resend.dev>",
+    });
+    assert.equal(accountTestSender.status, 503);
+    assert.equal(deliveries.length, 2);
+  } finally {
+    Date.now = originalDateNow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("simultaneous proposal invitation requests make one provider call", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const tenant = created.access.tenants[0];
+  let providerCalls = 0;
+  let releaseProvider;
+  const providerGate = new Promise((resolve) => {
+    releaseProvider = resolve;
+  });
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async () => {
+    providerCalls += 1;
+    await providerGate;
+    return Response.json({ id: "proposal-invite-concurrent" });
+  };
+  const env = {
+    DB: db,
+    RESEND_API_KEY: "test-resend-key",
+    NOTIFICATION_FROM_EMAIL: "OpenEscrow <notifications@updates.openescrow.io>",
+    PUBLIC_APP_URL: "https://openescrow.io/",
+  };
+  const sendRequest = () =>
+    request(`/api/negotiations/${created.record.id}/invitations`, "POST", {
+      token: created.access.landlord,
+      invitedRole: "tenant",
+      invitedTenantId: tenant.id,
+      invitationUrl:
+        `https://openescrow.io/?invite=tenant&proposal=${created.record.id}` +
+        `#token=${tenant.token}`,
+    });
+
+  try {
+    const firstResponse = worker.fetch(sendRequest(), env);
+    while (providerCalls === 0) {
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    const concurrent = await worker.fetch(sendRequest(), env);
+    assert.equal(concurrent.status, 202);
+    assert.deepEqual(await concurrent.json(), {
+      sent: false,
+      pending: true,
+      duplicate: true,
+      provider: "resend",
+      recipientEmail: "tenant@example.com",
+    });
+    releaseProvider();
+    const first = await jsonResponse(await firstResponse);
+    assert.equal(first.sent, true);
+    assert.equal(first.duplicate, false);
+    assert.equal(providerCalls, 1);
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM negotiation_events WHERE action = 'invitation_sent'",
+        )
+        .get().count,
+      1,
+    );
+  } finally {
+    releaseProvider?.();
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a duplicate proposal invitation repairs a missing timeline event", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const tenant = created.access.tenants[0];
+  let providerCalls = 0;
+  const originalFetch = globalThis.fetch;
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  globalThis.fetch = async () => {
+    providerCalls += 1;
+    return Response.json({ id: "proposal-invite-audit-repair" });
+  };
+  let failAuditWrite = true;
+  const auditFailingDb = {
+    prepare(sql) {
+      const statement = db.prepare(sql);
+      if (
+        failAuditWrite &&
+        sql.includes("INSERT INTO negotiation_events") &&
+        sql.includes("$.deliveryKey")
+      ) {
+        return {
+          bind(...values) {
+            const bound = statement.bind(...values);
+            return {
+              run() {
+                failAuditWrite = false;
+                throw new Error("simulated invitation timeline outage");
+              },
+              first: () => bound.first(),
+              all: () => bound.all(),
+            };
+          },
+          run: () => statement.run(),
+          first: () => statement.first(),
+          all: () => statement.all(),
+        };
+      }
+      return statement;
+    },
+    batch(statements) {
+      return db.batch(statements);
+    },
+  };
+  const env = {
+    DB: auditFailingDb,
+    RESEND_API_KEY: "test-resend-key",
+    NOTIFICATION_FROM_EMAIL: "OpenEscrow <notifications@updates.openescrow.io>",
+    PUBLIC_APP_URL: "https://openescrow.io/",
+  };
+  const sendRequest = () =>
+    request(`/api/negotiations/${created.record.id}/invitations`, "POST", {
+      token: created.access.landlord,
+      invitedRole: "tenant",
+      invitedTenantId: tenant.id,
+      invitationUrl:
+        `https://openescrow.io/?invite=tenant&proposal=${created.record.id}` +
+        `#token=${tenant.token}`,
+    });
+
+  try {
+    const first = await worker.fetch(sendRequest(), env);
+    assert.equal(first.status, 500);
+    assert.equal(providerCalls, 1);
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM negotiation_events WHERE action = 'invitation_sent'",
+        )
+        .get().count,
+      0,
+    );
+    const repaired = await jsonResponse(
+      await worker.fetch(sendRequest(), { ...env, DB: db }),
+    );
+    assert.equal(repaired.duplicate, true);
+    assert.equal(providerCalls, 1);
+    assert.equal(
+      db.database
+        .prepare(
+          "SELECT COUNT(*) AS count FROM negotiation_events WHERE action = 'invitation_sent'",
+        )
+        .get().count,
+      1,
+    );
+  } finally {
+    console.error = originalConsoleError;
     globalThis.fetch = originalFetch;
   }
 });

@@ -249,6 +249,11 @@ try {
     "The About tab should link to the OpenEscrow LinkedIn page.",
   );
   assert.equal(
+    await page.getByRole("link", { name: "Farcaster" }).getAttribute("href"),
+    "https://farcaster.xyz/openescrow",
+    "The About tab should link to the OpenEscrow Farcaster profile.",
+  );
+  assert.equal(
     await page.getByRole("link", { name: "Connect with Omri" }).getAttribute("href"),
     "https://linktr.ee/omslice",
     "The About tab should link to Omri's Linktree.",

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { replaceRecoveryUrl } from "./browserRecovery.ts";
 import { clearInvitationCredential } from "./invitationCredential.ts";
+import { publicAppOrigin } from "./publicAppOrigin.ts";
 
 export type InviteRole = "tenant" | "arbiter";
 export type WorkspaceRole = "landlord" | InviteRole;
@@ -128,7 +129,7 @@ export function buildInviteUrl(
   agreementId?: bigint,
   jurisdiction?: string,
 ) {
-  const url = new URL(window.location.origin);
+  const url = new URL(publicAppOrigin());
   url.searchParams.set("invite", role);
   if (agreementId !== undefined) url.searchParams.set("id", agreementId.toString());
   if (jurisdiction) url.searchParams.set("jurisdiction", jurisdiction);
