@@ -1,4 +1,9 @@
 export const RELEASE_SCHEMA = "openescrow-release/v1";
+export const RELEASE_PROPAGATION_ATTEMPTS = 10;
+export const RELEASE_PROPAGATION_DELAY_MS = 1_500;
+
+const defaultWait = (delayMs) =>
+  new Promise((resolve) => setTimeout(resolve, delayMs));
 
 export function normalizeBaseUrl(value, label) {
   let url;
@@ -26,6 +31,40 @@ export function releaseReadinessUrl(
     url.searchParams.set("release_check", `${expectedCommit}.${checkId}`);
   }
   return url;
+}
+
+export async function waitForExpectedRelease({
+  expectedCommit,
+  readAttempt,
+  attempts = RELEASE_PROPAGATION_ATTEMPTS,
+  delayMs = RELEASE_PROPAGATION_DELAY_MS,
+  wait = defaultWait,
+}) {
+  if (!/^[0-9a-f]{40}$/.test(expectedCommit || "")) {
+    throw new Error("Expected release commit must be a full Git SHA.");
+  }
+  if (!Number.isInteger(attempts) || attempts < 1 || attempts > 30) {
+    throw new Error("Release propagation attempts must be between 1 and 30.");
+  }
+  let lastResult;
+  let lastError;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      lastResult = await readAttempt(attempt);
+      lastError = undefined;
+      if (
+        lastResult?.status === 200 &&
+        lastResult?.readiness?.release?.commitSha === expectedCommit
+      ) {
+        return lastResult;
+      }
+    } catch (error) {
+      lastError = error;
+    }
+    if (attempt < attempts) await wait(delayMs);
+  }
+  if (lastResult) return lastResult;
+  throw lastError || new Error("Release readiness could not be read.");
 }
 
 export function validateHostedRelease({

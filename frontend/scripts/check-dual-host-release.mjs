@@ -7,6 +7,7 @@ import {
   releaseReadinessUrl,
   validateDualHostRelease,
   validateHostedRelease,
+  waitForExpectedRelease,
 } from "./dual-host-release-core.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -46,15 +47,8 @@ const expectedCommit = expectedArgument ||
 
 async function inspectHost(label, baseUrl) {
   let home;
-  let readinessResponse;
   try {
     home = await fetch(baseUrl, {
-      redirect: "error",
-      cache: "no-store",
-      signal: AbortSignal.timeout(10_000),
-    });
-    readinessResponse = await fetch(releaseReadinessUrl(baseUrl, expectedCommit), {
-      headers: { accept: "application/json" },
       redirect: "error",
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),
@@ -64,19 +58,44 @@ async function inspectHost(label, baseUrl) {
     throw new Error(`${label} could not be reached: ${detail}`);
   }
   const homeHtml = await home.text();
-  let readiness;
-  try {
-    readiness = await readinessResponse.json();
-  } catch {
-    throw new Error(`${label} readiness did not return valid JSON.`);
-  }
+  const readinessResult = await waitForExpectedRelease({
+    expectedCommit,
+    readAttempt: async (attempt) => {
+      let response;
+      try {
+        response = await fetch(
+          releaseReadinessUrl(
+            baseUrl,
+            expectedCommit,
+            `${Date.now().toString(36)}-${attempt}`,
+          ),
+          {
+            headers: { accept: "application/json" },
+            redirect: "error",
+            cache: "no-store",
+            signal: AbortSignal.timeout(10_000),
+          },
+        );
+      } catch (error) {
+        const detail = error instanceof Error ? error.message : "request failed";
+        throw new Error(`${label} readiness could not be reached: ${detail}`);
+      }
+      let readiness;
+      try {
+        readiness = await response.json();
+      } catch {
+        throw new Error(`${label} readiness did not return valid JSON.`);
+      }
+      return { status: response.status, readiness };
+    },
+  });
   return validateHostedRelease({
     label,
     baseUrl,
     homeStatus: home.status,
     homeHtml,
-    readinessStatus: readinessResponse.status,
-    readiness,
+    readinessStatus: readinessResult.status,
+    readiness: readinessResult.readiness,
   });
 }
 

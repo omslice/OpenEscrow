@@ -3,7 +3,10 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { promisify } from "node:util";
 import { fileURLToPath } from "node:url";
-import { releaseReadinessUrl } from "./dual-host-release-core.mjs";
+import {
+  releaseReadinessUrl,
+  waitForExpectedRelease,
+} from "./dual-host-release-core.mjs";
 import { verifyPrivyGoogleOrigin } from "./verify-privy-oauth-origin.mjs";
 
 const execFileAsync = promisify(execFile);
@@ -59,16 +62,32 @@ await verifyPrivyGoogleOrigin({
   origin: baseUrl.origin,
 });
 
-const readinessResponse = await fetch(releaseReadinessUrl(baseUrl, expectedCommit), {
-  headers: { accept: "application/json" },
-  redirect: "error",
-  cache: "no-store",
+const readinessResult = await waitForExpectedRelease({
+  expectedCommit,
+  readAttempt: async (attempt) => {
+    const readinessResponse = await fetch(
+      releaseReadinessUrl(baseUrl, expectedCommit, `${Date.now().toString(36)}-${attempt}`),
+      {
+        headers: { accept: "application/json" },
+        redirect: "error",
+        cache: "no-store",
+        signal: AbortSignal.timeout(10_000),
+      },
+    );
+    let readiness;
+    try {
+      readiness = await readinessResponse.json();
+    } catch {
+      throw new Error("Cloudflare readiness did not return valid JSON.");
+    }
+    return { status: readinessResponse.status, readiness };
+  },
 });
 assert(
-  readinessResponse.status === 200,
-  `Cloudflare readiness endpoint returned HTTP ${readinessResponse.status}.`,
+  readinessResult.status === 200,
+  `Cloudflare readiness endpoint returned HTTP ${readinessResult.status}.`,
 );
-const readiness = await readinessResponse.json();
+const readiness = readinessResult.readiness;
 assert(
   readiness.release?.schemaVersion === "openescrow-release/v1",
   "Cloudflare readiness is missing exact release provenance.",

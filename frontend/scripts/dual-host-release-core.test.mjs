@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   normalizeBaseUrl,
   releaseReadinessUrl,
+  waitForExpectedRelease,
   validateDualHostRelease,
   validateHostedRelease,
 } from "./dual-host-release-core.mjs";
@@ -46,6 +47,55 @@ test("uniquely cache-busts readiness for the exact expected release", () => {
       "unit-test",
     ).href,
     `https://example.test/api/system/readiness?release_check=${commitSha}.unit-test`,
+  );
+});
+
+test("waits through bounded release propagation and stops on the expected commit", async () => {
+  const staleCommit = "b".repeat(40);
+  const attempts = [];
+  const waits = [];
+  const result = await waitForExpectedRelease({
+    expectedCommit: commitSha,
+    attempts: 5,
+    delayMs: 25,
+    wait: async (delayMs) => waits.push(delayMs),
+    readAttempt: async (attempt) => {
+      attempts.push(attempt);
+      return {
+        status: 200,
+        readiness: {
+          release: { commitSha: attempt < 3 ? staleCommit : commitSha },
+        },
+      };
+    },
+  });
+  assert.equal(result.readiness.release.commitSha, commitSha);
+  assert.deepEqual(attempts, [1, 2, 3]);
+  assert.deepEqual(waits, [25, 25]);
+});
+
+test("returns the last readable stale release and preserves a terminal request error", async () => {
+  const stale = await waitForExpectedRelease({
+    expectedCommit: commitSha,
+    attempts: 2,
+    wait: async () => {},
+    readAttempt: async () => ({
+      status: 200,
+      readiness: { release: { commitSha: "b".repeat(40) } },
+    }),
+  });
+  assert.equal(stale.readiness.release.commitSha, "b".repeat(40));
+
+  await assert.rejects(
+    waitForExpectedRelease({
+      expectedCommit: commitSha,
+      attempts: 2,
+      wait: async () => {},
+      readAttempt: async () => {
+        throw new Error("host unreachable");
+      },
+    }),
+    /host unreachable/,
   );
 });
 
