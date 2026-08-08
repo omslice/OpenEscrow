@@ -331,10 +331,11 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** The latest approved public deployment matches its exact release-checked and pushed
   source. Each subsequent coherent slice is validated and saved separately for explicit review;
   D1, R2, hosted data, runtime secrets, and configuration remain unchanged.
-- **Reported:** The earlier standalone Cloudflare landing package remains in source only as a
-  rollback artifact. The product decision now requires exactly one public Cloudflare site: the
-  complete MVP with its signed-out introduction and authenticated About tab. The old landing
-  Worker must have its public route disabled.
+- **Verified:** The earlier standalone Cloudflare landing package remains in source only as a
+  rollback artifact. Its checked-in configuration disables workers.dev, preview URLs, and public
+  routes; its former staging URL returned HTTP 404 on 2026-08-08. The dual-host release verifier
+  now fails if that retired route becomes public. The product has exactly one intended public
+  Cloudflare site: the complete MVP with its signed-out introduction and authenticated About tab.
 - **Verified:** The unified app is deployed to the owner's Cloudflare account without changing the
   Sites-hosted data boundary:
   separate staging and production-testnet D1 databases exist, all deployed repository migrations

@@ -7,6 +7,7 @@ import {
   releaseReadinessUrl,
   validateDualHostRelease,
   validateHostedRelease,
+  validateRetiredLandingRoute,
   waitForExpectedRelease,
 } from "./dual-host-release-core.mjs";
 
@@ -35,6 +36,14 @@ const cloudflareUrl = normalizeBaseUrl(
       "https://openescrow.omslice.workers.dev/",
   ),
   "Cloudflare URL",
+);
+const retiredLandingUrl = normalizeBaseUrl(
+  argument(
+    "retired-landing",
+    process.env.OPENESCROW_RETIRED_LANDING_URL ||
+      "https://openescrow-landing-staging.omslice.workers.dev/",
+  ),
+  "Retired landing Worker URL",
 );
 const expectedArgument = argument("expected", process.env.OPENESCROW_RELEASE_COMMIT);
 const expectedCommit = expectedArgument ||
@@ -99,13 +108,34 @@ async function inspectHost(label, baseUrl) {
   });
 }
 
-const [sites, cloudflare] = await Promise.all([
+async function inspectRetiredLanding(label, baseUrl) {
+  let response;
+  try {
+    response = await fetch(baseUrl, {
+      redirect: "error",
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "request failed";
+    throw new Error(`${label} route state could not be verified: ${detail}`);
+  }
+  return validateRetiredLandingRoute({
+    label,
+    baseUrl,
+    status: response.status,
+  });
+}
+
+const [sites, cloudflare, retiredLanding] = await Promise.all([
   inspectHost("ChatGPT Sites", sitesUrl),
   inspectHost("Cloudflare", cloudflareUrl),
+  inspectRetiredLanding("Retired landing Worker", retiredLandingUrl),
 ]);
 const result = validateDualHostRelease({ sites, cloudflare, expectedCommit });
 console.log(
   `OpenEscrow dual-host release verified: ${result.commitSha}\n` +
     `  ChatGPT Sites: ${result.sitesOrigin}\n` +
-    `  Cloudflare: ${result.cloudflareOrigin}`,
+    `  Cloudflare: ${result.cloudflareOrigin}\n` +
+    `  Retired landing route: HTTP ${retiredLanding.status} at ${retiredLanding.origin}`,
 );

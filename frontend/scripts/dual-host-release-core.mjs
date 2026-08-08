@@ -104,6 +104,19 @@ export function validateHostedRelease({
   };
 }
 
+export function validateRetiredLandingRoute({ label, baseUrl, status }) {
+  if (status !== 404) {
+    throw new Error(
+      `${label} unexpectedly returned HTTP ${status}; its public route must stay disabled.`,
+    );
+  }
+  return {
+    label,
+    origin: baseUrl.origin,
+    status,
+  };
+}
+
 export function validateDualHostRelease({ sites, cloudflare, expectedCommit }) {
   if (sites.commitSha !== cloudflare.commitSha) {
     throw new Error(

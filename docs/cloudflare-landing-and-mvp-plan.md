@@ -81,7 +81,8 @@ The single application includes:
   release.
 - The Cloudflare core deployment verifier passed with the exact staging D1, private R2, static
   assets, application-layer evidence encryption/keyring, address attestation, receipt checks,
-  compliance monitor, and `*/15` scheduled handler intact. All 21 staging migrations are current.
+  compliance monitor, and `*/15` scheduled handler intact. All repository staging migrations are
+  current.
 - Hosted pilot readiness reports 61/61 compliance-source gates current and a healthy scheduler.
   The only two failed runtime gates are automatic email delivery and the version-matched activity
   registry.

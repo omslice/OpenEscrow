@@ -87,6 +87,20 @@ if (mode === "--source") {
   if (workerConfig.d1_databases || workerConfig.r2_buckets || workerConfig.vars) {
     errors.push("Landing Worker must not declare D1, R2, or runtime variables.");
   }
+  const deployTargets = [workerConfig, ...Object.values(workerConfig.env || {})];
+  if (
+    deployTargets.some(
+      (target) =>
+        target?.workers_dev !== false ||
+        target?.preview_urls !== false ||
+        target?.routes ||
+        target?.route,
+    )
+  ) {
+    errors.push(
+      "Retired landing deployments must disable workers.dev, preview URLs, and public routes.",
+    );
+  }
   if (workerConfig.assets?.binding !== "ASSETS") {
     errors.push("Landing Worker is missing its static ASSETS binding.");
   }

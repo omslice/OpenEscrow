@@ -6,6 +6,7 @@ import {
   waitForExpectedRelease,
   validateDualHostRelease,
   validateHostedRelease,
+  validateRetiredLandingRoute,
 } from "./dual-host-release-core.mjs";
 
 const commitSha = "a".repeat(40);
@@ -145,6 +146,30 @@ test("fails closed when either host lacks exact clean provenance", () => {
         readinessStatus: 503,
       }),
     /readiness returned HTTP 503/,
+  );
+});
+
+test("requires the retired standalone landing route to remain unavailable", () => {
+  assert.deepEqual(
+    validateRetiredLandingRoute({
+      label: "Retired landing Worker",
+      baseUrl: new URL("https://retired.example/"),
+      status: 404,
+    }),
+    {
+      label: "Retired landing Worker",
+      origin: "https://retired.example",
+      status: 404,
+    },
+  );
+  assert.throws(
+    () =>
+      validateRetiredLandingRoute({
+        label: "Retired landing Worker",
+        baseUrl: new URL("https://retired.example/"),
+        status: 200,
+      }),
+    /public route must stay disabled/i,
   );
 });
 
