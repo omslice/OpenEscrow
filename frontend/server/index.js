@@ -6326,6 +6326,12 @@ async function digestSourceResponse(response) {
     .join("");
 }
 
+function hasComplianceSourceValidators(response) {
+  return ["etag", "last-modified"].some((header) =>
+    cleanText(response?.headers?.get(header), 500),
+  );
+}
+
 function validateComplianceSourceDestination(response) {
   const finalUrlText = cleanText(response?.url, 2_000);
   if (!finalUrlText) return;
@@ -6380,6 +6386,20 @@ async function checkComplianceSource(db, sourceRow, now) {
         redirect: "follow",
         signal: controller.signal,
       });
+    }
+    if (response.status === 520) {
+      await response.body?.cancel().catch(() => {});
+      response = await fetch(sourceUrl.toString(), {
+        method: "HEAD",
+        headers: { accept: requestHeaders.accept },
+        redirect: "follow",
+        signal: controller.signal,
+      });
+      if (response.ok && !hasComplianceSourceValidators(response)) {
+        throw new Error(
+          "Official source HEAD response did not include an ETag or Last-Modified validator.",
+        );
+      }
     }
     if (!response.ok) {
       throw new Error(`Official source returned HTTP ${response.status}.`);

@@ -3825,6 +3825,81 @@ test("compliance checks retry an edge-specific 520 without the range header", as
   }
 });
 
+test("compliance checks use a validator-bound HEAD fallback for legacy government servers", async () => {
+  const db = new TestD1();
+  const originalFetch = globalThis.fetch;
+  const requests = [];
+  globalThis.fetch = async (_url, init) => {
+    requests.push(init || {});
+    if (requests.length < 3) {
+      return new Response("edge error", { status: 520 });
+    }
+    return new Response(null, {
+      status: 200,
+      headers: {
+        "content-length": "2365",
+        "content-type": "text/html",
+        etag: '"legacy-source"',
+        "last-modified": "Thu, 19 Mar 2026 15:07:56 GMT",
+      },
+    });
+  };
+
+  try {
+    const checked = await jsonResponse(
+      await worker.fetch(
+        request("/api/compliance/source-status", "POST", {
+          jurisdiction: newYorkProfile.code,
+          profileVersion: newYorkProfile.version,
+        }),
+        {
+          DB: db,
+          COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+        },
+      ),
+    );
+    assert.equal(checked.source.status, "unchanged");
+    assert.equal(checked.source.requiresReview, false);
+    assert.equal(requests.length, 3);
+    assert.equal(requests[2].method, "HEAD");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("compliance checks reject an empty HEAD fallback without source validators", async () => {
+  const db = new TestD1();
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+  globalThis.fetch = async () => {
+    fetchCount += 1;
+    if (fetchCount < 3) return new Response("edge error", { status: 520 });
+    return new Response(null, {
+      status: 200,
+      headers: { "content-length": "2365" },
+    });
+  };
+
+  try {
+    const checked = await jsonResponse(
+      await worker.fetch(
+        request("/api/compliance/source-status", "POST", {
+          jurisdiction: newYorkProfile.code,
+          profileVersion: newYorkProfile.version,
+        }),
+        {
+          DB: db,
+          COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+        },
+      ),
+    );
+    assert.equal(checked.source.status, "unreachable");
+    assert.equal(checked.source.requiresReview, true);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("simultaneous state source requests share one bounded external check", async () => {
   const db = new TestD1();
   await worker.fetch(request("/api/system/readiness"), { DB: db });
