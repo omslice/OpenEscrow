@@ -329,7 +329,9 @@ export function PublicIntro({
             <h3>Built by Omri Gross</h3>
             <p>
               Omri works at the intersection of housing policy, public-interest technology, and
-              blockchain. He created OpenEscrow to demonstrate how verifiable shared systems can
+              blockchain. He has led and coordinated policy, guidance, workflows, tracking,
+              contractor management, and implementation across multiple complex national program
+              environments. He created OpenEscrow to demonstrate how verifiable shared systems can
               reduce confusion and conflict around an everyday housing process.
             </p>
             <p>
