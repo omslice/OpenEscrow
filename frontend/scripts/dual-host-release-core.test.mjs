@@ -38,10 +38,14 @@ test("normalizes HTTPS deployment URLs to an origin root", () => {
   );
 });
 
-test("cache-busts readiness by the exact expected release", () => {
+test("uniquely cache-busts readiness for the exact expected release", () => {
   assert.equal(
-    releaseReadinessUrl(new URL("https://example.test/"), commitSha).href,
-    `https://example.test/api/system/readiness?release_check=${commitSha}`,
+    releaseReadinessUrl(
+      new URL("https://example.test/"),
+      commitSha,
+      "unit-test",
+    ).href,
+    `https://example.test/api/system/readiness?release_check=${commitSha}.unit-test`,
   );
 });
 

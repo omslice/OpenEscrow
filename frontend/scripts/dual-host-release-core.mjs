@@ -16,9 +16,15 @@ export function normalizeBaseUrl(value, label) {
   return url;
 }
 
-export function releaseReadinessUrl(baseUrl, expectedCommit) {
+export function releaseReadinessUrl(
+  baseUrl,
+  expectedCommit,
+  checkId = Date.now().toString(36),
+) {
   const url = new URL("api/system/readiness", baseUrl);
-  if (expectedCommit) url.searchParams.set("release_check", expectedCommit);
+  if (expectedCommit) {
+    url.searchParams.set("release_check", `${expectedCommit}.${checkId}`);
+  }
   return url;
 }
 
