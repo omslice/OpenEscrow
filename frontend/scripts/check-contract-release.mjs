@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 export const CONTRACT_ASSURANCE_SCHEMA = "openescrow.contract-assurance/v1";
 export const EVM_RUNTIME_LIMIT_BYTES = 24_576;
 export const MIN_RUNTIME_MARGIN_BYTES = 2_048;
+export const CONTRACT_COMMAND_TIMEOUT_MS = 10 * 60 * 1_000;
 const DEPENDENCY_LOCK_SCHEMA = "openescrow.contract-dependencies/v1";
 
 const CONTRACTS = Object.freeze([
@@ -149,17 +150,25 @@ export function digestDirectory(directory) {
   };
 }
 
-function commandResult(command, args, options = {}) {
+export function commandResult(command, args, options = {}) {
+  const timeoutMs = options.timeoutMs ?? CONTRACT_COMMAND_TIMEOUT_MS;
   const result = spawnSync(command, args, {
     cwd: options.cwd,
     encoding: "utf8",
     maxBuffer: 64 * 1024 * 1024,
+    timeout: timeoutMs,
+    killSignal: "SIGTERM",
     env: {
       ...process.env,
       FOUNDRY_OFFLINE: "true",
       NO_COLOR: "1",
     },
   });
+  if (result.error?.code === "ETIMEDOUT") {
+    throw new Error(
+      `${path.basename(command)} ${args.join(" ")} timed out after ${timeoutMs}ms.`,
+    );
+  }
   if (result.error || result.status !== 0) {
     const detail = [result.stderr, result.stdout]
       .filter(Boolean)

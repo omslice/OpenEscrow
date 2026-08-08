@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   bytecodeSha256,
   canonicalJson,
+  commandResult,
+  CONTRACT_COMMAND_TIMEOUT_MS,
   EVM_RUNTIME_LIMIT_BYTES,
   MIN_RUNTIME_MARGIN_BYTES,
   parseForgeJson,
@@ -10,6 +12,17 @@ import {
   summarizeForgeTests,
   validateDependencyLock,
 } from "./check-contract-release.mjs";
+
+test("contract assurance bounds stalled external commands", () => {
+  assert.equal(CONTRACT_COMMAND_TIMEOUT_MS, 600_000);
+  assert.throws(
+    () =>
+      commandResult(process.execPath, ["-e", "setTimeout(() => {}, 5000)"], {
+        timeoutMs: 100,
+      }),
+    /timed out after 100ms/,
+  );
+});
 
 test("contract assurance accepts a Foundry warning before an intact JSON report", () => {
   assert.deepEqual(
