@@ -760,10 +760,28 @@ test("the implemented registry covers every state and the District of Columbia",
     "https://cca.hawaii.gov/ocp/landlord-tenant-residential-code/",
   );
   assert.equal(hawaiiProfile.researchedOn, "2026-08-08");
+  const mississippiProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "MS",
+  );
+  assert.equal(mississippiProfile.version, "ms-rules-2026-08-08.v5");
+  assert.equal(
+    mississippiProfile.statuteUrl,
+    "https://www.mid.ms.gov/mississippi-insurance-department/legal/mississippi-code/",
+  );
+  assert.equal(mississippiProfile.researchedOn, "2026-08-08");
+  const northCarolinaProfile = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "NC",
+  );
+  assert.equal(northCarolinaProfile.version, "nc-rules-2026-08-08.v5");
+  assert.equal(
+    northCarolinaProfile.statuteUrl,
+    "https://bulletins.ncrec.gov/north-carolina-tenant-security-deposit-act-a-simple-guide-for-nc-landlords-and-property-managers/",
+  );
+  assert.equal(northCarolinaProfile.researchedOn, "2026-08-08");
   assert.ok(
-    US_JURISDICTION_PROFILES.filter((profile) => profile.postalCode !== "HI").every(
-      (profile) => profile.version.endsWith("rules-2026-07-26.v4"),
-    ),
+    US_JURISDICTION_PROFILES.filter(
+      (profile) => !["HI", "MS", "NC"].includes(profile.postalCode),
+    ).every((profile) => profile.version.endsWith("rules-2026-07-26.v4")),
   );
   assert.ok(US_JURISDICTION_PROFILES.every((profile) => profile.legalReviewRequired));
   for (const profile of US_JURISDICTION_PROFILES) {

@@ -281,6 +281,18 @@ const PROFILE_METADATA_OVERRIDES = Object.freeze({
   MN: Object.freeze({
     statuteCitation: "Minn. Stat. §§ 504B.178, 504B.182",
   }),
+  MS: Object.freeze({
+    version: "ms-rules-2026-08-08.v5",
+    statuteUrl:
+      "https://www.mid.ms.gov/mississippi-insurance-department/legal/mississippi-code/",
+    researchedOn: "2026-08-08",
+  }),
+  NC: Object.freeze({
+    version: "nc-rules-2026-08-08.v5",
+    statuteUrl:
+      "https://bulletins.ncrec.gov/north-carolina-tenant-security-deposit-act-a-simple-guide-for-nc-landlords-and-property-managers/",
+    researchedOn: "2026-08-08",
+  }),
   NJ: Object.freeze({
     statuteUrl: "https://www.nj.gov/dca/codes/publications/pdf_lti/sdepsit_law.pdf",
   }),
