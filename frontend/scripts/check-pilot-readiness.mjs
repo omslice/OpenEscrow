@@ -58,6 +58,21 @@ function minutesLabel(minutes) {
   return `${hours}h ${remaining}m`;
 }
 
+function complianceSourceDetail(complianceSources) {
+  if (complianceSources?.ready !== true) {
+    return `${complianceSources?.blocked ?? "unknown"} source checks block new compliance profiles` +
+      (complianceSources?.lastRunAt
+        ? ` (${minutesLabel(complianceSources.maxVerificationAgeDays * 24 * 60)} max source age)`
+        : "");
+  }
+  const tracked = Number(complianceSources.tracked || 0);
+  const total = Number(complianceSources.total || 0);
+  const manual = Number(complianceSources.manualReviewCurrent || 0);
+  if (manual <= 0) return `${tracked}/${total} automated baselines current`;
+  const automated = Math.max(0, tracked - manual);
+  return `${tracked}/${total} source gates current (${automated} automated baselines; ${manual} time-limited manual review${manual === 1 ? "" : "s"})`;
+}
+
 const checks = [
   {
     label: "Exact deployed release provenance",
@@ -170,12 +185,7 @@ const checks = [
   {
     label: "Official compliance source release gate",
     ready: readiness.complianceSources?.ready === true,
-    detail: readiness.complianceSources?.ready
-      ? `${readiness.complianceSources.tracked}/${readiness.complianceSources.total} sources verified`
-      : `${readiness.complianceSources?.blocked ?? "unknown"} source checks block new compliance profiles` +
-        (readiness.complianceSources?.lastRunAt
-          ? ` (${minutesLabel(readiness.complianceSources.maxVerificationAgeDays * 24 * 60)} max source age)`
-          : ""),
+    detail: complianceSourceDetail(readiness.complianceSources),
     required: true,
     action:
       "Confirm compliance release gate source allowlist and last pull is successful after source refresh.",

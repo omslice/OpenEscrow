@@ -57,6 +57,7 @@ function readyResponse() {
       ready: true,
       tracked: 61,
       total: 61,
+      manualReviewCurrent: 0,
       blocked: 0,
       lastRunAt: "2026-07-30T18:00:00.000Z",
       monitorHealthy: true,
@@ -145,6 +146,32 @@ test("pilot readiness command saves a complete passing artifact to an explicit n
         (check) => check.label === "Evidence encryption and retained keyring",
       )?.ready,
       true,
+    );
+    assert.equal(
+      artifact.checks.find(
+        (check) => check.label === "Official compliance source release gate",
+      )?.detail,
+      "61/61 automated baselines current",
+    );
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+});
+
+test("pilot readiness reports time-limited manual source reviews separately", async () => {
+  const tempDir = await mkdtemp(path.join(tmpdir(), "openescrow-readiness-"));
+  const artifactPath = path.join(tempDir, "manual-source-review.json");
+  const readiness = readyResponse();
+  readiness.complianceSources.manualReviewCurrent = 1;
+  try {
+    const result = await runReadinessCommand(readiness, artifactPath);
+    assert.equal(result.code, 0, result.stderr || result.stdout);
+    const artifact = JSON.parse(await readFile(artifactPath, "utf8"));
+    assert.equal(
+      artifact.checks.find(
+        (check) => check.label === "Official compliance source release gate",
+      )?.detail,
+      "61/61 source gates current (60 automated baselines; 1 time-limited manual review)",
     );
   } finally {
     await rm(tempDir, { recursive: true, force: true });
