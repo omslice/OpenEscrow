@@ -190,6 +190,12 @@ production custody, or reliance on the compliance research as legal advice.
   consumer language. Unreachable sources are shown as needing attention, a failed retry cannot
   leave a stale green result beside its error, simultaneous requests share one bounded check, and
   an older late completion cannot overwrite a newer durable result. No rule content is rewritten.
+- **Verified:** The next New Hampshire profile version replaces a historical 2006 bill page with
+  the General Court's current consolidated RSA 540-A page. The replacement directly covers the
+  statewide deposit cap, receipt and trust-account duties, interest, return and itemization,
+  supporting evidence, exceptions, and remedies, and it accepts the monitor's bounded request.
+  The version change requires a fresh hosted baseline before that profile can finalize a proposal;
+  it does not silently treat the locally reachable page as hosted verification.
 - **Verified:** A new or version-expanded official-source registry now advances in bounded
   four-source batches on the existing fifteen-minute scheduler until every source has an initial
   result, then automatically returns to the daily monitoring cadence. Readiness distinguishes
@@ -343,10 +349,10 @@ production custody, or reliance on the compliance research as legal advice.
   scheduler, the version-matched activity registry, and the complete official-source baseline are
   healthy.
 - **Verified:** The first complete nationwide official-source monitoring pass has finished. Every
-  source except New Hampshire is currently verified; the New Hampshire General Court page remains
-  fail-visible because its server rejects the Cloudflare-origin monitor even though the same
-  official page is reachable outside that network path. This external-source condition is not an
-  owner configuration task and remains scheduled for bounded retries rather than being bypassed.
+  deployed source except New Hampshire is currently verified; its historical General Court bill
+  page remains fail-visible because the server rejects the Cloudflare-origin monitor. The next
+  candidate uses the current consolidated RSA 540-A source above, but remains pending a fresh
+  hosted baseline after the synchronized release. No configuration bypass was added.
 - **Verified:** Hosted-data continuity now has a private, fail-closed verification tool and
   operator procedure. It loads a complete D1 SQL export into isolated memory, creates keyed
   schema/table fingerprints, hashes complete R2 object identifiers and encrypted bytes, checks
