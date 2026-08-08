@@ -39,7 +39,9 @@ provider or hosting control that owns the secret.
   records and R2 evidence must be migrated or may remain in the rollback deployment while the
   owner-hosted Cloudflare pilot starts with a clearly disclosed fresh synthetic dataset. No
   migration or destination overwrite should occur until a complete export and comparison are
-  verified.
+  verified. A tested private manifest tool can now compare complete D1/R2 exports using keyed
+  fingerprints without exposing record values; the remaining unknown is whether Sites will supply
+  a complete export. See [`hosted-data-continuity.md`](./hosted-data-continuity.md).
 - [x] **Add the canonical Cloudflare app origin to Privy — completed 2026-08-08.**
   `https://openescrow.omslice.workers.dev` is now an allowed origin for the existing OpenEscrow
   Privy application. The live Google account chooser was verified from Cloudflare without a

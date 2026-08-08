@@ -335,6 +335,12 @@ production custody, or reliance on the compliance research as legal advice.
   expected local release commit. The transitional release rule requires both public hosts to be
   updated from one clean commit before a normal release is reported delivered; hosted data and
   rollback histories remain independent.
+- **Verified:** Hosted-data continuity now has a private, fail-closed verification tool and
+  operator procedure. It loads a complete D1 SQL export into isolated memory, creates keyed
+  schema/table fingerprints, hashes complete R2 object identifiers and encrypted bytes, checks
+  every D1 evidence reference, omits raw private values from manifests, and distinguishes a match,
+  mismatch, and incomplete provider export. It performs no import or provider mutation. Sites
+  export availability and the owner's continuity choice remain external gates.
 - **Verified:** The unified application now treats the project explanation as public app content
   and an authenticated `About` workspace tab. It is the sole intended Cloudflare website; the
   standalone landing Worker is not a public fallback.
@@ -374,7 +380,8 @@ production custody, or reliance on the compliance research as legal advice.
   `https://openescrow.omslice.workers.dev/`, to an owner-selected custom domain.
 - Whether the Sites-managed D1 and R2 resources expose a complete owner-accessible export path;
   without a verified export, the Cloudflare pilot must use a disclosed fresh synthetic dataset
-  while the Sites deployment remains the historical record.
+  while the Sites deployment remains the historical record. The comparison tooling is ready but
+  intentionally cannot turn a partial provider export into continuity evidence.
 - First pilot cities/counties and tenancy segment.
 - The authoritative property-timezone source and qualified local civil-time/DST interpretation
   for each pilot market. The candidate stores explicit instants deterministically but does not

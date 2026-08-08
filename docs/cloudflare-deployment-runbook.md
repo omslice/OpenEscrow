@@ -87,6 +87,9 @@ record an explicit emergency exception; never silently let the two public applic
 
 The two hosts retain independent deployments, databases, object stores, secrets, and rollback
 histories. Matching application source does not imply that their hosted records have been copied.
+Use the private, fail-closed [hosted-data continuity procedure](./hosted-data-continuity.md) if a
+complete Sites export becomes available. The comparison command fingerprints D1 rows and encrypted
+R2 bytes without publishing their values; it never imports, overwrites, or deletes provider data.
 
 ## Secrets and provider configuration
 

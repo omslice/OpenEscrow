@@ -64,6 +64,10 @@ The single application includes:
 - Never infer that the Sites D1/R2 data was copied to Cloudflare.
 - If a complete export becomes available, rehearse import into staging and compare sanitized row,
   object, and content fingerprints before accepting it.
+- The repository includes a fail-closed, HMAC-keyed D1/R2 manifest and comparison procedure in
+  [hosted-data continuity verification](./hosted-data-continuity.md). It omits private values and
+  rejects partial R2 inventories; it does not perform an import or make an unavailable Sites
+  export complete.
 - Otherwise, disclose that Cloudflare starts with fresh synthetic data and retain Sites as the
   historical testnet record.
 - No migration step may overwrite either source or destination without verified backup and an
