@@ -4,10 +4,21 @@ export type ComplianceSourceEntry = {
   jurisdiction: string;
   citation: string;
   url: string;
-  status: "pending" | "unchanged" | "changed" | "unreachable";
+  status:
+    | "pending"
+    | "unchanged"
+    | "changed"
+    | "unreachable"
+    | "manual-review-current";
   lastCheckedAt: string | null;
   lastVerifiedAt: string | null;
   requiresReview: boolean;
+  monitoringException: {
+    kind: "reviewed-origin-incompatibility";
+    reviewedAt: string;
+    expiresAt: string;
+    note: string;
+  } | null;
 };
 
 export type ComplianceOverlayVersion = {
@@ -29,7 +40,13 @@ export type ExpectedComplianceSource = {
   url: string;
 };
 
-const SOURCE_STATUSES = new Set(["pending", "unchanged", "changed", "unreachable"]);
+const SOURCE_STATUSES = new Set([
+  "pending",
+  "unchanged",
+  "changed",
+  "unreachable",
+  "manual-review-current",
+]);
 const INVALID_SOURCE_RESPONSE =
   "OpenEscrow could not verify that this source check matches the selected compliance profile. Try again.";
 
@@ -38,6 +55,29 @@ function isNullableTimestamp(value: unknown): value is string | null {
   if (typeof value !== "string") return false;
   const timestamp = Date.parse(value);
   return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+}
+
+function isTimestamp(value: unknown): value is string {
+  return value !== null && isNullableTimestamp(value);
+}
+
+function hasValidMonitoringException(source: ComplianceSourceEntry): boolean {
+  const exception = source.monitoringException;
+  if (source.status !== "manual-review-current") return exception === null;
+  if (
+    !exception ||
+    exception.kind !== "reviewed-origin-incompatibility" ||
+    typeof exception.note !== "string" ||
+    !exception.note.trim() ||
+    !isTimestamp(exception.reviewedAt) ||
+    !isTimestamp(exception.expiresAt)
+  ) {
+    return false;
+  }
+  const reviewedAt = Date.parse(exception.reviewedAt);
+  const expiresAt = Date.parse(exception.expiresAt);
+  const checkedAt = source.lastCheckedAt ? Date.parse(source.lastCheckedAt) : Number.NaN;
+  return reviewedAt < expiresAt && checkedAt >= reviewedAt && checkedAt <= expiresAt;
 }
 
 function isConsistentSourceState(
@@ -49,7 +89,14 @@ function isConsistentSourceState(
   const lastVerifiedAt = source.lastVerifiedAt
     ? Date.parse(source.lastVerifiedAt)
     : null;
-  if (source.requiresReview !== (source.status !== "unchanged")) return false;
+  const reviewIsCurrent = source.status === "manual-review-current";
+  if (
+    source.requiresReview !==
+    (source.status !== "unchanged" && !reviewIsCurrent)
+  ) {
+    return false;
+  }
+  if (!hasValidMonitoringException(source)) return false;
   if (lastVerifiedAt !== null && lastCheckedAt === null) return false;
   if (
     lastCheckedAt !== null &&
@@ -68,6 +115,7 @@ function isConsistentSourceState(
   if (source.status === "changed" || source.status === "unreachable") {
     return lastCheckedAt !== null;
   }
+  if (reviewIsCurrent) return lastCheckedAt !== null;
   return true;
 }
 
@@ -108,6 +156,7 @@ function isExactComplianceSourceStatus(
             isNullableTimestamp(item.lastCheckedAt) &&
             isNullableTimestamp(item.lastVerifiedAt) &&
             typeof item.requiresReview === "boolean" &&
+            Object.prototype.hasOwnProperty.call(item, "monitoringException") &&
             isConsistentSourceState(item),
         );
       }) &&
@@ -176,6 +225,9 @@ export function complianceSourceStatusMessage(
   if (source.status === "unreachable") {
     return "The official source could not be reached. The recorded profile remains unchanged.";
   }
+  if (source.status === "manual-review-current") {
+    return "OpenEscrow reviewed this official source manually because its website blocks automated checks. The recorded profile remains unchanged.";
+  }
   return "The official source still needs its first successful check.";
 }
 
@@ -192,6 +244,23 @@ export function complianceSourceStatusSummary(
   }
   if (sources.some((source) => source.status === "pending")) {
     return "Some official sources still need their first successful check.";
+  }
+  if (
+    sources.every(
+      (source) =>
+        source.status === "unchanged" || source.status === "manual-review-current",
+    )
+  ) {
+    const manualSource = sources.find(
+      (source) => source.status === "manual-review-current",
+    );
+    const reviewDue = manualSource?.monitoringException?.expiresAt
+      ? new Intl.DateTimeFormat("en-US", {
+          dateStyle: "long",
+          timeZone: "UTC",
+        }).format(new Date(manualSource.monitoringException.expiresAt))
+      : "the recorded expiry date";
+    return `The reviewed requirements are current. One official website blocks automated checks, so OpenEscrow is using a time-limited manual review for that source. Recheck due ${reviewDue}.`;
   }
   return "Some official sources could not be reached. The recorded requirements remain unchanged.";
 }

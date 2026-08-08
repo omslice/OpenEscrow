@@ -162,5 +162,5 @@ export function formatComplianceIssueSummary(
   serviceReadiness: ServiceReadiness["complianceSources"] | null | undefined,
 ): string {
   if (!serviceReadiness) return "No compliance source snapshot is available.";
-  return `${serviceReadiness.pending} pending, ${serviceReadiness.changed} changed, ${serviceReadiness.unreachable} unreachable, ${serviceReadiness.stale} stale, ${serviceReadiness.blocked} blocked.`;
+  return `${serviceReadiness.pending} pending, ${serviceReadiness.changed} changed, ${serviceReadiness.unreachable} unreachable (${serviceReadiness.manualReviewCurrent} covered by current manual review), ${serviceReadiness.stale} stale, ${serviceReadiness.blocked} blocked.`;
 }

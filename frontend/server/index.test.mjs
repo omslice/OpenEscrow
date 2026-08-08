@@ -708,6 +708,9 @@ const newYorkAddressResolution = {
 const newYorkProfile = US_JURISDICTION_PROFILES.find(
   (profile) => profile.postalCode === "NY",
 );
+const newHampshireProfile = US_JURISDICTION_PROFILES.find(
+  (profile) => profile.postalCode === "NH",
+);
 const newYorkComplianceFacts = {
   housingProgram: "housing-choice-voucher",
   propertyType: "standard-residential",
@@ -778,15 +781,20 @@ test("the implemented registry covers every state and the District of Columbia",
     "https://bulletins.ncrec.gov/north-carolina-tenant-security-deposit-act-a-simple-guide-for-nc-landlords-and-property-managers/",
   );
   assert.equal(northCarolinaProfile.researchedOn, "2026-08-08");
-  const newHampshireProfile = US_JURISDICTION_PROFILES.find(
-    (profile) => profile.postalCode === "NH",
-  );
-  assert.equal(newHampshireProfile.version, "nh-rules-2026-08-08.v10");
+  assert.equal(newHampshireProfile.version, "nh-rules-2026-08-08.v11");
   assert.equal(
     newHampshireProfile.statuteUrl,
     "https://gc.nh.gov/rsa/html/LV/540-A/540-A-7.htm",
   );
   assert.equal(newHampshireProfile.researchedOn, "2026-08-08");
+  assert.deepEqual(newHampshireProfile.sourceMonitoringException, {
+    kind: "reviewed-origin-incompatibility",
+    reviewedAt: "2026-08-08T13:30:24.766Z",
+    expiresAt: "2026-08-29T13:30:24.766Z",
+    acceptableErrors: ["Official source returned HTTP 520."],
+    note:
+      "The official New Hampshire statute page is available to ordinary browsers but currently rejects Cloudflare Workers source checks.",
+  });
   const nevadaProfile = US_JURISDICTION_PROFILES.find(
     (profile) => profile.postalCode === "NV",
   );
@@ -976,6 +984,10 @@ test("the compliance source registry maps every versioned profile and overlay so
     assert.equal(sourceItem.jurisdiction, profile.code);
     assert.equal(sourceItem.version, profile.version);
     assert.equal(sourceItem.url, profile.statuteUrl);
+    assert.deepEqual(
+      sourceItem.monitoringException,
+      profile.sourceMonitoringException || null,
+    );
   }
   for (const overlay of [
     ...FEDERAL_COMPLIANCE_OVERLAYS,
@@ -3896,6 +3908,178 @@ test("compliance checks reject an empty HEAD fallback without source validators"
     assert.equal(checked.source.status, "unreachable");
     assert.equal(checked.source.requiresReview, true);
   } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a time-limited New Hampshire manual review stays transparent and fails closed when stale", async () => {
+  const db = new TestD1();
+  const originalFetch = globalThis.fetch;
+  const originalDateNow = Date.now;
+  const now = Date.parse("2026-08-09T12:00:00.000Z");
+  let fetchCount = 0;
+  Date.now = () => now;
+  globalThis.fetch = async () => {
+    fetchCount += 1;
+    return new Response("edge error", { status: 520 });
+  };
+
+  try {
+    const checked = await jsonResponse(
+      await worker.fetch(
+        request("/api/compliance/source-status", "POST", {
+          jurisdiction: newHampshireProfile.code,
+          profileVersion: newHampshireProfile.version,
+        }),
+        {
+          DB: db,
+          COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+        },
+      ),
+    );
+    assert.equal(fetchCount, 3);
+    assert.equal(checked.source.status, "manual-review-current");
+    assert.equal(checked.source.requiresReview, false);
+    assert.equal(checked.source.lastVerifiedAt, null);
+    assert.deepEqual(checked.source.monitoringException, {
+      kind: "reviewed-origin-incompatibility",
+      reviewedAt: "2026-08-08T13:30:24.766Z",
+      expiresAt: "2026-08-29T13:30:24.766Z",
+      note:
+        "The official New Hampshire statute page is available to ordinary browsers but currently rejects Cloudflare Workers source checks.",
+    });
+
+    const unsignedAddress = {
+      provider: "photon-openstreetmap",
+      providerFeatureId: "W:nh-123",
+      label: "1 Capitol Street, Concord, NH 03301",
+      countryCode: "US",
+      stateCode: "NH",
+      city: "Concord",
+      county: "Merrimack County",
+      postalCode: "03301",
+      latitude: 43.2081,
+      longitude: -71.5376,
+    };
+    const addressResolution = {
+      ...unsignedAddress,
+      attestation: await createAddressAttestation(
+        unsignedAddress,
+        TEST_ADDRESS_ATTESTATION_SECRET,
+      ),
+    };
+    const complianceFacts = {
+      housingProgram: "conventional",
+      propertyType: "standard-residential",
+      tenancyType: "fixed-term",
+      unitCount: 4,
+      ownerOccupied: false,
+      furnished: false,
+      assistanceAnimalAccommodation: false,
+      scraQualifiedTermination: false,
+    };
+    const newHampshireTerms = {
+      ...terms,
+      jurisdiction: newHampshireProfile.code,
+      policyVersion: newHampshireProfile.version,
+      propertyAddress: addressResolution.label,
+      addressResolution,
+      complianceFacts,
+      complianceSnapshot: buildComplianceSnapshot(
+        newHampshireProfile,
+        addressResolution,
+        { facts: complianceFacts },
+      ),
+      claimDays: "30",
+    };
+    const proposalBody = {
+      landlordName: "Lena Landlord",
+      landlordEmail: "landlord@example.com",
+      tenantName: "Terry Tenant",
+      tenantEmail: "tenant@example.com",
+      arbiterName: "",
+      arbiterEmail: null,
+      terms: newHampshireTerms,
+    };
+    const currentProposal = await worker.fetch(
+      request("/api/negotiations", "POST", proposalBody),
+      {
+        DB: db,
+        ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+        COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+      },
+    );
+    assert.equal(currentProposal.status, 201);
+
+    const checkedAt = new Date(now).toISOString();
+    await db
+      .prepare(
+        `UPDATE compliance_source_checks
+         SET baseline_signature = 'stable', current_signature = 'stable',
+             status = 'unchanged', last_checked_at = ?, last_verified_at = ?,
+             error = NULL`,
+      )
+      .bind(checkedAt, checkedAt)
+      .run();
+    await db
+      .prepare(
+        `UPDATE compliance_source_checks
+         SET baseline_signature = NULL, current_signature = NULL,
+             status = 'unreachable', last_checked_at = ?, last_verified_at = NULL,
+             error = 'Official source returned HTTP 520.'
+         WHERE source_key = 'state:nh'`,
+      )
+      .bind(checkedAt)
+      .run();
+    await db
+      .prepare(
+        "INSERT OR REPLACE INTO scheduled_job_runs (name, last_started_at) VALUES (?, ?)",
+      )
+      .bind("compliance-source-monitor", checkedAt)
+      .run();
+
+    const readiness = await jsonResponse(
+      await worker.fetch(request("/api/system/readiness"), {
+        DB: db,
+        COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+        VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+      }),
+    );
+    assert.equal(readiness.complianceSources.unreachable, 1);
+    assert.equal(readiness.complianceSources.manualReviewCurrent, 1);
+    assert.equal(readiness.complianceSources.stale, 0);
+    assert.equal(readiness.complianceSources.blocked, 0);
+    assert.equal(readiness.complianceSources.ready, true);
+
+    const staleCheck = new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString();
+    await db
+      .prepare(
+        "UPDATE compliance_source_checks SET last_checked_at = ? WHERE source_key = 'state:nh'",
+      )
+      .bind(staleCheck)
+      .run();
+    const staleReadiness = await jsonResponse(
+      await worker.fetch(request("/api/system/readiness"), {
+        DB: db,
+        COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+        VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+      }),
+    );
+    assert.equal(staleReadiness.complianceSources.manualReviewCurrent, 0);
+    assert.equal(staleReadiness.complianceSources.blocked, 1);
+    assert.equal(staleReadiness.complianceSources.ready, false);
+
+    const staleProposal = await worker.fetch(
+      request("/api/negotiations", "POST", proposalBody),
+      {
+        DB: db,
+        ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+        COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+      },
+    );
+    assert.equal(staleProposal.status, 503);
+  } finally {
+    Date.now = originalDateNow;
     globalThis.fetch = originalFetch;
   }
 });

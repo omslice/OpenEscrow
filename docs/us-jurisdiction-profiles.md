@@ -212,7 +212,7 @@ source enters the 15-minute bootstrap path immediately rather than waiting for
 the next daily pass. The monitor never automatically edits a rule.
 The public readiness response reports the configured state, source count,
 changed count, unreachable count, pending count, stale count, blocking count,
-and last run time.
+current time-limited manual-review count, and last run time.
 
 The first successful check establishes a baseline. A later signature change is
 an alert for a new official-source review and profile version, not proof that
@@ -238,7 +238,8 @@ changed in this maintenance release:
 
 When monitoring is enabled, new, revised, and finalizing address-routed
 agreements fail closed unless every statewide and applicable overlay source in
-their exact snapshot has a successful verification no more than 21 days old.
+their exact snapshot has a successful verification no more than 21 days old or
+the narrow, current manual-review exception described below.
 A detected change blocks that profile until its rule review produces a new
 profile or overlay version. Replacing an official source URL is an auditable
 overlay or profile release and therefore requires a new version even when the
@@ -247,6 +248,17 @@ old baseline so the replacement must be checked from scratch. A temporary source
 outage may use the last successful signature during the 21-day window; once
 that window expires, the profile is blocked until the source can be verified
 again. Generic test agreements are not subject to this release gate.
+
+New Hampshire is the only current exception. Its exact RSA 540-A:7 source
+returns HTTP 520 to Cloudflare Workers even for plain GET and HEAD requests.
+Profile `nh-rules-2026-08-08.v11` therefore records a visible manual review that
+expires on 2026-08-29. The exception is valid only for that version, URL, and
+exact failure while the automated retry is less than 48 hours old. It neither
+claims an automated verification nor establishes a stored content baseline. A
+different error, a stale retry, a version or URL change, or expiry blocks the
+profile again. The UI and readiness response report this state separately as
+`manual-review-current` while the database retains the underlying
+`unreachable` result.
 
 Before the wallet is asked to create an onchain agreement, the landlord client
 runs a server preflight for the exact approved revision. A successful preflight
@@ -269,9 +281,10 @@ arithmetic. The lifecycle-event API likewise accepts only triggers present in
 that exact snapshot.
 
 The pilot-readiness check requires monitoring to be enabled, every registered
-source to be baselined and current, no blocking source state, and a successful
-monitor run within the previous 48 hours. This gate detects source-page drift;
-it does not determine what changed or update legal rules without a new review.
+source to be baselined and current or covered by the narrow current exception
+above, no blocking source state, and a successful monitor run within the
+previous 48 hours. This gate detects source-page drift; it does not determine
+what changed or update legal rules without a new review.
 
 ## Contract limitation
 

@@ -141,6 +141,7 @@ export interface ServiceReadiness {
     tracked: number;
     changed: number;
     unreachable: number;
+    manualReviewCurrent: number;
     pending: number;
     stale: number;
     blocked: number;

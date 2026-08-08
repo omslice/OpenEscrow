@@ -56,6 +56,7 @@ const baseReadiness = (): ServiceReadiness => ({
     tracked: 60,
     changed: 0,
     unreachable: 0,
+    manualReviewCurrent: 0,
     pending: 0,
     stale: 0,
     blocked: 0,
@@ -106,7 +107,7 @@ test("formatComplianceIssueSummary uses all source counters", () => {
   compliance.blocked = 5;
   assert.equal(
     formatComplianceIssueSummary(compliance),
-    "1 pending, 2 changed, 3 unreachable, 4 stale, 5 blocked.",
+    "1 pending, 2 changed, 3 unreachable (0 covered by current manual review), 4 stale, 5 blocked.",
   );
 });
 

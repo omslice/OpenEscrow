@@ -294,9 +294,19 @@ const PROFILE_METADATA_OVERRIDES = Object.freeze({
     researchedOn: "2026-08-08",
   }),
   NH: Object.freeze({
-    version: "nh-rules-2026-08-08.v10",
+    version: "nh-rules-2026-08-08.v11",
     statuteUrl: "https://gc.nh.gov/rsa/html/LV/540-A/540-A-7.htm",
     researchedOn: "2026-08-08",
+    sourceMonitoringException: Object.freeze({
+      kind: "reviewed-origin-incompatibility",
+      reviewedAt: "2026-08-08T13:30:24.766Z",
+      expiresAt: "2026-08-29T13:30:24.766Z",
+      acceptableErrors: Object.freeze([
+        "Official source returned HTTP 520.",
+      ]),
+      note:
+        "The official New Hampshire statute page is available to ordinary browsers but currently rejects Cloudflare Workers source checks.",
+    }),
   }),
   NJ: Object.freeze({
     statuteUrl: "https://www.nj.gov/dca/codes/publications/pdf_lti/sdepsit_law.pdf",

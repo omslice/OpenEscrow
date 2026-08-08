@@ -349,10 +349,14 @@ production custody, or reliance on the compliance research as legal advice.
   scheduler, the version-matched activity registry, and the complete official-source baseline are
   healthy.
 - **Verified:** The first complete nationwide official-source monitoring pass has finished. Every
-  deployed source except New Hampshire is currently verified; its historical General Court bill
-  page remains fail-visible because the server rejects the Cloudflare-origin monitor. The next
-  candidate uses the current consolidated RSA 540-A source above, but remains pending a fresh
-  hosted baseline after the synchronized release. No configuration bypass was added.
+  deployed source except New Hampshire has an automated baseline. New Hampshire now cites the
+  precise official RSA 540-A:7 page. A disposable Cloudflare probe confirmed on 2026-08-08 that
+  the General Court origin returns HTTP 520 to ranged GET, plain GET, and HEAD requests from
+  Cloudflare even though the page remains reachable from ordinary clients. The candidate records
+  that limitation as a visible, version-bound manual review through 2026-08-29. It qualifies only
+  for the exact official URL and 520 error while a hosted retry is less than 48 hours old; expiry,
+  a different failure, a source/version mismatch, or a stale retry closes readiness and proposal
+  creation again. Readiness reports this separately from an automated baseline.
 - **Verified:** Hosted-data continuity now has a private, fail-closed verification tool and
   operator procedure. It loads a complete D1 SQL export into isolated memory, creates keyed
   schema/table fingerprints, hashes complete R2 object identifiers and encrypted bytes, checks
@@ -379,8 +383,9 @@ production custody, or reliance on the compliance research as legal advice.
 - **Planned:** Complete the remaining hosted pilot gates listed in
   [owner actions](./owner-actions.md): notification delivery and a version-matched activity
   registry. Keep the already verified scheduler, private-R2 evidence encryption and retained-key
-  recovery, and address attestation healthy. Continue bounded retries for the one externally
-  unreachable official source without weakening the fail-closed source gate.
+  recovery, and address attestation healthy. Keep bounded retries active for New Hampshire, replace
+  its expiring manual-review exception with an automated primary-source baseline when the official
+  origin becomes compatible, and re-review it before the exception expires.
 - **Planned:** Run the separate-account landlord/tenant pilot, moderated accessibility/usability
   sessions, and the owner-led incident/privacy drill. Record stop conditions and remediation.
 - **Planned:** Evaluate one eligible provider sandbox using worthless testnet assets only.

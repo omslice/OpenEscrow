@@ -594,6 +594,7 @@ const PRIVY_JWKS_TIMEOUT_MS = 3_000;
 const PRIVY_JWKS_CACHE_LIMIT = 8;
 const JSON_RPC_RESPONSE_LIMIT_BYTES = 512 * 1024;
 const COMPLIANCE_SOURCE_FRESHNESS_MS = 21 * 24 * 60 * 60 * 1000;
+const COMPLIANCE_SOURCE_EXCEPTION_RECHECK_MS = 48 * 60 * 60 * 1000;
 const DEFAULT_BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org";
 const FALLBACK_BASE_SEPOLIA_RPC_URL = "https://base-sepolia-rpc.publicnode.com";
 const BASE_SEPOLIA_CHAIN_ID_HEX = "0x14a34";
@@ -2362,6 +2363,54 @@ function requiredComplianceSources(terms) {
   );
 }
 
+function currentComplianceSourceMonitoringException(
+  sourceItem,
+  row,
+  now = new Date(Date.now()),
+) {
+  const exception = sourceItem?.monitoringException;
+  const note = cleanText(exception?.note, 500);
+  if (
+    !exception ||
+    exception.kind !== "reviewed-origin-incompatibility" ||
+    !row ||
+    row.profile_version !== sourceItem.version ||
+    row.url !== sourceItem.url ||
+    row.status !== "unreachable" ||
+    !note ||
+    !Array.isArray(exception.acceptableErrors) ||
+    !exception.acceptableErrors.includes(cleanText(row.error, 300))
+  ) {
+    return null;
+  }
+
+  const nowMs = now.getTime();
+  const reviewedAtMs = Date.parse(exception.reviewedAt);
+  const expiresAtMs = Date.parse(exception.expiresAt);
+  const lastCheckedAtMs = Date.parse(row.last_checked_at);
+  if (
+    !Number.isFinite(nowMs) ||
+    !Number.isFinite(reviewedAtMs) ||
+    !Number.isFinite(expiresAtMs) ||
+    !Number.isFinite(lastCheckedAtMs) ||
+    reviewedAtMs > nowMs ||
+    expiresAtMs <= reviewedAtMs ||
+    expiresAtMs < nowMs ||
+    lastCheckedAtMs < reviewedAtMs ||
+    lastCheckedAtMs > nowMs ||
+    nowMs - lastCheckedAtMs > COMPLIANCE_SOURCE_EXCEPTION_RECHECK_MS
+  ) {
+    return null;
+  }
+
+  return {
+    kind: exception.kind,
+    reviewedAt: exception.reviewedAt,
+    expiresAt: exception.expiresAt,
+    note,
+  };
+}
+
 function complianceEventKeysForSnapshot(snapshot) {
   if (
     !isVersionedComplianceSnapshot(snapshot) ||
@@ -2382,7 +2431,7 @@ function complianceEventKeysForSnapshot(snapshot) {
   );
 }
 
-async function complianceSourceGate(terms, env, now = new Date()) {
+async function complianceSourceGate(terms, env, now = new Date(Date.now())) {
   if (
     terms?.jurisdiction === GENERIC_TEST_POLICY.jurisdiction ||
     env.COMPLIANCE_SOURCE_MONITOR_ENABLED !== "true"
@@ -2412,7 +2461,7 @@ async function complianceSourceGate(terms, env, now = new Date()) {
       env.DB
         .prepare(
           `SELECT source_key, profile_version, url, baseline_signature,
-                  current_signature, status, last_verified_at
+                  current_signature, status, last_checked_at, last_verified_at, error
            FROM compliance_source_checks WHERE source_key = ?`,
         )
         .bind(sourceItem.key)
@@ -2427,12 +2476,21 @@ async function complianceSourceGate(terms, env, now = new Date()) {
       ? new Date(row.last_verified_at).getTime()
       : Number.NaN;
     let status = cleanText(row?.status, 40) || "pending";
+    let monitoringException = null;
     if (
       !row ||
       row.profile_version !== sourceItem.version ||
       row.url !== sourceItem.url
     ) {
       status = "pending";
+    } else if (
+      (monitoringException = currentComplianceSourceMonitoringException(
+        sourceItem,
+        row,
+        now,
+      ))
+    ) {
+      status = "manual-review-current";
     } else if (status !== "changed" && (
       !row.baseline_signature ||
       row.baseline_signature !== row.current_signature
@@ -2449,21 +2507,25 @@ async function complianceSourceGate(terms, env, now = new Date()) {
       key: sourceItem.key,
       citation: sourceItem.citation,
       status,
+      lastCheckedAt: row?.last_checked_at || null,
       lastVerifiedAt: row?.last_verified_at || null,
+      monitoringException,
     };
   });
   return {
     allowed: sources.every(
       (sourceItem) =>
         sourceItem.status === "unchanged" ||
-        sourceItem.status === "unreachable",
+        sourceItem.status === "unreachable" ||
+        sourceItem.status === "manual-review-current",
     ),
     enforced: true,
     sources,
     reason: sources.find(
       (sourceItem) =>
         sourceItem.status !== "unchanged" &&
-        sourceItem.status !== "unreachable",
+        sourceItem.status !== "unreachable" &&
+        sourceItem.status !== "manual-review-current",
     )?.status,
   };
 }
@@ -2560,16 +2622,23 @@ async function complianceSourceStatus(request, env) {
       !Number.isFinite(lastCheckedMs) ||
       Date.now() - lastCheckedMs >= minimumRefreshIntervalMs
     ) {
-      await checkComplianceSourceOnce(env.DB, row, new Date());
+      await checkComplianceSourceOnce(env.DB, row, new Date(Date.now()));
       row = await env.DB
         .prepare("SELECT * FROM compliance_source_checks WHERE source_key = ?")
         .bind(sourceItem.key)
         .first();
     }
     const storedStatus = cleanText(row?.status, 40) || "pending";
-    const status = COMPLIANCE_SOURCE_STATUS_VALUES.has(storedStatus)
-      ? storedStatus
-      : "pending";
+    const monitoringException = currentComplianceSourceMonitoringException(
+      sourceItem,
+      row,
+      new Date(Date.now()),
+    );
+    const status = monitoringException
+      ? "manual-review-current"
+      : COMPLIANCE_SOURCE_STATUS_VALUES.has(storedStatus)
+        ? storedStatus
+        : "pending";
     sourceRows.push({
       key: sourceItem.key,
       scope: sourceItem.scope,
@@ -2579,7 +2648,9 @@ async function complianceSourceStatus(request, env) {
       status,
       lastCheckedAt: row?.last_checked_at || null,
       lastVerifiedAt: row?.last_verified_at || null,
-      requiresReview: status !== "unchanged",
+      requiresReview:
+        status !== "unchanged" && status !== "manual-review-current",
+      monitoringException,
     });
   }
 
@@ -3313,6 +3384,7 @@ async function serviceReadiness(env) {
     tracked: 0,
     changed: 0,
     unreachable: 0,
+    manualReviewCurrent: 0,
     pending: 0,
     stale: 0,
     blocked: 0,
@@ -3345,7 +3417,7 @@ async function serviceReadiness(env) {
     const sourceRows = await env.DB
       .prepare(
         `SELECT source_key, profile_version, url, baseline_signature,
-                current_signature, status, last_verified_at
+                current_signature, status, last_checked_at, last_verified_at, error
          FROM compliance_source_checks`,
       )
       .all();
@@ -3357,6 +3429,7 @@ async function serviceReadiness(env) {
     let tracked = 0;
     let changed = 0;
     let unreachable = 0;
+    let manualReviewCurrent = 0;
     let pending = 0;
     let stale = 0;
     for (const expected of COMPLIANCE_SOURCE_REGISTRY) {
@@ -3371,21 +3444,28 @@ async function serviceReadiness(env) {
         : Number.NaN;
       const versionMatches =
         expected.version === row.profile_version && expected.url === row.url;
+      const monitoringException = currentComplianceSourceMonitoringException(
+        expected,
+        row,
+        new Date(sourceEvaluationTime),
+      );
       const signatureMatches = Boolean(
         row.baseline_signature &&
           row.baseline_signature === row.current_signature,
       );
       if (row.status === "changed") changed += 1;
       if (row.status === "unreachable") unreachable += 1;
+      if (monitoringException) manualReviewCurrent += 1;
       if (row.status === "pending") pending += 1;
       const isStale =
-        !Number.isFinite(verifiedAt) ||
-        verifiedAt < staleBefore ||
-        verifiedAt > sourceEvaluationTime;
+        !monitoringException &&
+        (!Number.isFinite(verifiedAt) ||
+          verifiedAt < staleBefore ||
+          verifiedAt > sourceEvaluationTime);
       if (isStale) stale += 1;
       if (
         !versionMatches ||
-        !signatureMatches ||
+        (!monitoringException && !signatureMatches) ||
         row.status === "changed" ||
         row.status === "pending" ||
         isStale
@@ -3397,6 +3477,7 @@ async function serviceReadiness(env) {
       tracked,
       changed,
       unreachable,
+      manualReviewCurrent,
       pending,
       stale,
       blocked: blockedKeys.size,

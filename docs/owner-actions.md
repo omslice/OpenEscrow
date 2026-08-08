@@ -73,6 +73,12 @@ provider or hosting control that owns the secret.
   State law is routed nationwide, but only Chicago, Seattle, and Portland have
   reviewed city overlays. Name the cities/counties most likely to be used in
   the first pilot so Codex can prioritize official-source local profiles.
+- [ ] **Resolve the New Hampshire source exception before 2026-08-29.** The exact official RSA
+  page currently returns HTTP 520 to Cloudflare Workers. The testnet candidate reports a narrow
+  manual review only while hosted retries remain fresh and will fail closed after the fixed
+  expiry. Before then, have a qualified reviewer confirm the cited rule and either approve a new
+  reviewed profile release or select a trustworthy primary-source monitoring path that Cloudflare
+  can reach. Do not turn the monitor off or mark the database successful by hand.
 - [ ] **Approve a property-timezone source and local-time policy for the pilot.** The candidate
   rejects ambiguous stored timestamps and shows the participant's device timezone, but it cannot
   yet attest that the device and property share the same IANA timezone or decide how a legal

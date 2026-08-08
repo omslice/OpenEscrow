@@ -16,6 +16,7 @@ const source = {
   lastCheckedAt: "2026-07-30T00:00:00.000Z",
   lastVerifiedAt: "2026-07-30T00:00:00.000Z",
   requiresReview: false,
+  monitoringException: null,
 } as const;
 
 test("compliance source messages never claim changed rules were automatically adopted", () => {
@@ -34,6 +35,26 @@ test("compliance source messages never claim changed rules were automatically ad
   assert.match(
     complianceSourceStatusMessage({ ...source, status: "unreachable" }),
     /recorded profile remains unchanged/i,
+  );
+  const manuallyReviewed = {
+    ...source,
+    status: "manual-review-current",
+    lastCheckedAt: "2026-08-08T14:00:00.000Z",
+    lastVerifiedAt: null,
+    monitoringException: {
+      kind: "reviewed-origin-incompatibility",
+      reviewedAt: "2026-08-08T13:30:24.766Z",
+      expiresAt: "2026-08-29T13:30:24.766Z",
+      note: "The official website blocks automated checks.",
+    },
+  } as const;
+  assert.match(
+    complianceSourceStatusMessage(manuallyReviewed),
+    /reviewed.*manually/i,
+  );
+  assert.match(
+    complianceSourceStatusSummary([manuallyReviewed]),
+    /time-limited manual review/i,
   );
   assert.match(
     complianceSourceStatusSummary([
@@ -123,6 +144,12 @@ test("source check responses must match the requested profile and official sourc
         status: "pending",
         requiresReview: true,
         lastCheckedAt: null,
+      },
+      {
+        ...source,
+        status: "manual-review-current",
+        lastVerifiedAt: null,
+        monitoringException: null,
       },
     ] as const;
     for (const inconsistentSource of inconsistentSources) {
