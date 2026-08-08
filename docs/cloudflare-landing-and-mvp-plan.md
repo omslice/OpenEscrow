@@ -76,10 +76,14 @@ The landing site needs no database, object storage, account system, or runtime s
 
 ### 4. Provision private Cloudflare resources
 
-- Authenticate Wrangler to the owner's Cloudflare account without storing an API token in Git or
-  chat.
-- Create separate staging and production-testnet D1 databases and R2 buckets.
-- Apply all migrations to staging first and validate table, index, and trigger coverage.
+- **Verified:** Wrangler is authenticated to the owner's personal Cloudflare account without an
+  API token in Git or chat.
+- **Verified:** Separate staging and production-testnet D1 databases exist.
+- **Verified:** All 21 migrations are applied to staging D1; production-testnet remains untouched.
+- **Owner action:** Choose the private evidence-storage path. Cloudflare R2 requires account-level
+  activation even when usage stays in its included allowance; no activation or charge has been
+  authorized. The alternatives are a compatible owner-controlled private object store or retaining
+  evidence on Sites until a later migration.
 - Enter notification, Privy, RPC, evidence-encryption, address-attestation, and other runtime
   secrets through Cloudflare's private controls.
 - Configure the 15-minute Cron Trigger and conservative observability/usage alerts.
@@ -155,4 +159,4 @@ The landing site needs no database, object storage, account system, or runtime s
 - Whether the Sites-managed D1 and R2 resources expose a complete owner-accessible export path.
 - Whether current Cloudflare free-plan CPU limits accommodate the longest authenticated API and
   scheduled compliance-monitor operations under realistic pilot load.
-- The final public source-repository URL and contact/legal links for the landing page.
+- Contact/legal links that should appear on the final landing page.

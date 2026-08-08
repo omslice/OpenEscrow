@@ -306,15 +306,24 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** The latest approved public deployment matches its exact release-checked and pushed
   source. Each subsequent coherent slice is validated and saved separately for explicit review;
   D1, R2, hosted data, runtime secrets, and configuration remain unchanged.
+- **Verified:** The public project landing page is now a separate, responsive Cloudflare Worker
+  package that reuses the outlined OpenEscrow wordmark, purple and near-black design system,
+  consumer-friendly copy, testnet warning, open-source link, and donation footer. Its automated
+  checks cover keyboard focus, reduced motion, mobile layout, branded assets, security headers,
+  link targets, and exact-source release provenance without giving it D1, R2, or secrets.
+- **Verified:** The owner Cloudflare boundary is prepared without changing the Sites deployment:
+  separate staging and production-testnet D1 databases exist, all 21 migrations are applied only
+  to staging, and the MVP Cloudflare package preserves the `DB`, `EVIDENCE`, `ASSETS`, and
+  15-minute scheduler contracts. Configuration, provenance, build, and Wrangler dry-run checks
+  pass; no Cloudflare MVP or production database deployment has occurred.
 
 ## Remaining
 
-- **Planned:** Make the next delivery item a branded, single-page OpenEscrow project site and a
-  reversible migration of the testnet MVP into the owner's Cloudflare account. The landing site
-  will link to a separately deployed MVP, while the MVP preserves the `DB` and `EVIDENCE` binding
-  names, private secrets, scheduled jobs, and exact-release checks. The current Sites deployment
-  remains the rollback and hosted-data reference until continuity, readiness, authentication, and
-  supervised pilot checks pass. See
+- **Planned:** Finish the reversible migration of the testnet MVP into the owner's Cloudflare
+  account after choosing private evidence storage and the hosted-data continuity policy. The
+  landing page will switch its primary link only after the independently deployed MVP passes
+  readiness, authentication, scheduled-job, and supervised-pilot checks. The current Sites
+  deployment remains the rollback and hosted-data reference. See
   [the Cloudflare landing and MVP deployment plan](./cloudflare-landing-and-mvp-plan.md).
 - **Planned:** Review and explicitly approve each newer saved candidate before deployment. The live
   site currently matches the last approved exact source; every future deployment must rerun the
@@ -342,6 +351,8 @@ production custody, or reliance on the compliance research as legal advice.
 
 - The exact OpenEscrow domain, Cloudflare zone, canonical landing hostname, and MVP `app`
   hostname.
+- Whether private evidence objects will use activated Cloudflare R2, a compatible owner-controlled
+  object store, or remain on Sites during the first owner-hosted application phase.
 - Whether the Sites-managed D1 and R2 resources expose a complete owner-accessible export path;
   without a verified export, the Cloudflare pilot must use a disclosed fresh synthetic dataset
   while the Sites deployment remains the historical record.

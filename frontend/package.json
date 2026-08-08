@@ -7,6 +7,8 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "build:sites": "npm run build && node prepare-sites.mjs && npm run check:sites-provenance",
+    "build:cloudflare": "npm run build && node prepare-cloudflare.mjs && npm run check:cloudflare-provenance",
+    "build:cloudflare:dev": "npm run build && node prepare-cloudflare.mjs --allow-dirty && npm run check:cloudflare-provenance -- --allow-dirty",
     "lint": "oxlint",
     "test:client-logic": "node --test --experimental-strip-types src/lib/*.test.ts scripts/*.test.mjs",
     "test:account-switch": "node scripts/check-account-switch.mjs",
@@ -27,6 +29,8 @@
     "check:wallet-dependencies": "node scripts/check-wallet-dependency-compat.mjs",
     "check:roadmap": "node scripts/check-roadmap-status.mjs",
     "check:sites-provenance": "node scripts/check-sites-provenance.mjs",
+    "check:cloudflare-provenance": "node scripts/check-cloudflare-provenance.mjs",
+    "check:cloudflare-config": "node scripts/check-cloudflare-config.mjs",
     "contract:assure": "node scripts/check-contract-release.mjs",
     "contract:dependencies:verify": "node scripts/check-contract-release.mjs --verify-dependencies",
     "deploy:rehearse": "node scripts/rehearse-contract-deployment.mjs",
@@ -39,6 +43,12 @@
     "incident:rehearse": "node scripts/run-incident-rehearsal.mjs",
     "deploy:pilot-candidate": "node scripts/verify-pilot-candidate.mjs",
     "deploy:pilot-live": "node scripts/deploy-live.mjs",
+    "cloudflare:types": "wrangler types worker-configuration.d.ts --env staging",
+    "cloudflare:dry-run": "npm run build:cloudflare:dev && npm run check:cloudflare-config && wrangler deploy --dry-run --env staging",
+    "cloudflare:migrate:staging": "wrangler d1 migrations apply DB --remote --env staging",
+    "cloudflare:deploy:staging": "npm run build:cloudflare && npm run check:cloudflare-config && npm run cloudflare:migrate:staging && wrangler deploy --env staging",
+    "cloudflare:migrate:testnet": "wrangler d1 migrations apply DB --remote",
+    "cloudflare:deploy:testnet": "npm run build:cloudflare && node scripts/check-cloudflare-config.mjs --production && npm run cloudflare:migrate:testnet && wrangler deploy",
     "test:server": "node --test server/index.test.mjs",
     "e2e:live": "node e2e-full-flow.mjs",
     "preview": "vite preview"
@@ -61,7 +71,8 @@
     "oxlint": "^1.71.0",
     "playwright": "^1.61.1",
     "typescript": "~5.9.3",
-    "vite": "^8.1.1"
+    "vite": "^8.1.1",
+    "wrangler": "^4.120.0"
   },
   "overrides": {
     "axios": "1.18.1",

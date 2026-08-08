@@ -1,0 +1,95 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "openescrow-mvp-testnet",
+  "account_id": "ac83ad901f0f00358a9b59e81487d354",
+  "main": "cloudflare-dist/server/index.js",
+  "compatibility_date": "2026-08-07",
+  "workers_dev": true,
+  "preview_urls": true,
+  "assets": {
+    "directory": "./cloudflare-dist/client",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "openescrow-mvp-testnet",
+      "database_id": "523a7141-5688-4779-a9e2-d40e28c5bd78",
+      "migrations_dir": "../drizzle"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "EVIDENCE",
+      "bucket_name": "openescrow-mvp-evidence-testnet"
+    }
+  ],
+  "vars": {
+    "API_RATE_LIMIT_ENABLED": "true",
+    "COMPLIANCE_SOURCE_MONITOR_ENABLED": "true",
+    "EVIDENCE_STORAGE_MODE": "private-r2",
+    "VERIFY_ACTIVITY_REGISTRY_BINDING": "true",
+    "VERIFY_TRANSACTION_RECEIPTS": "true"
+  },
+  "triggers": {
+    "crons": ["*/15 * * * *"]
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 0.1,
+      "invocation_logs": true
+    }
+  },
+  "env": {
+    "staging": {
+      "name": "openescrow-mvp-staging",
+      "workers_dev": true,
+      "preview_urls": true,
+      "assets": {
+        "directory": "./cloudflare-dist/client",
+        "binding": "ASSETS",
+        "html_handling": "auto-trailing-slash",
+        "not_found_handling": "single-page-application",
+        "run_worker_first": true
+      },
+      "d1_databases": [
+        {
+          "binding": "DB",
+          "database_name": "openescrow-mvp-staging",
+          "database_id": "60dae94f-334d-4d71-89e2-6ce9e386fd9d",
+          "migrations_dir": "../drizzle"
+        }
+      ],
+      "r2_buckets": [
+        {
+          "binding": "EVIDENCE",
+          "bucket_name": "openescrow-mvp-evidence-staging"
+        }
+      ],
+      "vars": {
+        "API_RATE_LIMIT_ENABLED": "true",
+        "COMPLIANCE_SOURCE_MONITOR_ENABLED": "true",
+        "EVIDENCE_STORAGE_MODE": "private-r2",
+        "PUBLIC_APP_URL": "https://openescrow-mvp-staging.omrigross.workers.dev/",
+        "VERIFY_ACTIVITY_REGISTRY_BINDING": "true",
+        "VERIFY_TRANSACTION_RECEIPTS": "true"
+      },
+      "triggers": {
+        "crons": ["*/15 * * * *"]
+      },
+      "observability": {
+        "enabled": true,
+        "logs": {
+          "enabled": true,
+          "head_sampling_rate": 1,
+          "invocation_logs": true
+        }
+      }
+    }
+  }
+}

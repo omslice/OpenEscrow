@@ -30,9 +30,10 @@ provider or hosting control that owns the secret.
 - [ ] **Choose the OpenEscrow Cloudflare domain layout.** The recommended structure is the primary
   domain for the public landing page and `app.<domain>` for the Base Sepolia MVP. Confirm that the
   domain is an active zone in the intended Cloudflare account; do not share account credentials.
-- [ ] **Authorize the local Cloudflare deployment session when prompted.** Complete Wrangler's
-  browser login inside the owner's Cloudflare account. Never paste an API token, session value, or
-  recovery code into chat, Git, a screenshot, or a build artifact.
+- [ ] **Choose the private evidence-storage path.** Cloudflare R2 requires an owner-reviewed
+  account activation even when usage stays inside its included allowance; it has not been
+  activated. Choose among private R2, a compatible owner-controlled object store, or retaining
+  evidence on Sites for the first owner-hosted phase. Keep every public-access control disabled.
 - [ ] **Choose the hosted-data continuity policy.** Decide whether the current synthetic Sites D1
   records and R2 evidence must be migrated or may remain in the rollback deployment while the
   owner-hosted Cloudflare pilot starts with a clearly disclosed fresh synthetic dataset. No
@@ -166,6 +167,10 @@ provider or hosting control that owns the secret.
 
 Move an item here with its completion date and public verification reference.
 Never record a secret value.
+
+- [x] **Authorized the local Cloudflare deployment session — 2026-08-07.** Wrangler OAuth is
+  active for `Omrigross@gmail.com's Account`. The unrelated `Piper` account remains out of scope,
+  and no credential was stored in the repository or chat.
 
 - [x] **Approved exact Sites version 145 deployed — 2026-08-03.** The public site and readiness
   endpoint returned HTTP 200 and reported source commit
