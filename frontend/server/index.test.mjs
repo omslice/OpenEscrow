@@ -3786,6 +3786,45 @@ test("compliance checks reject known challenge and error-page redirects", async 
   }
 });
 
+test("compliance checks retry an edge-specific 520 without the range header", async () => {
+  const db = new TestD1();
+  const originalFetch = globalThis.fetch;
+  const requestHeaders = [];
+  globalThis.fetch = async (_url, init) => {
+    requestHeaders.push(new Headers(init?.headers));
+    if (requestHeaders.length === 1) {
+      return new Response("edge error", { status: 520 });
+    }
+    return new Response("official requirements baseline", {
+      status: 200,
+      headers: { "content-type": "text/html", etag: '"retry-ok"' },
+    });
+  };
+
+  try {
+    const checked = await jsonResponse(
+      await worker.fetch(
+        request("/api/compliance/source-status", "POST", {
+          jurisdiction: newYorkProfile.code,
+          profileVersion: newYorkProfile.version,
+        }),
+        {
+          DB: db,
+          COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+        },
+      ),
+    );
+    assert.equal(checked.source.status, "unchanged");
+    assert.equal(checked.source.requiresReview, false);
+    assert.equal(requestHeaders.length, 2);
+    assert.equal(requestHeaders[0].get("range"), "bytes=0-262143");
+    assert.equal(requestHeaders[1].has("range"), false);
+    assert.equal(requestHeaders[1].has("user-agent"), false);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("simultaneous state source requests share one bounded external check", async () => {
   const db = new TestD1();
   await worker.fetch(request("/api/system/readiness"), { DB: db });

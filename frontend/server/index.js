@@ -6363,15 +6363,24 @@ async function checkComplianceSource(db, sourceRow, now) {
   try {
     const sourceUrl = new URL(sourceRow.url);
     if (sourceUrl.protocol !== "https:") throw new Error("HTTPS is required.");
-    const response = await fetch(sourceUrl.toString(), {
-      headers: {
-        accept: "text/html,application/xhtml+xml,application/pdf,text/plain;q=0.9,*/*;q=0.5",
-        range: "bytes=0-262143",
-        "user-agent": "OpenEscrow compliance source monitor/1.0",
-      },
+    const requestHeaders = {
+      accept: "text/html,application/xhtml+xml,application/pdf,text/plain;q=0.9,*/*;q=0.5",
+      range: "bytes=0-262143",
+      "user-agent": "OpenEscrow compliance source monitor/1.0",
+    };
+    let response = await fetch(sourceUrl.toString(), {
+      headers: requestHeaders,
       redirect: "follow",
       signal: controller.signal,
     });
+    if (response.status === 520) {
+      await response.body?.cancel().catch(() => {});
+      response = await fetch(sourceUrl.toString(), {
+        headers: { accept: requestHeaders.accept },
+        redirect: "follow",
+        signal: controller.signal,
+      });
+    }
     if (!response.ok) {
       throw new Error(`Official source returned HTTP ${response.status}.`);
     }
