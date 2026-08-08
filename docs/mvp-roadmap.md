@@ -320,8 +320,12 @@ production custody, or reliance on the compliance research as legal advice.
   timestamp-bounded, HMAC-verified Resend delivery events. Provider retries are deduplicated;
   only message identifiers, event type, status, and timestamps are retained, not webhook subjects
   or diagnostic content. Hard bounces, spam complaints, and provider suppressions turn off
-  optional preferences and block further automatic delivery to that address. The pilot gate
-  requires signed delivery-status tracking once a Resend sender is enabled.
+  optional preferences and block further automatic delivery to that address. Every self-test,
+  proposal-ready, agreement-activity, required claim, claim-response, and scheduled reminder send
+  now enters the same ledger before the provider request, so signed delivery events can match all
+  outbound paths. Provider-accepted `sent`, `delivered`, and `delayed` states are terminal for local
+  retry purposes; only failed attempts are retried with their original idempotency key. The pilot
+  gate requires signed delivery-status tracking once a Resend sender is enabled.
 - **Verified:** Both public app hosts and their readiness endpoints returned HTTP 200 on
   2026-08-08 and exposed the same exact release provenance. Cloudflare scheduler health, evidence
   encryption/keyring, address attestation, Google sign-in origin, private R2 storage, D1, static

@@ -2028,6 +2028,11 @@ const NOTIFICATION_SUPPRESSION_STATUSES = new Set([
   "complained",
   "suppressed",
 ]);
+const NOTIFICATION_ACCEPTED_STATUSES = new Set([
+  "sent",
+  "delivered",
+  "delayed",
+]);
 
 function equalBytes(left, right) {
   if (left.length !== right.length) return false;
@@ -2305,6 +2310,107 @@ async function deliverEmail(
   } catch {
     return null;
   }
+}
+
+async function deliverTrackedEmail(
+  env,
+  {
+    negotiationId = null,
+    recipientEmail,
+    notificationType,
+    scheduledFor = null,
+    subject,
+    text,
+    idempotencyKey,
+  },
+) {
+  const email = normalizeEmail(recipientEmail);
+  if (!email || !idempotencyKey) return null;
+
+  const prior = env.DB
+    ? await env.DB
+        .prepare(
+          `SELECT status, provider_message_id
+           FROM notification_deliveries
+           WHERE idempotency_key = ?`,
+        )
+        .bind(idempotencyKey)
+        .first()
+    : null;
+  if (
+    NOTIFICATION_ACCEPTED_STATUSES.has(prior?.status) &&
+    prior?.provider_message_id
+  ) {
+    return {
+      id: String(prior.provider_message_id),
+      provider: emailProvider(env),
+      duplicate: true,
+      status: prior.status,
+    };
+  }
+  if (NOTIFICATION_SUPPRESSION_STATUSES.has(prior?.status)) return null;
+
+  if (env.DB) {
+    const startedAt = new Date().toISOString();
+    await env.DB
+      .prepare(
+        `INSERT INTO notification_deliveries
+         (idempotency_key, negotiation_id, recipient_email, notification_type,
+          scheduled_for, status, provider_message_id, created_at, sent_at)
+         VALUES (?, ?, ?, ?, ?, 'sending', NULL, ?, NULL)
+         ON CONFLICT(idempotency_key) DO UPDATE SET
+           negotiation_id = excluded.negotiation_id,
+           recipient_email = excluded.recipient_email,
+           notification_type = excluded.notification_type,
+           scheduled_for = excluded.scheduled_for,
+           status = 'sending',
+           provider_message_id = NULL,
+           sent_at = NULL`,
+      )
+      .bind(
+        idempotencyKey,
+        negotiationId,
+        email,
+        notificationType,
+        scheduledFor,
+        startedAt,
+      )
+      .run();
+  }
+
+  const delivered = await deliverEmail(env, {
+    to: [email],
+    subject,
+    text,
+    idempotencyKey,
+  });
+  if (!env.DB) return delivered;
+
+  const now = new Date().toISOString();
+  await env.DB
+    .prepare(
+      `INSERT INTO notification_deliveries
+       (idempotency_key, negotiation_id, recipient_email, notification_type,
+        scheduled_for, status, provider_message_id, created_at, sent_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(idempotency_key) DO UPDATE SET
+         status = excluded.status,
+         provider_message_id = excluded.provider_message_id,
+         sent_at = excluded.sent_at`,
+    )
+    .bind(
+      idempotencyKey,
+      negotiationId,
+      email,
+      notificationType,
+      scheduledFor,
+      delivered?.id ? "sent" : "failed",
+      delivered?.id || null,
+      now,
+      delivered?.id ? now : null,
+    )
+    .run();
+  return delivered ? { ...delivered, duplicate: false, status: "sent" } : null;
 }
 
 function cleanText(value, max = 500) {
@@ -3946,21 +4052,9 @@ async function sendTestEmail(request, env) {
   const timeBucket = Math.floor(Date.now() / (10 * 60 * 1000));
   const recipientKey = (await hashToken(email)).slice(0, 24);
   const idempotencyKey = `email-test:${recipientKey}:${timeBucket}`;
-  const prior = await env.DB
-    .prepare("SELECT status, provider_message_id FROM notification_deliveries WHERE idempotency_key = ?")
-    .bind(idempotencyKey)
-    .first();
-  if (prior?.status === "sent") {
-    return json({
-      sent: true,
-      duplicate: true,
-      provider: emailProvider(env),
-      messageId: prior.provider_message_id,
-    });
-  }
-
-  const delivered = await deliverEmail(env, {
-    to: [email],
+  const delivered = await deliverTrackedEmail(env, {
+    recipientEmail: email,
+    notificationType: "email_configuration_test",
     subject: "Your OpenEscrow email notifications are ready",
     text: [
       "This test confirms that OpenEscrow can deliver automatic agreement and deadline notifications to this verified account.",
@@ -3969,33 +4063,12 @@ async function sendTestEmail(request, env) {
     ].join("\n\n"),
     idempotencyKey,
   });
-  const now = new Date().toISOString();
-  await env.DB
-    .prepare(
-      `INSERT INTO notification_deliveries
-       (idempotency_key, negotiation_id, recipient_email, notification_type,
-        scheduled_for, status, provider_message_id, created_at, sent_at)
-       VALUES (?, NULL, ?, 'email_configuration_test', NULL, ?, ?, ?, ?)
-       ON CONFLICT(idempotency_key) DO UPDATE SET
-         status = excluded.status,
-         provider_message_id = excluded.provider_message_id,
-         sent_at = excluded.sent_at`,
-    )
-    .bind(
-      idempotencyKey,
-      email,
-      delivered?.id ? "sent" : "failed",
-      delivered?.id || null,
-      now,
-      delivered?.id ? now : null,
-    )
-    .run();
   if (!delivered?.id) {
     return json({ error: "The email provider rejected the test message." }, 502);
   }
   return json({
     sent: true,
-    duplicate: false,
+    duplicate: Boolean(delivered.duplicate),
     provider: delivered.provider,
     messageId: delivered.id,
   });
@@ -5863,8 +5936,10 @@ async function sendLandlordReadyNotification(request, env, row) {
     `Sign in as the landlord, choose Agreements & deductions, and select Find my proposals & agreements: ${workspaceUrl}`,
     "Open the approval-ready proposal and submit the finalized terms onchain.",
   ].join("\n\n");
-  const delivered = await deliverEmail(env, {
-    to: [row.landlord_email],
+  const delivered = await deliverTrackedEmail(env, {
+    negotiationId: row.id,
+    recipientEmail: row.landlord_email,
+    notificationType: "proposal_ready",
     subject,
     text,
     idempotencyKey: `proposal-ready-${row.id}-${row.revision}`,
@@ -5973,8 +6048,10 @@ async function sendOptedInAgreementActivityEmails(
     try {
       const unsubscribeUrl = await unsubscribeUrlFor(env.DB, appUrl, email);
       const recipientKey = (await hashToken(email)).slice(0, 16);
-      const delivered = await deliverEmail(env, {
-        to: [email],
+      const delivered = await deliverTrackedEmail(env, {
+        negotiationId: row.id,
+        recipientEmail: email,
+        notificationType: `agreement_activity_${eventType}`,
         subject: notification.subject,
         text: `${notification.text}\n\nOpen your signed-in dashboard: ${appUrl}\n\nThis email intentionally omits evidence, tenancy details, and private notes.${unsubscribeUrl ? `\n\nTurn off optional OpenEscrow emails: ${unsubscribeUrl}` : ""}`,
         idempotencyKey: `agreement-${row.id}-${eventType}-${recipientRole}-${recipientKey}-${row.updated_at}`,
@@ -6177,52 +6254,19 @@ async function sendScheduledNotification(env, row, notification, appUrl) {
     notification.role,
     notification.scheduledFor.toISOString(),
   ].join(":");
-  const prior = await env.DB
-    .prepare("SELECT status FROM notification_deliveries WHERE idempotency_key = ?")
-    .bind(idempotencyKey)
-    .first();
-  if (prior?.status === "sent") return false;
-
   const unsubscribeUrl = await unsubscribeUrlFor(env.DB, appUrl, notification.email);
+  const delivered = await deliverTrackedEmail(env, {
+    negotiationId: row.id,
+    recipientEmail: notification.email,
+    notificationType: notification.type,
+    scheduledFor: notification.scheduledFor.toISOString(),
+    subject: notification.subject,
+    text: `${notification.text}\n\nOpen your signed-in dashboard: ${appUrl}\n\nThis reminder intentionally omits addresses, amounts, evidence, and private notes.${unsubscribeUrl ? `\n\nTurn off optional OpenEscrow emails: ${unsubscribeUrl}` : ""}`,
+    idempotencyKey,
+  });
+  if (!delivered?.id || delivered.duplicate) return false;
+
   const createdAt = new Date().toISOString();
-  let messageId = null;
-  try {
-    const delivered = await deliverEmail(env, {
-      to: [notification.email],
-      subject: notification.subject,
-      text: `${notification.text}\n\nOpen your signed-in dashboard: ${appUrl}\n\nThis reminder intentionally omits addresses, amounts, evidence, and private notes.${unsubscribeUrl ? `\n\nTurn off optional OpenEscrow emails: ${unsubscribeUrl}` : ""}`,
-      idempotencyKey,
-    });
-    if (delivered?.id) messageId = delivered.id;
-  } catch {
-    // The durable failed-delivery record allows the next scheduled run to retry.
-  }
-
-  await env.DB
-    .prepare(
-      `INSERT INTO notification_deliveries
-       (idempotency_key, negotiation_id, recipient_email, notification_type,
-        scheduled_for, status, provider_message_id, created_at, sent_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(idempotency_key) DO UPDATE SET
-         status = excluded.status,
-         provider_message_id = excluded.provider_message_id,
-         sent_at = excluded.sent_at`,
-    )
-    .bind(
-      idempotencyKey,
-      row.id,
-      notification.email,
-      notification.type,
-      notification.scheduledFor.toISOString(),
-      messageId ? "sent" : "failed",
-      messageId,
-      createdAt,
-      messageId ? createdAt : null,
-    )
-    .run();
-  if (!messageId) return false;
-
   await env.DB.batch([
     env.DB
       .prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?")
@@ -6239,7 +6283,7 @@ async function sendScheduledNotification(env, row, notification, appUrl) {
         notificationType: notification.type,
         recipientRole: notification.role,
         scheduledFor: notification.scheduledFor.toISOString(),
-        messageId,
+        messageId: delivered.id,
       },
     ),
   ]);
@@ -9732,8 +9776,10 @@ async function sendClaimNotification(request, env) {
       "This private invitation is only for you. Do not forward it.",
       "Your decision and all related actions will be included in the timestamped agreement record.",
     ].filter(Boolean).join("\n\n");
-    const delivered = await deliverEmail(env, {
-      to: [reviewLink.email],
+    const delivered = await deliverTrackedEmail(env, {
+      negotiationId: proposalId,
+      recipientEmail: reviewLink.email,
+      notificationType: "deduction_claim_notice",
       subject,
       text,
       idempotencyKey:
@@ -9878,8 +9924,10 @@ async function sendClaimResponseNotification(request, env) {
   ]
     .filter(Boolean)
     .join("\n\n");
-  const delivered = await deliverEmail(env, {
-    to: [normalizeEmail(row.landlord_email)],
+  const delivered = await deliverTrackedEmail(env, {
+    negotiationId: proposalId,
+    recipientEmail: normalizeEmail(row.landlord_email),
+    notificationType: "claim_response_notice",
     subject,
     text,
     idempotencyKey: `claim-response-${proposalId}-${deliveryKey}`,

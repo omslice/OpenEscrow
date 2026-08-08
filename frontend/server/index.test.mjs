@@ -8514,6 +8514,56 @@ test("scheduled claim-window reminders are opted-in and idempotent", async () =>
     });
     await Promise.all(repeated);
     assert.equal(deliveries.length, 1);
+
+    const deliveryRow = db
+      .prepare(
+        `SELECT idempotency_key, provider_message_id
+         FROM notification_deliveries
+         WHERE notification_type = 'claim_period_started'`,
+      )
+      .first();
+    assert.equal(deliveryRow.provider_message_id, "scheduled-1");
+    db.prepare(
+      "UPDATE notification_deliveries SET status = 'delivered' WHERE idempotency_key = ?",
+    )
+      .bind(deliveryRow.idempotency_key)
+      .run();
+    const deliveredWaits = [];
+    await worker.scheduled(
+      { scheduledTime: controller.scheduledTime + 11 * 60 * 1000 },
+      env,
+      { waitUntil(promise) { deliveredWaits.push(promise); } },
+    );
+    await Promise.all(deliveredWaits);
+    assert.equal(deliveries.length, 1);
+    assert.equal(
+      db
+        .prepare("SELECT status FROM notification_deliveries WHERE idempotency_key = ?")
+        .bind(deliveryRow.idempotency_key)
+        .first().status,
+      "delivered",
+    );
+
+    db.prepare(
+      "UPDATE notification_deliveries SET status = 'delayed' WHERE idempotency_key = ?",
+    )
+      .bind(deliveryRow.idempotency_key)
+      .run();
+    const delayedWaits = [];
+    await worker.scheduled(
+      { scheduledTime: controller.scheduledTime + 22 * 60 * 1000 },
+      env,
+      { waitUntil(promise) { delayedWaits.push(promise); } },
+    );
+    await Promise.all(delayedWaits);
+    assert.equal(deliveries.length, 1);
+    assert.equal(
+      db
+        .prepare("SELECT status FROM notification_deliveries WHERE idempotency_key = ?")
+        .bind(deliveryRow.idempotency_key)
+        .first().status,
+      "delayed",
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -9668,6 +9718,24 @@ test("the landlord is notified when all required approvals make a proposal ready
     assert.deepEqual(sentEmail.to, ["landlord@example.com"]);
     assert.match(sentEmail.subject, /ready to finalize/);
     assert.match(sentEmail.text, /submit the finalized terms onchain/);
+    assert.deepEqual(
+      {
+        ...db
+          .prepare(
+            `SELECT recipient_email, notification_type, status, provider_message_id
+             FROM notification_deliveries
+             WHERE negotiation_id = ?`,
+          )
+          .bind(created.record.id)
+          .first(),
+      },
+      {
+        recipient_email: "landlord@example.com",
+        notification_type: "proposal_ready",
+        status: "sent",
+        provider_message_id: "ready-message-1",
+      },
+    );
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -9736,6 +9804,54 @@ test("opted-in agreement activity email is privacy-minimal and idempotent", asyn
     assert.equal(
       retry.events.filter((event) => event.action === "agreement_funded").length,
       1,
+    );
+    const activityDelivery = db
+      .prepare(
+        `SELECT recipient_email, notification_type, status, provider_message_id
+         FROM notification_deliveries
+         WHERE negotiation_id = ? AND notification_type = ?`,
+      )
+      .bind(created.record.id, "agreement_activity_agreement_funded")
+      .first();
+    assert.deepEqual(
+      { ...activityDelivery },
+      {
+        recipient_email: "landlord@example.com",
+        notification_type: "agreement_activity_agreement_funded",
+        status: "sent",
+        provider_message_id: "activity-message-1",
+      },
+    );
+
+    const webhookSecret = `whsec_${Buffer.from(
+      "openescrow-activity-delivery-webhook-secret",
+    ).toString("base64")}`;
+    const webhookPayload = JSON.stringify({
+      type: "email.bounced",
+      created_at: new Date().toISOString(),
+      data: {
+        email_id: "activity-message-1",
+        to: ["landlord@example.com"],
+      },
+    });
+    const webhook = await jsonResponse(
+      await worker.fetch(
+        new Request("https://openescrow.example/api/notifications/provider/resend", {
+          method: "POST",
+          headers: await resendWebhookHeaders(webhookSecret, webhookPayload),
+          body: webhookPayload,
+        }),
+        { DB: db, RESEND_WEBHOOK_SECRET: webhookSecret },
+      ),
+    );
+    assert.equal(webhook.matched, true);
+    assert.equal(webhook.status, "bounced");
+    assert.equal(
+      db
+        .prepare("SELECT reason FROM notification_suppressions WHERE email = ?")
+        .bind("landlord@example.com")
+        .first().reason,
+      "bounced",
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -10081,6 +10197,32 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
       "multi-tenant-claim-message-1",
       "multi-tenant-claim-message-2",
     ]);
+    assert.deepEqual(
+      db
+        .prepare(
+          `SELECT recipient_email, notification_type, status, provider_message_id
+           FROM notification_deliveries
+           WHERE negotiation_id = ? AND notification_type = ?
+           ORDER BY recipient_email`,
+        )
+        .bind(created.record.id, "deduction_claim_notice")
+        .all()
+        .results.map((row) => ({ ...row })),
+      [
+        {
+          recipient_email: "casey@example.com",
+          notification_type: "deduction_claim_notice",
+          status: "sent",
+          provider_message_id: "multi-tenant-claim-message-2",
+        },
+        {
+          recipient_email: "tenant@example.com",
+          notification_type: "deduction_claim_notice",
+          status: "sent",
+          provider_message_id: "multi-tenant-claim-message-1",
+        },
+      ],
+    );
 
     const duplicateResponse = await worker.fetch(
       request("/api/notifications/claim", "POST", {
@@ -10155,6 +10297,18 @@ test("pilot rehearsal: a notification outage is retryable without a phantom deli
       )
       .first();
     assert.equal(Number(failedEventCount.count), 0);
+    const failedDelivery = db
+      .prepare(
+        `SELECT status, provider_message_id
+         FROM notification_deliveries
+         WHERE negotiation_id = ? AND notification_type = ?`,
+      )
+      .bind(created.record.id, "deduction_claim_notice")
+      .first();
+    assert.deepEqual(
+      { ...failedDelivery },
+      { status: "failed", provider_message_id: null },
+    );
 
     globalThis.fetch = async () => {
       deliveryAttempts += 1;
@@ -10175,6 +10329,19 @@ test("pilot rehearsal: a notification outage is retryable without a phantom deli
     assert.equal(recovered.duplicate, false);
     assert.equal(duplicate.duplicate, true);
     assert.equal(deliveryAttempts, 2);
+    assert.deepEqual(
+      {
+        ...db
+          .prepare(
+            `SELECT status, provider_message_id
+             FROM notification_deliveries
+             WHERE negotiation_id = ? AND notification_type = ?`,
+          )
+          .bind(created.record.id, "deduction_claim_notice")
+          .first(),
+      },
+      { status: "sent", provider_message_id: "recovered-claim-message" },
+    );
 
     const sentEventCount = await db
       .prepare(
@@ -10318,6 +10485,24 @@ test("claim response notices bind to the exact recorded tenant decision", async 
     assert.match(sentEmail.subject, /agreement #77/);
     assert.match(sentEmail.text, /\?id=77/);
     assert.doesNotMatch(sentEmail.text, /999|Injected response text|token=injected/);
+    assert.deepEqual(
+      {
+        ...db
+          .prepare(
+            `SELECT recipient_email, notification_type, status, provider_message_id
+             FROM notification_deliveries
+             WHERE negotiation_id = ? AND notification_type = ?`,
+          )
+          .bind(created.record.id, "claim_response_notice")
+          .first(),
+      },
+      {
+        recipient_email: "landlord@example.com",
+        notification_type: "claim_response_notice",
+        status: "sent",
+        provider_message_id: "claim-response-message-1",
+      },
+    );
     const recordedDelivery = await db
       .prepare(
         "SELECT metadata_json FROM negotiation_events WHERE negotiation_id = ? AND action = 'claim_response_notification_sent'",
