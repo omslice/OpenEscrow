@@ -38,5 +38,8 @@ if (packaged.commitSha !== expectedCommitSha) {
     `Packaged release commit ${packaged.commitSha || "missing"} does not match source ${expectedCommitSha}.`,
   );
 }
+if (packaged.sourceDirty !== false) {
+  throw new Error("Packaged Sites release does not prove a clean source state.");
+}
 
 console.log(`Sites release provenance verified: ${expectedCommitSha}`);

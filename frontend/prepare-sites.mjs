@@ -59,6 +59,7 @@ await writeFile(
 export const RELEASE_PROVENANCE = Object.freeze({
   schemaVersion: RELEASE_PROVENANCE_SCHEMA,
   commitSha: ${JSON.stringify(commitSha)},
+  sourceDirty: false,
 });
 `,
 );
