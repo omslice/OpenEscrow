@@ -68,8 +68,15 @@ assert(vars.VERIFY_TRANSACTION_RECEIPTS === "true", "Transaction receipt verific
 assert(vars.VERIFY_ACTIVITY_REGISTRY_BINDING === "true", "Registry binding verification must remain enabled.");
 
 if (requestedEnvironment === "staging") {
+  assert(selected.workers_dev === true, "The workers.dev rollback route must remain enabled.");
   assert(
-    vars.PUBLIC_APP_URL === "https://openescrow.omslice.workers.dev/",
+    selected.routes?.length === 1 &&
+      selected.routes[0]?.pattern === "openescrow.io" &&
+      selected.routes[0]?.custom_domain === true,
+    "The canonical openescrow.io custom domain route is missing.",
+  );
+  assert(
+    vars.PUBLIC_APP_URL === "https://openescrow.io/",
     "Staging public application URL is invalid.",
   );
 } else {

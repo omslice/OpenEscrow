@@ -129,7 +129,7 @@ RESEND_API_KEY=re_replace_with_your_key
 NOTIFICATION_FROM_EMAIL=OpenEscrow <notifications@notify.your-domain.example>
 ```
 
-`PUBLIC_APP_URL` is already pinned to `https://openescrow.omslice.workers.dev/` in the reviewed
+`PUBLIC_APP_URL` is pinned to `https://openescrow.io/` in the reviewed
 staging configuration. The compliance monitor, address-attestation secret, evidence keyring, and
 Cron Trigger are also already configured and verified; do not replace or duplicate them while
 adding email. Never put `RESEND_API_KEY` in a `VITE_` variable, Git, or a browser-visible settings

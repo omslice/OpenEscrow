@@ -292,6 +292,7 @@ function writeCloudflareFixture(frontendRoot) {
         staging: {
           name: "openescrow",
           workers_dev: true,
+          routes: [{ pattern: "openescrow.io", custom_domain: true }],
           assets: {
             directory: "./cloudflare-dist/client",
             binding: "ASSETS",
@@ -317,7 +318,7 @@ function writeCloudflareFixture(frontendRoot) {
             API_RATE_LIMIT_ENABLED: "true",
             COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
             EVIDENCE_STORAGE_MODE: "private-r2",
-            PUBLIC_APP_URL: "https://openescrow.omslice.workers.dev/",
+            PUBLIC_APP_URL: "https://openescrow.io/",
             VERIFY_ACTIVITY_REGISTRY_BINDING: "true",
             VERIFY_TRANSACTION_RECEIPTS: "true",
           },

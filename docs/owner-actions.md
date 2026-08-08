@@ -28,10 +28,10 @@ provider or hosting control that owns the secret.
 
 ## Actionable now
 
-- [x] **Choose the OpenEscrow Cloudflare staging address — completed 2026-08-08.**
-  `https://openescrow.omslice.workers.dev/` serves the single unified public introduction and
-  Base Sepolia MVP. There is no second public landing application. A future custom domain remains
-  optional and must be added to provider allowlists before promotion.
+- [x] **Choose and connect the OpenEscrow canonical domain — completed 2026-08-08.**
+  `https://openescrow.io/` serves the single unified public introduction and Base Sepolia MVP.
+  The `workers.dev` origin remains a rollback route, and ChatGPT Sites remains the synchronized
+  mirror/data reference. There is no second public landing application.
 - [x] **Activate private Cloudflare R2 — completed 2026-08-08.** The owner activated R2 in the
   intended account. Codex created separate staging and production-testnet evidence buckets and
   verified that public `r2.dev` access is disabled, no custom domains are attached, and both
@@ -44,21 +44,15 @@ provider or hosting control that owns the secret.
   fingerprints without exposing record values; the remaining unknown is whether Sites will supply
   a complete export. See [`hosted-data-continuity.md`](./hosted-data-continuity.md).
 - [x] **Add the canonical Cloudflare app origin to Privy — completed 2026-08-08.**
-  `https://openescrow.omslice.workers.dev` is now an allowed origin for the existing OpenEscrow
-  Privy application. The live Google account chooser was verified from Cloudflare without a
-  browser error. The deploy verifier now fails closed if a future hosted origin is not accepted.
-- [ ] **Configure the notification provider.** Evidence encryption/keyring, address attestation,
-  RPC, private R2, scheduler, and the current Privy origin are configured. The remaining runtime
-  provider gap is sending-only email through Resend or the documented webhook equivalent. For
-  Resend, store the sending-only key as `RESEND_API_KEY`, set `NOTIFICATION_FROM_EMAIL` to the
-  verified sender, register `https://openescrow.omslice.workers.dev/api/notifications/provider/resend`
-  for sent, delivered, delayed, failed, bounced, complained, and suppressed events, and store the
-  endpoint's signing secret as `RESEND_WEBHOOK_SECRET`. Keep both credentials in Worker secret
-  controls. A custom `EMAIL_WEBHOOK_URL` integration must implement equivalent signed
-  delivery-status and suppression handling before setting `EMAIL_WEBHOOK_STATUS_TRACKING=true`;
-  otherwise readiness intentionally remains blocked. Add any future custom-domain origin to Privy
-  and other provider allowlists before promoting it; never expose a secret in a client build
-  variable.
+  `https://openescrow.io`, the `workers.dev` fallback, and the ChatGPT Sites mirror are allowed
+  origins for the existing OpenEscrow Privy application. The deploy verifier fails closed when
+  a hosted origin is not accepted.
+- [ ] **Finish the verified OpenEscrow sending domain.** The Resend API key, signed delivery
+  webhook secret, private R2, scheduler, and provider health check are configured and a private
+  test message was delivered. Add and verify a dedicated OpenEscrow sending subdomain in Resend,
+  switch `NOTIFICATION_FROM_EMAIL` from the Resend onboarding sender, and move the signed webhook
+  to `https://openescrow.io/api/notifications/provider/resend`. Keep credentials in Worker secret
+  controls and never expose a secret in a client build variable.
 - [x] **Publish one clean release to both interim hosts — completed 2026-08-08.** Cloudflare and
   ChatGPT Sites now serve the same exact source and expose clean release provenance. Continue to
   publish both hosts from one commit and run the dual-host verifier until the owner explicitly

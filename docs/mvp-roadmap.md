@@ -420,8 +420,9 @@ production custody, or reliance on the compliance research as legal advice.
 
 ## Material unknowns
 
-- Whether and when to move beyond the current canonical Cloudflare staging URL,
-  `https://openescrow.omslice.workers.dev/`, to an owner-selected custom domain.
+- `https://openescrow.io/` is now the selected canonical owner-hosted testnet domain. Public DNS,
+  OAuth, email-sender, and dual-host cutover verification must finish before the fallback hostname
+  is treated as rollback-only.
 - Whether the Sites-managed D1 and R2 resources expose a complete owner-accessible export path;
   without a verified export, the Cloudflare pilot must use a disclosed fresh synthetic dataset
   while the Sites deployment remains the historical record. The comparison tooling is ready but

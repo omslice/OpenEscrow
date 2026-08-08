@@ -17,7 +17,7 @@ const repository = path.resolve(frontend, "..");
 const baseUrl = new URL(
   process.argv.find((arg) => /^https:\/\//.test(arg)) ||
     process.env.OPENESCROW_CLOUDFLARE_URL ||
-    "https://openescrow.omslice.workers.dev/",
+    "https://openescrow.io/",
 );
 const { stdout: commitOutput } = await execFileAsync("git", ["rev-parse", "HEAD"], {
   cwd: repository,

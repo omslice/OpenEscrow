@@ -5,7 +5,10 @@ custody talks directly to Base Sepolia. A small hosted worker persists proposal 
 role-scoped account discovery, notification preferences, delivery receipts, and private evidence
 metadata; onchain agreement discovery still uses a client-side event-log scan.
 
-Public demo: https://openescrow-demo.omrigross.chatgpt.site
+Canonical testnet app: https://openescrow.io
+
+Fallback hosts: https://openescrow.omslice.workers.dev and
+https://openescrow-demo.omrigross.chatgpt.site
 
 ## Deployed addresses (Base Sepolia, chain id 84532)
 

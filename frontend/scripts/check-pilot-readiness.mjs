@@ -25,7 +25,7 @@ const baseUrlArg = args.find((arg) => arg && !arg.startsWith("-"));
 const baseUrl = (
   baseUrlArg ||
   process.env.OPENESCROW_BASE_URL ||
-  "https://openescrow.omslice.workers.dev/"
+  "https://openescrow.io/"
 ).replace(/\/+$/, "");
 
 let readiness = {};

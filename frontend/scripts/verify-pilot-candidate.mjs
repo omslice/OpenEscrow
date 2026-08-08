@@ -574,6 +574,9 @@ function verifiedCloudflareBuild({
     staging.main === "cloudflare-dist/server/index.js" &&
     staging.name === "openescrow" &&
     staging.workers_dev === true &&
+    staging.routes?.length === 1 &&
+    staging.routes[0]?.pattern === "openescrow.io" &&
+    staging.routes[0]?.custom_domain === true &&
     staging.assets?.directory === "./cloudflare-dist/client" &&
     staging.assets?.binding === "ASSETS" &&
     staging.assets?.not_found_handling === "single-page-application" &&
@@ -591,7 +594,7 @@ function verifiedCloudflareBuild({
     vars.API_RATE_LIMIT_ENABLED === "true" &&
     vars.COMPLIANCE_SOURCE_MONITOR_ENABLED === "true" &&
     vars.EVIDENCE_STORAGE_MODE === "private-r2" &&
-    vars.PUBLIC_APP_URL === "https://openescrow.omslice.workers.dev/" &&
+    vars.PUBLIC_APP_URL === "https://openescrow.io/" &&
     vars.VERIFY_ACTIVITY_REGISTRY_BINDING === "true" &&
     vars.VERIFY_TRANSACTION_RECEIPTS === "true" &&
     secretLikeVariables.length === 0;

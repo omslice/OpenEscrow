@@ -12,11 +12,13 @@ storage, secrets, and rollback histories; matching source does not imply that re
 
 ## Public structure
 
-- Cloudflare: `https://openescrow.omslice.workers.dev/` — canonical owner-hosted testnet app.
+- Cloudflare: `https://openescrow.io/` — canonical owner-hosted testnet app.
+- Cloudflare fallback: `https://openescrow.omslice.workers.dev/` — retained for rollback and
+  supervised recovery, not promoted as a second public product.
 - ChatGPT Sites: `https://openescrow-demo.omrigross.chatgpt.site/` — synchronized mirror and
   historical-data reference during the transition.
-- A future custom domain may replace the workers.dev hostname. Any alias should redirect to the
-  canonical application instead of serving another copy.
+- `www.openescrow.io` may redirect to the apex after its redirect record is configured; it must
+  not become a second application origin.
 - The retired `openescrow-landing-staging` Worker must have its public route disabled. Its source
   may remain in the repository solely as rollback history.
 
