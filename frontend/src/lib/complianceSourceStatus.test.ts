@@ -3,10 +3,14 @@ import test from "node:test";
 import {
   checkComplianceSourceStatus,
   complianceSourceStatusMessage,
+  complianceSourceStatusSummary,
   type ComplianceSourceStatus,
 } from "./complianceSourceStatus.ts";
 
 const source = {
+  key: "state:ca",
+  scope: "state",
+  jurisdiction: "us-ca",
   citation: "Official source",
   url: "https://example.gov/rules",
   lastCheckedAt: "2026-07-30T00:00:00.000Z",
@@ -31,6 +35,17 @@ test("compliance source messages never claim changed rules were automatically ad
     complianceSourceStatusMessage({ ...source, status: "unreachable" }),
     /recorded profile remains unchanged/i,
   );
+  assert.match(
+    complianceSourceStatusSummary([
+      { ...source, status: "unchanged" },
+      {
+        ...source,
+        key: "overlay:federal-example:1",
+        status: "unchanged",
+      },
+    ]),
+    /all 2 official sources match/i,
+  );
 });
 
 test("source check responses must match the requested profile and official source", async () => {
@@ -42,20 +57,22 @@ test("source check responses must match the requested profile and official sourc
   let result: ComplianceSourceStatus = {
     jurisdiction: "us-ca",
     profileVersion: "ca-reviewed-1",
+    overlays: [],
     source: { ...source, status: "unchanged" },
+    sources: [{ ...source, status: "unchanged" }],
     immutableSnapshotNotice: "Finalized agreements keep their recorded snapshot.",
   };
   globalThis.fetch = async () => Response.json(result);
 
   try {
     assert.deepEqual(
-      await checkComplianceSourceStatus("us-ca", "ca-reviewed-1", expectedSource),
+      await checkComplianceSourceStatus("us-ca", "ca-reviewed-1", [expectedSource]),
       result,
     );
 
     result = { ...result, jurisdiction: "us-ny" };
     await assert.rejects(
-      checkComplianceSourceStatus("us-ca", "ca-reviewed-1", expectedSource),
+      checkComplianceSourceStatus("us-ca", "ca-reviewed-1", [expectedSource]),
       /could not verify.*selected compliance profile/i,
     );
 
@@ -63,9 +80,12 @@ test("source check responses must match the requested profile and official sourc
       ...result,
       jurisdiction: "us-ca",
       source: { ...result.source, url: "https://example.gov/different-rules" },
+      sources: [
+        { ...result.sources[0], url: "https://example.gov/different-rules" },
+      ],
     };
     await assert.rejects(
-      checkComplianceSourceStatus("us-ca", "ca-reviewed-1", expectedSource),
+      checkComplianceSourceStatus("us-ca", "ca-reviewed-1", [expectedSource]),
       /could not verify.*selected compliance profile/i,
     );
 
@@ -110,9 +130,10 @@ test("source check responses must match the requested profile and official sourc
         ...result,
         jurisdiction: "us-ca",
         source: inconsistentSource,
+        sources: [inconsistentSource],
       } as ComplianceSourceStatus;
       await assert.rejects(
-        checkComplianceSourceStatus("us-ca", "ca-reviewed-1", expectedSource),
+        checkComplianceSourceStatus("us-ca", "ca-reviewed-1", [expectedSource]),
         /could not verify.*selected compliance profile/i,
       );
     }

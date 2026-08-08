@@ -66,7 +66,7 @@ import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
 import type { InviteRole } from "../lib/inviteContext";
 import {
   checkComplianceSourceStatus,
-  complianceSourceStatusMessage,
+  complianceSourceStatusSummary,
   type ComplianceSourceStatus,
 } from "../lib/complianceSourceStatus";
 import {
@@ -496,6 +496,11 @@ function AgreementForm({
           complianceFacts,
         )
       : null;
+  const complianceSourceSelectionKey = compliancePreview
+    ? compliancePreview.overlays
+        .map((overlay) => `${overlay.id}:${overlay.version}`)
+        .join("|")
+    : "no-compliance-preview";
 
   useEffect(() => {
     complianceSourceScope.open();
@@ -503,10 +508,10 @@ function AgreementForm({
     setComplianceSourceError(null);
     setIsCheckingComplianceSource(false);
     return () => complianceSourceScope.close();
-  }, [complianceSourceScope]);
+  }, [complianceSourceScope, complianceSourceSelectionKey]);
 
   async function refreshComplianceSource() {
-    if (!selectedJurisdiction) return;
+    if (!selectedJurisdiction || !compliancePreview) return;
     const operationId = complianceSourceScope.start();
     setComplianceSourceResult(null);
     setComplianceSourceError(null);
@@ -515,10 +520,17 @@ function AgreementForm({
       const result = await checkComplianceSourceStatus(
         selectedJurisdiction.code,
         selectedJurisdiction.version,
-        {
-          citation: selectedJurisdiction.statuteCitation,
-          url: selectedJurisdiction.statuteUrl,
-        },
+        [
+          {
+            citation: selectedJurisdiction.statuteCitation,
+            url: selectedJurisdiction.statuteUrl,
+          },
+          ...compliancePreview.overlays.flatMap((overlay) => overlay.sources),
+        ],
+        compliancePreview.overlays.map((overlay) => ({
+          id: overlay.id,
+          version: overlay.version,
+        })),
       );
       if (!complianceSourceScope.isCurrent(operationId)) return;
       setComplianceSourceResult(result);
@@ -2826,32 +2838,38 @@ function AgreementForm({
               aria-busy={isCheckingComplianceSource}
             >
               <div>
-                <strong id="compliance-source-title">Official requirements source</strong>
-                <p>
-                  <a
-                    href={selectedJurisdiction.statuteUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
-                    {selectedJurisdiction.statuteCitation}
-                  </a>
+                <strong id="compliance-source-title">Official requirements sources</strong>
+                <p className="field-help">
+                  These sources support the requirements currently applied to this address.
                 </p>
+                <ul className="compliance-source-list">
+                  {[
+                    {
+                      citation: selectedJurisdiction.statuteCitation,
+                      url: selectedJurisdiction.statuteUrl,
+                    },
+                    ...compliancePreview.overlays.flatMap((overlay) => overlay.sources),
+                  ].map((source, index) => {
+                    const checkedSource = complianceSourceResult?.sources[index];
+                    return (
+                      <li key={`${source.url}:${index}`}>
+                        <a href={source.url} target="_blank" rel="noreferrer">
+                          {source.citation}
+                        </a>
+                        <span>
+                          {checkedSource?.lastCheckedAt
+                            ? `Checked ${readableComplianceDate(checkedSource.lastCheckedAt)}`
+                            : "Not checked in this session"}
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
                 <p className="field-help">
                   Profile research date:{" "}
                   <time dateTime={selectedJurisdiction.researchedOn}>
                     {readableComplianceDate(selectedJurisdiction.researchedOn)}
                   </time>
-                  {complianceSourceResult?.source.lastCheckedAt && (
-                    <>
-                      {" "}
-                      · Official source last checked:{" "}
-                      <time dateTime={complianceSourceResult.source.lastCheckedAt}>
-                        {readableComplianceDate(
-                          complianceSourceResult.source.lastCheckedAt,
-                        )}
-                      </time>
-                    </>
-                  )}
                 </p>
               </div>
               <button
@@ -2861,13 +2879,15 @@ function AgreementForm({
                 onClick={() => void refreshComplianceSource()}
               >
                 {isCheckingComplianceSource
-                  ? "Checking official source..."
-                  : "Check official source for updates"}
+                  ? "Checking official sources..."
+                  : "Check official sources for updates"}
               </button>
               {complianceSourceResult && (
                 <p
                   className={
-                    complianceSourceResult.source.requiresReview
+                    complianceSourceResult.sources.some(
+                      (source) => source.requiresReview,
+                    )
                       ? "tx-error"
                       : "tx-success"
                   }
@@ -2875,7 +2895,7 @@ function AgreementForm({
                   aria-live="polite"
                   aria-atomic="true"
                 >
-                  {complianceSourceStatusMessage(complianceSourceResult.source)}{" "}
+                  {complianceSourceStatusSummary(complianceSourceResult.sources)}{" "}
                   Finalized agreements keep their recorded compliance snapshot.
                 </p>
               )}

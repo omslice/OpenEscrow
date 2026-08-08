@@ -1,14 +1,26 @@
+export type ComplianceSourceEntry = {
+  key: string;
+  scope: string;
+  jurisdiction: string;
+  citation: string;
+  url: string;
+  status: "pending" | "unchanged" | "changed" | "unreachable";
+  lastCheckedAt: string | null;
+  lastVerifiedAt: string | null;
+  requiresReview: boolean;
+};
+
+export type ComplianceOverlayVersion = {
+  id: string;
+  version: string;
+};
+
 export type ComplianceSourceStatus = {
   jurisdiction: string;
   profileVersion: string;
-  source: {
-    citation: string;
-    url: string;
-    status: "pending" | "unchanged" | "changed" | "unreachable";
-    lastCheckedAt: string | null;
-    lastVerifiedAt: string | null;
-    requiresReview: boolean;
-  };
+  overlays: readonly ComplianceOverlayVersion[];
+  source: ComplianceSourceEntry;
+  sources: readonly ComplianceSourceEntry[];
   immutableSnapshotNotice: string;
 };
 
@@ -29,7 +41,7 @@ function isNullableTimestamp(value: unknown): value is string | null {
 }
 
 function isConsistentSourceState(
-  source: ComplianceSourceStatus["source"],
+  source: ComplianceSourceEntry,
 ): boolean {
   const lastCheckedAt = source.lastCheckedAt
     ? Date.parse(source.lastCheckedAt)
@@ -63,24 +75,50 @@ function isExactComplianceSourceStatus(
   value: unknown,
   jurisdiction: string,
   profileVersion: string,
-  expectedSource: ExpectedComplianceSource,
+  expectedSources: readonly ExpectedComplianceSource[],
+  expectedOverlays: readonly ComplianceOverlayVersion[],
 ): value is ComplianceSourceStatus {
   if (!value || typeof value !== "object") return false;
   const candidate = value as Partial<ComplianceSourceStatus>;
   const source = candidate.source;
+  const sources = candidate.sources;
+  const overlays = candidate.overlays;
   return Boolean(
     candidate.jurisdiction === jurisdiction &&
       candidate.profileVersion === profileVersion &&
       typeof candidate.immutableSnapshotNotice === "string" &&
       candidate.immutableSnapshotNotice.trim() &&
       source &&
-      source.citation === expectedSource.citation &&
-      source.url === expectedSource.url &&
-      SOURCE_STATUSES.has(source.status) &&
-      isNullableTimestamp(source.lastCheckedAt) &&
-      isNullableTimestamp(source.lastVerifiedAt) &&
-      typeof source.requiresReview === "boolean" &&
-      isConsistentSourceState(source),
+      Array.isArray(sources) &&
+      sources.length === expectedSources.length &&
+      sources.length > 0 &&
+      sources.every((item, index) => {
+        const expected = expectedSources[index];
+        return Boolean(
+          item &&
+            typeof item.key === "string" &&
+            item.key.trim() &&
+            typeof item.scope === "string" &&
+            item.scope.trim() &&
+            typeof item.jurisdiction === "string" &&
+            item.jurisdiction.trim() &&
+            item.citation === expected.citation &&
+            item.url === expected.url &&
+            SOURCE_STATUSES.has(item.status) &&
+            isNullableTimestamp(item.lastCheckedAt) &&
+            isNullableTimestamp(item.lastVerifiedAt) &&
+            typeof item.requiresReview === "boolean" &&
+            isConsistentSourceState(item),
+        );
+      }) &&
+      source.key === sources[0]?.key &&
+      Array.isArray(overlays) &&
+      overlays.length === expectedOverlays.length &&
+      overlays.every(
+        (overlay, index) =>
+          overlay?.id === expectedOverlays[index]?.id &&
+          overlay?.version === expectedOverlays[index]?.version,
+      ),
   );
 }
 
@@ -97,12 +135,13 @@ async function responseError(response: Response) {
 export async function checkComplianceSourceStatus(
   jurisdiction: string,
   profileVersion: string,
-  expectedSource: ExpectedComplianceSource,
+  expectedSources: readonly ExpectedComplianceSource[],
+  overlays: readonly ComplianceOverlayVersion[] = [],
 ): Promise<ComplianceSourceStatus> {
   const response = await fetch("/api/compliance/source-status", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jurisdiction, profileVersion }),
+    body: JSON.stringify({ jurisdiction, profileVersion, overlays }),
   });
   if (!response.ok) throw new Error(await responseError(response));
   let result: unknown;
@@ -111,14 +150,22 @@ export async function checkComplianceSourceStatus(
   } catch {
     throw new Error(INVALID_SOURCE_RESPONSE);
   }
-  if (!isExactComplianceSourceStatus(result, jurisdiction, profileVersion, expectedSource)) {
+  if (
+    !isExactComplianceSourceStatus(
+      result,
+      jurisdiction,
+      profileVersion,
+      expectedSources,
+      overlays,
+    )
+  ) {
     throw new Error(INVALID_SOURCE_RESPONSE);
   }
   return result;
 }
 
 export function complianceSourceStatusMessage(
-  source: ComplianceSourceStatus["source"],
+  source: ComplianceSourceEntry,
 ): string {
   if (source.status === "unchanged") {
     return "The official source matches the reviewed profile baseline.";
@@ -130,4 +177,21 @@ export function complianceSourceStatusMessage(
     return "The official source could not be reached. The recorded profile remains unchanged.";
   }
   return "The official source still needs its first successful check.";
+}
+
+export function complianceSourceStatusSummary(
+  sources: readonly ComplianceSourceEntry[],
+): string {
+  if (sources.every((source) => source.status === "unchanged")) {
+    return sources.length === 1
+      ? "The official source matches the reviewed requirements."
+      : `All ${sources.length} official sources match the reviewed requirements.`;
+  }
+  if (sources.some((source) => source.status === "changed")) {
+    return "At least one official source appears to have changed. OpenEscrow will not rewrite the requirements automatically; this version needs review.";
+  }
+  if (sources.some((source) => source.status === "pending")) {
+    return "Some official sources still need their first successful check.";
+  }
+  return "Some official sources could not be reached. The recorded requirements remain unchanged.";
 }

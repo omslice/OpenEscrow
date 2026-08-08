@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
+import { COMPLIANCE_SOURCE_REGISTRY } from "../shared/compliance-sources.js";
 
 const host = "127.0.0.1";
 const port = 4174;
@@ -168,20 +169,34 @@ try {
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify({
-        jurisdiction: input.jurisdiction,
-        profileVersion: input.profileVersion,
-        source: {
-          citation: "Cal. Civ. Code § 1950.5",
-          url: "https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CIV&sectionNum=1950.5.",
+      body: JSON.stringify((() => {
+        const expectedVersions = new Map([
+          [input.jurisdiction, input.profileVersion],
+          ...(input.overlays || []).map((overlay) => [
+            overlay.id,
+            overlay.version,
+          ]),
+        ]);
+        const sources = COMPLIANCE_SOURCE_REGISTRY.filter(
+          (sourceItem) =>
+            expectedVersions.get(sourceItem.jurisdiction) === sourceItem.version,
+        ).map((sourceItem) => ({
+          ...sourceItem,
           status: "unchanged",
           lastCheckedAt: "2026-07-30T12:00:00.000Z",
           lastVerifiedAt: "2026-07-30T12:00:00.000Z",
           requiresReview: false,
-        },
-        immutableSnapshotNotice:
-          "Finalized agreements keep their recorded compliance snapshot.",
-      }),
+        }));
+        return {
+          jurisdiction: input.jurisdiction,
+          profileVersion: input.profileVersion,
+          overlays: input.overlays || [],
+          source: sources[0],
+          sources,
+          immutableSnapshotNotice:
+            "Finalized agreements keep their recorded compliance snapshot.",
+        };
+      })()),
     });
   });
   await page.route(/\/api\/negotiations$/, async (route) => {
@@ -364,18 +379,22 @@ try {
     "Continuing should move focus into the newly visible deposit-terms panel.",
   );
   const sourcePanel = page.getByRole("region", {
-    name: "Official requirements source",
+    name: "Official requirements sources",
   });
   assert.equal(
-    await sourcePanel.getByRole("link").getAttribute("href"),
+    await sourcePanel.getByRole("link").first().getAttribute("href"),
     "https://leginfo.legislature.ca.gov/faces/codes_displaySection.xhtml?lawCode=CIV&sectionNum=1950.5.",
     "The address-routed profile should expose its official source link.",
   );
+  assert.ok(
+    (await sourcePanel.getByRole("link").count()) > 1,
+    "The address-routed profile should expose every applied official source link.",
+  );
   const sourceCheckButton = sourcePanel.getByRole("button", {
-    name: "Check official source for updates",
+    name: "Check official sources for updates",
   });
   const currentSourceMessage = sourcePanel.getByText(
-    "The official source matches the reviewed profile baseline.",
+    /All \d+ official sources match the reviewed requirements\./,
     {
       exact: false,
     },
@@ -383,7 +402,7 @@ try {
   await sourceCheckButton.click();
   await currentSourceMessage.waitFor({ state: "visible" });
   assert.equal(complianceSourceChecks, 1);
-  assert.match(await sourcePanel.textContent(), /Official source last checked:/);
+  assert.match(await sourcePanel.textContent(), /Checked .*2026/);
 
   await sourceCheckButton.click();
   const sourceCheckError = sourcePanel.getByRole("alert");
@@ -395,7 +414,7 @@ try {
     0,
     "A failed recheck must not leave the prior success result beside the error.",
   );
-  assert.doesNotMatch(await sourcePanel.textContent(), /Official source last checked:/);
+  assert.doesNotMatch(await sourcePanel.textContent(), /Checked .*2026/);
 
   await sourceCheckButton.click();
   await currentSourceMessage.waitFor({ state: "visible" });

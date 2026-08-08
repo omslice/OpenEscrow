@@ -3580,6 +3580,84 @@ test("a user-triggered state source check reports provenance without rewriting a
   assert.equal(unknown.status, 404);
 });
 
+test("a user-triggered source check covers every source applied to the address", async () => {
+  const db = new TestD1();
+  const overlays = newYorkResearchTerms.complianceSnapshot.overlays.map(
+    (overlay) => ({ id: overlay.id, version: overlay.version }),
+  );
+  const expectedSources = [
+    newYorkResearchTerms.complianceSnapshot.source,
+    ...newYorkResearchTerms.complianceSnapshot.overlays.flatMap(
+      (overlay) => overlay.sources,
+    ),
+  ];
+  assert.ok(overlays.length > 0);
+  assert.ok(expectedSources.length > 1);
+  const originalFetch = globalThis.fetch;
+  let fetchCount = 0;
+  globalThis.fetch = async () => {
+    fetchCount += 1;
+    return new Response("official requirements baseline", {
+      status: 200,
+      headers: {
+        "content-type": "text/html",
+        etag: `"source-${fetchCount}"`,
+      },
+    });
+  };
+  const env = {
+    DB: db,
+    COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+  };
+
+  try {
+    const result = await jsonResponse(
+      await worker.fetch(
+        request("/api/compliance/source-status", "POST", {
+          jurisdiction: newYorkProfile.code,
+          profileVersion: newYorkProfile.version,
+          overlays,
+        }),
+        env,
+      ),
+    );
+    assert.deepEqual(result.overlays, overlays);
+    assert.equal(result.sources.length, expectedSources.length);
+    assert.deepEqual(
+      result.sources.map(({ citation, url }) => ({ citation, url })),
+      expectedSources,
+    );
+    assert.equal(result.source.key, result.sources[0].key);
+    assert.equal(
+      result.sources.every((sourceItem) => sourceItem.status === "unchanged"),
+      true,
+    );
+    assert.equal(fetchCount, expectedSources.length);
+
+    const unknownOverlay = await worker.fetch(
+      request("/api/compliance/source-status", "POST", {
+        jurisdiction: newYorkProfile.code,
+        profileVersion: newYorkProfile.version,
+        overlays: [{ id: "local-unknown", version: "unknown-v1" }],
+      }),
+      env,
+    );
+    assert.equal(unknownOverlay.status, 404);
+
+    const duplicateOverlay = await worker.fetch(
+      request("/api/compliance/source-status", "POST", {
+        jurisdiction: newYorkProfile.code,
+        profileVersion: newYorkProfile.version,
+        overlays: [overlays[0], overlays[0]],
+      }),
+      env,
+    );
+    assert.equal(duplicateOverlay.status, 400);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("compliance checks reject known challenge and error-page redirects", async () => {
   const originalFetch = globalThis.fetch;
   const rejectedDestinations = [

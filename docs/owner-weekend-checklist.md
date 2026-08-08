@@ -27,9 +27,9 @@ are separate approvals with separate rollback evidence.
 
 ## Credentialed setup
 
-- [ ] If the matching Sites release is approved, configure the sending-only email provider,
-  evidence encryption/keyring, address attestation, and 15-minute scheduler in their private
-  hosting controls.
+- [ ] Configure the sending-only email provider in the Cloudflare Worker secret control. Private
+  R2, evidence encryption/keyring, address attestation, the 15-minute scheduler, RPC, and the
+  current Privy origin are already configured and should not be recreated.
 - [ ] Keep the official-source monitor enabled until every source is baselined, fresh, and free of
   changed/unreachable blockers. Investigate an alert; never bypass it by editing a status.
 - [ ] Set a conservative Base Sepolia sponsorship budget and alert in Privy before inviting pilot
@@ -39,8 +39,8 @@ are separate approvals with separate rollback evidence.
 
 ## Supervised checks
 
-- [ ] After any approved Sites promotion, confirm the public page and `/api/system/readiness`
-  return HTTP 200 and report the exact reviewed source commit.
+- [ ] After any approved release, confirm both public pages and both `/api/system/readiness`
+  endpoints return HTTP 200 and report the same exact reviewed source commit.
 - [ ] Run the separate-account landlord/tenant workflow in
   [`testnet-pilot-runbook.md`](./testnet-pilot-runbook.md), including mobile/keyboard checks and
   the stop conditions.
@@ -57,7 +57,7 @@ Share only public or sanitized evidence:
 - [ ] the 40-character source commit and candidate-evidence SHA-256;
 - [ ] public contract transaction hashes and the generated candidate deployment manifest, if a
   cohort was broadcast;
-- [ ] the deployment URL and sanitized readiness JSON after an approved Sites promotion; and
+- [ ] both deployment URLs and sanitized readiness JSON after an approved dual-host release; and
 - [ ] pilot/incident pass-fail notes and unresolved policy questions with identities and temporary
   credentials removed.
 

@@ -2504,53 +2504,91 @@ async function complianceSourceStatus(request, env) {
   }
   const jurisdiction = cleanText(body?.jurisdiction, 100);
   const profileVersion = cleanText(body?.profileVersion, 100);
+  const requestedOverlays = body?.overlays ?? [];
+  if (!Array.isArray(requestedOverlays) || requestedOverlays.length > 32) {
+    return json({ error: "A valid set of compliance overlays is required." }, 400);
+  }
+  const overlayVersions = requestedOverlays.map((overlay) => ({
+    id: cleanText(overlay?.id, 100),
+    version: cleanText(overlay?.version, 100),
+  }));
+  if (
+    overlayVersions.some((overlay) => !overlay.id || !overlay.version) ||
+    new Set(overlayVersions.map((overlay) => overlay.id)).size !==
+      overlayVersions.length
+  ) {
+    return json({ error: "A valid set of compliance overlays is required." }, 400);
+  }
   const profile = US_JURISDICTION_PROFILE_BY_CODE[jurisdiction];
-  const sourceItem = COMPLIANCE_SOURCE_REGISTRY.find(
-    (item) =>
-      item.scope === "state" &&
-      item.jurisdiction === jurisdiction &&
-      item.version === profileVersion,
+  const expectedVersions = new Map([
+    [jurisdiction, profileVersion],
+    ...overlayVersions.map((overlay) => [overlay.id, overlay.version]),
+  ]);
+  const sourceItems = COMPLIANCE_SOURCE_REGISTRY.filter(
+    (item) => expectedVersions.get(item.jurisdiction) === item.version,
   );
-  if (!profile || profile.version !== profileVersion || !sourceItem) {
+  const stateSource = sourceItems.find(
+    (item) => item.scope === "state" && item.jurisdiction === jurisdiction,
+  );
+  const registeredOverlayIds = new Set(
+    sourceItems
+      .filter((item) => item.scope !== "state")
+      .map((item) => item.jurisdiction),
+  );
+  if (
+    !profile ||
+    profile.version !== profileVersion ||
+    !stateSource ||
+    overlayVersions.some((overlay) => !registeredOverlayIds.has(overlay.id))
+  ) {
     return json({ error: "That versioned compliance profile is not available." }, 404);
   }
 
   await initialize(env.DB);
   await seedComplianceSources(env.DB);
-  let row = await env.DB
-    .prepare("SELECT * FROM compliance_source_checks WHERE source_key = ?")
-    .bind(sourceItem.key)
-    .first();
-  const lastCheckedMs = row?.last_checked_at
-    ? new Date(row.last_checked_at).getTime()
-    : Number.NaN;
   const minimumRefreshIntervalMs = 5 * 60 * 1000;
-  if (
-    !Number.isFinite(lastCheckedMs) ||
-    Date.now() - lastCheckedMs >= minimumRefreshIntervalMs
-  ) {
-    await checkComplianceSourceOnce(env.DB, row, new Date());
-    row = await env.DB
+  const sourceRows = [];
+  for (const sourceItem of sourceItems) {
+    let row = await env.DB
       .prepare("SELECT * FROM compliance_source_checks WHERE source_key = ?")
       .bind(sourceItem.key)
       .first();
-  }
-
-  const storedStatus = cleanText(row?.status, 40) || "pending";
-  const status = COMPLIANCE_SOURCE_STATUS_VALUES.has(storedStatus)
-    ? storedStatus
-    : "pending";
-  return json({
-    jurisdiction,
-    profileVersion,
-    source: {
+    const lastCheckedMs = row?.last_checked_at
+      ? new Date(row.last_checked_at).getTime()
+      : Number.NaN;
+    if (
+      !Number.isFinite(lastCheckedMs) ||
+      Date.now() - lastCheckedMs >= minimumRefreshIntervalMs
+    ) {
+      await checkComplianceSourceOnce(env.DB, row, new Date());
+      row = await env.DB
+        .prepare("SELECT * FROM compliance_source_checks WHERE source_key = ?")
+        .bind(sourceItem.key)
+        .first();
+    }
+    const storedStatus = cleanText(row?.status, 40) || "pending";
+    const status = COMPLIANCE_SOURCE_STATUS_VALUES.has(storedStatus)
+      ? storedStatus
+      : "pending";
+    sourceRows.push({
+      key: sourceItem.key,
+      scope: sourceItem.scope,
+      jurisdiction: sourceItem.jurisdiction,
       citation: sourceItem.citation,
       url: sourceItem.url,
       status,
       lastCheckedAt: row?.last_checked_at || null,
       lastVerifiedAt: row?.last_verified_at || null,
       requiresReview: status !== "unchanged",
-    },
+    });
+  }
+
+  return json({
+    jurisdiction,
+    profileVersion,
+    overlays: overlayVersions,
+    source: sourceRows[0],
+    sources: sourceRows,
     immutableSnapshotNotice:
       "Finalized agreements keep their recorded compliance snapshot. A source change must be reviewed and published as a new profile version before a draft can adopt it.",
   });

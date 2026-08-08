@@ -27,10 +27,10 @@ provider or hosting control that owns the secret.
 
 ## Actionable now
 
-- [ ] **Choose the OpenEscrow Cloudflare domain.** The primary domain will serve both the public
-  project introduction and the Base Sepolia MVP. If `app.<domain>` is reserved, it should redirect
-  to the primary domain rather than host a second application. Confirm that the domain is an active
-  zone in the intended Cloudflare account; do not share account credentials.
+- [x] **Choose the OpenEscrow Cloudflare staging address — completed 2026-08-08.**
+  `https://openescrow.omslice.workers.dev/` serves the single unified public introduction and
+  Base Sepolia MVP. There is no second public landing application. A future custom domain remains
+  optional and must be added to provider allowlists before promotion.
 - [x] **Activate private Cloudflare R2 — completed 2026-08-08.** The owner activated R2 in the
   intended account. Codex created separate staging and production-testnet evidence buckets and
   verified that public `r2.dev` access is disabled, no custom domains are attached, and both
@@ -44,10 +44,11 @@ provider or hosting control that owns the secret.
   `https://openescrow.omslice.workers.dev` is now an allowed origin for the existing OpenEscrow
   Privy application. The live Google account chooser was verified from Cloudflare without a
   browser error. The deploy verifier now fails closed if a future hosted origin is not accepted.
-- [ ] **Finish the remaining Cloudflare runtime-provider setup.** Keep notification, RPC,
-  evidence-encryption, address-attestation, and any future provider values in their owning private
-  controls. Add a future custom-domain origin to Privy and other provider allowlists before
-  promoting it; never expose a secret in a client build variable.
+- [ ] **Configure the notification provider.** Evidence encryption/keyring, address attestation,
+  RPC, private R2, scheduler, and the current Privy origin are configured. The remaining runtime
+  provider gap is sending-only email through Resend or the documented webhook equivalent. Keep
+  that credential in the Worker secret control. Add any future custom-domain origin to Privy and
+  other provider allowlists before promoting it; never expose a secret in a client build variable.
 - [x] **Publish one clean release to both interim hosts — completed 2026-08-08.** Cloudflare and
   ChatGPT Sites now serve the same exact source and expose clean release provenance. Continue to
   publish both hosts from one commit and run the dual-host verifier until the owner explicitly
@@ -77,20 +78,13 @@ provider or hosting control that owns the secret.
   qualified reviewer before relying on calculated deadlines in a supervised pilot.
 - [ ] **Verify a notification sending domain and create a sending-only Resend
   key.** Prefer a dedicated subdomain such as `notify.openescrow.org`.
-- [ ] **Create and safely store hosted runtime secrets.** Generate an
-  `ADDRESS_ATTESTATION_SECRET` from at least 32 random bytes and an
-  `EVIDENCE_ENCRYPTION_KEY` as documented. Keep the evidence key in a password
-  manager. Give the active evidence key a stable `EVIDENCE_ENCRYPTION_KEY_ID`;
-  during rotation, retain the prior key in the secret
-  `EVIDENCE_DECRYPTION_KEYS` keyring until an approved retention/deletion policy
-  permits its removal. After restoring or rotating a key, require hosted
-  readiness to report zero missing, unverified, and mismatched evidence keys.
-- [ ] **Enter the notification, address-attestation, and evidence values in the
-  existing Sites/Worker configuration.** Required values and verification
-  steps are in [`pilot-services-setup.md`](./pilot-services-setup.md). Do this
-  only when the corresponding development release is approved for deployment.
-- [ ] **Activate the 15-minute hosted Cron Trigger** and confirm its first
-  successful run after the notification/source-monitor release is deployed.
+- [x] **Create and safely store the Cloudflare evidence and address secrets — completed
+  2026-08-08.** Hosted readiness verifies tamper-resistant address profiles, encrypted private-R2
+  evidence, the active key ID, and a complete retained keyring with zero missing, unverified, or
+  mismatched referenced keys. Continue to keep recovery material outside chat and Git.
+- [x] **Activate the 15-minute hosted Cron Trigger — completed 2026-08-08.** Cloudflare readiness
+  reports a healthy scheduled run at the expected cadence. Notification jobs will begin sending
+  only after the separate email-provider credential is configured.
 - [ ] **Set a conservative Privy Base Sepolia sponsorship policy, budget, and alert.** The Worker
   now limits hosted API traffic, but a wallet can submit sponsored transactions without passing
   through that API limiter. Keep sponsorship testnet-only, restrict eligible methods/contracts if

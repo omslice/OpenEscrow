@@ -1,6 +1,6 @@
 # OpenEscrow testnet MVP roadmap
 
-Updated 2026-08-07. This is the canonical high-level project status. The
+Updated 2026-08-08. This is the canonical high-level project status. The
 [validation ledger](./mvp-checkpoint-2026-07-29.md) contains detailed evidence, and
 [owner actions](./owner-actions.md) contains only work that needs credentials, signatures,
 external professional review, or an owner decision.
@@ -183,9 +183,11 @@ production custody, or reliance on the compliance research as legal advice.
   today's rules. Valid parsed evaluations are
   recursively copied and frozen. This is a best-effort research aid, not an assertion that every
   legal rule is complete.
-- **Verified:** A manual official-source recheck accepts only the selected profile's exact version,
-  citation, URL, status/review pairing, and chronological canonical timestamps. Unreachable
-  sources are shown as needing attention, a failed retry cannot
+- **Verified:** A manual official-source recheck covers the state source and every federal, local,
+  housing-program, property-type, and fact-specific overlay applied to the validated address. It
+  accepts only the exact versioned source set, citations, URLs, status/review pairings, and
+  chronological canonical timestamps, then shows every official link and its last-check date in
+  consumer language. Unreachable sources are shown as needing attention, a failed retry cannot
   leave a stale green result beside its error, simultaneous requests share one bounded check, and
   an older late completion cannot overwrite a newer durable result. No rule content is rewritten.
 - **Verified:** A new or version-expanded official-source registry now advances in bounded
@@ -305,10 +307,12 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** The clean signed-out landing page omits the empty agreement-notification bell.
   Provider-independent rendered coverage proves notification access remains available after
   authentication and on valid role-locked invitation workspaces.
-- **Verified:** The public site and readiness endpoint returned HTTP 200 on 2026-08-03 and exposed
-  exact release provenance for the approved source. Seven hosted pilot actions remain: email,
-  scheduler health, evidence keyring, activity-registry binding, address attestation,
-  official-source baseline, and monitor freshness.
+- **Verified:** Both public app hosts and their readiness endpoints returned HTTP 200 on
+  2026-08-08 and exposed the same exact release provenance. Cloudflare scheduler health, evidence
+  encryption/keyring, address attestation, Google sign-in origin, private R2 storage, D1, static
+  assets, and the fifteen-minute trigger are configured. Pilot readiness remains fail-closed for
+  notification delivery, the version-matched activity registry, and completion of the fresh
+  official-source baseline.
 - **Verified:** The latest approved public deployment matches its exact release-checked and pushed
   source. Each subsequent coherent slice is validated and saved separately for explicit review;
   D1, R2, hosted data, runtime secrets, and configuration remain unchanged.
@@ -316,14 +320,16 @@ production custody, or reliance on the compliance research as legal advice.
   rollback artifact. The product decision now requires exactly one public Cloudflare site: the
   complete MVP with its signed-out introduction and authenticated About tab. The old landing
   Worker must have its public route disabled.
-- **Verified:** The owner Cloudflare boundary is prepared without changing the Sites deployment:
+- **Verified:** The unified app is deployed to the owner's Cloudflare account without changing the
+  Sites-hosted data boundary:
   separate staging and production-testnet D1 databases exist, all 21 migrations are applied only
   to staging, and the MVP Cloudflare package preserves the `DB`, `EVIDENCE`, `ASSETS`, and
   15-minute scheduler contracts. R2 is activated; separate empty staging and production-testnet
   evidence buckets are verified private with public URLs disabled and no custom domains. The
   staging remote preflight now passes with exact D1/R2 targets and current migrations.
-  Configuration, provenance, build, and Wrangler dry-run checks pass; no Cloudflare MVP or
-  production database deployment has occurred.
+  Configuration, provenance, build, Wrangler checks, and dual-host exact-source verification pass.
+  The Cloudflare staging dataset remains independent from the Sites historical dataset, and the
+  production-testnet database has not been migrated or published.
 - **Verified:** A fail-closed dual-host verifier checks the Cloudflare and ChatGPT Sites homepages,
   readiness schema, clean-source flag, full commit SHA, exact agreement between hosts, and the
   expected local release commit. The transitional release rule requires both public hosts to be
@@ -335,10 +341,10 @@ production custody, or reliance on the compliance research as legal advice.
 
 ## Remaining
 
-- **Planned:** Finish the reversible migration of the unified testnet MVP into the owner's Cloudflare
-  account after validating private evidence storage and the hosted-data continuity policy. Keep
-  the old landing Worker route disabled. The current Sites deployment remains the synchronized
-  rollback and hosted-data reference. See
+- **Planned:** Maintain the unified testnet MVP as one application on both Cloudflare and ChatGPT
+  Sites from the same exact commit while the Cloudflare environment completes its pilot gates.
+  Keep the old landing Worker route disabled. The Sites deployment remains the synchronized
+  rollback and historical-data reference until the hosted-data continuity policy is resolved. See
   [the Cloudflare landing and MVP deployment plan](./cloudflare-landing-and-mvp-plan.md).
 - **Planned:** Review and explicitly approve each newer saved candidate before deployment. The live
   site currently matches the last approved exact source; every future deployment must rerun the
@@ -364,8 +370,8 @@ production custody, or reliance on the compliance research as legal advice.
 
 ## Material unknowns
 
-- The exact OpenEscrow domain, Cloudflare zone, canonical landing hostname, and MVP `app`
-  hostname.
+- Whether and when to move beyond the current canonical Cloudflare staging URL,
+  `https://openescrow.omslice.workers.dev/`, to an owner-selected custom domain.
 - Whether the Sites-managed D1 and R2 resources expose a complete owner-accessible export path;
   without a verified export, the Cloudflare pilot must use a disclosed fresh synthetic dataset
   while the Sites deployment remains the historical record.
