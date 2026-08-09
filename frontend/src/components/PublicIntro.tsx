@@ -130,7 +130,7 @@ export function PublicIntro({
         >
           <source src="/openescrow-demo.mp4" type="video/mp4" />
           Your browser cannot play this video. You can{" "}
-          <a href="/openescrow-demo.mp4">open the OpenEscrow walkthrough directly</a>.
+          <a href="/openescrow-demo.mp4">open the OpenEscrow overview directly</a>.
         </video>
       </section>
 
