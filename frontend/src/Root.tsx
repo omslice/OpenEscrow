@@ -1,5 +1,6 @@
-import { lazy, useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { DeferredLoadBoundary } from "./components/DeferredLoadBoundary";
+import { LegalConsentNotice } from "./components/LegalConsentNotice";
 import { PublicLanding } from "./components/PublicLanding";
 import { ACCOUNT_AUTH_ENABLED } from "./lib/accountConfig";
 import {
@@ -14,6 +15,11 @@ import "./App.css";
 
 const AuthenticatedRoot = lazy(() => import("./AuthenticatedRoot"));
 const FallbackRoot = lazy(() => import("./FallbackRoot"));
+const LegalPage = lazy(() =>
+  import("./components/LegalPage").then((module) => ({
+    default: module.LegalPage,
+  })),
+);
 
 function PublicAccountEntry({
   onChoose,
@@ -36,6 +42,7 @@ function PublicAccountEntry({
       >
         Continue with a wallet
       </button>
+      <LegalConsentNotice />
     </div>
   );
 }
@@ -58,7 +65,7 @@ function ConnectingAccountEntry() {
   );
 }
 
-export function Root() {
+function InteractiveRoot() {
   const [entryContext] = useState(captureEntryContext);
   const [providerPreviouslyActivated] = useState(hasActivatedAccountProvider);
   const [initialLoginMethod, setInitialLoginMethod] =
@@ -110,4 +117,38 @@ export function Root() {
       )}
     </DeferredLoadBoundary>
   );
+}
+
+export function Root() {
+  const path = window.location.pathname.replace(/\/+$/, "") || "/";
+
+  if (path === "/privacy") {
+    return (
+      <Suspense
+        fallback={
+          <div className="app-loading" role="status">
+            Loading the Privacy Policy...
+          </div>
+        }
+      >
+        <LegalPage document="privacy" />
+      </Suspense>
+    );
+  }
+
+  if (path === "/terms") {
+    return (
+      <Suspense
+        fallback={
+          <div className="app-loading" role="status">
+            Loading the Terms of Use...
+          </div>
+        }
+      >
+        <LegalPage document="terms" />
+      </Suspense>
+    );
+  }
+
+  return <InteractiveRoot />;
 }

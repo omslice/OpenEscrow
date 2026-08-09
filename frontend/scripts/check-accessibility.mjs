@@ -239,7 +239,10 @@ try {
     "The About tab should link to Omri's housing article.",
   );
   assert.equal(
-    await page.getByRole("link", { name: "GitHub", exact: true }).getAttribute("href"),
+    await page
+      .locator(".about-links")
+      .getByRole("link", { name: "GitHub", exact: true })
+      .getAttribute("href"),
     "https://github.com/omslice/OpenEscrow",
     "The About tab should link to the public source repository.",
   );

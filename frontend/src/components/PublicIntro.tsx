@@ -112,6 +112,28 @@ export function PublicIntro({
         </div>
       </div>
 
+      <section className="project-demo-video" aria-labelledby="project-demo-video-title">
+        <header>
+          <p className="eyebrow">Project walkthrough</p>
+          <h3 id="project-demo-video-title">See OpenEscrow in action</h3>
+          <p id="project-demo-video-description">
+            Watch a quick tour of the shared landlord-and-tenant process, from proposal through a
+            protected and documented deposit.
+          </p>
+        </header>
+        <video
+          controls
+          playsInline
+          preload="none"
+          poster="/og.png"
+          aria-describedby="project-demo-video-description"
+        >
+          <source src="/openescrow-demo.mp4" type="video/mp4" />
+          Your browser cannot play this video. You can{" "}
+          <a href="/openescrow-demo.mp4">open the OpenEscrow walkthrough directly</a>.
+        </video>
+      </section>
+
       <div className="how-it-works-block" id="how-it-works">
         <header className="how-it-works-title">
           <div>

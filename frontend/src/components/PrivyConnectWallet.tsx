@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { useLoginWithOAuth, usePrivy } from "@privy-io/react-auth";
 import { useInviteRole } from "../lib/inviteContext";
 import { reloadBrowserPage } from "../lib/browserActions";
+import { LegalConsentNotice } from "./LegalConsentNotice";
 
 const ACCOUNT_CONNECTION_TIMEOUT_MS = 5_000;
 
@@ -111,6 +112,7 @@ export function PrivyConnectWallet() {
             {loginError}
           </span>
         )}
+        <LegalConsentNotice />
       </div>
     );
   }

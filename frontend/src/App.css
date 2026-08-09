@@ -262,6 +262,25 @@
   margin: 0;
 }
 
+.legal-links {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px 20px;
+  flex-wrap: wrap;
+  padding: 2px 0 6px;
+}
+
+.legal-links a {
+  color: var(--muted);
+  font-weight: 750;
+  text-underline-offset: 3px;
+}
+
+.legal-links a:hover {
+  color: var(--accent);
+}
+
 .donation-message {
   display: flex;
   align-items: center;
@@ -418,6 +437,43 @@
   display: inline-flex;
   align-items: center;
   text-decoration: none;
+}
+
+.project-demo-video {
+  display: grid;
+  grid-template-columns: minmax(270px, 0.5fr) minmax(0, 1fr);
+  align-items: center;
+  gap: clamp(18px, 3vw, 34px);
+  padding: clamp(18px, 3vw, 30px);
+  border: 1px solid var(--accent-border);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 15% 15%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 48%),
+    var(--surface);
+}
+
+.project-demo-video h3 {
+  margin: 6px 0 10px;
+  color: var(--text-h);
+  font-size: clamp(24px, 2.6vw, 32px);
+  letter-spacing: -0.03em;
+}
+
+.project-demo-video header > p:last-child {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.project-demo-video video {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--border));
+  border-radius: 12px;
+  background: var(--bg);
+  box-shadow: 0 18px 44px color-mix(in srgb, var(--bg) 62%, transparent);
+  object-fit: contain;
 }
 
 .public-access-prompt {
@@ -1229,6 +1285,100 @@
   justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+}
+
+.legal-consent-note {
+  flex-basis: 100%;
+  margin: 2px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  line-height: 1.45;
+  text-align: right;
+}
+
+.legal-consent-note a {
+  color: var(--text-h);
+  font-weight: 750;
+  text-underline-offset: 2px;
+}
+
+.legal-document {
+  width: min(100%, 960px);
+  margin: 0 auto;
+  color: var(--text);
+  line-height: 1.7;
+}
+
+.legal-document-heading {
+  margin-bottom: 22px;
+  padding: clamp(22px, 4vw, 38px);
+  border: 1px solid var(--accent-border);
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 12% 12%, color-mix(in srgb, var(--accent) 15%, transparent), transparent 50%),
+    var(--surface);
+}
+
+.legal-document-heading h2 {
+  margin: 4px 0 8px;
+  font-size: clamp(34px, 6vw, 58px);
+  letter-spacing: -0.045em;
+}
+
+.legal-effective-date,
+.legal-lede {
+  color: var(--muted);
+}
+
+.legal-effective-date {
+  margin: 0 0 18px;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.legal-lede {
+  max-width: 760px;
+  margin: 0;
+  font-size: clamp(16px, 2vw, 19px);
+}
+
+.legal-callout,
+.legal-document > section {
+  margin: 0 0 16px;
+  padding: clamp(18px, 3vw, 28px);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.legal-callout {
+  border-color: color-mix(in srgb, var(--warning) 48%, var(--border));
+  background: color-mix(in srgb, var(--warning) 8%, var(--surface));
+}
+
+.legal-callout p,
+.legal-document section > :last-child {
+  margin-bottom: 0;
+}
+
+.legal-document h3 {
+  margin: 0 0 10px;
+  color: var(--text-h);
+  font-size: clamp(19px, 2.4vw, 24px);
+}
+
+.legal-document ul {
+  padding-left: 22px;
+}
+
+.legal-document a {
+  color: var(--accent);
+  font-weight: 750;
+  text-underline-offset: 3px;
+}
+
+.legal-home-link {
+  text-decoration: none;
 }
 
 .account-connection-controls {
@@ -4402,6 +4552,10 @@ a.btn.disabled {
     padding: 22px;
   }
 
+  .project-demo-video {
+    grid-template-columns: 1fr;
+  }
+
   .public-access-prompt {
     align-items: stretch;
     flex-direction: column;
@@ -4477,6 +4631,10 @@ a.btn.disabled {
 
   .account-entry .btn {
     min-height: 44px;
+  }
+
+  .legal-consent-note {
+    text-align: left;
   }
 
   .account-connection-controls {

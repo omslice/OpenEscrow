@@ -162,7 +162,39 @@ try {
     0,
     "A clean logged-out visit must not show an empty workspace notification control.",
   );
+  assert.equal(
+    await landingPage
+      .locator(".legal-links")
+      .getByRole("link", { name: "Privacy Policy", exact: true })
+      .getAttribute("href"),
+    "/privacy",
+    "Privacy Policy must remain available to signed-out visitors.",
+  );
+  assert.equal(
+    await landingPage
+      .locator(".legal-links")
+      .getByRole("link", { name: "Terms of Use", exact: true })
+      .getAttribute("href"),
+    "/terms",
+    "Terms of Use must remain available to signed-out visitors.",
+  );
+  assert.ok(
+    await landingPage.locator(".legal-consent-note").count() >= 1,
+    "Sign-in controls must link the Terms of Use and Privacy Policy before authentication.",
+  );
   await landingPage.getByRole("heading", { name: "Built by Omri Gross" }).waitFor();
+  const projectWalkthrough = landingPage.locator(".project-demo-video video");
+  await projectWalkthrough.waitFor({ state: "visible" });
+  assert.equal(
+    await projectWalkthrough.getAttribute("preload"),
+    "none",
+    "The public walkthrough must not download its 23 MB media file before the visitor plays it.",
+  );
+  assert.equal(
+    await projectWalkthrough.locator("source").getAttribute("src"),
+    "/openescrow-demo.mp4",
+    "The public walkthrough should use the packaged OpenEscrow demo video.",
+  );
   assert.equal(
     await landingPage
       .getByRole("link", { name: "View on GitHub", exact: true })
@@ -333,6 +365,38 @@ try {
     "The account-provider retry must remain a full-size mobile touch target.",
   );
   await landingContext.close();
+
+  for (const legalDocument of [
+    { path: "/privacy", heading: "Privacy Policy" },
+    { path: "/terms", heading: "Terms of Use" },
+  ]) {
+    const legalContext = await browser.newContext();
+    await isolateFromExternalProviders(legalContext);
+    const legalPage = await legalContext.newPage();
+    const legalAssets = observeLocalScripts(legalPage);
+    const response = await legalPage.goto(`${baseUrl}${legalDocument.path}`, {
+      waitUntil: "domcontentloaded",
+    });
+    assert.equal(
+      response?.status(),
+      200,
+      `${legalDocument.path} must load through the SPA fallback.`,
+    );
+    await legalPage
+      .getByRole("heading", { name: legalDocument.heading, exact: true })
+      .waitFor({ state: "visible" });
+    assert.equal(
+      [...legalAssets].some((assetName) => assetName.startsWith("AuthenticatedRoot-")),
+      false,
+      `${legalDocument.path} must not load the account provider.`,
+    );
+    assert.equal(
+      await legalPage.getByRole("link", { name: "Back to OpenEscrow" }).getAttribute("href"),
+      "/",
+      `${legalDocument.path} must provide a clear return to the application.`,
+    );
+    await legalContext.close();
+  }
 
   const linkedContext = await browser.newContext();
   await isolateFromExternalProviders(linkedContext);

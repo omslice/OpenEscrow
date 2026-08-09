@@ -171,6 +171,13 @@ export function Layout({
       </div>
       <main className="app-main">{children}</main>
       <footer className="app-footer">
+        <nav className="legal-links" aria-label="Legal and project information">
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/terms">Terms of Use</a>
+          <a href="https://github.com/omslice/OpenEscrow" target="_blank" rel="noreferrer">
+            GitHub
+          </a>
+        </nav>
         <div className="donation-message">
           <span>
             <strong>Support the open-source project.</strong> Donations help fund continued
