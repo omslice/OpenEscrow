@@ -54,11 +54,11 @@ const expectedCommit = expectedArgument ||
     })
   ).stdout.trim();
 
-async function inspectHost(label, baseUrl) {
+async function inspectHost(label, baseUrl, canonicalBaseUrl) {
   let home;
   try {
     home = await fetch(baseUrl, {
-      redirect: "error",
+      redirect: canonicalBaseUrl ? "manual" : "error",
       cache: "no-store",
       signal: AbortSignal.timeout(10_000),
     });
@@ -103,6 +103,8 @@ async function inspectHost(label, baseUrl) {
     baseUrl,
     homeStatus: home.status,
     homeHtml,
+    homeLocation: home.headers.get("location"),
+    canonicalBaseUrl,
     readinessStatus: readinessResult.status,
     readiness: readinessResult.readiness,
   });
@@ -128,7 +130,7 @@ async function inspectRetiredLanding(label, baseUrl) {
 }
 
 const [sites, cloudflare, retiredLanding] = await Promise.all([
-  inspectHost("ChatGPT Sites", sitesUrl),
+  inspectHost("ChatGPT Sites", sitesUrl, cloudflareUrl),
   inspectHost("Cloudflare", cloudflareUrl),
   inspectRetiredLanding("Retired landing Worker", retiredLandingUrl),
 ]);

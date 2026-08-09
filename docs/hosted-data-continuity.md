@@ -5,6 +5,21 @@ not mean D1 rows or private R2 evidence were copied. This procedure creates priv
 fingerprints for complete exports and compares them without writing names, emails, agreement IDs,
 R2 keys, evidence bytes, or other row values into the comparison manifest.
 
+## Adopted canonical-host policy (2026-08-08)
+
+`https://openescrow.io/` and its bound Cloudflare D1/R2 resources are the sole prospective hosted
+record for all new activity. The retained ChatGPT Sites hostname redirects user-facing reads to
+that canonical origin and rejects non-readiness writes before opening its historical database.
+Its local `/api/system/readiness` response remains available solely to prove the exact rollback
+build deployed there.
+
+The independent Sites D1/R2 resources are preserved unchanged as a historical synthetic-data and
+rollback archive. They have not been migrated, merged, or inferred from wallet activity. This
+policy stops future split-brain writes while retaining the option of a separately rehearsed import
+if a complete provider export and the necessary private key provenance later become available.
+Onchain events remain independently discoverable, but they cannot reconstruct private proposals,
+participant authorization, evidence, notes, notification state, or every application revision.
+
 The tooling is verification-only. It never imports, overwrites, or deletes hosted data.
 
 ## What a passing comparison proves
@@ -105,14 +120,12 @@ The SQL export, provider output, one-time HMAC key, inventory, and manifest rema
 repository under the owner's private local application-data directory. This validates a current
 Cloudflare backup, not continuity with the separately managed Sites dataset.
 
-## Decision gate
+## Optional future import gate
 
-Before any import, the owner must choose one path:
-
-1. Keep Sites as the historical synthetic-data record and operate Cloudflare with a clearly
-   disclosed fresh synthetic dataset; or
-2. obtain complete private exports, rehearse import into an isolated destination, create manifests
-   before and after, require `match`, preserve a verified backup, and only then approve a cutover.
+The first path is now adopted: Sites remains the historical synthetic-data record and Cloudflare
+is the fresh canonical dataset. If the owner later elects to import historical records, obtain
+complete private exports, rehearse import into an isolated destination, create manifests before
+and after, require `match`, preserve a verified backup, and only then approve a controlled cutover.
 
 Neither option changes the Base Sepolia contract state. Existing immutable testnet agreements must
 remain discoverable through their original deployment even if hosted metadata is not migrated.

@@ -330,6 +330,14 @@ try {
     ["About", "Dashboard", "Proposals", "Deposits", "Record"],
     "The workspace tabs should begin with About, followed by Dashboard and the workflow tabs.",
   );
+  assert.equal(
+    await workspaceTablist
+      .getByRole("tab", { name: "About" })
+      .locator(".tab-icon")
+      .innerText(),
+    "💡",
+    "The About tab should use the same colored emoji treatment as the workflow tabs.",
+  );
   await overviewTab.focus();
   await overviewTab.press("ArrowRight");
   const proposalsTab = workspaceTablist.getByRole("tab", { name: "Proposals" });

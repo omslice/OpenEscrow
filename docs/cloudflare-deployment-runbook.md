@@ -3,8 +3,10 @@
 This runbook operates one public-facing Cloudflare application: the complete Base Sepolia MVP,
 including its signed-out project introduction and authenticated **About** tab. The old standalone
 landing Worker is retained only as a disabled rollback artifact and must not expose a public route.
-The existing ChatGPT Sites deployment is a synchronized second host for the same application
-source during transition.
+The existing ChatGPT Sites deployment is a synchronized rollback build during transition. Its
+user-facing routes redirect to `https://openescrow.io/`, its writes fail closed, and only its local
+readiness endpoint remains available for exact-build verification. Its historical D1/R2 bindings
+remain preserved and untouched.
 
 ## Account boundary
 
@@ -85,13 +87,15 @@ baseline before promotion.
 
 Until Cloudflare completes the supervised pilot and rollback exercise, every normal public release
 must be published to both the Cloudflare MVP and the existing ChatGPT Sites project from the same
-clean Git commit. Do not describe a release as delivered until `npm run check:dual-host` proves that
-both homepages and readiness endpoints are reachable, both report `sourceDirty: false`, and both
-report the expected full commit SHA. If either host cannot be updated, hold the normal release or
-record an explicit emergency exception; never silently let the two public applications drift.
+clean Git commit. Do not describe a release as delivered until `npm run check:dual-host` proves the
+canonical homepage is reachable, Sites redirects to that exact canonical origin, both local
+readiness endpoints report `sourceDirty: false`, and both report the expected full commit SHA. If
+either host cannot be updated, hold the normal release or record an explicit emergency exception;
+never silently let the retained rollback build drift.
 
 The two hosts retain independent deployments, databases, object stores, secrets, and rollback
-histories. Matching application source does not imply that their hosted records have been copied.
+histories. Cloudflare is the sole writable hosted record. Matching application source does not
+imply that historical Sites records have been copied.
 Use the private, fail-closed [hosted-data continuity procedure](./hosted-data-continuity.md) if a
 complete Sites export becomes available. The comparison command fingerprints D1 rows and encrypted
 R2 bytes without publishing their values; it never imports, overwrites, or deletes provider data.

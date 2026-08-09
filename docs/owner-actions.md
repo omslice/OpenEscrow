@@ -36,41 +36,41 @@ provider or hosting control that owns the secret.
   intended account. Codex created separate staging and production-testnet evidence buckets and
   verified that public `r2.dev` access is disabled, no custom domains are attached, and both
   buckets are empty. Application-layer encryption and recovery checks remain mandatory.
-- [ ] **Choose the hosted-data continuity policy.** Decide whether the current synthetic Sites D1
-  records and R2 evidence must be migrated or may remain in the rollback deployment while the
-  owner-hosted Cloudflare pilot starts with a clearly disclosed fresh synthetic dataset. No
-  migration or destination overwrite should occur until a complete export and comparison are
-  verified. A tested private manifest tool can now compare complete D1/R2 exports using keyed
-  fingerprints without exposing record values; the remaining unknown is whether Sites will supply
-  a complete export. See [`hosted-data-continuity.md`](./hosted-data-continuity.md).
+- [x] **Choose the hosted-data continuity policy — completed 2026-08-08.** Cloudflare D1/R2 is
+  the sole writable hosted record for new activity. The Sites hostname redirects users to
+  `openescrow.io` and rejects writes while its historical synthetic D1/R2 remains untouched as a
+  rollback archive. No migration is claimed. A future import remains optional and must satisfy the
+  complete-export and fail-closed comparison procedure in
+  [`hosted-data-continuity.md`](./hosted-data-continuity.md).
 - [x] **Add the canonical Cloudflare app origin to Privy — completed 2026-08-08.**
   `https://openescrow.io`, the `workers.dev` fallback, and the ChatGPT Sites mirror are allowed
   origins for the existing OpenEscrow Privy application. The deploy verifier fails closed when
   a hosted origin is not accepted.
-- [ ] **Finish the verified OpenEscrow sending domain.** The Resend API key, signed delivery
-  webhook secret, private R2, scheduler, and provider health check are configured and a private
-  test message was delivered. Add and verify a dedicated OpenEscrow sending subdomain in Resend,
-  switch `NOTIFICATION_FROM_EMAIL` from the Resend onboarding sender, and move the signed webhook
-  to `https://openescrow.io/api/notifications/provider/resend`. Keep credentials in Worker secret
-  controls and never expose a secret in a client build variable.
+- [x] **Finish the verified OpenEscrow sending domain — completed 2026-08-08.** Resend sends as
+  `OpenEscrow <notifications@updates.openescrow.io>`. SPF, DKIM, DMARC, the signed delivery webhook,
+  notification scheduler, and default participant preferences are configured. A live custom-domain
+  message reached `delivered`, with both `email.sent` and `email.delivered` webhook events recorded
+  in canonical D1. Keep credentials in Worker secret controls and never expose a secret in a client
+  build variable.
 - [x] **Publish one clean release to both interim hosts — completed 2026-08-08.** Cloudflare and
   ChatGPT Sites now serve the same exact source and expose clean release provenance. Continue to
   publish both hosts from one commit and run the dual-host verifier until the owner explicitly
   retires the Sites rollback.
-- [ ] **Review and broadcast a hardened Base Sepolia escrow/reserve/registry cohort.** The latest source adds
-  reciprocal immutable deployment binding, exact reserve phase gates, checks-effects-interactions
-  funding, and a contract-wide cross-function reentrancy lock. The existing escrow and reserve are
-  immutable and cannot be upgraded in place. After reviewing the exact candidate, use the private
-  local deployment procedure to create one mutually bound three-contract cohort; share only its
-  public transaction hashes and generated candidate manifest, never the keystore password. Do not
-  change the app configuration or retire
-  the existing testnet cohort until the new bytecode and mutual bindings have been verified. See
-  [`base-sepolia-deployment.md`](./base-sepolia-deployment.md).
-- [ ] **Return the public candidate manifest for verification before configuration changes.**
-  Codex can verify all three receipts, runtime code, reciprocal bindings, token addresses,
-  registry binding, deployment blocks, and source commit without receiving a secret. The existing
-  Base Sepolia cohort remains configured and available as the explicit rollback target until the
-  candidate and a new Sites build are approved.
+- [ ] **Broadcast the reviewed narrow Base Sepolia registry recovery.** The active F18 escrow and
+  its reciprocal reserve/token bindings are verified and agreement 0 is active. In a private
+  PowerShell window, run the exact-commit procedure in
+  [`agreement-activity-registry-deployment.md`](./agreement-activity-registry-deployment.md) and
+  enter the encrypted `openescrow-base-sepolia` keystore password locally. This deploys a new
+  immutable registry whose constructor points to F18; it does not move agreement state or funds.
+  Never share the keystore or password.
+- [ ] **Return the public registry manifest and transaction hash before configuration changes.**
+  Codex can then verify the receipt, exact runtime bytecode, F18 binding, landlord/tenant access,
+  reciprocal reserve/token addresses, deployment block, and source commit without receiving a
+  secret. The retired C004 registry remains an explicit immutable rollback reference.
+- [ ] **Evaluate a future hardened three-contract cohort separately.** A later escrow/reserve/
+  registry deployment can incorporate the newest reviewed contract hardening, but it will not
+  migrate active F18 agreement state. Keep it separate from the narrow registry readiness repair
+  and require the full [`base-sepolia-deployment.md`](./base-sepolia-deployment.md) gate.
 - [ ] **Choose the first pilot markets for local-rule coverage.**
   State law is routed nationwide, but only Chicago, Seattle, and Portland have
   reviewed city overlays. Name the cities/counties most likely to be used in
@@ -86,11 +86,6 @@ provider or hosting control that owns the secret.
   yet attest that the device and property share the same IANA timezone or decide how a legal
   deadline should treat daylight-saving transitions. Select this with the address provider and
   qualified reviewer before relying on calculated deadlines in a supervised pilot.
-- [ ] **Verify a notification sending domain and create a sending-only Resend
-  key.** Prefer a dedicated subdomain such as `notify.openescrow.org`. Cloudflare's native Email
-  Sending currently requires its paid Workers plan and a conventional Cloudflare-DNS domain, so
-  Resend's free transactional tier is the lower-cost pilot path. An ENS name cannot supply the
-  required SPF/DKIM DNS records.
 - [x] **Create and safely store the Cloudflare evidence and address secrets — completed
   2026-08-08.** Hosted readiness verifies tamper-resistant address profiles, encrypted private-R2
   evidence, the active key ID, and a complete retained keyring with zero missing, unverified, or

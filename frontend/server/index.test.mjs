@@ -7143,7 +7143,7 @@ test("proposal invitations are recipient-bound, canonical, tracked, and duplicat
     fragment = `token=${invitationToken}`,
   } = {}) =>
     new Request(
-      `https://openescrow-demo.omrigross.chatgpt.site/api/negotiations/${created.record.id}/invitations`,
+      `https://openescrow.omslice.workers.dev/api/negotiations/${created.record.id}/invitations`,
       {
         method: "POST",
         headers: { "content-type": "application/json" },
@@ -8127,6 +8127,56 @@ test("sensitive authorized reads reject cross-site browser requests without an O
     { DB: db },
   );
   assert.equal(signedLinkEntryPoint.status, 404);
+});
+
+test("the retained Sites host redirects reads and rejects writes without touching historical data", async () => {
+  const redirected = await worker.fetch(
+    new Request(
+      "https://openescrow-demo.omrigross.chatgpt.site/proposals?source=bookmark",
+    ),
+    {},
+  );
+  assert.equal(redirected.status, 307);
+  assert.equal(
+    redirected.headers.get("location"),
+    "https://openescrow.io/proposals?source=bookmark",
+  );
+  assert.equal(redirected.headers.get("cache-control"), "no-store");
+  assert.equal(
+    redirected.headers.get("x-openescrow-canonical-host"),
+    "openescrow.io",
+  );
+
+  const blockedWrite = await worker.fetch(
+    new Request(
+      "https://openescrow-demo.omrigross.chatgpt.site/api/negotiations",
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          origin: "https://openescrow-demo.omrigross.chatgpt.site",
+          "sec-fetch-site": "same-origin",
+        },
+        body: "{}",
+      },
+    ),
+    {},
+  );
+  assert.equal(blockedWrite.status, 409);
+  assert.deepEqual(await blockedWrite.json(), {
+    error: "This historical OpenEscrow host is read-only. Continue on openescrow.io.",
+    code: "canonical-host-required",
+    canonicalUrl: "https://openescrow.io/api/negotiations",
+  });
+
+  const readiness = await worker.fetch(
+    new Request(
+      "https://openescrow-demo.omrigross.chatgpt.site/api/system/readiness",
+    ),
+    {},
+  );
+  assert.equal(readiness.status, 200);
+  assert.equal(readiness.headers.get("location"), null);
 });
 
 test("private agreement reads require a strict bearer header and reject URL credentials", async () => {

@@ -29,6 +29,16 @@ function hosted(label, origin, overrides = {}) {
   });
 }
 
+function retainedSites(overrides = {}) {
+  return hosted("ChatGPT Sites", "https://sites.example/", {
+    homeStatus: 307,
+    homeHtml: "",
+    homeLocation: "https://cloudflare.example/",
+    canonicalBaseUrl: new URL("https://cloudflare.example/"),
+    ...overrides,
+  });
+}
+
 test("normalizes HTTPS deployment URLs to an origin root", () => {
   assert.equal(
     normalizeBaseUrl("https://example.test/path?x=1#fragment", "Host").href,
@@ -114,7 +124,7 @@ test("returns the last readable stale release and preserves a terminal request e
 
 test("accepts two clean hosts serving the exact expected commit", () => {
   const result = validateDualHostRelease({
-    sites: hosted("ChatGPT Sites", "https://sites.example/"),
+    sites: retainedSites(),
     cloudflare: hosted("Cloudflare", "https://cloudflare.example/"),
     expectedCommit: commitSha,
   });
@@ -123,6 +133,7 @@ test("accepts two clean hosts serving the exact expected commit", () => {
     commitSha,
     sitesOrigin: "https://sites.example",
     cloudflareOrigin: "https://cloudflare.example",
+    canonicalOrigin: "https://cloudflare.example",
   });
 });
 
@@ -146,6 +157,17 @@ test("fails closed when either host lacks exact clean provenance", () => {
         readinessStatus: 503,
       }),
     /readiness returned HTTP 503/,
+  );
+});
+
+test("requires the retained Sites host to redirect to the canonical app", () => {
+  assert.throws(
+    () => retainedSites({ homeStatus: 200 }),
+    /canonical redirect returned HTTP 200/,
+  );
+  assert.throws(
+    () => retainedSites({ homeLocation: "https://wrong.example/" }),
+    /not https:\/\/cloudflare\.example\//,
   );
 });
 
@@ -174,7 +196,7 @@ test("requires the retired standalone landing route to remain unavailable", () =
 });
 
 test("rejects host drift and a shared but unexpected commit", () => {
-  const sites = hosted("ChatGPT Sites", "https://sites.example/");
+  const sites = retainedSites();
   const cloudflare = hosted("Cloudflare", "https://cloudflare.example/");
   assert.throws(
     () =>

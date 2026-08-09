@@ -6,17 +6,18 @@ OpenEscrow has one public-facing Cloudflare site. That site serves the complete 
 its signed-out project introduction, and its authenticated **About** tab from one Worker and one
 origin. There is no separate public Cloudflare landing page or second Cloudflare application.
 
-During transition, the existing ChatGPT Sites URL serves the same clean application commit as a
-synchronized second host and rollback/data reference. The two hosts have independent runtime
-storage, secrets, and rollback histories; matching source does not imply that records migrated.
+During transition, the existing ChatGPT Sites URL retains the same clean application commit as a
+rollback/data reference, but redirects user traffic to the canonical Cloudflare application and
+rejects writes. The two hosts have independent runtime storage, secrets, and rollback histories;
+matching source does not imply that historical records migrated.
 
 ## Public structure
 
 - Cloudflare: `https://openescrow.io/` — canonical owner-hosted testnet app.
 - Cloudflare fallback: `https://openescrow.omslice.workers.dev/` — retained for rollback and
   supervised recovery, not promoted as a second public product.
-- ChatGPT Sites: `https://openescrow-demo.omrigross.chatgpt.site/` — synchronized mirror and
-  historical-data reference during the transition.
+- ChatGPT Sites: `https://openescrow-demo.omrigross.chatgpt.site/` — synchronized rollback build
+  and preserved historical-data reference; user traffic redirects to `https://openescrow.io/`.
 - `www.openescrow.io` may redirect to the apex after its redirect record is configured; it must
   not become a second application origin.
 - The retired `openescrow-landing-staging` Worker must have its public route disabled. Its source
@@ -56,7 +57,7 @@ The single application includes:
 4. Verify the Cloudflare homepage, readiness endpoint, source provenance, private R2, encryption,
    address attestation, receipt/registry checks, and scheduled trigger.
 5. Publish the same exact commit to the existing ChatGPT Sites project without replacing its D1,
-   R2, secrets, configuration, or hosted data.
+   R2, secrets, configuration, or hosted data; verify its canonical redirect and local readiness.
 6. Run the fail-closed dual-host verifier. Do not report a normal public release delivered unless
    both hosts serve the expected clean commit and both readiness endpoints respond.
 7. Keep the standalone landing Worker public route disabled.
@@ -70,8 +71,8 @@ The single application includes:
   [hosted-data continuity verification](./hosted-data-continuity.md). It omits private values and
   rejects partial R2 inventories; it does not perform an import or make an unavailable Sites
   export complete.
-- Otherwise, disclose that Cloudflare starts with fresh synthetic data and retain Sites as the
-  historical testnet record.
+- Cloudflare is the adopted fresh canonical synthetic dataset. Sites remains the preserved
+  historical testnet record unless a later complete, rehearsed, owner-approved import passes.
 - No migration step may overwrite either source or destination without verified backup and an
   explicit continuity decision.
 
@@ -85,9 +86,9 @@ The single application includes:
   assets, application-layer evidence encryption/keyring, address attestation, receipt checks,
   compliance monitor, and `*/15` scheduled handler intact. All repository staging migrations are
   current.
-- Hosted pilot readiness reports 61/61 compliance-source gates current and a healthy scheduler.
-  The only two failed runtime gates are automatic email delivery and the version-matched activity
-  registry.
+- Hosted pilot readiness reports 61/61 compliance-source gates current, a healthy scheduler, and
+  delivered custom-domain email with a signed provider webhook. The remaining failed runtime gate
+  is the version-matched activity registry.
 - The credential-free pilot rehearsal passed 23/23 lifecycle, outage, archive, proof, funding,
   and recovery scenarios. The credential-free incident rehearsal passed 19/19 isolation,
   privacy, tamper, key-rotation, outage, receipt, and RPC scenarios.
@@ -101,8 +102,9 @@ The single application includes:
 
 - Exactly one Cloudflare public site serves the full MVP and About tab.
 - The retired landing Worker has no public route.
-- Cloudflare and ChatGPT Sites serve the same exact clean source commit after each normal release.
-- Both homepages and `/api/system/readiness` return HTTP 200.
+- Cloudflare and ChatGPT Sites carry the same exact clean source commit after each normal release.
+- The Cloudflare homepage returns HTTP 200; Sites returns the expected canonical redirect; both
+  local `/api/system/readiness` endpoints return HTTP 200.
 - Cloudflare binds `DB`, private `EVIDENCE`, and `ASSETS`; required secrets are configured without
   exposing their values; the 15-minute trigger is present.
 - Authentication origins, scheduled-job health, notification delivery, accessibility/recovery
@@ -112,10 +114,9 @@ The single application includes:
 
 ## Owner-only actions still required
 
-- Configure the notification provider secret and sender identity.
 - Review and broadcast the hardened Base Sepolia escrow/reserve/registry cohort, return only its
   public manifest and transaction hashes, and approve the verified configuration switch.
-- Decide whether existing synthetic Sites records must migrate or may remain historical.
+- Obtain a complete Sites export only if a later historical-record import is desired.
 - Run the supervised separate-account pilot and incident/privacy drill, and approve any future
   custom-domain cutover.
 

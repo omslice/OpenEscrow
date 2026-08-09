@@ -326,11 +326,16 @@ production custody, or reliance on the compliance research as legal advice.
   outbound paths. Provider-accepted `sent`, `delivered`, and `delayed` states are terminal for local
   retry purposes; only failed attempts are retried with their original idempotency key. The pilot
   gate requires signed delivery-status tracking once a Resend sender is enabled.
-- **Verified:** Both public app hosts and their readiness endpoints returned HTTP 200 on
-  2026-08-08 and exposed the same exact release provenance. Cloudflare scheduler health, evidence
+- **Verified:** Custom-domain email now sends as
+  `OpenEscrow <notifications@updates.openescrow.io>`. A live message reached `delivered`, with both
+  provider acceptance and signed delivery webhook events recorded in canonical D1. SPF, DKIM,
+  DMARC, default participant preferences, suppression handling, and the notification scheduler are
+  configured and independently tested.
+- **Verified:** The canonical Cloudflare app and both local readiness endpoints exposed the same
+  exact release provenance on 2026-08-08. Cloudflare scheduler health, evidence
   encryption/keyring, address attestation, Google sign-in origin, private R2 storage, D1, static
   assets, and the fifteen-minute trigger are configured. Pilot readiness remains fail-closed for
-  notification delivery and the version-matched activity registry; the official-source gate is
+  the version-matched activity registry; the official-source gate is
   current across all 61 profiles, including the disclosed time-limited New Hampshire review.
 - **Verified:** The latest approved public deployment matches its exact release-checked and pushed
   source. Each subsequent coherent slice is validated and saved separately for explicit review;
@@ -351,11 +356,12 @@ production custody, or reliance on the compliance research as legal advice.
   Configuration, provenance, build, Wrangler checks, and dual-host exact-source verification pass.
   The Cloudflare staging dataset remains independent from the Sites historical dataset, and the
   production-testnet database has not been migrated or published.
-- **Verified:** A fail-closed dual-host verifier checks the Cloudflare and ChatGPT Sites homepages,
-  readiness schema, clean-source flag, full commit SHA, exact agreement between hosts, and the
-  expected local release commit. The transitional release rule requires both public hosts to be
-  updated from one clean commit before a normal release is reported delivered; hosted data and
-  rollback histories remain independent.
+- **Verified:** A fail-closed dual-host verifier checks the canonical Cloudflare application, the
+  ChatGPT Sites redirect to that exact origin, each host's local readiness schema, clean-source
+  flag, full commit SHA, exact agreement between hosts, and the expected local release commit. The
+  transitional release rule requires both deployments to be updated from one clean commit before
+  a normal release is reported delivered; historical data and rollback histories remain
+  independent.
 - **Verified:** Cloudflare release verification now distinguishes a safely published core release
   from a supervised-pilot-ready environment. Every deployment still requires private R2,
   application-layer evidence encryption and retained-key recovery, address attestation, onchain
@@ -372,12 +378,17 @@ production custody, or reliance on the compliance research as legal advice.
   for the exact official URL and 520 error while a hosted retry is less than 48 hours old; expiry,
   a different failure, a source/version mismatch, or a stale retry closes readiness and proposal
   creation again. Readiness reports this separately from an automated baseline.
+- **Verified:** Cloudflare D1/R2 is the adopted sole writable hosted record for new activity. The
+  retained Sites hostname redirects user traffic to `openescrow.io` and rejects writes before
+  opening its historical D1, while local readiness remains available for release verification.
+  Sites D1/R2 remains untouched as a historical synthetic-data and rollback archive; no migration
+  is claimed.
 - **Verified:** Hosted-data continuity now has a private, fail-closed verification tool and
   operator procedure. It loads a complete D1 SQL export into isolated memory, creates keyed
   schema/table fingerprints, hashes complete R2 object identifiers and encrypted bytes, checks
   every D1 evidence reference, omits raw private values from manifests, and distinguishes a match,
   mismatch, and incomplete provider export. It performs no import or provider mutation. Sites
-  export availability and the owner's continuity choice remain external gates.
+  export availability remains an optional gate only if a later historical import is requested.
 - **Verified:** A 2026-08-08 read-only Cloudflare staging backup rehearsal exported the complete D1
   database, restored it into isolated memory, fingerprinted all 221 rows without exposing values,
   and matched every D1 evidence reference against a provider-verified complete empty R2 inventory.
@@ -389,20 +400,20 @@ production custody, or reliance on the compliance research as legal advice.
 
 ## Remaining
 
-- **Planned:** Maintain the unified testnet MVP as one application on both Cloudflare and ChatGPT
-  Sites from the same exact commit while the Cloudflare environment completes its pilot gates.
-  Keep the old landing Worker route disabled. The Sites deployment remains the synchronized
-  rollback and historical-data reference until the hosted-data continuity policy is resolved. See
+- **Planned:** Maintain the unified testnet MVP as the canonical Cloudflare application and retain
+  a same-commit ChatGPT Sites redirect/rollback build while the pilot gates finish. Keep the old
+  landing Worker route disabled and the historical Sites storage untouched. See
   [the Cloudflare landing and MVP deployment plan](./cloudflare-landing-and-mvp-plan.md).
 - **Planned:** Review and explicitly approve each newer saved candidate before deployment. The live
   site currently matches the last approved exact source; every future deployment must rerun the
   public readiness and release-provenance checks.
-- **Planned:** Review and broadcast a new mutually bound Base Sepolia escrow/reserve pair, then a
-  registry bound to that exact escrow, before switching the candidate configuration. Existing
-  testnet agreements remain readable on their immutable retired deployment; no state is migrated.
-- **Planned:** Complete the remaining hosted pilot gates listed in
-  [owner actions](./owner-actions.md): notification delivery and a version-matched activity
-  registry. Keep the already verified scheduler, private-R2 evidence encryption and retained-key
+- **Planned:** Run the reviewed narrow recovery deployment for a new activity registry bound to
+  the active F18 Base Sepolia escrow, independently verify its exact bytecode and party access,
+  then switch the candidate configuration. This preserves active agreement 0 and its escrow funds;
+  neither contract state nor hosted records are migrated.
+- **Planned:** Complete the remaining hosted pilot gate listed in
+  [owner actions](./owner-actions.md): the version-matched activity registry. Keep the already
+  verified custom-domain notification delivery, scheduler, private-R2 evidence encryption and retained-key
   recovery, and address attestation healthy. Keep bounded retries active for New Hampshire, replace
   its expiring manual-review exception with an automated primary-source baseline when the official
   origin becomes compatible, and re-review it before the exception expires.
@@ -427,13 +438,10 @@ production custody, or reliance on the compliance research as legal advice.
 
 ## Material unknowns
 
-- `https://openescrow.io/` is now the selected canonical owner-hosted testnet domain. Public DNS,
-  OAuth, email-sender, and dual-host cutover verification must finish before the fallback hostname
-  is treated as rollback-only.
-- Whether the Sites-managed D1 and R2 resources expose a complete owner-accessible export path;
-  without a verified export, the Cloudflare pilot must use a disclosed fresh synthetic dataset
-  while the Sites deployment remains the historical record. The comparison tooling is ready but
-  intentionally cannot turn a partial provider export into continuity evidence.
+- Whether the Sites-managed D1 and R2 resources expose a complete owner-accessible export path.
+  This does not block the adopted fresh Cloudflare dataset; it matters only if the owner later
+  requests a verified historical import. The comparison tooling intentionally cannot turn a
+  partial provider export into continuity evidence.
 - First pilot cities/counties and tenancy segment.
 - The authoritative property-timezone source and qualified local civil-time/DST interpretation
   for each pilot market. The candidate stores explicit instants deterministically but does not

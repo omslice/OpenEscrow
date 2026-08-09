@@ -956,7 +956,7 @@ function AppView({
     agreements:
       workspaceRole === "landlord" ? "💼" : workspaceRole === "tenant" ? "🏦" : "⚖️",
     record: "📜",
-    about: "ⓘ",
+    about: "💡",
   };
 
   function renderAgreementDiscovery() {

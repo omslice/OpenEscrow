@@ -76,14 +76,33 @@ export function validateHostedRelease({
   baseUrl,
   homeStatus,
   homeHtml,
+  homeLocation,
+  canonicalBaseUrl,
   readinessStatus,
   readiness,
 }) {
-  if (homeStatus !== 200) {
-    throw new Error(`${label} homepage returned HTTP ${homeStatus}.`);
-  }
-  if (!homeHtml.includes('id="root"')) {
-    throw new Error(`${label} does not expose the OpenEscrow application shell.`);
+  if (canonicalBaseUrl) {
+    if (homeStatus !== 307) {
+      throw new Error(`${label} canonical redirect returned HTTP ${homeStatus}.`);
+    }
+    let redirected;
+    try {
+      redirected = new URL(homeLocation || "");
+    } catch {
+      throw new Error(`${label} canonical redirect is missing a valid location.`);
+    }
+    if (redirected.href !== canonicalBaseUrl.href) {
+      throw new Error(
+        `${label} redirects to ${redirected.href}, not ${canonicalBaseUrl.href}.`,
+      );
+    }
+  } else {
+    if (homeStatus !== 200) {
+      throw new Error(`${label} homepage returned HTTP ${homeStatus}.`);
+    }
+    if (!homeHtml.includes('id="root"')) {
+      throw new Error(`${label} does not expose the OpenEscrow application shell.`);
+    }
   }
   if (readinessStatus !== 200) {
     throw new Error(`${label} readiness returned HTTP ${readinessStatus}.`);
@@ -101,6 +120,7 @@ export function validateHostedRelease({
     label,
     origin: baseUrl.origin,
     commitSha: readiness.release.commitSha,
+    ...(canonicalBaseUrl ? { canonicalOrigin: canonicalBaseUrl.origin } : {}),
   };
 }
 
@@ -128,10 +148,16 @@ export function validateDualHostRelease({ sites, cloudflare, expectedCommit }) {
       `Both hosts report ${sites.commitSha}, which does not match the expected commit ${expectedCommit}.`,
     );
   }
+  if (sites.canonicalOrigin !== cloudflare.origin) {
+    throw new Error(
+      `Sites must redirect to the canonical Cloudflare origin ${cloudflare.origin}.`,
+    );
+  }
   return {
     schemaVersion: "openescrow-dual-host-release/v1",
     commitSha: sites.commitSha,
     sitesOrigin: sites.origin,
     cloudflareOrigin: cloudflare.origin,
+    canonicalOrigin: cloudflare.origin,
   };
 }

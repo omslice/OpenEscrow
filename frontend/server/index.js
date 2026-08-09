@@ -10743,6 +10743,47 @@ function sameOriginGet(request) {
   );
 }
 
+const CANONICAL_HOSTED_APP_ORIGIN = "https://openescrow.io";
+const HISTORICAL_SITES_HOSTNAMES = new Set([
+  "openescrow-demo.omrigross.chatgpt.site",
+  "www.openescrow-demo.omrigross.chatgpt.site",
+]);
+
+function canonicalHostedAppResponse(request) {
+  const url = new URL(request.url);
+  if (!HISTORICAL_SITES_HOSTNAMES.has(url.hostname.toLowerCase())) return null;
+
+  // Keep a local, exact-build readiness endpoint so release verification can
+  // prove which source is deployed to the retained Sites rollback. All user
+  // traffic is otherwise sent to the sole writable Cloudflare application.
+  if (request.method === "GET" && url.pathname === "/api/system/readiness") {
+    return null;
+  }
+
+  const canonicalUrl = new URL(`${url.pathname}${url.search}`, CANONICAL_HOSTED_APP_ORIGIN);
+  if (request.method === "GET" || request.method === "HEAD") {
+    return new Response(null, {
+      status: 307,
+      headers: {
+        location: canonicalUrl.toString(),
+        "cache-control": "no-store",
+        "referrer-policy": "no-referrer",
+        "x-content-type-options": "nosniff",
+        "x-openescrow-canonical-host": "openescrow.io",
+      },
+    });
+  }
+
+  return json(
+    {
+      error: "This historical OpenEscrow host is read-only. Continue on openescrow.io.",
+      code: "canonical-host-required",
+      canonicalUrl: canonicalUrl.toString(),
+    },
+    409,
+  );
+}
+
 function negotiationReadToken(request) {
   const authorization = request.headers.get("authorization");
   if (authorization === null) return "";
@@ -10959,6 +11000,8 @@ const worker = {
     const requestId = crypto.randomUUID();
     const url = new URL(request.url);
     try {
+      const canonicalHostResponse = canonicalHostedAppResponse(request);
+      if (canonicalHostResponse) return canonicalHostResponse;
       const abuseResponse = await applyApiAbuseControls(request, env, url);
       if (abuseResponse) return abuseResponse;
     if (

@@ -21,6 +21,11 @@ linked deployment and pilot runbooks.
 - [ ] **Hardened-cohort promotion:** review the contract candidate first, then follow the private
   [`base-sepolia-deployment.md`](./base-sepolia-deployment.md) procedure. Do not switch the app or
   retire the old cohort until the public manifest and all reciprocal bindings are verified.
+- [ ] **Current narrow registry recovery:** preserve the active F18 escrow/reserve pair and run the
+  separately reviewed
+  [`agreement-activity-registry-deployment.md`](./agreement-activity-registry-deployment.md)
+  procedure. This creates a new immutable registry bound to F18 and does not migrate agreement 0
+  or its funds.
 
 Do not treat these paths as one automatic action. A new contract broadcast and a synchronized
 Cloudflare/ChatGPT Sites application release are separate approvals with separate rollback
@@ -28,9 +33,8 @@ evidence.
 
 ## Credentialed setup
 
-- [ ] Configure the sending-only email provider in the Cloudflare Worker secret control. Private
-  R2, evidence encryption/keyring, address attestation, the 15-minute scheduler, RPC, and the
-  current Privy origin are already configured and should not be recreated.
+- [x] Custom-domain participant email, signed delivery feedback, suppression handling, and the
+  15-minute scheduler are configured and verified. Do not recreate or expose their secrets.
 - [ ] Keep the official-source monitor enabled until every source is baselined, fresh, and free of
   changed/unreachable blockers. Investigate an alert; never bypass it by editing a status.
 - [ ] Set a conservative Base Sepolia sponsorship budget and alert in Privy before inviting pilot
@@ -40,8 +44,9 @@ evidence.
 
 ## Supervised checks
 
-- [ ] After any approved release, confirm both public pages and both `/api/system/readiness`
-  endpoints return HTTP 200 and report the same exact reviewed source commit.
+- [ ] After any approved release, confirm the canonical page returns HTTP 200, Sites redirects to
+  `openescrow.io`, and both local `/api/system/readiness` endpoints return HTTP 200 with the same
+  exact reviewed source commit.
 - [ ] Run the separate-account landlord/tenant workflow in
   [`testnet-pilot-runbook.md`](./testnet-pilot-runbook.md), including mobile/keyboard checks and
   the stop conditions.
