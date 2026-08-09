@@ -29,6 +29,10 @@ function RecordListHarness() {
           <span className="eyebrow">Rendered regression</span>
           <h1 id="record-list-title">Proposal and agreement record</h1>
         </div>
+        <div className="record-list-heading">
+          <h3>Current records</h3>
+          <span>2 records</span>
+        </div>
         <div className="record-list" role="list" aria-label="Current records">
           {RECORDS.map((record) => {
             const isExpanded = Boolean(expanded[record.key]);

@@ -116,6 +116,15 @@ try {
     true,
     "Record rows should remain full-size mobile touch targets.",
   );
+  const headingBox = await page.getByRole("heading", { name: "Current records" }).boundingBox();
+  const firstCardBox = await page.locator(".record-list-item").first().boundingBox();
+  const headingToCardGap =
+    headingBox && firstCardBox ? firstCardBox.y - (headingBox.y + headingBox.height) : 0;
+  assert.equal(
+    headingToCardGap >= 20,
+    true,
+    `Current records heading should remain visually separated from the first card: ${headingToCardGap}px.`,
+  );
   const mobileWidth = await page.evaluate(() => ({
     viewport: window.innerWidth,
     document: document.documentElement.scrollWidth,
@@ -127,7 +136,7 @@ try {
   );
 
   process.stdout.write(
-    "Record-list browser check passed: collapsed controls retain valid targets, mount details only on demand, preserve keyboard focus, separate archive actions, and fit mobile width.\n",
+    "Record-list browser check passed: collapsed controls retain valid targets, mount details only on demand, preserve keyboard focus, separate archive actions, keep headings clear of card borders, and fit mobile width.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);
