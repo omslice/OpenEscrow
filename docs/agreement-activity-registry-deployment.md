@@ -13,10 +13,12 @@ arbiter of that exact contract. Agreement IDs begin
 again at zero after an escrow redeployment, so a registry from an earlier release
 must never be reused for a newer escrow.
 
-The registry currently configured by the hosted testnet is bound to a retired escrow and fails
-the readiness check. It must not be reused. The next registry target is read from the validated
-`deployments/base-sepolia-latest.json` pair manifest so a stale address is not embedded in the
-broadcast helper or exporter.
+The retired `0xC004...1951` registry is bound to an earlier escrow and must not be reused. On
+2026-08-09, the reviewed recovery procedure deployed registry
+`0x5ba6533811ee528f6802bb969ab01ff95d7f092e` at Base Sepolia block `45,247,418` in transaction
+`0xdc4b2b57623b8d5ad688dd97295e6f138ebbd9af41806672eb204d6daeca35db`. Its immutable `ESCROW()`
+binding is the active `0xF18B...AE99` escrow. The exported manifest remains the source of truth for
+client and server configuration.
 
 The frontend now reads `ESCROW()` before loading, publishing, anchoring, verifying,
 or notifying on registry events. A mismatch fails closed with a service-unavailable
@@ -77,8 +79,9 @@ command-line argument. Use `-EscrowManifestPath` only when an explicitly reviewe
 different location.
 
 After a successful receipt, the script rejects stale broadcast artifacts, rechecks the exact source
-commit, reads the deployed bytecode and immutable `ESCROW()` binding from Base Sepolia, and only
-then writes a validated public manifest to `deployments/base-sepolia-activity-registry.json`.
+commit, waits for bounded Base Sepolia RPC propagation, reads the deployed bytecode and immutable
+`ESCROW()` binding, and only then writes a validated public manifest to
+`deployments/base-sepolia-activity-registry.json`.
 
 ## Release checklist
 

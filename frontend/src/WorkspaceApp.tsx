@@ -242,7 +242,7 @@ function AppView({
   const accountScopeActive = useRef(true);
   activeAccountIdentity.current = accountIdentity;
   const { address } = useAccount();
-  const { discover, isScanning, scanError } = useDiscoverAgreements();
+  const { discover, isScanning } = useDiscoverAgreements();
   const [scanMessage, setScanMessage] = useState<string | null>(null);
   const [findError, setFindError] = useState<string | null>(null);
   const [isFinding, setIsFinding] = useState(false);
@@ -989,11 +989,6 @@ function AppView({
         {findError && (
           <p className="tx-error" role="alert">
             {findError}
-          </p>
-        )}
-        {scanError && (
-          <p className="tx-error" role="alert">
-            {scanError}
           </p>
         )}
       </section>
@@ -1835,11 +1830,6 @@ function AppView({
                 {findError && (
                   <p className="tx-error" role="alert">
                     {findError}
-                  </p>
-                )}
-                {scanError && (
-                  <p className="tx-error" role="alert">
-                    {scanError}
                   </p>
                 )}
               </section>

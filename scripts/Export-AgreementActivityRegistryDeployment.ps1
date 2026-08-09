@@ -73,15 +73,32 @@ if (
 }
 
 $registryAddress = [string]$registryTransaction.contractAddress
-$registryCode = & "$foundryBin\cast.exe" code $registryAddress --rpc-url $rpcUrl
-if ($LASTEXITCODE -ne 0 -or [string]$registryCode -eq '0x') {
+$registryCode = $null
+$liveEscrow = $null
+$propagationAttempts = 12
+for ($attempt = 1; $attempt -le $propagationAttempts; $attempt++) {
+    $registryCode = & "$foundryBin\cast.exe" code $registryAddress --rpc-url $rpcUrl
+    $codeExitCode = $LASTEXITCODE
+    $registryCode = ([string]$registryCode).Trim()
+    if ($codeExitCode -eq 0 -and $registryCode -ne '0x') {
+        $liveEscrow = & "$foundryBin\cast.exe" call $registryAddress 'ESCROW()(address)' --rpc-url $rpcUrl
+        $callExitCode = $LASTEXITCODE
+        $liveEscrow = ([string]$liveEscrow).Trim()
+        if ($callExitCode -eq 0 -and $liveEscrow -match '^0x[0-9a-fA-F]{40}$') {
+            break
+        }
+    }
+    if ($attempt -lt $propagationAttempts) {
+        Write-Host "Waiting for Base Sepolia RPC propagation (attempt $attempt of $propagationAttempts)..."
+        Start-Sleep -Seconds 5
+    }
+}
+if ([string]$registryCode -eq '0x') {
     throw "The exported AgreementActivityRegistry address has no readable Base Sepolia code."
 }
-$liveEscrow = & "$foundryBin\cast.exe" call $registryAddress 'ESCROW()(address)' --rpc-url $rpcUrl
-if ($LASTEXITCODE -ne 0 -or [string]$liveEscrow -notmatch '^0x[0-9a-fA-F]{40}$') {
+if ([string]$liveEscrow -notmatch '^0x[0-9a-fA-F]{40}$') {
     throw "Could not read the deployed registry's immutable escrow binding."
 }
-$liveEscrow = ([string]$liveEscrow).Trim()
 if ($liveEscrow -ine $expectedEscrow) {
     throw "The deployed registry's live ESCROW binding does not match the approved escrow manifest."
 }

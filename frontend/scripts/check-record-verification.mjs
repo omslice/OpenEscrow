@@ -19,7 +19,7 @@ const proposalId = "record-browser-pilot";
 const accessToken = "record-browser-landlord-token";
 const agreementId = "42";
 const escrowAddress = "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99";
-const registryAddress = "0xC004dF4C43146FE55e5761EA1BB3C14f01161951";
+const registryAddress = "0x5ba6533811ee528f6802bb969ab01ff95d7f092e";
 const viteEntrypoint = fileURLToPath(
   new URL("../node_modules/vite/bin/vite.js", import.meta.url),
 );
@@ -208,13 +208,16 @@ try {
     acceptDownloads: true,
   });
 
-  await page.route(/^https:\/\/sepolia\.base\.org\/?$/u, async (route) => {
+  await page.route(
+    /^https:\/\/(?:sepolia\.base\.org|base-sepolia-rpc\.publicnode\.com)\/?$/u,
+    async (route) => {
     await route.fulfill({
       status: 503,
       contentType: "application/json",
       body: JSON.stringify({ error: "Base Sepolia intentionally unavailable." }),
     });
-  });
+    },
+  );
   const privateReadRequests = [];
   let reportAttempts = 0;
   await page.route("**/api/negotiations/**", async (route) => {

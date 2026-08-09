@@ -65,8 +65,9 @@ production custody, or reliance on the compliance research as legal advice.
   portfolio creates sessions in three bounded D1 batches, background discovery is reduced from
   every 15 seconds to every five minutes, and 30-second record refreshes allow only six concurrent
   reads. A transient membership or record-read failure retains only the matching last-known record
-  instead of blanking the account view. This improves the hosted MVP path; production onchain
-  wallet discovery still needs an external indexer rather than an unbounded historical log scan.
+  instead of blanking the account view. The testnet wallet-recovery path now reads the bounded
+  current agreement index directly, with provider failover, rather than issuing nearly a thousand
+  historical log requests. Production onchain wallet discovery still needs an external indexer.
 - **Verified:** Base Sepolia remote verification now bounds every JSON-RPC body, requires the exact
   protocol/request ID/result envelope, verifies custom endpoints report the expected chain, and
   binds confirmed receipt structure to the submitted transaction hash before matching an event.
@@ -286,9 +287,10 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** Every saved checkout event now derives the same lifecycle state from its raw
   provider result. Contradictory pairs such as a confirmed event with a declined provider status
   fail closed in both the shared lifecycle validator and the tenant-authorized D1 endpoint.
-- **Verified:** Deferred workspace loading, bounded onchain event reads, shared receipt polling,
-  one-snapshot wallet discovery, and workspace-only blockchain wallet providers reduce initial and
-  repeat network work without weakening account recognition, invitation roles, or receipt checks.
+- **Verified:** Deferred workspace loading, bounded onchain reads, shared receipt polling,
+  direct current-agreement wallet recovery, and workspace-only blockchain wallet providers reduce
+  initial and repeat network work without weakening account recognition, invitation roles, or
+  receipt checks.
 - **Verified:** Multi-agreement Deposit accounts now start as a compact list and mount only one
   live agreement view at a time, bounding contract polling and deferred tools as an account grows.
   A single deposit still opens automatically, while proposal links and activity notifications
@@ -399,6 +401,10 @@ production custody, or reliance on the compliance research as legal advice.
 - **Verified:** The unified application now treats the project explanation as public app content
   and an authenticated `About` workspace tab. It is the sole intended Cloudflare website; the
   standalone landing Worker is not a public fallback.
+- **Verified:** The narrow activity-registry recovery deployed `0x5ba6...092e` against the active
+  F18 Base Sepolia escrow without migrating agreement 0 or its funds. The receipt, exact reviewed
+  runtime hash, immutable binding, live landlord/two-tenant access, and outsider rejection were
+  independently verified before the candidate configuration changed.
 
 ## Remaining
 
@@ -409,16 +415,12 @@ production custody, or reliance on the compliance research as legal advice.
 - **Planned:** Review and explicitly approve each newer saved candidate before deployment. The live
   site currently matches the last approved exact source; every future deployment must rerun the
   public readiness and release-provenance checks.
-- **Planned:** Run the reviewed narrow recovery deployment for a new activity registry bound to
-  the active F18 Base Sepolia escrow, independently verify its exact bytecode and party access,
-  then switch the candidate configuration. This preserves active agreement 0 and its escrow funds;
-  neither contract state nor hosted records are migrated.
-- **Planned:** Complete the remaining hosted pilot gate listed in
-  [owner actions](./owner-actions.md): the version-matched activity registry. Keep the already
-  verified custom-domain notification delivery, scheduler, private-R2 evidence encryption and retained-key
-  recovery, and address attestation healthy. Keep bounded retries active for New Hampshire, replace
-  its expiring manual-review exception with an automated primary-source baseline when the official
-  origin becomes compatible, and re-review it before the exception expires.
+- **Planned:** Keep verifying the version-matched activity registry after every public release,
+  together with custom-domain notification delivery, scheduler freshness, private-R2 evidence
+  encryption and retained-key recovery, and address attestation. Keep bounded retries active for
+  New Hampshire, replace its expiring manual-review exception with an automated primary-source
+  baseline when the official origin becomes compatible, and re-review it before the exception
+  expires.
 - **Planned:** Run the separate-account landlord/tenant pilot, moderated accessibility/usability
   sessions, and the owner-led incident/privacy drill. Record stop conditions and remediation.
 - **Planned:** Evaluate one eligible provider sandbox using worthless testnet assets only.

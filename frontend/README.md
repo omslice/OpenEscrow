@@ -3,7 +3,8 @@
 React + wagmi/viem frontend implementing the user journey in `docs/mvp-spec.md` §14. Contract
 custody talks directly to Base Sepolia. A small hosted worker persists proposal negotiations,
 role-scoped account discovery, notification preferences, delivery receipts, and private evidence
-metadata; onchain agreement discovery still uses a client-side event-log scan.
+metadata; the small testnet deployment uses bounded client-side agreement enumeration as an
+onchain recovery path.
 
 Canonical testnet app: https://openescrow.io
 
@@ -85,13 +86,13 @@ party-authorized evidence uploads, and multi-tenant proposal review. Saved propo
 the notification bell includes wallet-scoped Base Sepolia registry receipts and keeps read state
 locally per wallet.
 
-Agreement discovery has two paths: a "Scan for my agreements" button that takes one chain-head
-snapshot, then chunked-scans `AgreementProposed`, `TenantParticipantAdded`, and `ArbiterReplaced`
-event logs for the connected address (see `src/lib/agreementDiscovery.ts`), and manual add-by-id
-(or a shared `?id=` link) as a fallback. The unfiltered proposal stream is reused for both
-landlord and original-arbiter matching, rather than scanning the full proposal history twice.
-This is a reasonable trade-off for a testnet demo with a handful of agreements - it is not how a
-production version should do discovery at scale (that needs a real indexer/subgraph).
+Agreement discovery has two paths: the signed-in account loads role-scoped records from D1, while
+the connected-wallet recovery path enumerates the contract's bounded current agreement IDs and
+checks the current landlord, arbiter, and tenant share directly (see
+`src/lib/agreementDiscovery.ts`). Manual add-by-id and shared `?id=` links remain available. This
+avoids a nearly thousand-request historical log walk on today's deployment and uses two public
+Base Sepolia providers with failover. It remains a testnet-scale recovery path, not a substitute
+for the authenticated indexer/subgraph a production version needs.
 
 The create form also collects optional jurisdiction context. That value travels in the shared
 agreement link and is stored in the browser for display on the dashboard; it is not stored or

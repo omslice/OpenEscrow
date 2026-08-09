@@ -628,6 +628,15 @@ try {
     "The first public Google choice must open the matching provider method without a second click.",
   );
   await page.getByRole("button", { name: /I am a landlord/ }).click();
+  const accountRoleBadge = page.locator(
+    "details.account-profile-disclosure > summary .account-role-badge",
+  );
+  await accountRoleBadge.waitFor({ state: "visible" });
+  assert.equal(
+    await accountRoleBadge.textContent(),
+    "Landlord",
+    "The collapsed account summary must identify the active workspace role.",
+  );
   await page.getByRole("tab", { name: "Proposals" }).click();
   await page.getByRole("heading", { name: "OE-P-AAAAAAAA" }).waitFor();
   await page.waitForFunction(

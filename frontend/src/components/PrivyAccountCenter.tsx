@@ -520,7 +520,17 @@ export function PrivyAccountCenter({
         <summary>
           <span>
             <span className="eyebrow">Account</span>
-            <strong>{displayName === "Your" ? "Your account" : displayName}</strong>
+            <span className="account-title-row">
+              <strong>{displayName === "Your" ? "Your account" : displayName}</strong>
+              {workspaceRole && (
+                <span
+                  className={`account-role-badge ${workspaceRole.toLowerCase()}`}
+                  aria-label={`${workspaceRole} workspace`}
+                >
+                  {workspaceRole}
+                </span>
+              )}
+            </span>
             <small>Identity, email, and connected wallets</small>
           </span>
           <span className="disclosure-cue" aria-hidden="true" />

@@ -56,17 +56,15 @@ provider or hosting control that owns the secret.
   ChatGPT Sites now serve the same exact source and expose clean release provenance. Continue to
   publish both hosts from one commit and run the dual-host verifier until the owner explicitly
   retires the Sites rollback.
-- [ ] **Broadcast the reviewed narrow Base Sepolia registry recovery.** The active F18 escrow and
-  its reciprocal reserve/token bindings are verified and agreement 0 is active. In a private
-  PowerShell window, run the exact-commit procedure in
-  [`agreement-activity-registry-deployment.md`](./agreement-activity-registry-deployment.md) and
-  enter the encrypted `openescrow-base-sepolia` keystore password locally. This deploys a new
-  immutable registry whose constructor points to F18; it does not move agreement state or funds.
-  Never share the keystore or password.
-- [ ] **Return the public registry manifest and transaction hash before configuration changes.**
-  Codex can then verify the receipt, exact runtime bytecode, F18 binding, landlord/tenant access,
-  reciprocal reserve/token addresses, deployment block, and source commit without receiving a
-  secret. The retired C004 registry remains an explicit immutable rollback reference.
+- [x] **Broadcast the reviewed narrow Base Sepolia registry recovery â€” completed 2026-08-09.**
+  Registry `0x5ba6...092e` was deployed at block `45,247,418`, bound immutably to the active F18
+  escrow, without moving agreement state or funds. The local encrypted keystore remained outside
+  the repository and chat.
+- [x] **Return and independently verify the public registry record â€” completed 2026-08-09.** The
+  receipt succeeded; two public RPC reads returned the reviewed 1,837-byte runtime and expected
+  runtime hash; `ESCROW()` returned F18; and no-broadcast calls succeeded for the live landlord and
+  both tenants while rejecting an outsider. The retired C004 registry remains an immutable
+  historical reference and is not a fallback for the active escrow.
 - [ ] **Evaluate a future hardened three-contract cohort separately.** A later escrow/reserve/
   registry deployment can incorporate the newest reviewed contract hardening, but it will not
   migrate active F18 agreement state. Keep it separate from the narrow registry readiness repair

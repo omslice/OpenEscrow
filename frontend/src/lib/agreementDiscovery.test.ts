@@ -1,96 +1,72 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  agreementDiscoveryErrorMessage,
   discoverAgreementIds,
   type AgreementDiscoveryClient,
 } from "./agreementDiscovery.ts";
 
 const account = "0x1111111111111111111111111111111111111111" as const;
 const other = "0x2222222222222222222222222222222222222222" as const;
-const deploymentBlock = 1_000n;
+const zero = "0x0000000000000000000000000000000000000000" as const;
 const config = {
-  deploymentBlock,
   contractAddress: "0x3333333333333333333333333333333333333333" as const,
   abi: [],
 };
 
-test("wallet discovery snapshots the chain once and scans each event family once", async () => {
-  let blockNumberCalls = 0;
-  const eventCalls: Parameters<AgreementDiscoveryClient["getContractEvents"]>[0][] =
-    [];
+test("wallet discovery reads each current agreement without scanning historical logs", async () => {
+  const calls: Parameters<AgreementDiscoveryClient["readContract"]>[0][] = [];
   const client: AgreementDiscoveryClient = {
-    async getBlockNumber() {
-      blockNumberCalls += 1;
-      return deploymentBlock + 20n;
-    },
-    async getContractEvents(input) {
-      eventCalls.push(input);
-      if (input.eventName === "AgreementProposed") {
-        return [
-          { args: { id: 1n, landlord: account, arbiter: other } },
-          { args: { id: 2n, landlord: other, arbiter: account.toUpperCase() } },
-          { args: { id: 99n, landlord: other, arbiter: other } },
-        ];
+    async readContract(input) {
+      calls.push(input);
+      if (input.functionName === "nextAgreementId") return 4n;
+      const id = input.args?.[0] as bigint;
+      if (input.functionName === "tenantShareBps") return id === 2n ? 5_000n : 0n;
+      if (id === 0n) return { landlord: account, arbiter: zero };
+      if (id === 1n) {
+        return { landlord: other, arbiter: `0x${account.slice(2).toUpperCase()}` };
       }
-      if (input.eventName === "TenantParticipantAdded") {
-        return [{ args: { id: 3n } }, { args: { id: 1n } }];
-      }
-      return [{ args: { id: 4n } }];
+      return { landlord: other, arbiter: zero };
     },
   };
 
-  assert.deepEqual(
-    await discoverAgreementIds(client, account, config),
-    [1n, 2n, 3n, 4n],
-  );
-  assert.equal(blockNumberCalls, 1);
-  assert.equal(eventCalls.length, 3);
-  assert.deepEqual(
-    eventCalls.map(({ eventName }) => eventName),
-    ["AgreementProposed", "TenantParticipantAdded", "ArbiterReplaced"],
-  );
-  assert.equal(eventCalls[0].args, undefined);
-  assert.deepEqual(eventCalls[1].args, { tenant: account });
-  assert.deepEqual(eventCalls[2].args, { newArbiter: account });
+  assert.deepEqual(await discoverAgreementIds(client, account, config), [0n, 1n, 2n]);
+  assert.equal(calls.filter(({ functionName }) => functionName === "nextAgreementId").length, 1);
+  assert.equal(calls.filter(({ functionName }) => functionName === "getAgreement").length, 4);
+  assert.equal(calls.filter(({ functionName }) => functionName === "tenantShareBps").length, 4);
+  assert.equal(calls.some((call) => "fromBlock" in call || "toBlock" in call), false);
 });
 
-test("wallet discovery keeps every RPC log range bounded to one chain snapshot", async () => {
-  const latestBlock = deploymentBlock + 3_900n;
-  let blockNumberCalls = 0;
-  const eventCalls: Parameters<AgreementDiscoveryClient["getContractEvents"]>[0][] =
-    [];
+test("wallet discovery returns immediately when the contract has no agreements", async () => {
+  let calls = 0;
   const client: AgreementDiscoveryClient = {
-    async getBlockNumber() {
-      blockNumberCalls += 1;
-      return latestBlock;
-    },
-    async getContractEvents(input) {
-      eventCalls.push(input);
-      return [];
+    async readContract(input) {
+      calls += 1;
+      assert.equal(input.functionName, "nextAgreementId");
+      return 0n;
     },
   };
 
   assert.deepEqual(await discoverAgreementIds(client, account, config), []);
-  assert.equal(blockNumberCalls, 1);
-  assert.equal(eventCalls.length, 9);
-  for (const call of eventCalls) {
-    assert.equal(call.toBlock <= latestBlock, true);
-    assert.equal(call.toBlock - call.fromBlock <= 1_900n, true);
-  }
+  assert.equal(calls, 1);
 });
 
-test("wallet discovery skips log queries before the configured deployment block", async () => {
-  let eventCalls = 0;
+test("wallet discovery rejects an unbounded browser scan", async () => {
   const client: AgreementDiscoveryClient = {
-    async getBlockNumber() {
-      return deploymentBlock - 1n;
-    },
-    async getContractEvents() {
-      eventCalls += 1;
-      return [];
+    async readContract() {
+      return 501n;
     },
   };
 
-  assert.deepEqual(await discoverAgreementIds(client, account, config), []);
-  assert.equal(eventCalls, 0);
+  await assert.rejects(
+    discoverAgreementIds(client, account, config),
+    /safe testnet limit/i,
+  );
+});
+
+test("wallet discovery failures use consumer language without exposing RPC internals", () => {
+  const message = agreementDiscoveryErrorMessage();
+  assert.match(message, /couldn't reach Base Sepolia/i);
+  assert.match(message, /refresh deposits/i);
+  assert.doesNotMatch(message, /eth_getLogs|request body|viem|https:\/\//i);
 });

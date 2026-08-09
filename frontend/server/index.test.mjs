@@ -3156,7 +3156,7 @@ test("tenant can request changes, approve, and make an arbiter-free proposal rea
   );
   assert.equal(
     firstSnapshot.snapshot.onchain.activityRegistryAddress.toLowerCase(),
-    "0xc004df4c43146fe55e5761ea1bb3c14f01161951",
+    "0x5ba6533811ee528f6802bb969ab01ff95d7f092e",
   );
 });
 
@@ -14277,7 +14277,7 @@ test("legacy finalized records re-prove and preserve the landlord wallet before 
     from: RECEIPT_TEST_LANDLORD,
     logs: [
       {
-        address: "0xC004dF4C43146FE55e5761EA1BB3C14f01161951",
+        address: "0x5ba6533811ee528f6802bb969ab01ff95d7f092e",
         topics: [
           ACTIVITY_PUBLISHED_TOPIC,
           receiptWord(42),
@@ -14638,7 +14638,7 @@ test("receipt verification binds private record anchors to the submitted hash, t
         logs: [
           isActivity
             ? {
-                address: "0xC004dF4C43146FE55e5761EA1BB3C14f01161951",
+                address: "0x5ba6533811ee528f6802bb969ab01ff95d7f092e",
                 topics: [
                   ACTIVITY_PUBLISHED_TOPIC,
                   receiptWord(42),
@@ -14651,7 +14651,7 @@ test("receipt verification binds private record anchors to the submitted hash, t
                 ),
               }
             : {
-                address: "0xC004dF4C43146FE55e5761EA1BB3C14f01161951",
+                address: "0x5ba6533811ee528f6802bb969ab01ff95d7f092e",
                 topics: [
                   RECORD_SNAPSHOT_ANCHORED_TOPIC,
                   receiptWord(42),

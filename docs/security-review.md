@@ -463,8 +463,8 @@ finalized-agreement scheduler. Query-plan tests require each intended index. Rep
 discovery uses two indexed candidate queries joined by `UNION`, avoiding the former cross-table
 `OR` scan. Session creation for 45 discovered agreements completes in three bounded D1 batches,
 and the browser limits private-record reads to six concurrent requests. These are scale and
-availability controls, not a claim that the current testnet event-log scanner is a production
-indexer.
+availability controls, not a claim that the current bounded testnet agreement enumerator is a
+production indexer.
 
 The same remote-response boundary now protects Base Sepolia verification. JSON-RPC bodies are
 stream-limited to 512 KiB and must return JSON-RPC 2.0 with the exact request ID and one result.
