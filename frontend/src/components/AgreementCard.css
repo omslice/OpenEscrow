@@ -56,6 +56,7 @@
 
 .agreement-panel {
   min-height: 220px;
+  padding-inline: clamp(4px, 0.8vw, 8px);
   scroll-margin-top: 86px;
 }
 

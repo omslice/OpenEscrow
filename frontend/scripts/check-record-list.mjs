@@ -117,13 +117,29 @@ try {
     "Record rows should remain full-size mobile touch targets.",
   );
   const headingBox = await page.getByRole("heading", { name: "Current records" }).boundingBox();
+  const workspaceBox = await page.locator(".record-workspace").boundingBox();
   const firstCardBox = await page.locator(".record-list-item").first().boundingBox();
+  const firstIdentityBox = await page.locator(".record-list-identity").first().boundingBox();
   const headingToCardGap =
     headingBox && firstCardBox ? firstCardBox.y - (headingBox.y + headingBox.height) : 0;
   assert.equal(
     headingToCardGap >= 20,
     true,
     `Current records heading should remain visually separated from the first card: ${headingToCardGap}px.`,
+  );
+  const headingLeftInset =
+    headingBox && workspaceBox ? headingBox.x - workspaceBox.x : 0;
+  assert.equal(
+    headingLeftInset >= 4,
+    true,
+    `Current records heading should retain a visible left inset: ${headingLeftInset}px.`,
+  );
+  const recordContentLeftInset =
+    firstIdentityBox && firstCardBox ? firstIdentityBox.x - firstCardBox.x : 0;
+  assert.equal(
+    recordContentLeftInset >= 16,
+    true,
+    `Record content should remain clear of its left border: ${recordContentLeftInset}px.`,
   );
   const mobileWidth = await page.evaluate(() => ({
     viewport: window.innerWidth,

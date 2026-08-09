@@ -3683,6 +3683,7 @@ a.btn.disabled {
 .record-workspace {
   display: grid;
   gap: 16px;
+  padding-inline: clamp(4px, 1vw, 8px);
 }
 
 .record-workspace > .workspace-section-heading {
@@ -4720,7 +4721,7 @@ a.btn.disabled {
   }
 
   .record-list-row {
-    padding: 14px;
+    padding: 16px;
   }
 
   .deposit-list-row,
