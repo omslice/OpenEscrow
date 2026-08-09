@@ -13,6 +13,7 @@ const sources = [
     citation: profile.statuteCitation,
     url: profile.statuteUrl,
     monitoringException: profile.sourceMonitoringException || null,
+    externalMonitor: profile.sourceExternalMonitor || null,
   })),
   ...[...FEDERAL_COMPLIANCE_OVERLAYS, ...LOCAL_COMPLIANCE_OVERLAYS].flatMap((overlay) =>
     overlay.sources.map((item, index) => ({
@@ -23,6 +24,7 @@ const sources = [
       citation: item.citation,
       url: item.url,
       monitoringException: null,
+      externalMonitor: null,
     })),
   ),
 ];

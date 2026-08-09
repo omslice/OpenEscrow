@@ -61,6 +61,7 @@
     "selfhost:check": "node scripts/check-self-host-config.mjs",
     "selfhost:secrets": "node scripts/generate-self-host-secrets.mjs",
     "selfhost:package": "node scripts/build-self-host-release.mjs",
+    "compliance:monitor:external": "node scripts/monitor-external-compliance-sources.mjs",
     "test:selfhost-config": "node --test scripts/self-host-config-core.test.mjs scripts/self-host-sbom-core.test.mjs",
     "test:server": "node --test server/index.test.mjs",
     "e2e:live": "node e2e-full-flow.mjs",

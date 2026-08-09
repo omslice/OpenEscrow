@@ -3,6 +3,7 @@ cache/
 out/
 /dist/
 /self-host-dist/
+/.compliance-attestations/
 
 # Ignores development broadcast logs
 !/broadcast

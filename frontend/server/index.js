@@ -11,6 +11,10 @@ import {
   normalizeAddressResolution,
 } from "../shared/us-compliance-engine.js";
 import { COMPLIANCE_SOURCE_REGISTRY } from "../shared/compliance-sources.js";
+import {
+  validateExternalComplianceAttestation,
+  validateExternalComplianceMonitor,
+} from "../shared/external-compliance-monitor.js";
 import { requiredClaimAttestations } from "../shared/claim-policies.js";
 import {
   dynamicComplianceFactForProfile,
@@ -7066,8 +7070,9 @@ async function seedComplianceSources(db) {
     db
       .prepare(
         `INSERT INTO compliance_source_checks
-          (source_key, scope, jurisdiction, profile_version, citation, url, status)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending')
+          (source_key, scope, jurisdiction, profile_version, citation, url,
+           baseline_signature, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')
          ON CONFLICT(source_key) DO UPDATE SET
            scope = excluded.scope,
            jurisdiction = excluded.jurisdiction,
@@ -7075,7 +7080,8 @@ async function seedComplianceSources(db) {
            baseline_signature = CASE
              WHEN compliance_source_checks.profile_version <> excluded.profile_version
                OR compliance_source_checks.url <> excluded.url
-             THEN NULL ELSE compliance_source_checks.baseline_signature END,
+             THEN excluded.baseline_signature
+             ELSE compliance_source_checks.baseline_signature END,
            current_signature = CASE
              WHEN compliance_source_checks.profile_version <> excluded.profile_version
                OR compliance_source_checks.url <> excluded.url
@@ -7114,6 +7120,7 @@ async function seedComplianceSources(db) {
         item.version,
         item.citation,
         item.url,
+        item.externalMonitor?.expectedBodySha256 || null,
       ),
   );
   for (let index = 0; index < statements.length; index += 20) {
@@ -7209,6 +7216,83 @@ async function checkComplianceSource(db, sourceRow, now) {
   const timeout = setTimeout(() => controller.abort(), 8_000);
   const checkedAt = now.toISOString();
   try {
+    const sourceItem = COMPLIANCE_SOURCE_REGISTRY.find(
+      (item) =>
+        item.key === sourceRow.source_key &&
+        item.version === sourceRow.profile_version &&
+        item.url === sourceRow.url,
+    );
+    if (sourceItem?.externalMonitor) {
+      const monitor = validateExternalComplianceMonitor(sourceItem);
+      const response = await fetch(monitor.url, {
+        headers: {
+          accept: "application/json",
+          "user-agent": "OpenEscrow compliance source monitor/1.0",
+        },
+        redirect: "follow",
+        signal: controller.signal,
+      });
+      if (!response.ok) {
+        throw new Error(
+          `External compliance-source attestation returned HTTP ${response.status}.`,
+        );
+      }
+      const finalMonitorUrl = cleanText(response.url, 2_000);
+      if (finalMonitorUrl && finalMonitorUrl !== monitor.url) {
+        throw new Error(
+          "External compliance-source attestation resolved to an unexpected destination.",
+        );
+      }
+      const contentLength = Number(response.headers.get("content-length"));
+      if (Number.isFinite(contentLength) && contentLength > 32_768) {
+        throw new Error("External compliance-source attestation is too large.");
+      }
+      const rawPayload = await response.text();
+      if (new TextEncoder().encode(rawPayload).byteLength > 32_768) {
+        throw new Error("External compliance-source attestation is too large.");
+      }
+      let payload;
+      try {
+        payload = JSON.parse(rawPayload);
+      } catch {
+        throw new Error("External compliance-source attestation is not valid JSON.");
+      }
+      const observation = validateExternalComplianceAttestation(
+        payload,
+        sourceItem,
+        now,
+      );
+      await db
+        .prepare(
+          `UPDATE compliance_source_checks
+           SET baseline_signature = ?, current_signature = ?, http_status = ?,
+               status = ?, last_checked_at = ?,
+               last_verified_at = CASE
+                 WHEN ? = 'unchanged' THEN ? ELSE last_verified_at END,
+               last_changed_at = CASE
+                 WHEN ? = 'changed' THEN ? ELSE last_changed_at END,
+               error = NULL
+           WHERE source_key = ? AND profile_version = ? AND url = ?
+             AND (last_checked_at IS NULL OR last_checked_at <= ?)`,
+        )
+        .bind(
+          monitor.expectedBodySha256,
+          observation.bodySha256,
+          observation.httpStatus,
+          observation.status,
+          checkedAt,
+          observation.status,
+          observation.checkedAt,
+          observation.status,
+          checkedAt,
+          sourceRow.source_key,
+          sourceRow.profile_version,
+          sourceRow.url,
+          checkedAt,
+        )
+        .run();
+      return;
+    }
     const sourceUrl = new URL(sourceRow.url);
     if (sourceUrl.protocol !== "https:") throw new Error("HTTPS is required.");
     const requestHeaders = {

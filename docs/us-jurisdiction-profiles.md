@@ -249,16 +249,26 @@ outage may use the last successful signature during the 21-day window; once
 that window expires, the profile is blocked until the source can be verified
 again. Generic test agreements are not subject to this release gate.
 
-New Hampshire is the only current exception. Its exact RSA 540-A:7 source
-returns HTTP 520 to Cloudflare Workers even for plain GET and HEAD requests.
-Profile `nh-rules-2026-08-08.v11` therefore records a visible manual review that
-expires on 2026-08-29. The exception is valid only for that version, URL, and
-exact failure while the automated retry is less than 48 hours old. It neither
-claims an automated verification nor establishes a stored content baseline. A
-different error, a stale retry, a version or URL change, or expiry blocks the
-profile again. The UI and readiness response report this state separately as
-`manual-review-current` while the database retains the underlying
-`unreachable` result.
+New Hampshire's official General Court origin returns HTTP 520 to Cloudflare
+Workers even though the same pages remain available to ordinary clients. Profile
+`nh-rules-2026-08-09.v12` therefore cites the complete consolidated
+[RSA chapter 540-A](https://gc.nh.gov/rsa/html/lv/540-a/540-a-mrg.htm) and uses a
+separate scheduled GitHub runner for its source observation. The runner checks
+the exact official URL, HTTP status, final URL, required chapter and section
+markers, and raw document SHA-256. It publishes only the observation metadata
+to the public `compliance-attestations` branch; it does not republish the law or
+change any compliance rule.
+
+The Cloudflare monitor reads that public observation and accepts it only when
+the source key, profile version, official URL, final URL, expected reviewed
+SHA-256, required markers, and a check time no more than 48 hours old all match.
+A changed document is published as `changed` and blocks the profile. A missing,
+stale, future-dated, malformed, redirected, structurally incomplete, or
+unreachable observation also fails closed. The monitoring workflow itself then
+fails after publishing any alert so maintainers receive a visible review gate.
+This removes the former time-limited manual exception without treating a proxy
+or secondary legal website as the official authority. Repository write access
+to the attestation branch is part of the monitoring trust boundary.
 
 Before the wallet is asked to create an onchain agreement, the landlord client
 runs a server preflight for the exact approved revision. A successful preflight

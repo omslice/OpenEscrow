@@ -38,7 +38,7 @@ const STATE_SPECS = [
   ["MT", "Montana", 30, 30, "Mont. Code §§ 70-25-202–204", "https://archive.legmt.gov/bills/mca/title_0700/chapter_0250/part_0020/section_0020/0700-0250-0020-0020.html", "No general statewide monetary cap identified in this research pass.", "Thirty-day outer deadline; a shorter return period can apply when there are no deductions."],
   ["NE", "Nebraska", 14, 14, "Neb. Rev. Stat. § 76-1416", "https://nebraskalegislature.gov/laws/statutes.php?statute=76-1416", "One month’s rent plus a permitted pet deposit.", "Fourteen-day return and itemization period after tenant demand and address delivery."],
   ["NV", "Nevada", 30, 30, "Nev. Rev. Stat. § 118A.242", "https://www.leg.state.nv.us/NRS/NRS-118A.html#NRS118ASec242", "Generally three months’ rent, including the statutory combination of security and last month’s rent.", "Thirty-day return and itemization period."],
-  ["NH", "New Hampshire", 30, 30, "N.H. Rev. Stat. §§ 540-A:6–8", "https://www.gencourt.state.nh.us/rsa/html/LV/540-A/540-A-7.htm", "One month’s rent or $100, whichever is greater, subject to coverage exceptions.", "Thirty-day return and itemization period."],
+  ["NH", "New Hampshire", 30, 30, "N.H. Rev. Stat. §§ 540-A:6–8", "https://gc.nh.gov/rsa/html/lv/540-a/540-a-mrg.htm", "One month’s rent or $100, whichever is greater, subject to coverage exceptions.", "Thirty-day return and itemization period."],
   ["NJ", "New Jersey", 30, 30, "N.J. Stat. §§ 46:8-19–21.1", "https://www.nj.gov/dca/divisions/codes/publications/pdf_lti/sdepsit_law.pdf", "One and one-half months’ rent.", "Thirty-day baseline; much shorter deadlines apply to certain displacement events."],
   ["NM", "New Mexico", 30, 30, "N.M. Stat. §§ 47-8-18, 47-8-20", "https://nmonesource.com/nmos/nmsa/en/item/4371/index.do#!b/47-8-18", "One month’s rent for rental agreements shorter than one year; interest rules can apply to larger deposits.", "Thirty-day return and itemization period."],
   ["NY", "New York", 14, 14, "N.Y. Gen. Oblig. Law § 7-108", "https://www.nysenate.gov/legislation/laws/GOB/7-108", "One month’s rent for covered non-rent-stabilized units, with listed exceptions.", "Fourteen-day return and itemization period plus pre-move-out inspection rights."],
@@ -294,18 +294,22 @@ const PROFILE_METADATA_OVERRIDES = Object.freeze({
     researchedOn: "2026-08-08",
   }),
   NH: Object.freeze({
-    version: "nh-rules-2026-08-08.v11",
-    statuteUrl: "https://gc.nh.gov/rsa/html/LV/540-A/540-A-7.htm",
-    researchedOn: "2026-08-08",
-    sourceMonitoringException: Object.freeze({
-      kind: "reviewed-origin-incompatibility",
-      reviewedAt: "2026-08-08T13:30:24.766Z",
-      expiresAt: "2026-08-29T13:30:24.766Z",
-      acceptableErrors: Object.freeze([
-        "Official source returned HTTP 520.",
+    version: "nh-rules-2026-08-09.v12",
+    statuteUrl: "https://gc.nh.gov/rsa/html/lv/540-a/540-a-mrg.htm",
+    researchedOn: "2026-08-09",
+    sourceExternalMonitor: Object.freeze({
+      kind: "github-source-attestation",
+      url: "https://raw.githubusercontent.com/omslice/OpenEscrow/compliance-attestations/state-nh.json",
+      expectedBodySha256:
+        "de4dde43b319422a2444a4e86a561e5d227429765f8df2f9d9be9f4b73b59c5f",
+      maximumAgeMs: 48 * 60 * 60 * 1000,
+      requiredMarkers: Object.freeze([
+        "CHAPTER 540-A",
+        "540-A:5 Definition",
+        "540-A:6 Procedure",
+        "540-A:7 Return of Security Deposit",
+        "540-A:8 Remedies",
       ]),
-      note:
-        "The official New Hampshire statute page is available to ordinary browsers but currently rejects Cloudflare Workers source checks.",
     }),
   }),
   NJ: Object.freeze({

@@ -1,0 +1,51 @@
+name: Compliance source monitor
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: compliance-source-monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Check externally monitored official sources
+        working-directory: frontend
+        run: node scripts/monitor-external-compliance-sources.mjs --output-dir=../.compliance-attestations
+
+      - name: Publish fresh source attestations
+        working-directory: frontend
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          COMPLIANCE_ATTESTATION_BRANCH: compliance-attestations
+        run: node scripts/publish-compliance-attestations.mjs ../.compliance-attestations
+
+      - name: Fail closed on source changes or invalid responses
+        shell: bash
+        run: |
+          node - <<'NODE'
+          const fs = require("node:fs");
+          const path = require("node:path");
+          const directory = ".compliance-attestations";
+          const alerts = fs.readdirSync(directory)
+            .filter((name) => name.endsWith(".json"))
+            .map((name) => JSON.parse(fs.readFileSync(path.join(directory, name), "utf8")))
+            .filter((item) => item.status !== "unchanged");
+          if (alerts.length) {
+            console.error(`Compliance source review required: ${alerts.map((item) => `${item.sourceKey}=${item.status}`).join(", ")}`);
+            process.exit(1);
+          }
+          NODE

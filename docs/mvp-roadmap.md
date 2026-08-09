@@ -372,15 +372,17 @@ production custody, or reliance on the compliance research as legal advice.
   monitor. The stricter pilot check additionally fails closed until notification delivery, the
   scheduler, the version-matched activity registry, and the complete official-source baseline are
   healthy.
-- **Verified:** The first complete nationwide official-source monitoring pass has finished. Every
-  deployed source except New Hampshire has an automated baseline. New Hampshire now cites the
-  precise official RSA 540-A:7 page. A disposable Cloudflare probe confirmed on 2026-08-08 that
-  the General Court origin returns HTTP 520 to ranged GET, plain GET, and HEAD requests from
-  Cloudflare even though the page remains reachable from ordinary clients. The candidate records
-  that limitation as a visible, version-bound manual review through 2026-08-29. It qualifies only
-  for the exact official URL and 520 error while a hosted retry is less than 48 hours old; expiry,
-  a different failure, a source/version mismatch, or a stale retry closes readiness and proposal
-  creation again. Readiness reports this separately from an automated baseline.
+- **Verified:** The first complete nationwide official-source monitoring pass has finished. The
+  New Hampshire profile now cites the complete consolidated RSA chapter 540-A instead of a single
+  section. Repeated Cloudflare-edge probes confirmed that the General Court origin returns HTTP
+  520 to ranged GET, plain GET, and HEAD requests even though ordinary clients can retrieve it.
+  The replacement monitoring path uses a daily GitHub runner to fetch that exact official source
+  and publish a metadata-only observation to a public branch. The Cloudflare gate verifies the
+  source key, profile version, URL, required section markers, reviewed SHA-256, and 48-hour
+  freshness. Changed, missing, stale, future-dated, malformed, redirected, or incomplete results
+  block the profile. Server tests prove unchanged, changed, and stale paths; an actual Cloudflare
+  edge probe confirmed the GitHub raw-content relay is reachable. Activation still requires the
+  workflow to reach `main`, receive repository write permission, and complete its first run.
 - **Verified:** Cloudflare D1/R2 is the adopted sole writable hosted record for new activity. The
   retained Sites hostname redirects user traffic to `openescrow.io` at the server or verified
   asset-shell layer and rejects writes before
@@ -417,10 +419,9 @@ production custody, or reliance on the compliance research as legal advice.
   public readiness and release-provenance checks.
 - **Planned:** Keep verifying the version-matched activity registry after every public release,
   together with custom-domain notification delivery, scheduler freshness, private-R2 evidence
-  encryption and retained-key recovery, and address attestation. Keep bounded retries active for
-  New Hampshire, replace its expiring manual-review exception with an automated primary-source
-  baseline when the official origin becomes compatible, and re-review it before the exception
-  expires.
+  encryption and retained-key recovery, and address attestation. Activate and monitor the daily
+  New Hampshire official-source workflow; treat any changed or stale attestation as a mandatory
+  rule-review event before publishing a new profile version.
 - **Planned:** Run a consumer UX review and substantive presentation-focused refinement of the
   table-, data-, and form-heavy proposal, deposit, claim, record, and account/settings surfaces.
   Improve information hierarchy, spacing, typography, grouping, progressive disclosure,

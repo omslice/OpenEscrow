@@ -830,19 +830,26 @@ test("the implemented registry covers every state and the District of Columbia",
     "https://bulletins.ncrec.gov/north-carolina-tenant-security-deposit-act-a-simple-guide-for-nc-landlords-and-property-managers/",
   );
   assert.equal(northCarolinaProfile.researchedOn, "2026-08-08");
-  assert.equal(newHampshireProfile.version, "nh-rules-2026-08-08.v11");
+  assert.equal(newHampshireProfile.version, "nh-rules-2026-08-09.v12");
   assert.equal(
     newHampshireProfile.statuteUrl,
-    "https://gc.nh.gov/rsa/html/LV/540-A/540-A-7.htm",
+    "https://gc.nh.gov/rsa/html/lv/540-a/540-a-mrg.htm",
   );
-  assert.equal(newHampshireProfile.researchedOn, "2026-08-08");
-  assert.deepEqual(newHampshireProfile.sourceMonitoringException, {
-    kind: "reviewed-origin-incompatibility",
-    reviewedAt: "2026-08-08T13:30:24.766Z",
-    expiresAt: "2026-08-29T13:30:24.766Z",
-    acceptableErrors: ["Official source returned HTTP 520."],
-    note:
-      "The official New Hampshire statute page is available to ordinary browsers but currently rejects Cloudflare Workers source checks.",
+  assert.equal(newHampshireProfile.researchedOn, "2026-08-09");
+  assert.equal(newHampshireProfile.sourceMonitoringException, undefined);
+  assert.deepEqual(newHampshireProfile.sourceExternalMonitor, {
+    kind: "github-source-attestation",
+    url: "https://raw.githubusercontent.com/omslice/OpenEscrow/compliance-attestations/state-nh.json",
+    expectedBodySha256:
+      "de4dde43b319422a2444a4e86a561e5d227429765f8df2f9d9be9f4b73b59c5f",
+    maximumAgeMs: 48 * 60 * 60 * 1000,
+    requiredMarkers: [
+      "CHAPTER 540-A",
+      "540-A:5 Definition",
+      "540-A:6 Procedure",
+      "540-A:7 Return of Security Deposit",
+      "540-A:8 Remedies",
+    ],
   });
   const nevadaProfile = US_JURISDICTION_PROFILES.find(
     (profile) => profile.postalCode === "NV",
@@ -3981,16 +3988,35 @@ test("compliance checks reject an empty HEAD fallback without source validators"
   }
 });
 
-test("a time-limited New Hampshire manual review stays transparent and fails closed when stale", async () => {
+test("New Hampshire uses a fresh external official-source attestation and blocks changed content", async () => {
   const db = new TestD1();
   const originalFetch = globalThis.fetch;
   const originalDateNow = Date.now;
   const now = Date.parse("2026-08-09T12:00:00.000Z");
   let fetchCount = 0;
   Date.now = () => now;
-  globalThis.fetch = async () => {
+  const monitor = newHampshireProfile.sourceExternalMonitor;
+  const attestation = (overrides = {}) => ({
+    schemaVersion: 1,
+    sourceKey: "state:nh",
+    profileVersion: newHampshireProfile.version,
+    sourceUrl: newHampshireProfile.statuteUrl,
+    checkedAt: "2026-08-09T11:30:00.000Z",
+    status: "unchanged",
+    httpStatus: 200,
+    finalUrl: newHampshireProfile.statuteUrl,
+    bodySha256: monitor.expectedBodySha256,
+    markerChecks: monitor.requiredMarkers.map((marker) => ({ marker, present: true })),
+    ...overrides,
+  });
+  let currentAttestation = attestation();
+  globalThis.fetch = async (url) => {
     fetchCount += 1;
-    return new Response("edge error", { status: 520 });
+    assert.equal(String(url), monitor.url);
+    return new Response(JSON.stringify(currentAttestation), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
   };
 
   try {
@@ -4006,17 +4032,21 @@ test("a time-limited New Hampshire manual review stays transparent and fails clo
         },
       ),
     );
-    assert.equal(fetchCount, 3);
-    assert.equal(checked.source.status, "manual-review-current");
+    assert.equal(fetchCount, 1);
+    assert.equal(checked.source.status, "unchanged");
     assert.equal(checked.source.requiresReview, false);
-    assert.equal(checked.source.lastVerifiedAt, null);
-    assert.deepEqual(checked.source.monitoringException, {
-      kind: "reviewed-origin-incompatibility",
-      reviewedAt: "2026-08-08T13:30:24.766Z",
-      expiresAt: "2026-08-29T13:30:24.766Z",
-      note:
-        "The official New Hampshire statute page is available to ordinary browsers but currently rejects Cloudflare Workers source checks.",
-    });
+    assert.equal(checked.source.lastVerifiedAt, currentAttestation.checkedAt);
+    assert.equal(checked.source.monitoringException, null);
+    const stored = await db
+      .prepare(
+        `SELECT baseline_signature, current_signature, status, last_verified_at
+         FROM compliance_source_checks WHERE source_key = 'state:nh'`,
+      )
+      .first();
+    assert.equal(stored.baseline_signature, monitor.expectedBodySha256);
+    assert.equal(stored.current_signature, monitor.expectedBodySha256);
+    assert.equal(stored.status, "unchanged");
+    assert.equal(stored.last_verified_at, currentAttestation.checkedAt);
 
     const unsignedAddress = {
       provider: "photon-openstreetmap",
@@ -4093,52 +4123,30 @@ test("a time-limited New Hampshire manual review stays transparent and fails clo
     await db
       .prepare(
         `UPDATE compliance_source_checks
-         SET baseline_signature = NULL, current_signature = NULL,
-             status = 'unreachable', last_checked_at = ?, last_verified_at = NULL,
-             error = 'Official source returned HTTP 520.'
+         SET last_checked_at = NULL, last_verified_at = NULL
          WHERE source_key = 'state:nh'`,
       )
-      .bind(checkedAt)
       .run();
-    await db
-      .prepare(
-        "INSERT OR REPLACE INTO scheduled_job_runs (name, last_started_at) VALUES (?, ?)",
-      )
-      .bind("compliance-source-monitor", checkedAt)
-      .run();
-
-    const readiness = await jsonResponse(
-      await worker.fetch(request("/api/system/readiness"), {
-        DB: db,
-        COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
-        VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
-      }),
+    currentAttestation = attestation({
+      bodySha256: "f".repeat(64),
+      status: "changed",
+    });
+    const changed = await jsonResponse(
+      await worker.fetch(
+        request("/api/compliance/source-status", "POST", {
+          jurisdiction: newHampshireProfile.code,
+          profileVersion: newHampshireProfile.version,
+        }),
+        {
+          DB: db,
+          COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+        },
+      ),
     );
-    assert.equal(readiness.complianceSources.unreachable, 1);
-    assert.equal(readiness.complianceSources.manualReviewCurrent, 1);
-    assert.equal(readiness.complianceSources.stale, 0);
-    assert.equal(readiness.complianceSources.blocked, 0);
-    assert.equal(readiness.complianceSources.ready, true);
+    assert.equal(changed.source.status, "changed");
+    assert.equal(changed.source.requiresReview, true);
 
-    const staleCheck = new Date(now - 3 * 24 * 60 * 60 * 1000).toISOString();
-    await db
-      .prepare(
-        "UPDATE compliance_source_checks SET last_checked_at = ? WHERE source_key = 'state:nh'",
-      )
-      .bind(staleCheck)
-      .run();
-    const staleReadiness = await jsonResponse(
-      await worker.fetch(request("/api/system/readiness"), {
-        DB: db,
-        COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
-        VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
-      }),
-    );
-    assert.equal(staleReadiness.complianceSources.manualReviewCurrent, 0);
-    assert.equal(staleReadiness.complianceSources.blocked, 1);
-    assert.equal(staleReadiness.complianceSources.ready, false);
-
-    const staleProposal = await worker.fetch(
+    const changedProposal = await worker.fetch(
       request("/api/negotiations", "POST", proposalBody),
       {
         DB: db,
@@ -4146,7 +4154,52 @@ test("a time-limited New Hampshire manual review stays transparent and fails clo
         COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
       },
     );
-    assert.equal(staleProposal.status, 503);
+    assert.equal(changedProposal.status, 503);
+  } finally {
+    Date.now = originalDateNow;
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("a stale or malformed New Hampshire source attestation remains fail closed", async () => {
+  const db = new TestD1();
+  const originalFetch = globalThis.fetch;
+  const originalDateNow = Date.now;
+  Date.now = () => Date.parse("2026-08-12T13:00:00.000Z");
+  globalThis.fetch = async () =>
+    new Response(
+      JSON.stringify({
+        schemaVersion: 1,
+        sourceKey: "state:nh",
+        profileVersion: newHampshireProfile.version,
+        sourceUrl: newHampshireProfile.statuteUrl,
+        checkedAt: "2026-08-09T11:30:00.000Z",
+        status: "unchanged",
+        httpStatus: 200,
+        finalUrl: newHampshireProfile.statuteUrl,
+        bodySha256: newHampshireProfile.sourceExternalMonitor.expectedBodySha256,
+        markerChecks: newHampshireProfile.sourceExternalMonitor.requiredMarkers.map(
+          (marker) => ({ marker, present: true }),
+        ),
+      }),
+      { status: 200, headers: { "content-type": "application/json" } },
+    );
+  try {
+    const checked = await jsonResponse(
+      await worker.fetch(
+        request("/api/compliance/source-status", "POST", {
+          jurisdiction: newHampshireProfile.code,
+          profileVersion: newHampshireProfile.version,
+        }),
+        { DB: db, COMPLIANCE_SOURCE_MONITOR_ENABLED: "true" },
+      ),
+    );
+    assert.equal(checked.source.status, "unreachable");
+    assert.equal(checked.source.requiresReview, true);
+    assert.match(
+      (await db.prepare("SELECT error FROM compliance_source_checks WHERE source_key = 'state:nh'").first()).error,
+      /stale or future-dated/,
+    );
   } finally {
     Date.now = originalDateNow;
     globalThis.fetch = originalFetch;

@@ -73,12 +73,13 @@ provider or hosting control that owns the secret.
   State law is routed nationwide, but only Chicago, Seattle, and Portland have
   reviewed city overlays. Name the cities/counties most likely to be used in
   the first pilot so Codex can prioritize official-source local profiles.
-- [ ] **Resolve the New Hampshire source exception before 2026-08-29.** The exact official RSA
-  page currently returns HTTP 520 to Cloudflare Workers. The testnet candidate reports a narrow
-  manual review only while hosted retries remain fresh and will fail closed after the fixed
-  expiry. Before then, have a qualified reviewer confirm the cited rule and either approve a new
-  reviewed profile release or select a trustworthy primary-source monitoring path that Cloudflare
-  can reach. Do not turn the monitor off or mark the database successful by hand.
+- [ ] **Activate the New Hampshire external source workflow after this release reaches `main`.**
+  In GitHub repository settings, confirm Actions has `Read and write permissions`, then manually
+  run the **Compliance source monitor** workflow once. Confirm it creates the public
+  `compliance-attestations` branch with `state-nh.json` reporting `unchanged`, and confirm the next
+  scheduled run succeeds. No new secret is required. Do not edit the attestation by hand or turn
+  off the hosted compliance monitor. The app will block New Hampshire proposals if the
+  observation is changed, malformed, unavailable, or more than 48 hours old.
 - [ ] **Approve a property-timezone source and local-time policy for the pilot.** The candidate
   rejects ambiguous stored timestamps and shows the participant's device timezone, but it cannot
   yet attest that the device and property share the same IANA timezone or decide how a legal
