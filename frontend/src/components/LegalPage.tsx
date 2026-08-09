@@ -506,7 +506,7 @@ function TermsOfUse() {
         </p>
         <p>
           For a terms, safety, or legal question, contact{" "}
-          <a href="mailto:privacy@openescrow.io">privacy@openescrow.io</a> or use the private
+          <a href="mailto:support@openescrow.io">support@openescrow.io</a> or use the private
           contact options on{" "}
           <PolicyLink href="https://linktr.ee/omslice">Omri&apos;s contact page</PolicyLink>. Do not
           send wallet keys, seed phrases, bearer links, or private evidence by email.

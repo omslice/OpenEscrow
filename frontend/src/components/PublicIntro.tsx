@@ -401,6 +401,7 @@ export function PublicIntro({
               emphasis on transparency, security, and responsible implementation.
             </p>
             <div className="about-links" aria-label="Omri Gross links">
+              <a href="mailto:omri@openescrow.io">Email Omri</a>
               <a
                 href="https://linktr.ee/omslice"
                 target="_blank"

@@ -175,6 +175,7 @@ export function Layout({
           <a href="/funding">Funding &amp; transparency</a>
           <a href="/privacy">Privacy Policy</a>
           <a href="/terms">Terms of Use</a>
+          <a href="mailto:support@openescrow.io">Support</a>
           <a href="https://github.com/omslice/OpenEscrow" target="_blank" rel="noreferrer">
             GitHub
           </a>
