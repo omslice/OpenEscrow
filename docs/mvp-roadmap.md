@@ -1,6 +1,6 @@
 # OpenEscrow testnet MVP roadmap
 
-Updated 2026-08-08. This is the canonical high-level project status. The
+Updated 2026-08-09. This is the canonical high-level project status. The
 [validation ledger](./mvp-checkpoint-2026-07-29.md) contains detailed evidence, and
 [owner actions](./owner-actions.md) contains only work that needs credentials, signatures,
 external professional review, or an owner decision.
@@ -421,6 +421,15 @@ production custody, or reliance on the compliance research as legal advice.
   New Hampshire, replace its expiring manual-review exception with an automated primary-source
   baseline when the official origin becomes compatible, and re-review it before the exception
   expires.
+- **Planned:** Run a consumer UX review and substantive presentation-focused refinement of the
+  table-, data-, and form-heavy proposal, deposit, claim, record, and account/settings surfaces.
+  Improve information hierarchy, spacing, typography, grouping, progressive disclosure,
+  summaries, status cues, empty/loading/error states, mobile layouts, keyboard flow, and touch
+  targets so dense workflows feel clearer, more approachable, and less dry. Preserve every
+  business rule, authorization boundary, data field, API/contract call, transaction sequence, and
+  workflow outcome. Pair each refinement with before/after rendered checks plus accessibility,
+  mobile, keyboard, and functional regression coverage so this work cannot silently change
+  behavior.
 - **Planned:** Run the separate-account landlord/tenant pilot, moderated accessibility/usability
   sessions, and the owner-led incident/privacy drill. Record stop conditions and remediation.
 - **Planned:** Evaluate one eligible provider sandbox using worthless testnet assets only.
