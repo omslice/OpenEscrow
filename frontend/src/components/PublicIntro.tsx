@@ -131,7 +131,7 @@ export function PublicIntro({
                 <div className="yield-tooltip-panel">
                   <strong>Optional, with everyone&apos;s approval</strong>
                   <p>
-                    All parties can agree to hold the funds in a yield-bearing stablecoin so
+                    All parties can agree to hold the funds in a yield-bearing asset so
                     tenants earn yield on their security deposit.
                   </p>
                   <a
