@@ -114,11 +114,11 @@ export function PublicIntro({
 
       <section className="project-demo-video" aria-labelledby="project-demo-video-title">
         <header>
-          <p className="eyebrow">Guided demo</p>
-          <h3 id="project-demo-video-title">See how OpenEscrow works</h3>
+          <p className="eyebrow">One-minute overview</p>
+          <h3 id="project-demo-video-title">Get to know OpenEscrow</h3>
           <p id="project-demo-video-description">
-            Follow a landlord and tenant as they create an agreement, fund a deposit, document key
-            steps, and reach a clear outcome.
+            A quick introduction to what OpenEscrow is, why it was created, and how it helps
+            landlords and tenants manage rental security deposits more clearly.
           </p>
         </header>
         <video
