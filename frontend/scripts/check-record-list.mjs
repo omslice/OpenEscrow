@@ -74,6 +74,13 @@ try {
   await page.getByText("OE-A-000002 record tools are mounted.").waitFor();
   assert.equal(await page.locator(`#${firstDetailsId}`).isVisible(), true);
   assert.equal(await page.getByTestId("mounted-record-tools").count(), 1);
+  assert.equal(
+    await page.locator(".record-list-item").first().evaluate((element) =>
+      element.classList.contains("is-expanded"),
+    ),
+    true,
+    "An open record should expose a stable expanded styling hook.",
+  );
 
   await second.click();
   await page.getByText("OE-A-000003 record tools are mounted.").waitFor();
@@ -90,6 +97,13 @@ try {
   await openFirst.press("Space");
   assert.equal(await page.locator(`#${firstDetailsId}`).isHidden(), true);
   assert.equal(await page.getByText("OE-A-000002 record tools are mounted.").count(), 0);
+  assert.equal(
+    await page.locator(".record-list-item").first().evaluate((element) =>
+      element.classList.contains("is-expanded"),
+    ),
+    false,
+    "Collapsing a record should remove its expanded styling hook.",
+  );
   assert.equal(
     await page
       .getByRole("button", {
@@ -115,6 +129,13 @@ try {
     Boolean(firstButtonBox && firstButtonBox.height >= 44),
     true,
     "Record rows should remain full-size mobile touch targets.",
+  );
+  const recordCount = page.locator(".record-count-pill");
+  assert.equal(await recordCount.textContent(), "2 records");
+  assert.equal(
+    await recordCount.evaluate((element) => getComputedStyle(element).borderRadius !== "0px"),
+    true,
+    "The record count should remain a visually distinct summary pill.",
   );
   const headingBox = await page.getByRole("heading", { name: "Current records" }).boundingBox();
   const workspaceBox = await page.locator(".record-workspace").boundingBox();
@@ -152,7 +173,7 @@ try {
   );
 
   process.stdout.write(
-    "Record-list browser check passed: collapsed controls retain valid targets, mount details only on demand, preserve keyboard focus, separate archive actions, keep headings clear of card borders, and fit mobile width.\n",
+    "Record-list browser check passed: collapsed controls retain valid targets, mount details only on demand, preserve keyboard focus, expose expanded state styling, separate archive actions, keep headings clear of card borders, and fit mobile width.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

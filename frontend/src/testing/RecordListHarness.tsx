@@ -31,7 +31,7 @@ function RecordListHarness() {
         </div>
         <div className="record-list-heading">
           <h3>Current records</h3>
-          <span>2 records</span>
+          <span className="record-count-pill">2 records</span>
         </div>
         <div className="record-list" role="list" aria-label="Current records">
           {RECORDS.map((record) => {

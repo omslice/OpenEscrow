@@ -568,7 +568,7 @@ export function ClaimSection({
           tabIndex={-1}
         >
           <legend>Deduction {index + 1}</legend>
-          <label>
+          <label className="claim-field claim-field-category">
             Category
             <select
               value={item.category}
@@ -581,7 +581,7 @@ export function ClaimSection({
               ))}
             </select>
           </label>
-          <label>
+          <label className="claim-field claim-field-description">
             Description
             <textarea
               value={item.description}
@@ -590,7 +590,7 @@ export function ClaimSection({
               rows={2}
             />
           </label>
-          <label>
+          <label className="claim-field claim-field-amount">
             Amount (shares)
             <input
               value={item.amount}
@@ -602,7 +602,7 @@ export function ClaimSection({
           </label>
           {items.length > 1 && (
             <button
-              className="btn btn-ghost"
+              className="btn btn-ghost claim-line-item-remove"
               type="button"
               aria-label={`Remove deduction ${index + 1}`}
               onClick={() => removeItem(index)}

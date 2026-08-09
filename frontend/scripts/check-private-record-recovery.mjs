@@ -824,6 +824,48 @@ try {
   );
 
   const addLineItem = claimPage.getByRole("button", { name: "Add line item" });
+  const firstDeductionBeforeAdd = claimPage.getByRole("group", { name: "Deduction 1" });
+  assert.equal(
+    await firstDeductionBeforeAdd.evaluate(
+      (element) => getComputedStyle(element).gridTemplateColumns.split(" ").length,
+    ),
+    1,
+    "Claim line items should collapse to one readable column on mobile.",
+  );
+  const firstClaimFieldBox = await firstDeductionBeforeAdd.locator(".claim-field").first().boundingBox();
+  const firstDeductionBox = await firstDeductionBeforeAdd.boundingBox();
+  const firstClaimFieldInset =
+    firstClaimFieldBox && firstDeductionBox
+      ? firstClaimFieldBox.x - firstDeductionBox.x
+      : 0;
+  assert.equal(
+    firstClaimFieldInset >= 14,
+    true,
+    `Claim fields should remain clear of their card border: ${firstClaimFieldInset}px.`,
+  );
+  await claimPage.setViewportSize({ width: 1100, height: 800 });
+  const categoryFieldBox = await firstDeductionBeforeAdd
+    .locator(".claim-field-category")
+    .boundingBox();
+  const amountFieldBox = await firstDeductionBeforeAdd
+    .locator(".claim-field-amount")
+    .boundingBox();
+  const descriptionFieldBox = await firstDeductionBeforeAdd
+    .locator(".claim-field-description")
+    .boundingBox();
+  assert.equal(
+    Boolean(
+      categoryFieldBox &&
+        amountFieldBox &&
+        descriptionFieldBox &&
+        Math.abs(categoryFieldBox.y - amountFieldBox.y) < 2 &&
+        amountFieldBox.x >= categoryFieldBox.x + categoryFieldBox.width + 12 &&
+        descriptionFieldBox.y >= categoryFieldBox.y + categoryFieldBox.height + 10,
+    ),
+    true,
+    "Desktop claim cards should pair category with amount and keep the explanation on its own row.",
+  );
+  await claimPage.setViewportSize({ width: 390, height: 844 });
   await addLineItem.focus();
   await addLineItem.press("Enter");
   const secondDeduction = claimPage.getByRole("group", { name: "Deduction 2" });

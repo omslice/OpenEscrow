@@ -1408,7 +1408,7 @@ function AppView({
         {(currentRecords.length > 0 || unlinkedAgreementIds.length > 0) && (
           <div className="record-list-heading">
             <h3>Current records</h3>
-            <span>
+            <span className="record-count-pill">
               {currentRecords.length + unlinkedAgreementIds.length}{" "}
               {currentRecords.length + unlinkedAgreementIds.length === 1
                 ? "record"

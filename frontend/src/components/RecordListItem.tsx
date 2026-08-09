@@ -31,7 +31,7 @@ export function RecordListItem({
     <article
       className={`card record-workspace-card record-list-item${
         className ? ` ${className}` : ""
-      }`}
+      }${expanded ? " is-expanded" : ""}`}
       id={id}
       role="listitem"
       data-record-key={dataRecordKey}
