@@ -25,6 +25,11 @@
   color: var(--text-h);
 }
 
+.app-brand {
+  flex: 1 1 360px;
+  min-width: 280px;
+}
+
 .app-title {
   display: inline-block;
   line-height: 0;
@@ -4410,6 +4415,37 @@ a.btn.disabled {
   font-weight: 700;
 }
 
+@media (max-width: 860px) {
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .app-brand {
+    width: 100%;
+    min-width: 0;
+    flex-basis: auto;
+  }
+
+  .app-wordmark-logo {
+    width: min(240px, 78vw);
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .account-entry,
+  .account-summary {
+    justify-content: flex-start;
+  }
+
+  .legal-consent-note {
+    text-align: left;
+  }
+}
+
 @media (max-width: 680px) {
   .technical-details > summary,
   .technical-details .btn {
@@ -4513,7 +4549,7 @@ a.btn.disabled {
 
   .header-actions {
     width: 100%;
-    justify-content: space-between;
+    justify-content: flex-start;
   }
 
   .notification-menu {

@@ -94,7 +94,7 @@ export function Layout({
   return (
     <div className="app-shell">
       <header className="app-header">
-        <div>
+        <div className="app-brand">
           <h1 className="app-title">
             <picture>
               <source media="(prefers-color-scheme: light)" srcSet="/openescrow-wordmark.svg" />

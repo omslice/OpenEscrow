@@ -154,3 +154,12 @@ test("the header wordmark and compact donation copy control retain accessible tr
   assert.match(layoutSource, /<svg[\s\S]*aria-hidden="true"/);
   assert.match(appStyles, /\.app-wordmark-logo[\s\S]*mix-blend-mode:\s*lighten/);
 });
+
+test("the signed-out header keeps its brand readable before stacking", () => {
+  assert.match(layoutSource, /className="app-brand"/);
+  assert.match(appStyles, /\.app-brand\s*\{[^}]*min-width:\s*280px;/s);
+  assert.match(
+    appStyles,
+    /@media \(max-width: 860px\)[\s\S]*\.app-header\s*\{[^}]*flex-direction:\s*column;[\s\S]*\.app-brand\s*\{[^}]*min-width:\s*0;/s,
+  );
+});
