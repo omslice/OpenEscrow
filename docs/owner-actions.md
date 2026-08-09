@@ -52,15 +52,40 @@ provider or hosting control that owns the secret.
   message reached `delivered`, with both `email.sent` and `email.delivered` webhook events recorded
   in canonical D1. Keep credentials in Worker secret controls and never expose a secret in a client
   build variable.
-- [x] **Publish one clean release to both interim hosts — completed 2026-08-08.** Cloudflare and
-  ChatGPT Sites now serve the same exact source and expose clean release provenance. Continue to
-  publish both hosts from one commit and run the dual-host verifier until the owner explicitly
-  retires the Sites rollback.
-- [x] **Broadcast the reviewed narrow Base Sepolia registry recovery â€” completed 2026-08-09.**
+- [ ] **Finish acceptance testing for the published privacy/security contact.** The Privacy Policy,
+  Terms, Security Policy and Code of Conduct publish `privacy@openescrow.io`. Owner-authorized
+  Cloudflare forwarding for `privacy@` and `omri@` now targets a verified private destination, and
+  root MX/SPF records resolve. Define an authenticated outbound reply path, record a private operator
+  and backup cadence, and pass external receive and reply tests from two providers. Preserve the
+  working `updates.openescrow.io` Resend records. The detailed acceptance record remains in the
+  private funding workspace; no DNS, mailbox or test-message action is authorized by this file.
+- [ ] **Approve the reviewer-safe repository publication tranche.** Review the community-health,
+  funding-transparency and evidence-manifest changes. The release commits are already pushed to the
+  public feature branch, while the default `main` branch still exposes the older July snapshot. A
+  read-only 2026-08-09 inspection proved that the independently modified
+  `frontend-site-dist.tar` exactly matches the ignored 320-file July `site-deploy-artifact/` tree;
+  both the working and `HEAD` tar contain the legacy Sites hostname, lack `openescrow.io`, and
+  predate the funding route. Keep it outside the selected path commit. The recommended separate
+  owner decision is to remove the obsolete tracked bundle after confirming no supported workflow
+  consumes it; do not restore or publish it as current evidence. Approve the exact branch, path
+  list, commit message and push separately; follow
+  [`reviewer-publication-runbook.md`](./reviewer-publication-runbook.md).
+- [ ] **Confirm the public funding opening facts and deployment.** The local `/funding` route is
+  fail-closed and currently publishes no balance or recipient. Before deployment, confirm all prior
+  grants, donations, sponsorships, rewards and investment; the recipient/entity/fiscal-host
+  description; any public receiving address; a monitored funding contact; the confirmation date;
+  and whether pending applications may be named. Publishing source does not authorize deploying
+  the route or changing those facts.
+- [ ] **Resolve the legacy Sites rollback.** A dual-host transition release was recorded on
+  2026-08-08, but current applications, demos and reviewer links must use only `openescrow.io`.
+  Do not republish the stale tracked Sites tar. Before any external host deletion, owner must review
+  the data-continuity/export requirements and explicitly approve decommissioning; until then, treat
+  the legacy host and artifact as rollback/forensic state rather than a public product URL.
+- [x] **Broadcast the reviewed narrow Base Sepolia registry recovery — completed 2026-08-09.**
   Registry `0x5ba6...092e` was deployed at block `45,247,418`, bound immutably to the active F18
   escrow, without moving agreement state or funds. The local encrypted keystore remained outside
   the repository and chat.
-- [x] **Return and independently verify the public registry record â€” completed 2026-08-09.** The
+- [x] **Return and independently verify the public registry record — completed 2026-08-09.** The
   receipt succeeded; two public RPC reads returned the reviewed 1,837-byte runtime and expected
   runtime hash; `ESCROW()` returned F18; and no-broadcast calls succeeded for the live landlord and
   both tenants while rejecting an outsider. The retired C004 registry remains an immutable
@@ -168,8 +193,8 @@ provider or hosting control that owns the secret.
 Move an item here with its completion date and public verification reference.
 Never record a secret value.
 
-- [x] **Authorized the local Cloudflare deployment session — 2026-08-07.** Wrangler OAuth is
-  active for `Omrigross@gmail.com's Account`. The unrelated `Piper` account remains out of scope,
+- [x] **Authorized the local Cloudflare deployment session — 2026-08-07.** Wrangler OAuth was
+  active for the owner-authorized Cloudflare account. Unrelated accounts remained out of scope,
   and no credential was stored in the repository or chat.
 
 - [x] **Approved exact Sites version 145 deployed — 2026-08-03.** The public site and readiness

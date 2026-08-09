@@ -4,6 +4,7 @@ out/
 /dist/
 /self-host-dist/
 /.compliance-attestations/
+/.reviewer-evidence/
 
 # Ignores development broadcast logs
 !/broadcast

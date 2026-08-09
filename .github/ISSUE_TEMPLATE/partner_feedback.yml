@@ -1,0 +1,58 @@
+name: Pilot or partner feedback
+description: Share non-confidential workflow feedback from a housing, mediation, research, or public-interest perspective.
+title: "[Partner feedback]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This public form is not for partnership commitments, legal advice, real cases, participant information, private evidence, or confidential organizational material. Use synthetic scenarios. Private outreach and commitments remain owner-controlled.
+  - type: dropdown
+    id: perspective
+    attributes:
+      label: Perspective
+      options:
+        - Renter or renter advocate
+        - Landlord or housing provider
+        - Legal aid or tenant services
+        - Mediator or dispute-resolution professional
+        - Housing researcher or evaluator
+        - Accessibility or community organization
+        - Public agency or civic-technology practitioner
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: workflow
+    attributes:
+      label: Workflow or public material reviewed
+      description: Identify the synthetic scenario, public testnet flow, demo, documentation, or repository area.
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Observed need, confusion, or risk
+      description: Explain what a real user or organization would need to understand or do. Include no real case details.
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What safer, clearer, or more useful outcome should the project test?
+    validations:
+      required: true
+  - type: textarea
+    id: pilot_gate
+    attributes:
+      label: Pilot evidence or gate
+      description: What review, training, support, measurement, agreement, or stop condition would be needed before a supervised pilot?
+    validations:
+      required: true
+  - type: textarea
+    id: conflicts
+    attributes:
+      label: Relevant affiliation or conflict
+      description: Optional public organizational perspective or financial/vendor interest. Do not disclose confidential information.
+    validations:
+      required: false
