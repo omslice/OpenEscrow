@@ -11,6 +11,10 @@ test("public app links use openescrow.io on operational mirrors", () => {
     publicAppOrigin("https://openescrow.omslice.workers.dev"),
     "https://openescrow.io",
   );
+  assert.equal(
+    publicAppOrigin("https://www.openescrow-demo.omrigross.chatgpt.site"),
+    "https://openescrow.io",
+  );
 });
 
 test("self-hosted and local installations keep their own origin", () => {

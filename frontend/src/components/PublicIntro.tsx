@@ -101,6 +101,14 @@ export function PublicIntro({
           >
             Try the testnet demo
           </button>
+          <a
+            className="btn btn-secondary intro-demo-cta"
+            href="https://github.com/omslice/OpenEscrow"
+            target="_blank"
+            rel="noreferrer"
+          >
+            View on GitHub
+          </a>
         </div>
       </div>
 
@@ -354,24 +362,26 @@ export function PublicIntro({
               reduce confusion and conflict around an everyday housing process.
             </p>
             <p>
-              His essay <cite>On Blockchain&apos;s Importance for Housing</cite> explains the broader
+              His essay{" "}
+              <a
+                className="about-inline-link"
+                href="https://medium.com/emerging-govtech/on-blockchains-importance-for-housing-4fd4e4c06530"
+                target="_blank"
+                rel="noreferrer"
+              >
+                <cite>On Blockchain&apos;s Importance for Housing</cite>
+              </a>{" "}
+              explains the broader
               case for applying smart contracts and decentralized records to housing with an
               emphasis on transparency, security, and responsible implementation.
             </p>
             <div className="about-links" aria-label="Omri Gross links">
               <a
-                href="https://medium.com/emerging-govtech/on-blockchains-importance-for-housing-4fd4e4c06530"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Housing Blockchain Article
-              </a>
-              <a
                 href="https://linktr.ee/omslice"
                 target="_blank"
                 rel="noreferrer"
               >
-                Connect with Omri
+                Explore Omri&apos;s work &amp; connect
               </a>
             </div>
           </article>

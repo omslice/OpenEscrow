@@ -88,8 +88,9 @@ baseline before promotion.
 Until Cloudflare completes the supervised pilot and rollback exercise, every normal public release
 must be published to both the Cloudflare MVP and the existing ChatGPT Sites project from the same
 clean Git commit. Do not describe a release as delivered until `npm run check:dual-host` proves the
-canonical homepage is reachable, Sites redirects to that exact canonical origin, both local
-readiness endpoints report `sourceDirty: false`, and both report the expected full commit SHA. If
+canonical homepage is reachable, Sites exposes its verified redirect to that exact canonical
+origin, both local readiness endpoints report `sourceDirty: false`, and both report the expected
+full commit SHA. If
 either host cannot be updated, hold the normal release or record an explicit emergency exception;
 never silently let the retained rollback build drift.
 

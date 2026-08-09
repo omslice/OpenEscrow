@@ -234,12 +234,12 @@ try {
   );
   await page.getByRole("heading", { name: "Built by Omri Gross" }).waitFor();
   assert.equal(
-    await page.getByRole("link", { name: "Housing Blockchain Article" }).getAttribute("href"),
+    await page.getByRole("link", { name: "On Blockchain's Importance for Housing" }).getAttribute("href"),
     "https://medium.com/emerging-govtech/on-blockchains-importance-for-housing-4fd4e4c06530",
     "The About tab should link to Omri's housing article.",
   );
   assert.equal(
-    await page.getByRole("link", { name: "GitHub" }).getAttribute("href"),
+    await page.getByRole("link", { name: "GitHub", exact: true }).getAttribute("href"),
     "https://github.com/omslice/OpenEscrow",
     "The About tab should link to the public source repository.",
   );
@@ -254,7 +254,7 @@ try {
     "The About tab should link to the OpenEscrow Farcaster profile.",
   );
   assert.equal(
-    await page.getByRole("link", { name: "Connect with Omri" }).getAttribute("href"),
+    await page.getByRole("link", { name: "Explore Omri's work & connect" }).getAttribute("href"),
     "https://linktr.ee/omslice",
     "The About tab should link to Omri's Linktree.",
   );

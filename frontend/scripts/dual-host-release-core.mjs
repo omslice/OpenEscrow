@@ -77,24 +77,30 @@ export function validateHostedRelease({
   homeStatus,
   homeHtml,
   homeLocation,
+  clientRedirectVerified = false,
   canonicalBaseUrl,
   readinessStatus,
   readiness,
 }) {
   if (canonicalBaseUrl) {
-    if (homeStatus !== 307) {
+    if (homeStatus === 200 && clientRedirectVerified) {
+      if (!homeHtml.includes('id="root"')) {
+        throw new Error(`${label} does not expose the canonical redirect shell.`);
+      }
+    } else if (homeStatus !== 307) {
       throw new Error(`${label} canonical redirect returned HTTP ${homeStatus}.`);
-    }
-    let redirected;
-    try {
-      redirected = new URL(homeLocation || "");
-    } catch {
-      throw new Error(`${label} canonical redirect is missing a valid location.`);
-    }
-    if (redirected.href !== canonicalBaseUrl.href) {
-      throw new Error(
-        `${label} redirects to ${redirected.href}, not ${canonicalBaseUrl.href}.`,
-      );
+    } else {
+      let redirected;
+      try {
+        redirected = new URL(homeLocation || "");
+      } catch {
+        throw new Error(`${label} canonical redirect is missing a valid location.`);
+      }
+      if (redirected.href !== canonicalBaseUrl.href) {
+        throw new Error(
+          `${label} redirects to ${redirected.href}, not ${canonicalBaseUrl.href}.`,
+        );
+      }
     }
   } else {
     if (homeStatus !== 200) {

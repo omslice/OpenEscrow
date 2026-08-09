@@ -67,6 +67,19 @@ async function inspectHost(label, baseUrl, canonicalBaseUrl) {
     throw new Error(`${label} could not be reached: ${detail}`);
   }
   const homeHtml = await home.text();
+  let clientRedirectVerified = false;
+  if (canonicalBaseUrl && home.status === 200) {
+    const redirectScriptUrl = new URL("canonical-redirect.js", baseUrl);
+    const redirectScript = await fetch(redirectScriptUrl, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(10_000),
+    });
+    const redirectSource = await redirectScript.text();
+    clientRedirectVerified =
+      redirectScript.status === 200 &&
+      redirectSource.includes("openescrow-canonical-redirect/v1") &&
+      redirectSource.includes(JSON.stringify(canonicalBaseUrl.href));
+  }
   const readinessResult = await waitForExpectedRelease({
     expectedCommit,
     readAttempt: async (attempt) => {
@@ -104,6 +117,7 @@ async function inspectHost(label, baseUrl, canonicalBaseUrl) {
     homeStatus: home.status,
     homeHtml,
     homeLocation: home.headers.get("location"),
+    clientRedirectVerified,
     canonicalBaseUrl,
     readinessStatus: readinessResult.status,
     readiness: readinessResult.readiness,

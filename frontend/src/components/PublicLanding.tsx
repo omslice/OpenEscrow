@@ -41,7 +41,7 @@ export function PublicLanding({
     };
   }, []);
 
-  function focusSignIn() {
+  function focusAccountEntry() {
     const signInTarget =
       document.querySelector<HTMLElement>(
         ".header-actions .account-entry button:not(:disabled)",
@@ -58,16 +58,31 @@ export function PublicLanding({
     });
   }
 
+  function focusSignInSection() {
+    const section = document.getElementById("public-access");
+    const heading = document.getElementById("public-access-title");
+    section?.scrollIntoView({
+      behavior: preferredScrollBehavior(),
+      block: "center",
+    });
+    window.requestAnimationFrame(() => {
+      heading?.focus({ preventScroll: true });
+    });
+  }
+
   return (
     <Layout showNotifications={false} accountEntry={accountEntry}>
-      <PublicIntro onStart={focusSignIn} />
+      <PublicIntro onStart={focusSignInSection} showAboutDetails />
       <section
+        id="public-access"
         className="card public-access-prompt"
         aria-labelledby="public-access-title"
       >
         <div>
           <span className="eyebrow">Testnet access</span>
-          <h2 id="public-access-title">Sign in to try OpenEscrow</h2>
+          <h2 id="public-access-title" tabIndex={-1}>
+            Sign in to try OpenEscrow
+          </h2>
           <p>
             {accountReady
               ? "Continue with Google or a wallet using the sign-in options above. Your workspace role is chosen after sign-in; only a specific invitation link can preselect it."
@@ -79,7 +94,7 @@ export function PublicLanding({
             </p>
           )}
         </div>
-        <button className="btn btn-secondary" type="button" onClick={focusSignIn}>
+        <button className="btn btn-secondary" type="button" onClick={focusAccountEntry}>
           Show sign-in options
         </button>
       </section>

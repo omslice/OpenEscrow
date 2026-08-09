@@ -1,5 +1,6 @@
 const OPERATIONAL_FALLBACK_HOSTS = new Set([
   "openescrow-demo.omrigross.chatgpt.site",
+  "www.openescrow-demo.omrigross.chatgpt.site",
   "openescrow.omslice.workers.dev",
 ]);
 

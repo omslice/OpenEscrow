@@ -162,6 +162,33 @@ try {
     0,
     "A clean logged-out visit must not show an empty workspace notification control.",
   );
+  await landingPage.getByRole("heading", { name: "Built by Omri Gross" }).waitFor();
+  assert.equal(
+    await landingPage
+      .getByRole("link", { name: "View on GitHub", exact: true })
+      .getAttribute("href"),
+    "https://github.com/omslice/OpenEscrow",
+    "The signed-out landing page should expose the source repository beside its primary action.",
+  );
+  assert.equal(
+    await landingPage
+      .getByRole("link", { name: "On Blockchain's Importance for Housing", exact: true })
+      .getAttribute("href"),
+    "https://medium.com/emerging-govtech/on-blockchains-importance-for-housing-4fd4e4c06530",
+    "The builder essay title should be the article link.",
+  );
+  assert.equal(
+    await landingPage
+      .getByRole("link", { name: "Explore Omri's work & connect", exact: true })
+      .getAttribute("href"),
+    "https://linktr.ee/omslice",
+    "The signed-out builder card should explain the purpose of Omri's Linktree.",
+  );
+  assert.equal(
+    await landingPage.getByRole("link", { name: "Housing Blockchain Article" }).count(),
+    0,
+    "The article should not also appear as a redundant button.",
+  );
   const copyDonationAddress = landingPage.getByRole("button", {
     name: "Copy donation address openescrow.eth",
   });
@@ -219,6 +246,17 @@ try {
   await landingPage
     .getByRole("button", { name: "Try the testnet demo" })
     .click();
+  await landingPage.waitForFunction(
+    () => document.activeElement?.id === "public-access-title",
+  );
+  assert.equal(
+    await landingPage
+      .getByRole("heading", { name: "Sign in to try OpenEscrow" })
+      .evaluate(() => window.scrollY > 0),
+    true,
+    "The testnet demo action should navigate to the signed-out access section.",
+  );
+  await landingPage.getByRole("button", { name: "Show sign-in options" }).click();
   await landingPage.waitForFunction(
     () => document.activeElement?.textContent?.trim() === "Continue with Google",
   );

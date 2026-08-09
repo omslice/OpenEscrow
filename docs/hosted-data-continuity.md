@@ -9,7 +9,8 @@ R2 keys, evidence bytes, or other row values into the comparison manifest.
 
 `https://openescrow.io/` and its bound Cloudflare D1/R2 resources are the sole prospective hosted
 record for all new activity. The retained ChatGPT Sites hostname redirects user-facing reads to
-that canonical origin and rejects non-readiness writes before opening its historical database.
+that canonical origin through its server or verified asset-shell redirect and rejects
+non-readiness writes before opening its historical database.
 Its local `/api/system/readiness` response remains available solely to prove the exact rollback
 build deployed there.
 

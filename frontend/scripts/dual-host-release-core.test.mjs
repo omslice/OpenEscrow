@@ -169,6 +169,14 @@ test("requires the retained Sites host to redirect to the canonical app", () => 
     () => retainedSites({ homeLocation: "https://wrong.example/" }),
     /not https:\/\/cloudflare\.example\//,
   );
+  assert.equal(
+    retainedSites({
+      homeStatus: 200,
+      homeHtml: '<main id="root"></main>',
+      clientRedirectVerified: true,
+    }).canonicalOrigin,
+    "https://cloudflare.example",
+  );
 });
 
 test("requires the retired standalone landing route to remain unavailable", () => {

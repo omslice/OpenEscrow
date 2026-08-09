@@ -357,7 +357,8 @@ production custody, or reliance on the compliance research as legal advice.
   The Cloudflare staging dataset remains independent from the Sites historical dataset, and the
   production-testnet database has not been migrated or published.
 - **Verified:** A fail-closed dual-host verifier checks the canonical Cloudflare application, the
-  ChatGPT Sites redirect to that exact origin, each host's local readiness schema, clean-source
+  ChatGPT Sites server redirect or asset-layer canonical-redirect shell to that exact origin, each
+  host's local readiness schema, clean-source
   flag, full commit SHA, exact agreement between hosts, and the expected local release commit. The
   transitional release rule requires both deployments to be updated from one clean commit before
   a normal release is reported delivered; historical data and rollback histories remain
@@ -379,7 +380,8 @@ production custody, or reliance on the compliance research as legal advice.
   a different failure, a source/version mismatch, or a stale retry closes readiness and proposal
   creation again. Readiness reports this separately from an automated baseline.
 - **Verified:** Cloudflare D1/R2 is the adopted sole writable hosted record for new activity. The
-  retained Sites hostname redirects user traffic to `openescrow.io` and rejects writes before
+  retained Sites hostname redirects user traffic to `openescrow.io` at the server or verified
+  asset-shell layer and rejects writes before
   opening its historical D1, while local readiness remains available for release verification.
   Sites D1/R2 remains untouched as a historical synthetic-data and rollback archive; no migration
   is claimed.

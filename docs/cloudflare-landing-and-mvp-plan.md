@@ -103,8 +103,9 @@ The single application includes:
 - Exactly one Cloudflare public site serves the full MVP and About tab.
 - The retired landing Worker has no public route.
 - Cloudflare and ChatGPT Sites carry the same exact clean source commit after each normal release.
-- The Cloudflare homepage returns HTTP 200; Sites returns the expected canonical redirect; both
-  local `/api/system/readiness` endpoints return HTTP 200.
+- The Cloudflare homepage returns HTTP 200; Sites either returns the canonical redirect directly
+  or serves the verified canonical-redirect shell used by its asset-first hosting layer; both local
+  `/api/system/readiness` endpoints return HTTP 200.
 - Cloudflare binds `DB`, private `EVIDENCE`, and `ASSETS`; required secrets are configured without
   exposing their values; the 15-minute trigger is present.
 - Authentication origins, scheduled-job health, notification delivery, accessibility/recovery
