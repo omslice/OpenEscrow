@@ -1680,6 +1680,41 @@ html.demo-route #root {
   gap: 20px;
 }
 
+.account-info-card {
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 11px;
+  padding: 16px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--accent-bg));
+}
+
+.account-info-card > h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.account-info-card > h3::before {
+  display: grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 1px solid var(--accent-border);
+  border-radius: 7px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.account-email-card > h3::before {
+  content: "@";
+}
+
+.account-wallet-card > h3::before {
+  content: "◇";
+}
+
 .wallet-list {
   display: grid;
   gap: 8px;
@@ -1738,12 +1773,77 @@ html.demo-route #root {
   border-top: 1px solid var(--border);
 }
 
-.notification-preferences label {
+.notification-preferences-heading,
+.account-security-heading {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  margin: 8px 0;
+  gap: 11px;
+}
+
+.notification-preferences-heading h3,
+.account-security-heading h3 {
+  margin-bottom: 4px;
+}
+
+.settings-icon {
+  display: grid;
+  flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid var(--accent-border);
+  border-radius: 9px;
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 900;
+}
+
+.notification-choice-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.notification-preferences .notification-choice {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 13px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--accent-bg));
   color: var(--text-h);
+  cursor: pointer;
+  transition:
+    border-color 150ms ease,
+    background 150ms ease;
+}
+
+.notification-preferences .notification-choice:hover,
+.notification-preferences .notification-choice:focus-within {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+}
+
+.notification-choice > span {
+  display: grid;
+  min-width: 0;
+  gap: 3px;
+}
+
+.notification-choice strong {
+  color: var(--text-h);
+  font-size: 13px;
+}
+
+.notification-choice small {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.4;
 }
 
 .notification-preferences input {
@@ -1757,7 +1857,18 @@ html.demo-route #root {
   font-size: 12px;
 }
 
+.notification-paused-notice {
+  margin: 12px 0 0;
+  border: 1px solid var(--warning-border);
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: var(--warning-bg);
+  color: var(--text-h);
+  font-size: 12px;
+}
+
 .account-security-settings {
+  display: block;
   padding-top: 16px;
   border-top: 1px solid var(--border);
 }
@@ -1801,6 +1912,89 @@ html.demo-route #root {
 .notification-delivery-status span {
   color: var(--text);
   font-size: 12px;
+}
+
+.notification-technical-details {
+  margin-top: 8px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--surface) 96%, var(--bg));
+}
+
+.notification-technical-details > summary {
+  min-height: 44px;
+  padding: 11px 12px;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.notification-technical-details dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  border-top: 1px solid var(--border);
+  padding: 12px;
+}
+
+.notification-technical-details dl > div {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.35fr) 1fr;
+  gap: 10px;
+}
+
+.notification-technical-details dt,
+.notification-technical-details dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.notification-technical-details dt {
+  color: var(--muted);
+  font-weight: 750;
+}
+
+.notification-technical-details dd {
+  color: var(--text-h);
+}
+
+.account-security-options {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.account-security-option {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 7px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  background: color-mix(in srgb, var(--surface) 94%, var(--bg));
+}
+
+.account-security-option > strong {
+  color: var(--text-h);
+  font-size: 13px;
+}
+
+.account-security-option .settings-actions {
+  align-self: end;
+  justify-content: flex-start;
+  margin-top: 5px;
+}
+
+.account-security-settings > .field-help,
+.account-security-settings > .tx-error {
+  margin: 12px 0 0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--accent-bg));
 }
 
 .dashboard {
@@ -5024,6 +5218,31 @@ a.btn.disabled {
   .account-security-settings .settings-actions .btn {
     flex: 1 1 100%;
     min-height: 44px;
+  }
+
+  .notification-choice-list,
+  .account-security-options {
+    grid-template-columns: 1fr;
+  }
+
+  .notification-delivery-status {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .notification-delivery-status .btn {
+    width: 100%;
+    min-height: 44px;
+  }
+
+  .notification-technical-details dl > div {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .account-security-option .settings-actions {
+    align-items: stretch;
+    flex-direction: column;
   }
 
   .account-entry,

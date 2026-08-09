@@ -110,6 +110,9 @@ function readyServiceReadiness() {
     email: {
       configured: true,
       provider: "resend",
+      participantDeliveryReady: true,
+      senderMode: "participant-capable",
+      deliveryStatusConfigured: true,
       schedulerConfigured: true,
       schedulerLastRunAt: now,
       schedulerHealthy: true,
@@ -696,6 +699,36 @@ try {
   });
 
   await page.locator("details.account-profile-disclosure > summary").click();
+  assert.equal(
+    await page.locator(".account-info-card").count(),
+    2,
+    "Account identity and wallets should render as two scannable information cards.",
+  );
+  assert.equal(
+    await page.locator(".notification-choice").count(),
+    2,
+    "Notification preferences should render as two clear consumer choices.",
+  );
+  await page.getByText("Email notifications are ready", { exact: true }).waitFor();
+  assert.equal(
+    await page.locator(".account-security-option").count(),
+    2,
+    "Inventory and session-safety actions should remain visibly separated.",
+  );
+  const deliveryDetails = page.locator("details.notification-technical-details");
+  assert.equal(
+    await deliveryDetails.getAttribute("open"),
+    null,
+    "Provider and scheduler diagnostics should start collapsed for consumers.",
+  );
+  const deliveryDetailsBox = await deliveryDetails.getByText("Delivery details", {
+    exact: true,
+  }).boundingBox();
+  assert.equal(
+    Boolean(deliveryDetailsBox && deliveryDetailsBox.height >= 44),
+    true,
+    "Delivery diagnostics should retain a full-size disclosure target.",
+  );
   await page.getByRole("button", { name: "Download data inventory" }).click();
   await inventorySeen.promise;
   await page.evaluate(() => {
@@ -755,7 +788,7 @@ try {
 
   await page.locator("details.account-profile-disclosure > summary").click();
   const accountBActivityPreference = page.getByRole("checkbox", {
-    name: /Agreement invitations, funding, claims, responses, and rulings/,
+    name: /Agreement updates/,
   });
   assert.equal(
     await accountBActivityPreference.isChecked(),
@@ -770,7 +803,7 @@ try {
   await page.getByTitle("account.a@example.test").waitFor();
   await page.locator("details.account-profile-disclosure > summary").click();
   const accountAActivityPreference = page.getByRole("checkbox", {
-    name: /Agreement invitations, funding, claims, responses, and rulings/,
+    name: /Agreement updates/,
   });
   assert.equal(
     await accountAActivityPreference.isChecked(),
@@ -820,6 +853,37 @@ try {
   });
   await page.getByTitle("account.a@example.test").waitFor();
   await page.setViewportSize({ width: 390, height: 844 });
+  const mobileAccountDisclosure = page.locator(
+    "details.account-profile-disclosure > summary",
+  );
+  await mobileAccountDisclosure.click();
+  await assertMobileActionTarget(
+    page.getByRole("button", { name: "Download data inventory" }),
+    "Download account inventory",
+  );
+  await assertMobileActionTarget(
+    page.getByRole("button", { name: "End record sessions & sign out" }),
+    "End record sessions",
+  );
+  const mobileNotificationChoices = page.locator(".notification-choice");
+  for (let index = 0; index < (await mobileNotificationChoices.count()); index += 1) {
+    const choiceBox = await mobileNotificationChoices.nth(index).boundingBox();
+    assert.equal(
+      Boolean(choiceBox && choiceBox.height >= 44),
+      true,
+      "Notification choices should remain full-size mobile touch targets.",
+    );
+  }
+  const accountMobileWidth = await page.evaluate(() => ({
+    viewport: window.innerWidth,
+    document: document.documentElement.scrollWidth,
+  }));
+  assert.equal(
+    accountMobileWidth.document <= accountMobileWidth.viewport,
+    true,
+    `Account settings should not overflow mobile width: ${JSON.stringify(accountMobileWidth)}`,
+  );
+  await mobileAccountDisclosure.click();
   await page.getByRole("tab", { name: "Proposals" }).click();
 
   const proposalArchiveSummary = page.getByText("Archived proposals (1)", {

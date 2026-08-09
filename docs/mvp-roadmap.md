@@ -407,14 +407,16 @@ production custody, or reliance on the compliance research as legal advice.
   F18 Base Sepolia escrow without migrating agreement 0 or its funds. The receipt, exact reviewed
   runtime hash, immutable binding, live landlord/two-tenant access, and outsider rejection were
   independently verified before the candidate configuration changed.
-- **Verified:** The first consumer-UX refinement tranches now cover the claims, Record, proposal
-  list, and Deposit list surfaces without changing permissions, stored fields, contract calls, or
-  workflow outcomes. Dense records and claims use clearer hierarchy and progressive disclosure;
-  proposals now expose plain-language status summaries plus property, participant, update, and
-  revision metadata; active deposits remain compact while presenting a friendlier property-first
-  row. Focus recovery, one-at-a-time deposit mounting, 44-pixel mobile actions, mobile overflow,
-  keyboard expansion, and rendered proposal metadata are protected by focused browser checks and
-  the full accessibility smoke flow.
+- **Verified:** The consumer UX audit and presentation-only refinement tranches now cover the
+  account/settings, claims, Record, proposal, and Deposit surfaces without changing permissions,
+  stored fields, contract calls, or workflow outcomes. Dense records and claims use clearer
+  hierarchy and progressive disclosure; proposals expose plain-language status summaries plus
+  property, participant, update, and revision metadata; deposits use a property-first compact row;
+  account settings separate identity, notification choices, delivery diagnostics, inventory, and
+  session safety. Focus recovery, one-at-a-time deposit mounting, account isolation, 44-pixel
+  mobile actions, mobile overflow, keyboard expansion, and rendered metadata are protected by
+  focused browser checks and the accessibility smoke flow. See the
+  [consumer UX audit](./consumer-ux-audit.md).
 
 ## Remaining
 
@@ -430,12 +432,9 @@ production custody, or reliance on the compliance research as legal advice.
   encryption and retained-key recovery, and address attestation. Activate and monitor the daily
   New Hampshire official-source workflow; treat any changed or stale attestation as a mandatory
   rule-review event before publishing a new profile version.
-- **Planned:** Continue the consumer UX review through the remaining proposal editor and
-  account/settings surfaces. Improve grouping, progressive disclosure, consumer-facing status
-  copy, empty/loading/error states, and mobile hierarchy while preserving every business rule,
-  authorization boundary, data field, API/contract call, transaction sequence, and workflow
-  outcome. Pair each refinement with rendered, accessibility, mobile, keyboard, and functional
-  regression coverage so presentation work cannot silently change behavior.
+- **Planned:** Validate the refined consumer experience in moderated landlord and tenant sessions.
+  Any request to remove, defer, or change a proposal field must be handled as a separate product
+  and legal decision rather than presentation-only UX work.
 - **Planned:** Run the separate-account landlord/tenant pilot, moderated accessibility/usability
   sessions, and the owner-led incident/privacy drill. Record stop conditions and remediation.
 - **Planned:** Evaluate one eligible provider sandbox using worthless testnet assets only.

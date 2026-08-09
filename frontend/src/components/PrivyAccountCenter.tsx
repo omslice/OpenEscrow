@@ -576,7 +576,7 @@ export function PrivyAccountCenter({
             )}
 
             <div className="account-grid">
-              <div>
+              <div className="account-info-card account-email-card">
                 <h3>Email identity</h3>
                 {email ? (
                   <>
@@ -593,7 +593,7 @@ export function PrivyAccountCenter({
                 )}
               </div>
 
-              <div>
+              <div className="account-info-card account-wallet-card">
                 <h3>Wallets</h3>
                 {!walletsReady ? (
                   <p className="hint">Loading wallets...</p>
@@ -709,91 +709,94 @@ export function PrivyAccountCenter({
             className="settings-group notification-preferences"
             aria-labelledby="notification-settings-title"
           >
-            <h3 id="notification-settings-title">Email notifications</h3>
-        <label>
-          <input
-            type="checkbox"
-            checked={preferences.agreementActivity}
-            disabled={!email || preferences.deliveryPaused}
-            aria-describedby={`notification-preference-boundary${
-              preferenceNotice ? " notification-preference-status" : ""
-            }`}
-            onChange={(event) =>
-              void updatePreference("agreementActivity", event.target.checked)
-            }
-          />
-          Agreement invitations, funding, claims, responses, and rulings
-        </label>
-        <label>
-          <input
-            type="checkbox"
-            checked={preferences.deadlineReminders}
-            disabled={!email || preferences.deliveryPaused}
-            aria-describedby={`notification-preference-boundary${
-              preferenceNotice ? " notification-preference-status" : ""
-            }`}
-            onChange={(event) =>
-              void updatePreference("deadlineReminders", event.target.checked)
-            }
-          />
-          Upcoming claim, response, and arbiter deadlines
-        </label>
-        <p id="notification-preference-boundary" className="notification-boundary">
-          Both are on by default for a new verified account. You can turn either one off at any
-          time. Preferences follow your account, and every optional message includes an unsubscribe
-          link and intentionally omits private agreement details.
-        </p>
-        {preferences.deliveryPaused && (
-          <p className="notification-boundary" role="status">
-            {preferences.deliveryPauseReason === "complained"
-              ? "Automatic email is paused because this address marked an OpenEscrow message as spam. Contact OpenEscrow if that was a mistake."
-              : "Automatic email is paused because the provider could not safely deliver to this address. Confirm the address, then contact OpenEscrow to restore delivery."}
-          </p>
-        )}
-        {serviceReadiness?.email.configured ? (
-          <div
-            className={`notification-delivery-status${
-              serviceReadiness.email.deliveryStatusConfigured &&
-              serviceReadiness.email.participantDeliveryReady
-                ? " ready"
-                : ""
-            }`}
-          >
-            <div>
-              <strong>
-                {serviceReadiness.email.deliveryStatusConfigured &&
-                serviceReadiness.email.participantDeliveryReady
-                  ? "Automatic delivery ready"
-                  : serviceReadiness.email.participantDeliveryReady
-                    ? "Email sending configured"
-                    : "Test email only"}
-              </strong>
-              <span>
-                {serviceReadiness.email.provider === "resend"
-                  ? "Resend"
-                  : "Configured email webhook"}
-                {!serviceReadiness.email.participantDeliveryReady
-                  ? " · verified participant sending domain needed"
-                  : ""}
-                {serviceReadiness.email.deliveryStatusConfigured
-                  ? " · delivery confirmation ready"
-                  : " · delivery confirmation setup is incomplete"}
-                {serviceReadiness.email.schedulerHealthy
-                  ? ` · scheduler healthy (${serviceReadiness.email.schedulerExpectedIntervalMinutes} min cadence)`
-                  : " · scheduler stale"}
-                {serviceReadiness.email.schedulerLastRunAt
-                  ? ` · scheduler checked ${new Date(serviceReadiness.email.schedulerLastRunAt).toLocaleString()}`
-                  : " · scheduler awaits its first hosted run"}
-              </span>
+            <div className="notification-preferences-heading">
+              <span className="settings-icon" aria-hidden="true">✉</span>
+              <div>
+                <h3 id="notification-settings-title">Email notifications</h3>
+                <p>Choose which useful account updates OpenEscrow sends to your verified email.</p>
+              </div>
             </div>
-            <button
-              className="btn btn-ghost small"
-              type="button"
-              disabled={!identityToken || !accountIdentity || !email || isTestingEmail}
-              aria-describedby={`notification-preference-boundary${
-                preferenceNotice ? " notification-preference-status" : ""
-              }`}
-              onClick={async () => {
+            <div className="notification-choice-list">
+              <label className="notification-choice">
+                <input
+                  type="checkbox"
+                  checked={preferences.agreementActivity}
+                  disabled={!email || preferences.deliveryPaused}
+                  aria-describedby={`notification-preference-boundary${
+                    preferenceNotice ? " notification-preference-status" : ""
+                  }`}
+                  onChange={(event) =>
+                    void updatePreference("agreementActivity", event.target.checked)
+                  }
+                />
+                <span>
+                  <strong>Agreement updates</strong>
+                  <small>Invitations, funding, claims, responses, and rulings</small>
+                </span>
+              </label>
+              <label className="notification-choice">
+                <input
+                  type="checkbox"
+                  checked={preferences.deadlineReminders}
+                  disabled={!email || preferences.deliveryPaused}
+                  aria-describedby={`notification-preference-boundary${
+                    preferenceNotice ? " notification-preference-status" : ""
+                  }`}
+                  onChange={(event) =>
+                    void updatePreference("deadlineReminders", event.target.checked)
+                  }
+                />
+                <span>
+                  <strong>Deadline reminders</strong>
+                  <small>Upcoming claim, response, and arbiter deadlines</small>
+                </span>
+              </label>
+            </div>
+            <p id="notification-preference-boundary" className="notification-boundary">
+              Both are on by default for a new verified account. You can turn either one off at any
+              time. Messages follow your account, include an unsubscribe link, and omit private
+              agreement details.
+            </p>
+            {preferences.deliveryPaused && (
+              <p className="notification-paused-notice" role="status">
+                {preferences.deliveryPauseReason === "complained"
+                  ? "Email is paused because this address marked an OpenEscrow message as spam. Contact OpenEscrow if that was a mistake."
+                  : "Email is paused because delivery to this address was not safe. Confirm the address, then contact OpenEscrow to restore delivery."}
+              </p>
+            )}
+            {serviceReadiness?.email.configured ? (
+              <>
+                <div
+                  className={`notification-delivery-status${
+                    serviceReadiness.email.deliveryStatusConfigured &&
+                    serviceReadiness.email.participantDeliveryReady
+                      ? " ready"
+                      : ""
+                  }`}
+                >
+                  <div>
+                    <strong>
+                      {serviceReadiness.email.deliveryStatusConfigured &&
+                      serviceReadiness.email.participantDeliveryReady
+                        ? "Email notifications are ready"
+                        : serviceReadiness.email.participantDeliveryReady
+                          ? "Email sending is ready"
+                          : "Account-only test mode"}
+                    </strong>
+                    <span>
+                      {serviceReadiness.email.participantDeliveryReady
+                        ? "OpenEscrow can send updates to verified participants."
+                        : "A verified sending domain is still needed before participant emails can be delivered."}
+                    </span>
+                  </div>
+                  <button
+                    className="btn btn-ghost small"
+                    type="button"
+                    disabled={!identityToken || !accountIdentity || !email || isTestingEmail}
+                    aria-describedby={`notification-preference-boundary${
+                      preferenceNotice ? " notification-preference-status" : ""
+                    }`}
+                    onClick={async () => {
                 if (!identityToken || !accountIdentity) return;
                 const requestedIdentityToken = identityToken;
                 const requestedAccountIdentity = accountIdentity;
@@ -830,22 +833,60 @@ export function PrivyAccountCenter({
                     setIsTestingEmail(false);
                   }
                 }
-              }}
-            >
-              {isTestingEmail ? "Sending..." : "Send test email"}
-            </button>
-          </div>
-        ) : (
-          <div className="notification-delivery-status">
-            <div>
-              <strong>Manual fallback active</strong>
-              <span>
-                Gmail drafts and copy-email notices remain available until the deployment owner
-                configures a free email provider.
-              </span>
-            </div>
-          </div>
-        )}
+                    }}
+                  >
+                    {isTestingEmail ? "Sending..." : "Send test email"}
+                  </button>
+                </div>
+                <details className="notification-technical-details">
+                  <summary>Delivery details</summary>
+                  <dl>
+                    <div>
+                      <dt>Provider</dt>
+                      <dd>
+                        {serviceReadiness.email.provider === "resend"
+                          ? "Resend"
+                          : "Configured email webhook"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Participant delivery</dt>
+                      <dd>
+                        {serviceReadiness.email.participantDeliveryReady
+                          ? "Ready"
+                          : "Verified sending domain needed"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Delivery confirmation</dt>
+                      <dd>
+                        {serviceReadiness.email.deliveryStatusConfigured
+                          ? "Ready"
+                          : "Setup incomplete"}
+                      </dd>
+                    </div>
+                    <div>
+                      <dt>Reminder scheduler</dt>
+                      <dd>
+                        {serviceReadiness.email.schedulerHealthy
+                          ? `Healthy · every ${serviceReadiness.email.schedulerExpectedIntervalMinutes} minutes`
+                          : "Needs attention"}
+                        {serviceReadiness.email.schedulerLastRunAt
+                          ? ` · checked ${new Date(serviceReadiness.email.schedulerLastRunAt).toLocaleString()}`
+                          : " · waiting for its first hosted run"}
+                      </dd>
+                    </div>
+                  </dl>
+                </details>
+              </>
+            ) : (
+              <div className="notification-delivery-status">
+                <div>
+                  <strong>Manual email options are available</strong>
+                  <span>Copyable notices remain available while automatic delivery is being set up.</span>
+                </div>
+              </div>
+            )}
             {preferenceNotice && (
               <p
                 id="notification-preference-status"
@@ -863,80 +904,92 @@ export function PrivyAccountCenter({
             className="settings-group account-security-settings"
             aria-labelledby="account-security-title"
           >
-            <div>
-              <h3 id="account-security-title">Account security</h3>
-              <p id="account-session-containment-description">
-                If a device or browser profile is no longer trusted, end every expiring OpenEscrow
-                record session issued to this verified account. Agreements, archive preferences,
-                invitation links, and wallet-provider sessions are not changed.
-              </p>
-              <p id="account-data-inventory-description">
-                You can also download a privacy-safe inventory of record references and account
-                settings. It excludes evidence, addresses, other participants' details, and all
-                access tokens; use the Record tab for each complete shared record.
-              </p>
-              {securityStatus && (
-                <p
-                  id="account-security-status"
-                  className={securityError ? "tx-error" : "field-help"}
-                  role={securityError ? "alert" : "status"}
-                  aria-live={securityError ? "assertive" : "polite"}
-                  aria-atomic="true"
-                >
-                  {securityStatus}
+            <div className="account-security-heading">
+              <span className="settings-icon" aria-hidden="true">✓</span>
+              <div>
+                <h3 id="account-security-title">Account security</h3>
+                <p>Review your account inventory or end record access on devices you no longer trust.</p>
+              </div>
+            </div>
+            <div className="account-security-options">
+              <div className="account-security-option">
+                <strong>Your data inventory</strong>
+                <p id="account-data-inventory-description">
+                  Download a privacy-safe list of record references and settings. It excludes
+                  evidence, addresses, other participants' details, and access tokens.
                 </p>
-              )}
+                <div className="settings-actions">
+                  <button
+                    className="btn btn-ghost small"
+                    type="button"
+                    aria-describedby={`account-data-inventory-description${
+                      securityStatus ? " account-security-status" : ""
+                    }`}
+                    disabled={
+                      !identityToken ||
+                      isDownloadingInventory ||
+                      isCopyingInventory ||
+                      isEndingSessions
+                    }
+                    onClick={() => void downloadAccountDataInventory()}
+                  >
+                    {isDownloadingInventory ? "Preparing inventory..." : "Download data inventory"}
+                  </button>
+                  {inventoryRecovery && (
+                    <button
+                      className="btn btn-ghost small"
+                      type="button"
+                      aria-describedby="account-data-inventory-description account-security-status"
+                      disabled={
+                        !identityToken ||
+                        isCopyingInventory ||
+                        isDownloadingInventory ||
+                        isEndingSessions
+                      }
+                      onClick={() => void copyPreparedAccountDataInventory()}
+                    >
+                      {isCopyingInventory ? "Copying inventory..." : "Copy prepared inventory"}
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="account-security-option">
+                <strong>Record-session safety</strong>
+                <p id="account-session-containment-description">
+                  End expiring OpenEscrow record sessions on every device. Agreements, archives,
+                  invitation links, and wallet-provider sessions are not changed.
+                </p>
+                <div className="settings-actions">
+                  <button
+                    className="btn btn-ghost small"
+                    type="button"
+                    aria-describedby={`account-session-containment-description${
+                      securityStatus ? " account-security-status" : ""
+                    }`}
+                    disabled={
+                      !identityToken ||
+                      isEndingSessions ||
+                      isDownloadingInventory ||
+                      isCopyingInventory
+                    }
+                    onClick={() => void endOpenEscrowSessions()}
+                  >
+                    {isEndingSessions ? "Ending sessions..." : "End record sessions & sign out"}
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="settings-actions">
-              <button
-                className="btn btn-ghost small"
-                type="button"
-                aria-describedby={`account-data-inventory-description${
-                  securityStatus ? " account-security-status" : ""
-                }`}
-                disabled={
-                  !identityToken ||
-                  isDownloadingInventory ||
-                  isCopyingInventory ||
-                  isEndingSessions
-                }
-                onClick={() => void downloadAccountDataInventory()}
+            {securityStatus && (
+              <p
+                id="account-security-status"
+                className={securityError ? "tx-error" : "field-help"}
+                role={securityError ? "alert" : "status"}
+                aria-live={securityError ? "assertive" : "polite"}
+                aria-atomic="true"
               >
-                {isDownloadingInventory ? "Preparing inventory..." : "Download data inventory"}
-              </button>
-              {inventoryRecovery && (
-                <button
-                  className="btn btn-ghost small"
-                  type="button"
-                  aria-describedby="account-data-inventory-description account-security-status"
-                  disabled={
-                    !identityToken ||
-                    isCopyingInventory ||
-                    isDownloadingInventory ||
-                    isEndingSessions
-                  }
-                  onClick={() => void copyPreparedAccountDataInventory()}
-                >
-                  {isCopyingInventory ? "Copying inventory..." : "Copy prepared inventory"}
-                </button>
-              )}
-              <button
-                className="btn btn-ghost small"
-                type="button"
-                aria-describedby={`account-session-containment-description${
-                  securityStatus ? " account-security-status" : ""
-                }`}
-                disabled={
-                  !identityToken ||
-                  isEndingSessions ||
-                  isDownloadingInventory ||
-                  isCopyingInventory
-                }
-                onClick={() => void endOpenEscrowSessions()}
-              >
-                {isEndingSessions ? "Ending sessions..." : "End record sessions & sign out"}
-              </button>
-            </div>
+                {securityStatus}
+              </p>
+            )}
           </section>
 
         </div>
