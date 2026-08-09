@@ -20,6 +20,11 @@ const LegalPage = lazy(() =>
     default: module.LegalPage,
   })),
 );
+const DemoPage = lazy(() =>
+  import("./components/DemoPage").then((module) => ({
+    default: module.DemoPage,
+  })),
+);
 
 function PublicAccountEntry({
   onChoose,
@@ -121,6 +126,20 @@ function InteractiveRoot() {
 
 export function Root() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
+
+  if (path === "/demo") {
+    return (
+      <Suspense
+        fallback={
+          <div className="app-loading" role="status">
+            Loading the OpenEscrow overview...
+          </div>
+        }
+      >
+        <DemoPage />
+      </Suspense>
+    );
+  }
 
   if (path === "/privacy") {
     return (

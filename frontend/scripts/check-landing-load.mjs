@@ -197,6 +197,13 @@ try {
   );
   assert.equal(
     await landingPage
+      .getByRole("link", { name: "Open the standalone demo", exact: true })
+      .getAttribute("href"),
+    "/demo",
+    "The public overview should link to the standalone demo page.",
+  );
+  assert.equal(
+    await landingPage
       .getByRole("link", { name: "View on GitHub", exact: true })
       .getAttribute("href"),
     "https://github.com/omslice/OpenEscrow",
@@ -397,6 +404,29 @@ try {
     );
     await legalContext.close();
   }
+
+  const demoContext = await browser.newContext();
+  await isolateFromExternalProviders(demoContext);
+  const demoPage = await demoContext.newPage();
+  const demoAssets = observeLocalScripts(demoPage);
+  const demoResponse = await demoPage.goto(`${baseUrl}/demo`, {
+    waitUntil: "domcontentloaded",
+  });
+  assert.equal(demoResponse?.status(), 200, "/demo must load through the SPA fallback.");
+  await demoPage
+    .getByRole("heading", { name: "Get to know OpenEscrow", exact: true })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    await demoPage.locator("video source").getAttribute("src"),
+    "/openescrow-demo.mp4",
+    "The standalone demo page must use the packaged OpenEscrow video.",
+  );
+  assert.equal(
+    [...demoAssets].some((assetName) => assetName.startsWith("AuthenticatedRoot-")),
+    false,
+    "/demo must not load the account provider.",
+  );
+  await demoContext.close();
 
   const linkedContext = await browser.newContext();
   await isolateFromExternalProviders(linkedContext);

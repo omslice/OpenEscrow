@@ -132,6 +132,9 @@ export function PublicIntro({
           Your browser cannot play this video. You can{" "}
           <a href="/openescrow-demo.mp4">open the OpenEscrow overview directly</a>.
         </video>
+        <a className="project-demo-page-link" href="/demo">
+          Open the standalone demo
+        </a>
       </section>
 
       <div className="how-it-works-block" id="how-it-works">
@@ -378,13 +381,13 @@ export function PublicIntro({
             <h3>Built by Omri Gross</h3>
             <p>
               Omri works at the intersection of housing policy, public-interest technology, and
-              blockchain. He has led and coordinated policy, guidance, workflows, tracking,
+              blockchain. His work has included policy, guidance, workflows, tracking,
               contractor management, and implementation across multiple complex national program
-              environments. He created OpenEscrow to demonstrate how verifiable shared systems can
+              environments. OpenEscrow demonstrates how verifiable shared systems can
               reduce confusion and conflict around an everyday housing process.
             </p>
             <p>
-              His essay{" "}
+              Omri&apos;s essay{" "}
               <a
                 className="about-inline-link"
                 href="https://medium.com/emerging-govtech/on-blockchains-importance-for-housing-4fd4e4c06530"
