@@ -1,19 +1,24 @@
+[CmdletBinding()]
+param(
+    [string]$DeployerAddress = "0x0B3AA7539bB7EDCd44131F1A71eDCff1c1FDf20E"
+)
+
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $foundryBin = Join-Path $env:USERPROFILE ".foundry\bin"
 
 $env:BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org"
-$env:DEPLOYER_ADDRESS = (& "$foundryBin\cast.exe" wallet address --account openescrow-base-sepolia).Trim()
-if ($LASTEXITCODE -ne 0 -or $env:DEPLOYER_ADDRESS -notmatch '^0x[0-9a-fA-F]{40}$') {
-  throw "Could not derive the public deployer address from the encrypted openescrow-base-sepolia keystore."
+if ($DeployerAddress -notmatch '^0x[0-9a-fA-F]{40}$') {
+  throw "The configured deployer address is not a valid Ethereum address."
 }
+$env:DEPLOYER_ADDRESS = $DeployerAddress
 
 Set-Location -LiteralPath $repoRoot
 
 function Assert-CandidateSourceClean {
   $sourceChanges = @(& git status --porcelain=v1 --untracked-files=all -- `
-    .openai contracts lib script test foundry.toml remappings.txt .gitmodules frontend)
+    .openai contracts lib script scripts test foundry.toml remappings.txt .gitmodules frontend)
   if ($LASTEXITCODE -ne 0 -or $sourceChanges.Count -ne 0) {
     throw "Refusing to broadcast because candidate source differs from HEAD: $($sourceChanges -join ', ')"
   }
