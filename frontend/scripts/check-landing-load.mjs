@@ -413,13 +413,17 @@ try {
     waitUntil: "domcontentloaded",
   });
   assert.equal(demoResponse?.status(), 200, "/demo must load through the SPA fallback.");
-  await demoPage
-    .getByRole("heading", { name: "Get to know OpenEscrow", exact: true })
-    .waitFor({ state: "visible" });
+  const standaloneDemo = demoPage.getByLabel("OpenEscrow demo video", { exact: true });
+  await standaloneDemo.waitFor({ state: "visible" });
   assert.equal(
-    await demoPage.locator("video source").getAttribute("src"),
+    await standaloneDemo.locator("source").getAttribute("src"),
     "/openescrow-demo.mp4",
     "The standalone demo page must use the packaged OpenEscrow video.",
+  );
+  assert.equal(
+    await demoPage.locator(".app-shell").count(),
+    0,
+    "/demo must be only the standalone player, without the application shell.",
   );
   assert.equal(
     [...demoAssets].some((assetName) => assetName.startsWith("AuthenticatedRoot-")),
