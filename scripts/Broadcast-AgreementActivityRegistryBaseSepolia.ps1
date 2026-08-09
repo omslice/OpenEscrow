@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
     [string]$EscrowManifestPath = "deployments/base-sepolia-latest.json",
+    [string]$DeployerAddress = "0x0B3AA7539bB7EDCd44131F1A71eDCff1c1FDf20E",
     [switch]$ValidateOnly,
     [switch]$PreflightOnly
 )
@@ -155,10 +156,10 @@ if ($PreflightOnly) {
   return
 }
 
-$env:DEPLOYER_ADDRESS = & "$foundryBin\cast.exe" wallet address --account openescrow-base-sepolia
-if ($LASTEXITCODE -ne 0 -or $env:DEPLOYER_ADDRESS -notmatch '^0x[0-9a-fA-F]{40}$') {
-  throw "Could not derive the public deployer address from the encrypted openescrow-base-sepolia keystore."
+if ($DeployerAddress -notmatch '^0x[0-9a-fA-F]{40}$') {
+  throw "The configured deployer address is not a valid Ethereum address."
 }
+$env:DEPLOYER_ADDRESS = $DeployerAddress
 
 Write-Host ""
 Write-Host "OpenEscrow activity-registry deployment" -ForegroundColor Cyan
