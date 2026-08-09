@@ -1,0 +1,64 @@
+name: Self-host release package
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "selfhost-v*"
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+jobs:
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Validate package configuration logic
+        working-directory: frontend
+        run: npm run test:selfhost-config
+
+      - name: Build supported Cloudflare package
+        working-directory: frontend
+        run: npm run selfhost:package -- --output-dir=../self-host-dist
+
+      - name: Locate release artifacts
+        id: artifacts
+        shell: bash
+        run: |
+          archive="$(find self-host-dist -maxdepth 1 -type f -name '*.tar.gz' -print -quit)"
+          sbom="$(find self-host-dist -mindepth 2 -maxdepth 2 -type f -name 'SBOM.cdx.json' -print -quit)"
+          test -n "$archive"
+          test -n "$sbom"
+          echo "archive=$archive" >> "$GITHUB_OUTPUT"
+          echo "sbom=$sbom" >> "$GITHUB_OUTPUT"
+
+      - name: Attest archive and SBOM
+        uses: actions/attest@v4
+        with:
+          subject-path: ${{ steps.artifacts.outputs.archive }}
+          sbom-path: ${{ steps.artifacts.outputs.sbom }}
+
+      - name: Upload release package
+        uses: actions/upload-artifact@v4
+        with:
+          name: openescrow-cloudflare-self-host-${{ github.sha }}
+          path: |
+            self-host-dist/*.tar.gz
+            self-host-dist/*.sha256
+            self-host-dist/*/SBOM.cdx.json
+            self-host-dist/*/release-manifest.json
+          if-no-files-found: error

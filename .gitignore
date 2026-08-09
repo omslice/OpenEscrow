@@ -2,6 +2,7 @@
 cache/
 out/
 /dist/
+/self-host-dist/
 
 # Ignores development broadcast logs
 !/broadcast

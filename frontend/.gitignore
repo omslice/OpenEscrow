@@ -12,6 +12,7 @@ dist
 dist-ssr
 cloudflare-dist
 worker-configuration.d.ts
+wrangler.selfhost.jsonc
 *.local
 .screenshots
 .pilot-rehearsal
