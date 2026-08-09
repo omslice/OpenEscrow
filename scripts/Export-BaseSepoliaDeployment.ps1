@@ -35,18 +35,32 @@ $registryTransactions = @($broadcast.transactions | Where-Object {
     $_.contractName -eq "AgreementActivityRegistry" -and
     $_.contractAddress
 })
+$plainTokenTransactions = @($broadcast.transactions | Where-Object {
+    $_.transactionType -eq "CREATE" -and
+    $_.contractName -eq "TestUSDC" -and
+    $_.contractAddress
+})
+$yieldTokenTransactions = @($broadcast.transactions | Where-Object {
+    $_.transactionType -eq "CREATE" -and
+    $_.contractName -eq "TestAaveUSDC" -and
+    $_.contractAddress
+})
 
 if (
     $escrowTransactions.Count -ne 1 -or
     $reserveTransactions.Count -ne 1 -or
-    $registryTransactions.Count -ne 1
+    $registryTransactions.Count -ne 1 -or
+    $plainTokenTransactions.Count -ne 1 -or
+    $yieldTokenTransactions.Count -ne 1
 ) {
-    throw "Expected exactly one OpenEscrow, OperationsReserve, and AgreementActivityRegistry deployment."
+    throw "Expected exactly one TestUSDC, TestAaveUSDC, OpenEscrow, OperationsReserve, and AgreementActivityRegistry deployment."
 }
 
 $escrowTransaction = $escrowTransactions[0]
 $reserveTransaction = $reserveTransactions[0]
 $registryTransaction = $registryTransactions[0]
+$plainTokenTransaction = $plainTokenTransactions[0]
+$yieldTokenTransaction = $yieldTokenTransactions[0]
 $configureTransactions = @($broadcast.transactions | Where-Object {
     $_.transactionType -eq "CALL" -and
     $_.contractName -eq "OperationsReserve" -and
@@ -59,7 +73,14 @@ if ($configureTransactions.Count -ne 1) {
 }
 $configureTransaction = $configureTransactions[0]
 
-foreach ($transaction in @($escrowTransaction, $reserveTransaction, $configureTransaction, $registryTransaction)) {
+foreach ($transaction in @(
+    $plainTokenTransaction,
+    $yieldTokenTransaction,
+    $escrowTransaction,
+    $reserveTransaction,
+    $configureTransaction,
+    $registryTransaction
+)) {
     $receipt = @($broadcast.receipts | Where-Object {
         $_.transactionHash -eq $transaction.hash
     })
@@ -77,6 +98,18 @@ if (
 
 $plainToken = [string]$escrowTransaction.arguments[0]
 $yieldToken = [string]$escrowTransaction.arguments[1]
+$plainTokenReceipt = @($broadcast.receipts | Where-Object {
+    $_.transactionHash -eq $plainTokenTransaction.hash
+})[0]
+$yieldTokenReceipt = @($broadcast.receipts | Where-Object {
+    $_.transactionHash -eq $yieldTokenTransaction.hash
+})[0]
+if (
+    $plainToken -ine [string]$plainTokenTransaction.contractAddress -or
+    $yieldToken -ine [string]$yieldTokenTransaction.contractAddress
+) {
+    throw "OpenEscrow token bindings do not match the newly deployed test-token pair."
+}
 $configuredReserve = [string]$escrowTransaction.arguments[2]
 if ($configuredReserve -ine [string]$reserveTransaction.contractAddress) {
     throw "OpenEscrow was not deployed with the matching OperationsReserve address."
@@ -154,6 +187,22 @@ $manifest = [ordered]@{
     tokens = [ordered]@{
         plain = $plainToken
         yield = $yieldToken
+        plainDeployment = [ordered]@{
+            contractName = "TestUSDC"
+            transactionHash = [string]$plainTokenTransaction.hash
+            deploymentBlock = [Convert]::ToInt64(
+                ([string]$plainTokenReceipt.blockNumber).Replace("0x", ""),
+                16
+            )
+        }
+        yieldDeployment = [ordered]@{
+            contractName = "TestAaveUSDC"
+            transactionHash = [string]$yieldTokenTransaction.hash
+            deploymentBlock = [Convert]::ToInt64(
+                ([string]$yieldTokenReceipt.blockNumber).Replace("0x", ""),
+                16
+            )
+        }
     }
 }
 

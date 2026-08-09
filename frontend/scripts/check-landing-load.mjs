@@ -165,6 +165,14 @@ try {
   assert.equal(
     await landingPage
       .locator(".legal-links")
+      .getByRole("link", { name: "Funding & transparency", exact: true })
+      .getAttribute("href"),
+    "/funding",
+    "Funding transparency must remain available to signed-out visitors.",
+  );
+  assert.equal(
+    await landingPage
+      .locator(".legal-links")
       .getByRole("link", { name: "Privacy Policy", exact: true })
       .getAttribute("href"),
     "/privacy",
@@ -405,6 +413,63 @@ try {
     await legalContext.close();
   }
 
+  const fundingContext = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+  });
+  await isolateFromExternalProviders(fundingContext);
+  const fundingPage = await fundingContext.newPage();
+  const fundingAssets = observeLocalScripts(fundingPage);
+  const fundingResponse = await fundingPage.goto(`${baseUrl}/funding`, {
+    waitUntil: "domcontentloaded",
+  });
+  assert.equal(
+    fundingResponse?.status(),
+    200,
+    "/funding must load through the SPA fallback.",
+  );
+  await fundingPage
+    .getByRole("heading", { name: "Funding OpenEscrow", exact: true })
+    .waitFor({ state: "visible" });
+  await fundingPage
+    .getByText("Funding disclosures are being verified.", { exact: true })
+    .waitFor({ state: "visible" });
+  for (const heading of [
+    "What funding unlocks",
+    "Public funding ledger",
+    "What support does not buy",
+  ]) {
+    await fundingPage
+      .getByRole("heading", { name: heading, exact: true })
+      .waitFor({ state: "visible" });
+  }
+  assert.equal(
+    [...fundingAssets].some((assetName) =>
+      assetName.startsWith("AuthenticatedRoot-"),
+    ),
+    false,
+    "/funding must not load the account provider.",
+  );
+  assert.equal(
+    await fundingPage.getByText(/\$0 received/i).count(),
+    0,
+    "The unconfirmed funding state must not imply that zero funding was received.",
+  );
+  assert.equal(
+    await fundingPage
+      .getByRole("link", { name: "Back to OpenEscrow", exact: true })
+      .getAttribute("href"),
+    "/",
+    "/funding must provide a clear return to the application.",
+  );
+  assert.equal(
+    await fundingPage.evaluate(
+      () => document.documentElement.scrollWidth <= window.innerWidth,
+    ),
+    true,
+    "/funding must not create horizontal overflow at mobile width.",
+  );
+  await fundingContext.close();
+
   const demoContext = await browser.newContext();
   await isolateFromExternalProviders(demoContext);
   const demoPage = await demoContext.newPage();
@@ -639,7 +704,7 @@ try {
   await agreementInvitationContext.close();
 
   console.log(
-    `Landing-load check passed: ${initialLandingAssets.size} initial JavaScript file(s), ${landingBytes} bytes, no account, workspace, jurisdiction, or blockchain provider before an explicit sign-in choice; the public explanation remains available during a later provider outage, invitations capture same-tab recovery before provider load, and restricted entry fails closed before workspace code.`,
+    `Landing-load check passed: ${initialLandingAssets.size} initial JavaScript file(s), ${landingBytes} bytes, no account, workspace, jurisdiction, or blockchain provider before an explicit sign-in choice; the public funding route remains provider-free and truthful before its opening disclosure is confirmed; the public explanation remains available during a later provider outage; invitations capture same-tab recovery before provider load; and restricted entry fails closed before workspace code.`,
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

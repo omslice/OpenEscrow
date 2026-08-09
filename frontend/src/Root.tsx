@@ -25,6 +25,11 @@ const DemoPage = lazy(() =>
     default: module.DemoPage,
   })),
 );
+const FundingPage = lazy(() =>
+  import("./components/FundingPage").then((module) => ({
+    default: module.FundingPage,
+  })),
+);
 
 function PublicAccountEntry({
   onChoose,
@@ -137,6 +142,20 @@ export function Root() {
         }
       >
         <DemoPage />
+      </Suspense>
+    );
+  }
+
+  if (path === "/funding") {
+    return (
+      <Suspense
+        fallback={
+          <div className="app-loading" role="status">
+            Loading OpenEscrow funding transparency...
+          </div>
+        }
+      >
+        <FundingPage />
       </Suspense>
     );
   }

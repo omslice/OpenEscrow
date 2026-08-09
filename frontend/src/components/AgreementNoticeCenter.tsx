@@ -62,7 +62,7 @@ export function AgreementNoticeCenter({ id, agreement }: { id: bigint; agreement
       level: "success",
       title: canWithdraw ? "Resolution complete—funds available" : "Agreement resolved",
       body: canWithdraw
-        ? "Your allocated ytUSDC shares are ready to withdraw."
+        ? "Your allocated taUSDC shares are ready to withdraw."
         : "The onchain allocation is final and no response is required from this wallet.",
     });
   }

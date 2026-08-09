@@ -1,7 +1,8 @@
 import type { Abi } from "viem";
 import { baseSepolia } from "wagmi/chains";
 import OpenEscrowABIJson from "./OpenEscrowABI.json";
-import MockUSDCABIJson from "./MockUSDCABI.json";
+import TestUSDCABIJson from "./TestUSDCABI.json";
+import TestAaveUSDCABIJson from "./TestAaveUSDCABI.json";
 import OperationsReserveABIJson from "./OperationsReserveABI.json";
 import AgreementActivityRegistryABIJson from "./AgreementActivityRegistryABI.json";
 export {
@@ -36,7 +37,8 @@ export const MAX_CLAIM_WINDOW_OFFSET_SECONDS = 3650 * 24 * 60 * 60;
 // so viem's `Abi` type needs an explicit assertion here - the underlying data is a real ABI
 // straight from `forge inspect`, this isn't loosening any actual runtime behavior.
 export const OpenEscrowABI = OpenEscrowABIJson as unknown as Abi;
-export const MockUSDCABI = MockUSDCABIJson as unknown as Abi;
+export const TestUSDCABI = TestUSDCABIJson as unknown as Abi;
+export const TestAaveUSDCABI = TestAaveUSDCABIJson as unknown as Abi;
 export const OperationsReserveABI = OperationsReserveABIJson as unknown as Abi;
 export const AgreementActivityRegistryABI =
   AgreementActivityRegistryABIJson as unknown as Abi;

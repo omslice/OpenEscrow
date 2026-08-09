@@ -280,7 +280,7 @@ function tenantFundingBreakdown(
 }
 
 function tokenLabel(tokenChoice: "plain" | "yield") {
-  return tokenChoice === "yield" ? "ytUSDC" : "testUSDC";
+  return tokenChoice === "yield" ? "taUSDC" : "testUSDC";
 }
 
 function totalFundingAmount(deposit: string, reserve: string) {
@@ -2995,7 +2995,7 @@ function AgreementForm({
         </small>
       </label>
       <label>
-        Deposit amount ({tokenChoice === "yield" ? "ytUSDC shares" : "testUSDC"})
+        Deposit amount ({tokenChoice === "yield" ? "taUSDC shares" : "testUSDC"})
         <input
           value={deposit}
           onChange={(event) => {
@@ -3013,7 +3013,7 @@ function AgreementForm({
       <section className="cost-breakdown" aria-label="Agreement funding breakdown">
         <div>
           <span>Refundable security deposit</span>
-          <strong>{deposit || "0"} {tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</strong>
+          <strong>{deposit || "0"} {tokenChoice === "yield" ? "taUSDC" : "testUSDC"}</strong>
         </div>
         <div>
           <span>Testnet network &amp; storage reserve</span>

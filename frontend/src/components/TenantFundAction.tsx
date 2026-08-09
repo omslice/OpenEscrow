@@ -11,7 +11,7 @@ import {
   useReadContract,
 } from "wagmi";
 import {
-  MockUSDCABI,
+  TestUSDCABI,
   OpenEscrowABI,
   OPEN_ESCROW_ADDRESS,
   OPERATIONS_RESERVE_ADDRESS,
@@ -167,7 +167,7 @@ function fundingDetails(
     participantRecord?.terms || { tokenChoice: isYieldToken ? "yield" : "plain" },
   );
   const tokenLabel =
-    depositAsset?.testnetSymbol || (isYieldToken ? "ytUSDC" : "testUSDC");
+    depositAsset?.testnetSymbol || (isYieldToken ? "taUSDC" : "testUSDC");
   return { needed, tokenLabel, depositAsset };
 }
 
@@ -195,7 +195,7 @@ function FundingIntroduction({
       <h3>Fund this agreement</h3>
       <p className="hint">
         Depositing {formatUSDC(needed)} {tokenLabel}
-        {tokenLabel === "ytUSDC"
+        {tokenLabel === "taUSDC"
           ? " shares. The dashboard will show their growing testUSDC value"
           : ""}
         .{" "}
@@ -278,7 +278,7 @@ function StandardTenantFundAction({
   const reserveAmount = reserveShareFor(participantRecord, address);
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: agreement.token,
-    abi: MockUSDCABI,
+    abi: TestUSDCABI,
     functionName: "allowance",
     args: address ? [address, OPEN_ESCROW_ADDRESS] : undefined,
     query: {
@@ -288,7 +288,7 @@ function StandardTenantFundAction({
   });
   const { data: balance, refetch: refetchBalance } = useReadContract({
     address: agreement.token,
-    abi: MockUSDCABI,
+    abi: TestUSDCABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
     query: {
@@ -328,7 +328,7 @@ function StandardTenantFundAction({
       {shareFunded ? null : !hasBalance ? (
         <TxButton
           address={agreement.token}
-          abi={MockUSDCABI}
+          abi={TestUSDCABI}
           functionName="mint"
           args={[address, tokenBalanceNeeded - currentBalance]}
           label={`Get required ${tokenLabel}`}
@@ -338,7 +338,7 @@ function StandardTenantFundAction({
       ) : !hasAllowance ? (
         <TxButton
           address={agreement.token}
-          abi={MockUSDCABI}
+          abi={TestUSDCABI}
           functionName="approve"
           args={[OPEN_ESCROW_ADDRESS, tokenBalanceNeeded]}
           label={`Approve total ${formatUSDC(tokenBalanceNeeded)} ${tokenLabel}`}
@@ -450,7 +450,7 @@ function SponsoredTenantFundAction({
   const reserveAmount = reserveShareFor(participantRecord, address);
   const { data: allowance, refetch: refetchAllowance } = useReadContract({
     address: agreement.token,
-    abi: MockUSDCABI,
+    abi: TestUSDCABI,
     functionName: "allowance",
     args: address ? [address, OPEN_ESCROW_ADDRESS] : undefined,
     query: {
@@ -460,7 +460,7 @@ function SponsoredTenantFundAction({
   });
   const { data: balance, refetch: refetchBalance } = useReadContract({
     address: agreement.token,
-    abi: MockUSDCABI,
+    abi: TestUSDCABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
     query: {
@@ -511,7 +511,7 @@ function SponsoredTenantFundAction({
       await sendSponsored(
         agreement.token,
         encodeFunctionData({
-          abi: MockUSDCABI,
+          abi: TestUSDCABI,
           functionName: "approve",
           args: [OPEN_ESCROW_ADDRESS, tokenBalanceNeeded],
         }),
@@ -537,7 +537,7 @@ function SponsoredTenantFundAction({
       await sendSponsored(
         agreement.token,
         encodeFunctionData({
-          abi: MockUSDCABI,
+          abi: TestUSDCABI,
           functionName: "mint",
           args: [address, missing],
         }),

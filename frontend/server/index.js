@@ -2768,7 +2768,7 @@ function depositAssetTestnetLabel(terms) {
   return (
     terms?.depositAssetSnapshot?.testnetSymbol ||
     getDepositAssetForTerms(terms)?.testnetSymbol ||
-    (terms?.tokenChoice === "yield" ? "ytUSDC" : "testUSDC")
+    (terms?.tokenChoice === "yield" ? "taUSDC" : "testUSDC")
   );
 }
 

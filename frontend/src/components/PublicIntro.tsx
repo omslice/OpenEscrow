@@ -246,7 +246,7 @@ export function PublicIntro({
                   USDC is supplied to an Aave lending pool and the position receives aUSDC. Its
                   balance grows from borrower-paid interest at a variable market rate. On release,
                   aUSDC is withdrawn back to USDC, subject to smart-contract and available-liquidity
-                  risk. The demo&apos;s ytUSDC only simulates this idea; it is not a live Aave
+                  risk. The demo&apos;s taUSDC only simulates this idea; it is not a live Aave
                   position.
                 </p>
               </article>

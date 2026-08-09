@@ -197,13 +197,13 @@ export function DisputeResolutionSection({
     <div className="action-section" id={`agreement-${id.toString()}-resolution`} tabIndex={-1}>
       <h3>Resolve dispute</h3>
       <p className="hint">
-        Disputed amount: {formatUSDC(disputed)} ytUSDC shares. Award any amount from 0 up to the full disputed
+        Disputed amount: {formatUSDC(disputed)} taUSDC shares. Award any amount from 0 up to the full disputed
         amount to the landlord - the remainder goes to the tenant. You cannot award more than what's
         disputed (spec §8/§11).
       </p>
       <EvidenceList id={id} negotiationAccess={negotiationAccess} />
       <label>
-        Award to landlord (ytUSDC shares, max {formatUSDC(disputed)})
+        Award to landlord (taUSDC shares, max {formatUSDC(disputed)})
         <input value={award} onChange={(e) => setAward(e.target.value)} type="number" min="0" step="0.000001" />
       </label>
       <label>

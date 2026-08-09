@@ -18,8 +18,9 @@ This spec supersedes the flow described in `protocol-flow.md` and `technical-ove
 6. **New:** onchain evidence is a structured record — content hash, privacy-safe URI/opaque identifier, evidence type code, timestamp, submitting party — and nothing else. No names, physical addresses, lease documents, invoices, or photographs go onchain directly. Public IPFS (or any public pointer) is explicitly documented as not private storage. See §9 and the data model in §2.
 7. **Changed from the first draft:** there is no administrator role at all — not even the creation-only `pauseNewAgreements()` proposed in the first draft of §10. Every function is permissionless or role-gated to landlord/tenant/arbiter; nothing is gated to a deployer/owner address.
 8. Single immutable test-token address supplied at deployment; no generic ERC20, ETH, fees,
-   upgradeability, or multi-chain support. The current deployment uses static `ytUSDC` shares whose
-   *displayed testUSDC value* grows linearly at 20% per day. This is experimental accounting only:
+   upgradeability, or multi-chain support. The candidate deployment uses static `taUSDC` shares whose
+   *displayed testUSDC value* grows from agreement funding at 1% per hour and stops at 5%. This is
+   experimental accounting only:
    no underlying asset, redemption, real yield, or monetary value.
 
 **Operations-reserve addendum (2026-07-25):** decision 8 still governs the core `OpenEscrow`

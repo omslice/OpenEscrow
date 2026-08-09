@@ -1,4 +1,4 @@
-export const DEPOSIT_ASSET_CATALOG_VERSION = "2026-07-26.1";
+export const DEPOSIT_ASSET_CATALOG_VERSION = "2026-08-09.1";
 
 export const DEPOSIT_ASSET_IDS = Object.freeze({
   USDC: "usdc",
@@ -46,12 +46,12 @@ const assets = [
     id: DEPOSIT_ASSET_IDS.AAVE_USDC,
     displayName: "USDC on Aave",
     symbol: "aUSDC",
-    testnetSymbol: "ytUSDC",
-    badge: "Variable yield · Simulated",
+    testnetSymbol: "taUSDC",
+    badge: "Accelerated yield · Simulated",
     category: "lending-receipt",
     underlyingAsset: "USDC",
     yieldType: "variable_lending",
-    yieldSource: "Interest paid by borrowers in the Aave USDC market.",
+    yieldSource: "A bounded testnet simulation of Aave-style USDC lending yield.",
     yieldVariability: "variable",
     settlementAsset: "USDC",
     supportedNetworks: ["base", "base-sepolia"],
@@ -59,9 +59,10 @@ const assets = [
     liquidityRisk: "Withdrawal depends on available USDC liquidity in the selected Aave market.",
     mainRisk: "Aave smart-contract, lending-market, rate, and withdrawal-liquidity risk.",
     disclosures: [
-      "The supply rate is variable and can change at any time; no yield is guaranteed.",
+      "The testnet display grows at an accelerated 1% per hour from agreement funding and stops at 5%.",
+      "The demo rate is not an APY, is not guaranteed, and does not represent a live Aave market.",
       "A production integration would supply USDC directly to Aave and withdraw back to USDC without a market swap.",
-      "The current testnet uses mock ytUSDC with accelerated display growth. It is not aUSDC, has no underlying USDC, and earns no real yield.",
+      "The current testnet uses fixed taUSDC demo shares. They are not aUSDC, have no underlying USDC, and earn no real yield.",
     ],
     enabled: true,
     implementationStatus: "simulated",

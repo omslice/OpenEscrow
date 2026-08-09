@@ -2,12 +2,14 @@
 
 **A better way to handle rental deposits.**
 
-[X](https://x.com/0penEscrow) · [Gitcoin](https://explorer.gitcoin.co/#/projects/0x05a570572fd3b79ac1f9a9f214db9bfd174c42786e14c314152fb8300a7c37f1) · [LinkedIn](https://www.linkedin.com/company/openescrow)
+[X](https://x.com/0penEscrow) · [Farcaster](https://farcaster.xyz/openescrow) · [LinkedIn](https://www.linkedin.com/company/openescrow)
 
 A clear, documented process from agreement to refund, with fair dispute resolution and optional
 yield. Automated, tracked, and secured by Ethereum.
 
-**Public testnet demo:** [openescrow-demo.omrigross.chatgpt.site](https://openescrow-demo.omrigross.chatgpt.site)
+**Public testnet app:** [openescrow.io](https://openescrow.io)
+
+**Product walkthrough:** [openescrow.io/demo](https://openescrow.io/demo)
 
 The project is an open-source public-interest prototype. It is not a law firm, bank, licensed escrow provider, production custody service, or substitute for jurisdiction-specific legal advice.
 
@@ -21,7 +23,7 @@ The Base Sepolia testnet MVP implements the complete technical lifecycle:
 - An arbiter may be nominated up front and must explicitly accept; or the parties can create the
   agreement without one and mutually appoint one later if a dispute occurs.
 - Each tenant funds only their approved portion with allowlisted plain testUSDC or test-only
-  ytUSDC shares. The agreement activates only after the full deposit has been received.
+  taUSDC shares. The agreement activates only after the full deposit has been received.
 - The landlord may submit one timely claim with evidence commitments.
 - The tenant may accept all, accept part, or dispute the claim.
 - Tenant silence becomes a dispute; it never pays the landlord automatically.
@@ -57,16 +59,24 @@ The current source includes:
 - [`docs/pilot-services-setup.md`](docs/pilot-services-setup.md) — email, fiat sandbox, and encrypted evidence setup
 - [`docs/owner-actions.md`](docs/owner-actions.md) — running list of owner-only credentials, signatures, decisions, and external reviews
 - [`docs/mvp-roadmap.md`](docs/mvp-roadmap.md) — canonical high-level testnet MVP status, remaining work, and material unknowns
+- [`docs/release-evidence-index.md`](docs/release-evidence-index.md) — claim-to-evidence map for reviewers, contributors, auditors, partners, and funders
+- [`docs/reviewer-publication-runbook.md`](docs/reviewer-publication-runbook.md) — exact-source manifest and owner-gated publication procedure
+- [`GOVERNANCE.md`](GOVERNANCE.md) — current decision process, roles, conflicts, funding independence, and succession direction
+- [`MAINTAINERS.md`](MAINTAINERS.md) — current maintainers and the path to shared stewardship
+- [`SECURITY.md`](SECURITY.md) — private vulnerability reporting and safe research boundaries
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — participation and enforcement expectations
 
 ### Verification snapshot
 
-- 221 Foundry tests across 20 suites
+- 234 passing Foundry tests across 22 suites, plus one opt-in live Base Sepolia fork test skipped
+  when no RPC URL is supplied
 - 512 runs per fuzz test
-- 256 stateful invariant runs at depth 128
+- Nine stateful accounting properties exercised for 32,768 calls each
 - Frontend lint, TypeScript compilation, and production build
 - Full landlord → arbiter → tenant → dispute → ruling → withdrawal demonstration
 
-These checks materially improve confidence but do not replace an independent smart-contract audit.
+These checks materially improve confidence, but OpenEscrow has not been independently audited and
+they do not replace an independent professional smart-contract audit.
 
 ## MVP architecture
 
@@ -81,7 +91,7 @@ The testnet MVP deliberately excludes the earlier factory/module design.
 | Disputes | Disputed funds remain locked until ruling or timeout |
 | Evidence | Public hash, opaque URI, type, timestamp, submitter |
 | Administration | No owner, pause key, upgrade proxy, or privileged resolver |
-| Yield | Test-only accelerated ytUSDC accounting; no production strategy |
+| Yield | Funding-relative taUSDC demo accounting at 1%/hour, capped at 5%; no production strategy |
 | Fees | No escrow fee; separate fixed 5 testUSDC pilot operations reserve split evenly among tenants |
 
 See [`docs/technical-overview.md`](docs/technical-overview.md) and [`docs/protocol-flow.md`](docs/protocol-flow.md).
@@ -145,5 +155,7 @@ See [`ROADMAP.md`](ROADMAP.md) for release gates.
 ## Contributing
 
 Issues and pull requests are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before proposing changes.
+Please report suspected vulnerabilities privately through [`SECURITY.md`](SECURITY.md), not in a
+public issue.
 
 OpenEscrow is licensed under the [MIT License](LICENSE).

@@ -20,6 +20,16 @@ const DEPENDENCY_LOCK_SCHEMA = "openescrow.contract-dependencies/v1";
 
 const CONTRACTS = Object.freeze([
   Object.freeze({
+    name: "TestUSDC",
+    source: "contracts/TestUSDC.sol:TestUSDC",
+    abi: "frontend/src/contracts/TestUSDCABI.json",
+  }),
+  Object.freeze({
+    name: "TestAaveUSDC",
+    source: "contracts/TestAaveUSDC.sol:TestAaveUSDC",
+    abi: "frontend/src/contracts/TestAaveUSDCABI.json",
+  }),
+  Object.freeze({
     name: "OpenEscrow",
     source: "contracts/OpenEscrow.sol:OpenEscrow",
     abi: "frontend/src/contracts/OpenEscrowABI.json",

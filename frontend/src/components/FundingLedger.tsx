@@ -40,7 +40,7 @@ export function FundingLedger({
   const tokenLabel =
     getDepositAssetForTerms(
       participantRecord?.terms || { tokenChoice: isYieldToken ? "yield" : "plain" },
-    )?.testnetSymbol || (isYieldToken ? "ytUSDC" : "testUSDC");
+    )?.testnetSymbol || (isYieldToken ? "taUSDC" : "testUSDC");
 
   function tenantIdentity(wallet: string) {
     const tenant = participantRecord?.tenants.find(

@@ -4,8 +4,6 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $foundryBin = Join-Path $env:USERPROFILE ".foundry\bin"
 
 $env:BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org"
-$env:TOKEN_ADDRESS = "0xE129b23BD89904D363ba226eE52deC74185D7789"
-$env:YIELD_TOKEN_ADDRESS = "0x2746034FF16371A65c133016470f85535992dabC"
 $env:DEPLOYER_ADDRESS = (& "$foundryBin\cast.exe" wallet address --account openescrow-base-sepolia).Trim()
 if ($LASTEXITCODE -ne 0 -or $env:DEPLOYER_ADDRESS -notmatch '^0x[0-9a-fA-F]{40}$') {
   throw "Could not derive the public deployer address from the encrypted openescrow-base-sepolia keystore."

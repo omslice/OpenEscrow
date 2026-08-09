@@ -8,7 +8,7 @@ wired into or deployed with the current OpenEscrow contract.
 
 ## Context
 
-The Base Sepolia demo represents `ytUSDC` as fixed shares whose displayed value increases. A production Aave position behaves differently: a supplied USDC position accrues value through protocol accounting, and a directly held rebasing receipt balance cannot safely replace the fixed token in the current shared escrow.
+The retired Base Sepolia demo represented `ytUSDC` as fixed shares whose deployment-relative displayed value increased without a cap. The replacement testnet pair uses `testUSDC` plus `taUSDC`; taUSDC keeps fixed shares while its per-agreement display grows from funding at an accelerated 1% per hour and stops at 5%. A production Aave position behaves differently: a supplied USDC position accrues value through protocol accounting, and a directly held rebasing receipt balance cannot safely replace the fixed token in the current shared escrow.
 
 The deployed contract stores one fixed `depositAmount` per agreement and relies on:
 

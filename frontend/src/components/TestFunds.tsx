@@ -3,7 +3,7 @@ import { useState } from "react";
 import { encodeFunctionData, type Address } from "viem";
 import { useAccount, usePublicClient, useReadContract } from "wagmi";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
-import { MockUSDCABI, USDC_ADDRESS, YIELD_USDC_ADDRESS } from "../contracts/config";
+import { TestUSDCABI, USDC_ADDRESS, YIELD_USDC_ADDRESS } from "../contracts/config";
 import { formatUSDC } from "../lib/format";
 import { waitForSuccessfulTransactionReceipt } from "../lib/successfulTransactionReceipt";
 import { TxButton } from "./TxButton";
@@ -24,19 +24,11 @@ function TestFundsBalance({
   const { address } = useAccount();
   const balance = useReadContract({
     address: tokenAddress,
-    abi: MockUSDCABI,
+    abi: TestUSDCABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
     query: { enabled: !!address, refetchInterval: 5000 },
   });
-  const currentValue = useReadContract({
-    address: tokenAddress,
-    abi: MockUSDCABI,
-    functionName: "convertToAssets",
-    args: [((balance.data as bigint | undefined) ?? 0n)],
-    query: { enabled: !!address && yieldBearing, refetchInterval: 5000 },
-  });
-
   if (!address) return null;
 
   return (
@@ -45,9 +37,8 @@ function TestFundsBalance({
         <span className="eyebrow">Demo balance</span>
         <strong>{formatUSDC((balance.data as bigint | undefined) ?? 0n)} {label}</strong>
         {yieldBearing ? (
-          <small title="The token holds fixed shares. Only its displayed testUSDC index grows; there is no real asset or redemption.">
-            Current demo value: {formatUSDC((currentValue.data as bigint | undefined) ?? 0n)} testUSDC
-            · 20%/day test index ⓘ
+          <small title="Yield begins only when shares fund an agreement. Demo value grows at 1% per hour and stops at 5%; there is no real asset or redemption.">
+            Fixed demo shares · yield starts when funded · 1%/hour, 5% maximum ⓘ
           </small>
         ) : (
           <small title="A freely mintable, fixed-value test token with no monetary value.">
@@ -96,7 +87,7 @@ function SponsoredTestFunds({
               setStatus("submitting");
               try {
                 const data = encodeFunctionData({
-                  abi: MockUSDCABI,
+                  abi: TestUSDCABI,
                   functionName: "mint",
                   args: [address, TEST_FUNDS],
                 });
@@ -161,7 +152,7 @@ function StandardTestFunds({
       action={(refetch) => (
         <TxButton
           address={tokenAddress}
-          abi={MockUSDCABI}
+          abi={TestUSDCABI}
           functionName="mint"
           args={[address, TEST_FUNDS]}
           label={`Get 1,000 ${label}`}
@@ -178,7 +169,7 @@ export function TestFunds() {
   return (
     <div className="test-funds-stack">
       <Faucet tokenAddress={USDC_ADDRESS} label="testUSDC" yieldBearing={false} />
-      <Faucet tokenAddress={YIELD_USDC_ADDRESS} label="ytUSDC shares" yieldBearing />
+      <Faucet tokenAddress={YIELD_USDC_ADDRESS} label="taUSDC shares" yieldBearing />
     </div>
   );
 }

@@ -8,8 +8,15 @@ onchain recovery path.
 
 Canonical testnet app: https://openescrow.io
 
-Fallback hosts: https://openescrow.omslice.workers.dev and
-https://openescrow-demo.omrigross.chatgpt.site
+Canonical walkthrough: https://openescrow.io/demo
+
+The working tree also contains a public `/funding` transparency route. Its typed source is
+`src/lib/fundingTransparency.ts`; the default `openingBalanceConfirmed: false` state intentionally
+publishes no balance or ledger rows until the owner verifies an opening date, recipient and every
+public record. The route is local and undeployed until an owner-approved release proves otherwise.
+
+Do not promote or link users to operational rollback origins. Their purpose and restrictions are
+documented in `../docs/cloudflare-landing-and-mvp-plan.md`.
 
 ## Deployed addresses (Base Sepolia, chain id 84532)
 
@@ -36,8 +43,9 @@ npm run dev
 ```
 
 Requires an EVM wallet connected to Base Sepolia. Once connected, use either in-app gas-covered
-faucet: plain testUSDC or ytUSDC shares. Both are freely mintable and worthless. The ytUSDC display
-index grows 20% per day solely so short usability tests can observe yield movement; it has no
+faucet: plain testUSDC or taUSDC shares. Both are freely mintable and worthless. The taUSDC display
+value grows from each agreement's funding time at 1% per hour and stops at 5%, solely so short
+usability tests can observe yield movement without a deployment-age balance running away; it has no
 underlying asset or redemption.
 
 ### Optional account and embedded-wallet setup

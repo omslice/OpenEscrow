@@ -346,8 +346,8 @@ async function run() {
   const repositoryRoot = path.resolve(frontendRoot, "..");
   const sourceCommit = gitHead(repositoryRoot);
   const compiled = {
-    token: artifact(repositoryRoot, "MockUSDC.sol", "MockUSDC"),
-    yieldToken: artifact(repositoryRoot, "MockYieldUSDC.sol", "MockYieldUSDC"),
+    token: artifact(repositoryRoot, "TestUSDC.sol", "TestUSDC"),
+    yieldToken: artifact(repositoryRoot, "TestAaveUSDC.sol", "TestAaveUSDC"),
     reserve: artifact(repositoryRoot, "OperationsReserve.sol", "OperationsReserve"),
     escrow: artifact(repositoryRoot, "OpenEscrow.sol", "OpenEscrow"),
     registry: artifact(

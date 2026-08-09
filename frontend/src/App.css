@@ -378,6 +378,182 @@
   }
 }
 
+.funding-page {
+  display: grid;
+  gap: 22px;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.funding-page-heading,
+.funding-page > section,
+.funding-status {
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.funding-page-heading h2,
+.funding-section-heading h3,
+.funding-principles h3 {
+  margin: 0;
+}
+
+.funding-page-heading > p:last-child,
+.funding-section-heading + p,
+.funding-principles p {
+  color: var(--muted);
+}
+
+.funding-status {
+  display: grid;
+  gap: 8px;
+}
+
+.funding-status > * {
+  margin: 0;
+}
+
+.funding-status-pending {
+  border-color: color-mix(in srgb, var(--warning) 55%, var(--border));
+  background: color-mix(in srgb, var(--warning) 8%, var(--surface));
+}
+
+.funding-section-heading {
+  margin-bottom: 16px;
+}
+
+.funding-priority-list {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.funding-priority-list li {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg));
+}
+
+.funding-priority-list li > span {
+  color: var(--accent);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-weight: 850;
+}
+
+.funding-priority-list p,
+.funding-boundary-note,
+.funding-empty-state,
+.funding-tax-note {
+  margin: 6px 0 0;
+  color: var(--muted);
+}
+
+.funding-boundary-note,
+.funding-empty-state,
+.funding-tax-note {
+  padding: 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--bg));
+}
+
+.funding-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0 0 16px;
+}
+
+.funding-summary > div {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.funding-summary dt {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.funding-summary dd {
+  margin: 4px 0 0;
+  color: var(--text-h);
+  font-size: 18px;
+  font-weight: 850;
+}
+
+.funding-table-scroll {
+  overflow-x: auto;
+  border-radius: 12px;
+}
+
+.funding-table-scroll:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.funding-table {
+  width: 100%;
+  min-width: 820px;
+  border-collapse: collapse;
+}
+
+.funding-table th,
+.funding-table td {
+  padding: 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.funding-table th {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.funding-principles {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.funding-principles > div {
+  min-width: 0;
+}
+
+.funding-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+}
+
+.funding-page a {
+  color: var(--accent);
+  font-weight: 750;
+  text-underline-offset: 3px;
+}
+
+@media (max-width: 720px) {
+  .funding-page-heading,
+  .funding-page > section,
+  .funding-status {
+    padding: 18px;
+  }
+
+  .funding-summary,
+  .funding-principles {
+    grid-template-columns: 1fr;
+  }
+}
+
 .public-intro {
   display: grid;
   grid-template-columns: 1fr;

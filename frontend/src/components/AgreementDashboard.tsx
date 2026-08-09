@@ -1,5 +1,5 @@
 import {
-  MockUSDCABI,
+  TestAaveUSDCABI,
   OpenEscrowABI,
   OPEN_ESCROW_ADDRESS,
   OPERATIONS_RESERVE_ADDRESS,
@@ -131,9 +131,9 @@ export function AgreementDashboard({
   });
   const currentValue = useReadContract({
     address: agreement.token,
-    abi: MockUSDCABI,
-    functionName: "convertToAssets",
-    args: [agreement.depositAmount],
+    abi: TestAaveUSDCABI,
+    functionName: "previewAssetsSince",
+    args: [agreement.depositAmount, agreement.fundedAt],
     query: {
       enabled:
         agreement.depositAmount > 0n &&
@@ -141,27 +141,14 @@ export function AgreementDashboard({
       refetchInterval: 5000,
     },
   });
-  const fundedValue = useReadContract({
-    address: agreement.token,
-    abi: MockUSDCABI,
-    functionName: "convertToAssetsAt",
-    args: [agreement.depositAmount, agreement.fundedAt],
-    query: {
-      enabled:
-        agreement.depositAmount > 0n &&
-        agreement.fundedAt > 0n &&
-        agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase(),
-    },
-  });
   const isYieldToken = agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase();
   const depositAsset = getDepositAssetForTerms(
     participantRecord?.terms || { tokenChoice: isYieldToken ? "yield" : "plain" },
   );
-  const tokenLabel = depositAsset?.testnetSymbol || (isYieldToken ? "ytUSDC" : "testUSDC");
+  const tokenLabel = depositAsset?.testnetSymbol || (isYieldToken ? "taUSDC" : "testUSDC");
   const testValue = (currentValue.data as bigint | undefined) ?? agreement.depositAmount;
-  const startingValue = (fundedValue.data as bigint | undefined) ?? agreement.depositAmount;
   const accounting = calculateDepositAccounting({
-    originalPrincipal: startingValue,
+    originalPrincipal: agreement.depositAmount,
     currentRedeemableValue: testValue,
     feesAndSlippage: 0n,
     finalDistributed: agreement.withdrawn,
@@ -220,9 +207,9 @@ export function AgreementDashboard({
       </div>
       {isYieldToken && (
         <p className="yield-disclaimer">
-          Simulated Aave path only: test value grows at 20% per day so accounting is visible
-          quickly. The escrow holds fixed ytUSDC shares; there is no aUSDC, underlying USDC,
-          redemption, live APY, or real yield.
+          Simulated Aave-style path only: demo value grows from the agreement funding time at 1%
+          per hour and stops at 5%. The escrow holds fixed taUSDC shares; there is no aUSDC,
+          underlying USDC, redemption, live APY, or real yield.
         </p>
       )}
       <div className="amount-grid secondary">

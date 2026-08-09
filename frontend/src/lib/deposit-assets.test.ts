@@ -23,7 +23,7 @@ test("deposit assets ship as a 4-option versioned catalog", () => {
   assert.equal(DEPOSIT_ASSETS[1]?.id, DEPOSIT_ASSET_IDS.AAVE_USDC);
   assert.equal(DEPOSIT_ASSETS[2]?.id, DEPOSIT_ASSET_IDS.FRNT);
   assert.equal(DEPOSIT_ASSETS[3]?.id, DEPOSIT_ASSET_IDS.USDY);
-  assert.equal(DEPOSIT_ASSET_CATALOG_VERSION, "2026-07-26.1");
+  assert.equal(DEPOSIT_ASSET_CATALOG_VERSION, "2026-08-09.1");
 });
 
 test("USDC remains default, non-yield, enabled settlement asset", () => {
@@ -49,6 +49,9 @@ test("Aave asset is the only active yield option and stays distinctly modeled", 
   assert.equal(aave.enabled, true);
   assert.equal(aave.consentRequired, true);
   assert.equal(aave.settlementAsset, "USDC");
+  assert.equal(aave.testnetSymbol, "taUSDC");
+  assert.match(aave.disclosures.join(" "), /1% per hour/i);
+  assert.match(aave.disclosures.join(" "), /stops at 5%/i);
   const snapshot = createDepositAssetSnapshot(aave.id);
   assert.equal(snapshot?.id, DEPOSIT_ASSET_IDS.AAVE_USDC);
   assert.equal(typeof snapshot, "object");
