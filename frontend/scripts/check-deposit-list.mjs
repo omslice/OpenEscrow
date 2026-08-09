@@ -59,6 +59,10 @@ try {
   assert.equal(await page.getByTestId("live-deposit-detail").count(), 0);
   assert.equal(await first.getAttribute("aria-expanded"), "false");
   assert.equal(await second.getAttribute("aria-expanded"), "false");
+  assert.equal(await page.getByText("Active deposit").count(), 2);
+  assert.equal(await page.getByText("Finalized", { exact: true }).count(), 2);
+  assert.match(await first.textContent(), /101 Test Street, Austin, TX/);
+  assert.match(await first.textContent(), /OE-A-000002 · Finalized security deposit/);
 
   await first.click();
   await page.getByText("Deposit 1 live details are mounted.").waitFor();

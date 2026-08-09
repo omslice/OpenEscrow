@@ -3276,10 +3276,21 @@ a.btn.disabled {
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--surface);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.deposit-list-item:hover,
+.deposit-list-item:focus-within {
+  border-color: var(--accent-border);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--bg) 70%, transparent);
 }
 
 .deposit-list-item.is-expanded {
   border-color: color-mix(in srgb, var(--accent) 44%, var(--border));
+  background: color-mix(in srgb, var(--surface) 96%, var(--accent-bg));
 }
 
 .deposit-list-row {
@@ -3288,6 +3299,48 @@ a.btn.disabled {
 
 .deposit-list-toggle {
   width: 100%;
+}
+
+.deposit-list-main {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 13px;
+}
+
+.deposit-list-icon,
+.proposal-card-icon {
+  display: grid;
+  flex: 0 0 auto;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--success) 48%, var(--border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--success) 11%, var(--surface));
+  color: var(--success);
+  font-weight: 900;
+}
+
+.deposit-list-icon {
+  width: 42px;
+  height: 42px;
+  font-size: 18px;
+}
+
+.deposit-list-actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 14px;
+}
+
+.deposit-status-badge {
+  border: 1px solid color-mix(in srgb, var(--success) 45%, var(--border));
+  border-radius: 999px;
+  padding: 5px 9px;
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+  color: var(--text-h);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .deposit-list-body {
@@ -3310,6 +3363,16 @@ a.btn.disabled {
   border-radius: 12px;
   padding: 18px;
   background: var(--surface);
+  transition:
+    border-color 160ms ease,
+    box-shadow 160ms ease,
+    transform 160ms ease;
+}
+
+.saved-proposal-card:hover,
+.saved-proposal-card:focus-within {
+  border-color: var(--accent-border);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--bg) 70%, transparent);
 }
 
 .saved-proposal-card.ready-to-finalize {
@@ -3332,6 +3395,80 @@ a.btn.disabled {
 
 .proposal-archive-list .saved-proposal-card {
   margin-top: 0;
+}
+
+.proposal-card-title-group {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 12px;
+}
+
+.proposal-card-icon {
+  width: 40px;
+  height: 40px;
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent);
+  font-size: 17px;
+}
+
+.saved-proposal-card.ready-to-finalize .proposal-card-icon,
+.saved-proposal-card.is-finalized .proposal-card-icon {
+  border-color: color-mix(in srgb, var(--success) 48%, var(--border));
+  background: color-mix(in srgb, var(--success) 11%, var(--surface));
+  color: var(--success);
+}
+
+.proposal-card-status {
+  display: grid;
+  max-width: 230px;
+  justify-items: end;
+  gap: 5px;
+  text-align: right;
+}
+
+.proposal-card-status small {
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.proposal-metadata-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin: 16px 0;
+}
+
+.proposal-metadata-grid > div {
+  min-width: 0;
+  border: 1px solid color-mix(in srgb, var(--border) 78%, transparent);
+  border-radius: 9px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--surface) 92%, var(--bg));
+}
+
+.proposal-metadata-grid .proposal-metadata-property {
+  grid-column: span 2;
+}
+
+.proposal-metadata-grid dt {
+  margin-bottom: 4px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.proposal-metadata-grid dd {
+  overflow-wrap: anywhere;
+  margin: 0;
+  color: var(--text-h);
+  font-size: 13px;
+  font-weight: 650;
+  line-height: 1.4;
 }
 
 .workspace-panel {
@@ -3543,6 +3680,39 @@ a.btn.disabled {
 .active-proposals-header p {
   margin: 0;
   color: var(--text);
+}
+
+.proposal-status-overview {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 18px 0 4px;
+}
+
+.proposal-status-overview > div {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 11px 13px;
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+}
+
+.proposal-status-overview strong {
+  color: var(--accent);
+  font-size: 20px;
+  line-height: 1;
+}
+
+.proposal-status-overview span {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .refresh-icon-button {
@@ -4924,6 +5094,32 @@ a.btn.disabled {
     min-height: 44px;
   }
 
+  .proposal-status-overview {
+    grid-template-columns: 1fr;
+  }
+
+  .proposal-status-overview > div {
+    justify-content: space-between;
+  }
+
+  .proposal-metadata-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .proposal-metadata-grid .proposal-metadata-property {
+    grid-column: auto;
+  }
+
+  .proposal-card-title-group {
+    align-items: flex-start;
+  }
+
+  .proposal-card-status {
+    max-width: none;
+    justify-items: start;
+    text-align: left;
+  }
+
   .record-list-heading {
     align-items: flex-start;
     grid-template-columns: auto 1fr;
@@ -4949,6 +5145,19 @@ a.btn.disabled {
     padding: 14px;
   }
 
+  .deposit-list-main {
+    width: 100%;
+    align-items: flex-start;
+  }
+
+  .deposit-list-actions {
+    width: 100%;
+    align-items: center;
+    justify-content: space-between;
+    border-top: 1px solid var(--border);
+    padding-top: 10px;
+  }
+
   .record-expand-button {
     width: 100%;
     align-items: stretch;
@@ -4958,6 +5167,10 @@ a.btn.disabled {
 
   .record-expand-label {
     justify-content: space-between;
+    width: auto;
+  }
+
+  .record-list-item .record-expand-label {
     width: 100%;
     border-top: 1px solid var(--border);
     padding-top: 10px;

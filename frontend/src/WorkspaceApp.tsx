@@ -34,6 +34,7 @@ import {
   storeNegotiationAccess,
   updateRecordArchivePreference,
   type NegotiationAccess,
+  type NegotiationStatus,
 } from "./lib/negotiations";
 import { agreementReference, proposalReference } from "./lib/displayIds";
 import { ARBITER_UI_ENABLED } from "./lib/featureFlags";
@@ -199,6 +200,49 @@ function compactActiveProposals(items: SavedProposal[]): SavedProposal[] {
     }
   }
   return kept;
+}
+
+function proposalStatusPresentation(
+  status: NegotiationStatus,
+  isReadyForLandlord: boolean,
+) {
+  switch (status) {
+    case "finalized":
+      return {
+        label: "Active deposit",
+        description: "Finalized and available in Deposits.",
+      };
+    case "ready":
+      return {
+        label: isReadyForLandlord ? "Ready to finalize" : "Ready for finalization",
+        description: "The required approvals are complete.",
+      };
+    case "cancelled":
+      return {
+        label: "Cancelled",
+        description: "This proposal is no longer active.",
+      };
+    case "superseded":
+      return {
+        label: "Replaced",
+        description: "A newer proposal replaced this version.",
+      };
+    default:
+      return {
+        label: "In review",
+        description: "Terms can still be reviewed and updated.",
+      };
+  }
+}
+
+function formatProposalUpdatedAt(value: string) {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "Recently";
+  return parsed.toLocaleDateString(undefined, {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 function mergeAgreementIds(primary: bigint[], secondary: bigint[]) {
@@ -945,6 +989,15 @@ function AppView({
   const archivedAccountProposals = sortedAccountProposals.filter(
     (item) => item.access.archived,
   );
+  const proposalStatusCounts = currentAccountProposals.reduce(
+    (counts, item) => {
+      if (item.record.status === "finalized") counts.activeDeposits += 1;
+      else if (item.record.status === "ready") counts.ready += 1;
+      else counts.inReview += 1;
+      return counts;
+    },
+    { ready: 0, inReview: 0, activeDeposits: 0 },
+  );
   const workspaceTabIcons = {
     overview: "🏠",
     proposals:
@@ -1027,6 +1080,11 @@ function AppView({
         Boolean(item.record.onchainAgreementId);
       const isReadyForLandlord =
         item.access.role === "landlord" && item.record.status === "ready";
+      const statusPresentation = proposalStatusPresentation(
+        item.record.status,
+        isReadyForLandlord,
+      );
+      const propertyAddress = item.record.terms.propertyAddress?.trim();
       return (
         <article
           className={`saved-proposal-card${
@@ -1039,21 +1097,49 @@ function AppView({
           tabIndex={-1}
         >
           <div className="proposal-builder-heading">
-            <div>
-              <span className="eyebrow">
-                {isFinalized ? "Finalized proposal" : "Current proposal"} ·{" "}
-                {roleLabel[item.access.role]} access
+            <div className="proposal-card-title-group">
+              <span className="proposal-card-icon" aria-hidden="true">
+                {isFinalized ? "✓" : isReadyForLandlord ? "!" : "↗"}
               </span>
-              <h2>{proposalReference(item.record.id)}</h2>
+              <div>
+                <span className="eyebrow">
+                  {archived ? "Archived proposal" : "Proposal"} ·{" "}
+                  {roleLabel[item.access.role]} access
+                </span>
+                <h2>{proposalReference(item.record.id)}</h2>
+              </div>
             </div>
-            <span className={`negotiation-status status-${item.record.status}`}>
-              {item.record.status} · revision {item.record.revision}
-            </span>
+            <div className="proposal-card-status">
+              <span className={`negotiation-status status-${item.record.status}`}>
+                {statusPresentation.label}
+              </span>
+              <small>{statusPresentation.description}</small>
+            </div>
           </div>
-          <p className="hint">
-            {item.access.role === "landlord" ? "Tenant" : "Landlord"}: {counterpart}
-            {item.record.arbiterEmail ? ` · Arbiter: ${item.record.arbiterEmail}` : ""}
-          </p>
+          <dl className="proposal-metadata-grid">
+            <div className="proposal-metadata-property">
+              <dt>Property</dt>
+              <dd>{propertyAddress || "Address not added yet"}</dd>
+            </div>
+            <div>
+              <dt>{item.access.role === "landlord" ? "Tenant" : "Landlord"}</dt>
+              <dd>{counterpart || "Not provided"}</dd>
+            </div>
+            {item.record.arbiterEmail && (
+              <div>
+                <dt>Arbiter</dt>
+                <dd>{item.record.arbiterEmail}</dd>
+              </div>
+            )}
+            <div>
+              <dt>Last updated</dt>
+              <dd>{formatProposalUpdatedAt(item.record.updatedAt)}</dd>
+            </div>
+            <div>
+              <dt>Version</dt>
+              <dd>Revision {item.record.revision}</dd>
+            </div>
+          </dl>
           {isReadyForLandlord && (
             <div className="finalization-notice" role="status">
               <strong>All required approvals are complete.</strong>
@@ -1801,6 +1887,25 @@ function AppView({
                     <span aria-hidden="true">↻</span>
                   </button>
                 </div>
+                {currentAccountProposals.length > 0 && (
+                  <div
+                    className="proposal-status-overview"
+                    aria-label="Proposal status summary"
+                  >
+                    <div>
+                      <strong>{proposalStatusCounts.ready}</strong>
+                      <span>Ready</span>
+                    </div>
+                    <div>
+                      <strong>{proposalStatusCounts.inReview}</strong>
+                      <span>In review</span>
+                    </div>
+                    <div>
+                      <strong>{proposalStatusCounts.activeDeposits}</strong>
+                      <span>Active deposits</span>
+                    </div>
+                  </div>
+                )}
                 {renderSavedProposalCards(currentAccountProposals)}
                 {archivedAccountProposals.length > 0 && (
                   <details

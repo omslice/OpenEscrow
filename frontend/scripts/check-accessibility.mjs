@@ -116,6 +116,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   let destructiveProposalRequests = 0;
   let complianceSourceChecks = 0;
+  let savedProposal = null;
 
   await page.route("**/api/address-suggestions**", async (route) => {
     await route.fulfill({
@@ -202,10 +203,20 @@ try {
   await page.route(/\/api\/negotiations$/, async (route) => {
     assert.equal(route.request().method(), "POST");
     const input = route.request().postDataJSON();
+    savedProposal = buildSavedProposal(input);
     await route.fulfill({
       status: 200,
       contentType: "application/json",
-      body: JSON.stringify(buildSavedProposal(input)),
+      body: JSON.stringify(savedProposal),
+    });
+  });
+  await page.route(/\/api\/negotiations\/OE-P-RECOVERY$/, async (route) => {
+    assert.equal(route.request().method(), "GET");
+    assert.ok(savedProposal, "The saved proposal should exist before it is refreshed.");
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify(savedProposal.record),
     });
   });
   await page.route(/\/api\/negotiations\/[^/]+\/actions$/, async (route) => {
@@ -477,6 +488,23 @@ try {
   await page.getByText(
     "Proposal saved. Invitations are now unlocked for this exact revision.",
   ).waitFor({ state: "visible" });
+  await page.getByRole("button", { name: "Refresh account proposals" }).click();
+  const savedProposalCard = page.locator(".saved-proposal-card", {
+    hasText: "OE-P-RECOVERY",
+  });
+  await savedProposalCard.waitFor({ state: "visible" });
+  assert.match(
+    await page.getByLabel("Proposal status summary").textContent(),
+    /1\s*In review/,
+    "The proposal list should summarize the saved proposal in plain language.",
+  );
+  assert.match(await savedProposalCard.textContent(), /In review/);
+  assert.match(
+    await savedProposalCard.textContent(),
+    /123 Main Street, Los Angeles, CA 90012/,
+  );
+  assert.match(await savedProposalCard.textContent(), /taylor\.tenant@example\.com/);
+  assert.match(await savedProposalCard.textContent(), /Revision 1/);
 
   await page.evaluate(() => {
     window.confirm = () => {
@@ -539,6 +567,14 @@ try {
   );
 
   await page.setViewportSize({ width: 390, height: 844 });
+  const proposalActionBox = await savedProposalCard
+    .getByRole("button", { name: "Open proposal" })
+    .boundingBox();
+  assert.equal(
+    Boolean(proposalActionBox && proposalActionBox.height >= 44),
+    true,
+    "Proposal actions should remain full-size mobile touch targets.",
+  );
   const mobileOverflow = await page.evaluate(() => ({
     documentWidth: document.documentElement.scrollWidth,
     viewportWidth: window.innerWidth,

@@ -33,17 +33,26 @@ export function DepositAgreementListItem({
           aria-label={`${expanded ? "Hide" : "Show"} details for ${reference}`}
           onClick={onToggle}
         >
-          <span className="record-list-identity">
-            <span className="eyebrow">Finalized security deposit</span>
-            <strong>{reference}</strong>
-            <small>
-              {propertyAddress?.trim() ||
-                "Open to view the current status and available actions."}
-            </small>
+          <span className="deposit-list-main">
+            <span className="deposit-list-icon" aria-hidden="true">
+              ✓
+            </span>
+            <span className="record-list-identity">
+              <span className="eyebrow">Active deposit</span>
+              <strong>{propertyAddress?.trim() || reference}</strong>
+              <small>
+                {propertyAddress?.trim()
+                  ? `${reference} · Finalized security deposit`
+                  : "Finalized security deposit · open to view its current status"}
+              </small>
+            </span>
           </span>
-          <span className="record-expand-label" aria-hidden="true">
-            {expanded ? "Hide details" : "Show details"}
-            <span className="record-expand-chevron">⌄</span>
+          <span className="deposit-list-actions" aria-hidden="true">
+            <span className="deposit-status-badge">Finalized</span>
+            <span className="record-expand-label">
+              {expanded ? "Hide details" : "Show details"}
+              <span className="record-expand-chevron">⌄</span>
+            </span>
           </span>
         </button>
       </header>
