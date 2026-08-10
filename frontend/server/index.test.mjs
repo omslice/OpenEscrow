@@ -603,6 +603,62 @@ class TestD1 {
   }
 }
 
+function quoteSqlIdentifier(identifier) {
+  return `"${identifier.replaceAll('"', '""')}"`;
+}
+
+function cloneTestD1(source) {
+  const clone = new TestD1();
+  clone.database.exec("PRAGMA foreign_keys = OFF");
+  clone.database.exec("BEGIN IMMEDIATE");
+  try {
+    const tables = source.database
+      .prepare(
+        `SELECT name, sql
+         FROM sqlite_master
+         WHERE type = 'table'
+           AND name NOT LIKE 'sqlite_%'
+           AND sql IS NOT NULL
+         ORDER BY name`,
+      )
+      .all();
+    for (const table of tables) {
+      clone.database.exec(table.sql);
+      const tableName = quoteSqlIdentifier(table.name);
+      const columns = source.database
+        .prepare(`PRAGMA table_info(${tableName})`)
+        .all()
+        .map((column) => column.name);
+      if (columns.length === 0) continue;
+      const columnList = columns.map(quoteSqlIdentifier).join(", ");
+      const placeholders = columns.map(() => "?").join(", ");
+      const insert = clone.database.prepare(
+        `INSERT INTO ${tableName} (${columnList}) VALUES (${placeholders})`,
+      );
+      for (const row of source.database.prepare(`SELECT ${columnList} FROM ${tableName}`).all()) {
+        insert.run(...columns.map((column) => row[column]));
+      }
+    }
+    const remainingSchema = source.database
+      .prepare(
+        `SELECT sql
+         FROM sqlite_master
+         WHERE type IN ('index', 'trigger', 'view')
+           AND sql IS NOT NULL
+         ORDER BY CASE type WHEN 'index' THEN 0 WHEN 'trigger' THEN 1 ELSE 2 END,
+                  name`,
+      )
+      .all();
+    for (const entry of remainingSchema) clone.database.exec(entry.sql);
+    clone.database.exec("COMMIT");
+  } catch (error) {
+    clone.database.exec("ROLLBACK");
+    throw error;
+  }
+  clone.database.exec("PRAGMA foreign_keys = ON");
+  return clone;
+}
+
 class CountingTestD1 extends TestD1 {
   constructor() {
     super();
@@ -8668,8 +8724,7 @@ test("pilot rehearsal: isolated evidence backup restoration rejects missing and 
   assert.equal(rotatedDownload.status, 200);
   assert.equal(await rotatedDownload.text(), "%PDF-1.7\npost-rotation evidence");
 
-  const recoveryDb = new TestD1();
-  recoveryDb.database.deserialize(db.database.serialize());
+  const recoveryDb = cloneTestD1(db);
   const recoveryEvidence = new TestR2();
   for (const [objectKey, object] of evidence.objects) {
     recoveryEvidence.objects.set(objectKey, {
