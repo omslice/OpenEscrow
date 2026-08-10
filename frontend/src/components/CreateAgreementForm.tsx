@@ -25,6 +25,7 @@ import {
   YIELD_USDC_ADDRESS,
   chain,
 } from "../contracts/config";
+import { BASE_BUILDER_DATA_SUFFIX } from "../lib/baseBuilderConfig";
 import { formatUSDC, parseUSDC } from "../lib/format";
 import {
   CALIFORNIA_POLICY,
@@ -1842,6 +1843,7 @@ function AgreementForm({
       functionName: "createMultiTenantAgreementWithToken",
       account: address,
       chain,
+      dataSuffix: BASE_BUILDER_DATA_SUFFIX,
       args: [
         tenantWallets,
         draft.tenants.map((tenant) => tenant.depositShareBps),

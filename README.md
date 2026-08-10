@@ -69,6 +69,7 @@ The current source includes:
 - [`docs/release-evidence-index.md`](docs/release-evidence-index.md) — claim-to-evidence map for reviewers, contributors, auditors, partners, and funders
 - [`docs/grant-reviewer-guide.md`](docs/grant-reviewer-guide.md) — concise reviewer routes, safety boundaries, and known limitations
 - [`docs/reviewer-publication-runbook.md`](docs/reviewer-publication-runbook.md) — exact-source manifest and owner-gated publication procedure
+- [`docs/base-builder-attribution.md`](docs/base-builder-attribution.md) — owner-gated Base.dev registration, ERC-8021 configuration and verification
 - [`GOVERNANCE.md`](GOVERNANCE.md) — current decision process, roles, conflicts, funding independence, and succession direction
 - [`MAINTAINERS.md`](MAINTAINERS.md) — current maintainers and the path to shared stewardship
 - [`SECURITY.md`](SECURITY.md) — private vulnerability reporting and safe research boundaries
