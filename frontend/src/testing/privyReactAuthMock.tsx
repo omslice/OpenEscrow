@@ -242,3 +242,7 @@ export function useCreateWallet() {
   const { createWallet } = useMockPrivyContext();
   return { createWallet };
 }
+
+export function dataSuffix(value: `0x${string}`) {
+  return { name: "dataSuffix", value };
+}

@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { PrivyProvider } from "@privy-io/react-auth";
+import { PrivyProvider, dataSuffix } from "@privy-io/react-auth";
 import { baseSepolia } from "wagmi/chains";
 import { PRIVY_APP_ID } from "./lib/accountConfig";
+import { BASE_BUILDER_DATA_SUFFIX } from "./lib/baseBuilderConfig";
 
 export function AppProviders({ children }: { children: ReactNode }) {
   return (
@@ -30,6 +31,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
         },
         defaultChain: baseSepolia,
         supportedChains: [baseSepolia],
+        plugins: BASE_BUILDER_DATA_SUFFIX
+          ? [dataSuffix(BASE_BUILDER_DATA_SUFFIX)]
+          : [],
       }}
     >
       {children}

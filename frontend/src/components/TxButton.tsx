@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import type { Abi } from "viem";
 import { chain } from "../contracts/config";
+import { BASE_BUILDER_DATA_SUFFIX } from "../lib/baseBuilderConfig";
 import { createSubmittedCallbackSlot } from "../lib/submittedCallback";
 import { transactionTerminalState } from "../lib/transactionTerminalState";
 
@@ -91,7 +92,15 @@ export function TxButton({
             onSubmit?.();
             setSubmitted(true);
             reset();
-            writeContract({ address, abi, functionName, args, account, chain });
+            writeContract({
+              address,
+              abi,
+              functionName,
+              args,
+              account,
+              chain,
+              dataSuffix: BASE_BUILDER_DATA_SUFFIX,
+            });
           } catch (cause) {
             submittedSuccessCallback.clear();
             setSubmitted(false);
