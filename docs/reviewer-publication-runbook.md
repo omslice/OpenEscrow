@@ -1,6 +1,6 @@
 # Reviewer-safe repository publication
 
-Last reviewed: 2026-08-09.
+Last reviewed: 2026-08-10.
 
 This runbook turns the current local OpenEscrow evidence into a precise public source snapshot for
 funders, auditors, contributors, and pilot partners. It does not authorize a commit, push, pull
@@ -8,9 +8,10 @@ request, merge, contract deployment, external contact, or claim of independent r
 
 ## Why this is a funding dependency
 
-The public default branch currently predates important product, test, security, governance, and
-canonical-domain work. Application prose must not send a reviewer to an older repository and then
-ask them to infer the newer evidence. A reviewer-safe snapshot must make the exact source commit,
+The 2026-08-10 publication reconciles the public default branch with the live application,
+verified Base Sepolia cohort, and current reviewer evidence. Every later publication must preserve
+that property: a reviewer should never be sent to an older default branch and asked to infer newer
+application or deployment evidence. A reviewer-safe snapshot makes the exact source commit,
 current limitations, deployed-contract boundary, and reproducible checks visible together.
 
 ## Candidate contents
@@ -18,12 +19,12 @@ current limitations, deployed-contract boundary, and reproducible checks visible
 The candidate should include:
 
 - the current `openescrow.io` product and walkthrough links;
-- the dated 234-pass, 22-suite Foundry snapshot and one opt-in live-fork skip;
+- the dated 238-pass, 23-suite Foundry snapshot and one opt-in live-fork skip;
 - the security, conduct, governance, maintainership, and contribution policies;
 - the release evidence index, threat models, audit handoff, and deployment manifests;
 - the current contract sources, pinned dependencies, Foundry profile, and checked-in frontend ABIs;
-- the local fail-closed `/funding` route, typed disclosure source, footer link and regressions, while
-  stating that its opening facts are unconfirmed and the route is not deployed;
+- the live fail-closed `/funding` route, typed disclosure source, footer link and regressions, while
+  withholding any unconfirmed opening balance, recipient, entity, fiscal-host, or application fact;
 - the reviewer-evidence generator and its tests; and
 - no generated deployment bundle unless its provenance and ownership are intentionally reconciled.
 
@@ -85,7 +86,7 @@ entered until the owner verifies the underlying facts.
 
 Before the default branch is updated, use an exact public commit URL and describe only evidence
 contained in that commit. After publication, record the immutable URL in the funding evidence
-ledger and every application packet that cites the 234-test snapshot.
+ledger and every application packet that cites the 238-test snapshot.
 
 Never imply that:
 
@@ -95,8 +96,11 @@ Never imply that:
 - planned arbiter, optional-yield, partner, or beneficiary work is already operating.
 - an empty local funding ledger proves zero funding received.
 
-## Owner gate
+## Publication record
 
-The next external action is an owner-approved public push of a reviewed exact snapshot. Until that
-happens, the generated manifest is local preparation and the Runtime Verification readiness email
-must retain its `[PUBLISHED COMMIT]` placeholder.
+The 2026-08-10 tranche followed the sequence above: the owner approved publication, the obsolete
+tracked Sites archive remained excluded, the current candidate passed from a clean checkout, and
+the public default branch was reconciled with the live application and verified cohort evidence.
+Future changes reopen the same gate. Until a later merge and deployment are both verified,
+reviewer outreach must use the last immutable release reference rather than implying that newer
+source is already live.

@@ -395,8 +395,13 @@ function candidateArtifactFixture(t) {
       },
       deterministicBuild: { forcedCleanCompile: true, offline: true },
       tests: { total: 2, passed: 1, failed: 0, skipped: 1 },
-      contracts: ["OpenEscrow", "OperationsReserve", "AgreementActivityRegistry"].map(
-        (name) => ({
+      contracts: [
+        "TestUSDC",
+        "TestAaveUSDC",
+        "OpenEscrow",
+        "OperationsReserve",
+        "AgreementActivityRegistry",
+      ].map((name) => ({
           name,
           abiMatched: true,
           abiSha256: `sha256:${"a".repeat(64)}`,
@@ -407,8 +412,7 @@ function candidateArtifactFixture(t) {
           },
           selectors: { count: 4, collisions: [] },
           storageLayoutSha256: `sha256:${"c".repeat(64)}`,
-        }),
-      ),
+        })),
       dependencies: ["lib/forge-std", "lib/openzeppelin-contracts"].map(
         (dependencyPath) => ({
           path: dependencyPath,
@@ -476,7 +480,16 @@ test("candidate artifacts bind both rehearsals and every packaged host byte", (t
 
   assert.equal(first.pilotRehearsal.sourceCommit, commitSha);
   assert.equal(first.contractAssurance.sourceCommit, commitSha);
-  assert.equal(first.contractAssurance.contracts.length, 3);
+  assert.deepEqual(
+    first.contractAssurance.contracts.map((contract) => contract.name),
+    [
+      "TestUSDC",
+      "TestAaveUSDC",
+      "OpenEscrow",
+      "OperationsReserve",
+      "AgreementActivityRegistry",
+    ],
+  );
   assert.equal(first.contractAssurance.dependencies.length, 2);
   assert.equal(first.contractAssurance.toolchain.solc, "0.8.26");
   assert.equal(first.contractAssurance.profile.invariantDepth, 128);

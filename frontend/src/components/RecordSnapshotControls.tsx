@@ -18,6 +18,7 @@ import {
   downloadTextFile,
 } from "../lib/browserActions";
 import { createAsyncOperationScope } from "../lib/asyncOperationScope";
+import { blockchainErrorMessage } from "../lib/blockchainErrorMessage";
 import { waitForSuccessfulTransactionReceipt } from "../lib/successfulTransactionReceipt";
 import {
   loadNegotiationSnapshot,
@@ -258,9 +259,10 @@ function SponsoredAnchorAction({
             await anchored.refetch();
           } catch (cause) {
             setError(
-              cause instanceof Error
-                ? cause.message.split("\n")[0]
-                : "The sponsored anchor transaction failed.",
+              blockchainErrorMessage(
+                cause,
+                "The public proof could not be saved. Refresh the Record before trying again.",
+              ),
             );
           } finally {
             setWorking(false);

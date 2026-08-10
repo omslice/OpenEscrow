@@ -94,7 +94,9 @@ export function Layout({
   return (
     <div className="app-shell">
       <header
-        className={`app-header${accountEntry === undefined ? "" : " app-header-account-entry"}`}
+        className={`app-header${
+          !showNotifications || accountEntry !== undefined ? " app-header-account-entry" : ""
+        }`}
       >
         <div className="app-brand">
           <h1 className="app-title">
@@ -174,7 +176,7 @@ export function Layout({
       <main className="app-main">{children}</main>
       <footer className="app-footer">
         <nav className="legal-links" aria-label="Legal and project information">
-          <a href="/funding">Project funding</a>
+          <a href="/funding">Project Funding</a>
           <a href="/privacy">Privacy Policy</a>
           <a href="/terms">Terms of Use</a>
           <a href="mailto:support@openescrow.io">Support</a>

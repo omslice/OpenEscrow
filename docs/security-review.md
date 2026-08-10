@@ -3,8 +3,9 @@
 **Scope:** the `contracts/OpenEscrow.sol` source and OpenZeppelin v5.1.0 library code it depends on
 (`SafeERC20`, `ReentrancyGuard`, `Address`). The historical first review referenced the now-retired
 Base Sepolia deployment at `0x4365f7B9632d083F1a03D57AE56a0e6d239ef62F`. The reviewed and
-regression-tested source was redeployed at the currently configured testnet address
-`0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99` after the multi-tenant lifecycle changes. The separate
+regression-tested source was previously deployed at the now-historical F18 address after the
+multi-tenant lifecycle changes. The currently configured bounded testnet cohort was compiled from
+exact source `200848d` and deployed at `0x9F8C9555f28C10347C58fc71F430F4cbc3724b10`. The separate
 `OperationsReserve`, mock-token, and `AgreementActivityRegistry` contracts have automated tests
 but are not covered by the original line-by-line review described below. They are covered by the
 2026-08-05 secondary-contract addendum near the end of this document.
@@ -280,8 +281,10 @@ rejects the wrong contract, escrow, agreement, tenant, token, transaction sender
 The candidate activity registry now authorizes every tenant through the escrow's immutable
 nonzero ownership share instead of recognizing only the primary tenant stored in the agreement
 struct. A secondary-tenant contract regression proves record anchoring and private-activity
-publication, while the existing stranger regression remains fail-closed. This registry change is
-not deployed until a new version-matched registry is broadcast and validated.
+publication, while the existing stranger regression remains fail-closed. The fresh cohort's
+version-matched registry at `0x88b53d6C35020e82B97462E8a1cBCDc8D6d50f53` is deployed and
+validated against escrow `0x9F8C9555f28C10347C58fc71F430F4cbc3724b10`; this does not make the
+internal review an independent audit.
 
 ### Residual hosted-workflow risks
 
@@ -383,7 +386,7 @@ activity hashes, but this does not grow escrow state or block another party. A h
 integrity relative to the holder's private bytes; it does not prove truth, authorship beyond the
 calling wallet, legal sufficiency, or confidentiality.
 
-After the fixes, the complete Foundry run passes 234 tests across 22 suites, including nine
+After the fixes, the complete Foundry run passes 238 tests across 23 suites, including nine
 32,768-call stateful accounting properties and the existing fuzz cases. One opt-in live Base
 Sepolia Aave adapter fork test remains skipped without an RPC URL. The current production
 dependency audit reports zero known advisories, and the full hosted application gate passes.

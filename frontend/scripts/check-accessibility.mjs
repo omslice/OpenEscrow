@@ -575,6 +575,8 @@ try {
     true,
     "Proposal actions should remain full-size mobile touch targets.",
   );
+  await page.locator("#start-proposal-button").click();
+  await page.locator(".proposal-composer-toolbar").waitFor({ state: "visible" });
   const mobileOverflow = await page.evaluate(() => ({
     documentWidth: document.documentElement.scrollWidth,
     viewportWidth: window.innerWidth,
@@ -622,7 +624,7 @@ try {
   );
 
   process.stdout.write(
-    "Accessibility smoke check passed: modal focus, workspace tabs, proposal focus recovery, blocked destructive confirmation, address keyboard selection, source-check retry recovery, and mobile width.\n",
+    "Accessibility smoke check passed: modal focus, workspace tabs, proposal focus recovery, blocked destructive confirmation, address keyboard selection, source-check retry recovery, and the open proposal editor at mobile width.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

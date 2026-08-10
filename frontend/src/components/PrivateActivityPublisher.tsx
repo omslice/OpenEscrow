@@ -22,6 +22,7 @@ import {
 } from "../lib/browserRecovery";
 import { downloadTextFile } from "../lib/browserActions";
 import { createAsyncOperationScope } from "../lib/asyncOperationScope";
+import { blockchainErrorMessage } from "../lib/blockchainErrorMessage";
 import { waitForSuccessfulTransactionReceipt } from "../lib/successfulTransactionReceipt";
 import {
   canonicalActivityEnvelope,
@@ -149,9 +150,10 @@ function SponsoredPublishAction(props: PublishActionProps) {
             props.onSuccess(result.hash);
           } catch (cause) {
             setError(
-              cause instanceof Error
-                ? cause.message.split("\n")[0]
-                : "The timestamped proof could not be saved.",
+              blockchainErrorMessage(
+                cause,
+                "The timestamped proof could not be saved. Refresh the agreement before trying again.",
+              ),
             );
           } finally {
             setWorking(false);

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useAccount, useWaitForTransactionReceipt, useWriteContract } from "wagmi";
 import type { Abi } from "viem";
 import { chain } from "../contracts/config";
+import { blockchainErrorMessage } from "../lib/blockchainErrorMessage";
 import { createSubmittedCallbackSlot } from "../lib/submittedCallback";
 import { transactionTerminalState } from "../lib/transactionTerminalState";
 
@@ -48,8 +49,14 @@ export function TxButton({
 
   const busy = submitted || isPending || isMining;
   const transactionError =
-    submissionError || error?.message.split("\n")[0] ||
-    receiptError?.message.split("\n")[0] || null;
+    submissionError ||
+    (error ? blockchainErrorMessage(error) : null) ||
+    (receiptError
+      ? blockchainErrorMessage(
+          receiptError,
+          "The transaction reached Base Sepolia but did not complete. Refresh the agreement before trying again.",
+        )
+      : null);
   const terminalState = transactionTerminalState(
     error,
     receiptError,
@@ -95,11 +102,7 @@ export function TxButton({
           } catch (cause) {
             submittedSuccessCallback.clear();
             setSubmitted(false);
-            setSubmissionError(
-              cause instanceof Error
-                ? cause.message.split("\n")[0]
-                : "The transaction could not be submitted. Check your wallet and try again.",
-            );
+            setSubmissionError(blockchainErrorMessage(cause));
           }
         }}
       >

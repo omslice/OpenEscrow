@@ -1,7 +1,7 @@
 .app-shell {
   width: 100%;
   min-width: 0;
-  max-width: 900px;
+  max-width: 1040px;
   box-sizing: border-box;
   margin: 0 auto;
   padding: 24px 16px 64px;
@@ -67,7 +67,25 @@
 
 .app-header-account-entry {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) minmax(0, 420px);
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
+  align-items: center;
+}
+
+.app-header-account-entry .app-brand {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+}
+
+.app-header-account-entry .app-wordmark-logo {
+  width: clamp(200px, 20vw, 225px);
+}
+
+.app-header-account-entry .tagline {
+  flex: 1 1 240px;
+  margin-top: 0;
+  max-width: 30ch;
 }
 
 .app-header-account-entry .header-actions,
@@ -4142,6 +4160,7 @@ a.btn.disabled {
 .proposal-composer-toolbar {
   display: flex;
   width: 100%;
+  box-sizing: border-box;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
@@ -5192,6 +5211,15 @@ a.btn.disabled {
 }
 
 @media (max-width: 680px) {
+  .app-header-account-entry .app-brand {
+    display: block;
+  }
+
+  .app-header-account-entry .tagline {
+    margin-top: 8px;
+    max-width: 46ch;
+  }
+
   .technical-details > summary,
   .technical-details .btn {
     min-height: 44px;

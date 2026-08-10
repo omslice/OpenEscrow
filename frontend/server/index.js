@@ -637,13 +637,13 @@ const COMPLIANCE_SOURCE_EXCEPTION_RECHECK_MS = 48 * 60 * 60 * 1000;
 const DEFAULT_BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org";
 const FALLBACK_BASE_SEPOLIA_RPC_URL = "https://base-sepolia-rpc.publicnode.com";
 const BASE_SEPOLIA_CHAIN_ID_HEX = "0x14a34";
-const DEFAULT_OPEN_ESCROW_ADDRESS = "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99";
-const DEFAULT_USDC_ADDRESS = "0xE129b23BD89904D363ba226eE52deC74185D7789";
-const DEFAULT_YIELD_USDC_ADDRESS = "0x2746034FF16371A65c133016470f85535992dabC";
+const DEFAULT_OPEN_ESCROW_ADDRESS = "0x9F8C9555f28C10347C58fc71F430F4cbc3724b10";
+const DEFAULT_USDC_ADDRESS = "0x3d147C9c4a9191cAbA99be3174C674C04B33E152";
+const DEFAULT_YIELD_USDC_ADDRESS = "0x596bF42F18d2a82C346b7007402Fe9f22C1ad32f";
 const DEFAULT_OPERATIONS_RESERVE_ADDRESS =
-  "0x5d2E9c429F9d117c7b028c8f0f67d37252aDceC0";
+  "0xDB6637e5A858A8FD3a3CD85c1625d9A0b022A626";
 const DEFAULT_ACTIVITY_REGISTRY_ADDRESS =
-  "0x5ba6533811ee528f6802bb969ab01ff95d7f092e";
+  "0x88b53d6C35020e82B97462E8a1cBCDc8D6d50f53";
 const ACTIVITY_REGISTRY_ESCROW_SELECTOR = "0xe681c4aa";
 const ACTIVITY_REGISTRY_READINESS_TTL_MS = 60_000;
 const HOSTED_NOTIFICATION_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000;
@@ -2770,6 +2770,11 @@ function depositAssetTestnetLabel(terms) {
     getDepositAssetForTerms(terms)?.testnetSymbol ||
     (terms?.tokenChoice === "yield" ? "taUSDC" : "testUSDC")
   );
+}
+
+function depositAssetAmountUnit(terms) {
+  const symbol = depositAssetTestnetLabel(terms);
+  return symbol === "taUSDC" ? "taUSDC shares" : symbol;
 }
 
 async function validTerms(terms, env) {
@@ -10138,6 +10143,7 @@ async function sendClaimNotification(request, env) {
     return json({ error: "The agreement must be finalized before a claim notice." }, 409);
   }
   const existingRecord = await serialize(env.DB, row);
+  const amountUnit = depositAssetAmountUnit(JSON.parse(row.terms_json));
   const claimEvent = latestClaimEvent(existingRecord.events);
   const agreementId = cleanText(row.onchain_agreement_id, 80);
   const amount = cleanText(claimEvent?.metadata?.amount, 80);
@@ -10230,7 +10236,7 @@ async function sendClaimNotification(request, env) {
   const itemSummary = items
     .map(
       (item, index) =>
-        `${index + 1}. ${item.category}: ${item.description} (${item.amount} shares)`,
+        `${index + 1}. ${item.category}: ${item.description} (${item.amount} ${amountUnit})`,
     )
     .join("\n");
   const deliveryKey = (
@@ -10268,7 +10274,7 @@ async function sendClaimNotification(request, env) {
   for (const reviewLink of reviewLinks) {
     const text = [
       reviewLink.name ? `Hello ${reviewLink.name},` : "Hello,",
-      `A deduction claim of ${amount} shares has been submitted for OpenEscrow agreement #${agreementId}.`,
+      `A deduction claim of ${amount} ${amountUnit} has been submitted for OpenEscrow agreement #${agreementId}.`,
       `Itemized deductions:\n${itemSummary}`,
       note ? `Landlord note: ${note}` : "",
       evidenceUri
@@ -10349,6 +10355,7 @@ async function sendClaimResponseNotification(request, env) {
   }
   const tenantRows = await tenantsFor(env.DB, proposalId);
   const existingRecord = await serialize(env.DB, row, tenant.id);
+  const amountUnit = depositAssetAmountUnit(JSON.parse(row.terms_json));
   const responseEvent = [...existingRecord.events]
     .reverse()
     .find(
@@ -10388,10 +10395,10 @@ async function sendClaimResponseNotification(request, env) {
 
   const decisionSummary =
     decision === "approve"
-      ? `approved the full deduction (${acceptedAmount} shares)`
+      ? `approved the full deduction (${acceptedAmount} ${amountUnit})`
       : decision === "dispute"
         ? "disputed the full deduction"
-        : `approved ${acceptedAmount} shares and disputed the remainder`;
+        : `approved ${acceptedAmount} ${amountUnit} and disputed the remainder`;
   const tenantLabel =
     cleanText(tenant.name, 160) || cleanText(tenant.email, 320) || "A tenant";
   const deliveryKey = (

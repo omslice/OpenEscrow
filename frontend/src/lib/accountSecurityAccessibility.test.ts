@@ -159,10 +159,10 @@ test("the signed-out header keeps its brand readable before stacking", () => {
   assert.match(layoutSource, /className="app-brand"/);
   assert.match(appStyles, /\.app-brand\s*\{[^}]*min-width:\s*280px;/s);
   assert.match(appStyles, /\.tagline\s*\{[^}]*max-width:\s*46ch;[^}]*overflow-wrap:\s*anywhere;/s);
-  assert.match(layoutSource, /app-header-account-entry/);
+  assert.match(layoutSource, /!showNotifications \|\| accountEntry !== undefined/);
   assert.match(
     appStyles,
-    /\.app-header-account-entry\s*\{[^}]*grid-template-columns:\s*minmax\(280px, 1fr\) minmax\(0, 420px\);/s,
+    /\.app-header-account-entry\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(360px, 420px\);[^}]*align-items:\s*center;/s,
   );
   assert.match(
     appStyles,

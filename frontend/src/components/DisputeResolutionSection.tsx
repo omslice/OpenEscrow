@@ -1,6 +1,12 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "wagmi";
-import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
+import {
+  OpenEscrowABI,
+  OPEN_ESCROW_ADDRESS,
+  Phase,
+  YIELD_USDC_ADDRESS,
+} from "../contracts/config";
+import { agreementAmountUnit } from "../lib/agreementAmountDisplay";
 import { formatUSDC, parseUSDC } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
@@ -101,6 +107,7 @@ export function DisputeResolutionSection({
   }
 
   const disputed = agreement.locked;
+  const amountUnit = agreementAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
   let awardRaw: bigint | null = null;
   try {
     awardRaw = award ? parseUSDC(award) : null;
@@ -195,15 +202,16 @@ export function DisputeResolutionSection({
 
   return (
     <div className="action-section" id={`agreement-${id.toString()}-resolution`} tabIndex={-1}>
-      <h3>Resolve dispute</h3>
+      <span className="eyebrow">Arbiter decision</span>
+      <h3>Decide how the disputed balance is split</h3>
       <p className="hint">
-        Disputed amount: {formatUSDC(disputed)} taUSDC shares. Award any amount from 0 up to the full disputed
-        amount to the landlord - the remainder goes to the tenant. You cannot award more than what's
-        disputed (spec §8/§11).
+        Review the submitted documentation, then enter how much of the {formatUSDC(disputed)} {amountUnit}
+        disputed balance should go to the landlord. The rest returns to the tenant. You cannot
+        award more than the disputed balance.
       </p>
       <EvidenceList id={id} negotiationAccess={negotiationAccess} />
       <label>
-        Award to landlord (taUSDC shares, max {formatUSDC(disputed)})
+        Award to landlord ({amountUnit}, max {formatUSDC(disputed)})
         <input value={award} onChange={(e) => setAward(e.target.value)} type="number" min="0" step="0.000001" />
       </label>
       <label>

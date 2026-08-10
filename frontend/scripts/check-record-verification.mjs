@@ -18,8 +18,8 @@ const baseUrl = `http://${host}:${port}`;
 const proposalId = "record-browser-pilot";
 const accessToken = "record-browser-landlord-token";
 const agreementId = "42";
-const escrowAddress = "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99";
-const registryAddress = "0x5ba6533811ee528f6802bb969ab01ff95d7f092e";
+const escrowAddress = "0x9F8C9555f28C10347C58fc71F430F4cbc3724b10";
+const registryAddress = "0x88b53d6C35020e82B97462E8a1cBCDc8D6d50f53";
 const viteEntrypoint = fileURLToPath(
   new URL("../node_modules/vite/bin/vite.js", import.meta.url),
 );

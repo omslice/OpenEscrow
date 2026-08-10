@@ -22,9 +22,10 @@ provider or hosting control that owns the secret.
    bindings, prepare the reversible configuration switch, and preserve the current cohort.
 4. Run the separate-account synthetic pilot and the incident/privacy drill after the new site
    candidate is explicitly approved and deployed.
-5. Configure only the remaining sending-email values when ready. Evidence encryption, address
-   attestation, private R2, and the hosted scheduler are already configured and verified; preserve
-   those existing controls and keep every secret in its owning dashboard.
+5. Complete the remaining privacy-contact receive/reply acceptance checks. Participant notification
+   sending, evidence encryption, address attestation, private R2, and the hosted scheduler are
+   already configured and verified; preserve those controls and keep every secret in its owning
+   dashboard.
 
 ## Actionable now
 
@@ -59,23 +60,27 @@ provider or hosting control that owns the secret.
   and backup cadence, and pass external receive and reply tests from two providers. Preserve the
   working `updates.openescrow.io` Resend records. The detailed acceptance record remains in the
   private funding workspace; no DNS, mailbox or test-message action is authorized by this file.
-- [ ] **Approve the reviewer-safe repository publication tranche.** Review the community-health,
-  funding-transparency and evidence-manifest changes. The release commits are already pushed to the
-  public feature branch, while the default `main` branch still exposes the older July snapshot. A
+- [x] **Approve and publish the reviewer-safe repository tranche — completed 2026-08-10.** The
+  owner authorized reconciliation of the public default branch with the live application,
+  verified cohort, community-health, funding-transparency, and evidence-manifest state. The
+  published evidence distinguishes the clean live release `4281a1f`, the exact contract source
+  and immutable deployment manifests, and the remaining external-review and supervised-pilot
+  gates. A
   read-only 2026-08-09 inspection proved that the independently modified
   `frontend-site-dist.tar` exactly matches the ignored 320-file July `site-deploy-artifact/` tree;
   both the working and `HEAD` tar contain the legacy Sites hostname, lack `openescrow.io`, and
   predate the funding route. Keep it outside the selected path commit. The recommended separate
   owner decision is to remove the obsolete tracked bundle after confirming no supported workflow
-  consumes it; do not restore or publish it as current evidence. Approve the exact branch, path
-  list, commit message and push separately; follow
+  consumes it; do not restore or publish it as current evidence. It was excluded from the exact
+  publication path and must not be restored or described as current evidence. Follow
   [`reviewer-publication-runbook.md`](./reviewer-publication-runbook.md).
-- [ ] **Confirm the public funding opening facts and deployment.** The local `/funding` route is
-  fail-closed and currently publishes no balance or recipient. Before deployment, confirm all prior
+- [ ] **Confirm the public funding opening facts.** The live `/funding` route is fail-closed and
+  currently publishes no unconfirmed balance or recipient. Before publishing opening facts,
+  confirm all prior
   grants, donations, sponsorships, rewards and investment; the recipient/entity/fiscal-host
   description; any public receiving address; a monitored funding contact; the confirmation date;
-  and whether pending applications may be named. Publishing source does not authorize deploying
-  the route or changing those facts.
+  and whether pending applications may be named. Publishing the route does not authorize changing
+  those facts.
 - [ ] **Resolve the legacy Sites rollback.** A dual-host transition release was recorded on
   2026-08-08, but current applications, demos and reviewer links must use only `openescrow.io`.
   Do not republish the stale tracked Sites tar. Before any external host deletion, owner must review
@@ -90,10 +95,20 @@ provider or hosting control that owns the secret.
   runtime hash; `ESCROW()` returned F18; and no-broadcast calls succeeded for the live landlord and
   both tenants while rejecting an outsider. The retired C004 registry remains an immutable
   historical reference and is not a fallback for the active escrow.
-- [ ] **Evaluate a future hardened three-contract cohort separately.** A later escrow/reserve/
-  registry deployment can incorporate the newest reviewed contract hardening, but it will not
-  migrate active F18 agreement state. Keep it separate from the narrow registry readiness repair
-  and require the full [`base-sepolia-deployment.md`](./base-sepolia-deployment.md) gate.
+- [x] **Broadcast, verify, and activate the reviewed bounded test-token cohort — completed
+  2026-08-09.** Exact contract source `200848d` deployed fresh testUSDC, capped taUSDC, reserve,
+  escrow `0x9F8C...4b10`, and registry `0x88b5...0f53`. Two public RPC providers agreed on all six
+  successful receipts, all five exact runtime bytecodes, the one-time reciprocal reserve binding,
+  and every immutable token/escrow/registry address. Canonical app release `b941a67` activated the
+  cohort without changing the existing Cloudflare D1, private R2 bucket, secrets, or migrations.
+  The F18 cohort and its `0x5ba6...092e` registry remain in
+  `deployments/base-sepolia-rollback-f18.json`; no old agreement or balance was migrated.
+- [ ] **Run the separate-account synthetic pilot on the new cohort.** Create an invented landlord,
+  tenant, and optional arbiter flow using only test tokens; confirm discovery, notification,
+  evidence, registry, claim, refund, and withdrawal behavior before inviting outside testers.
+  The strict hosted pilot gate also remains fail-closed on three compliance-source alerts (Chicago,
+  Arkansas, and New Hampshire); review or repair those sources rather than accepting a new baseline
+  automatically.
 - [ ] **Choose the first pilot markets for local-rule coverage.**
   State law is routed nationwide, but only Chicago, Seattle, and Portland have
   reviewed city overlays. Name the cities/counties most likely to be used in

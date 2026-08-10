@@ -985,7 +985,7 @@ try {
     { waitUntil: "networkidle" },
   );
   await claimReceiptPage.getByLabel("Description").fill("Damaged synthetic test door");
-  await claimReceiptPage.getByLabel("Amount (shares)").fill("0.5");
+  await claimReceiptPage.getByLabel("Amount (testUSDC)").fill("0.5");
   await claimReceiptPage
     .getByRole("checkbox", {
       name: /Every test deduction is separately itemized and described/,
@@ -1279,7 +1279,7 @@ try {
   });
   await responseNotificationFailure.waitFor({ state: "visible" });
   const landlordEmailFallback = responseReceiptPage.getByRole("button", {
-    name: "Email decision to landlord",
+    name: "Open backup email draft",
   });
   assert.equal(
     await landlordEmailFallback.evaluate(
@@ -1330,7 +1330,7 @@ try {
     { waitUntil: "networkidle" },
   );
   await rulingReceiptPage
-    .getByRole("heading", { name: "Resolve dispute" })
+    .getByRole("heading", { name: "Decide how the disputed balance is split" })
     .waitFor({ state: "visible" });
   await rulingReceiptPage.getByLabel(/Award to landlord/).fill("0.25");
   await rulingReceiptPage

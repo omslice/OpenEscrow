@@ -17,10 +17,10 @@ The project is an open-source public-interest prototype. It is not a law firm, b
 
 The Base Sepolia testnet MVP implements the complete technical lifecycle:
 
-> **Deployment boundary:** the currently hosted app remains attached to the recorded July 25
-> legacy test-token cohort while the replacement bounded `testUSDC` / `taUSDC` cohort is being
-> deployed and verified. Use the standard test-token path for public review until the replacement
-> cohort is activated. No existing agreement or stored record is migrated by that contract switch.
+> **Deployment boundary:** the canonical app uses the verified bounded `testUSDC` / `taUSDC`
+> Base Sepolia cohort recorded in [`deployments/base-sepolia-latest.json`](deployments/base-sepolia-latest.json).
+> The former F18 cohort remains an immutable historical rollback reference; no agreement, balance,
+> or private hosted record was migrated during the switch.
 
 - A landlord proposes an agreement.
 - Every tenant approves the same saved revision and owns an explicit deposit percentage; shares
@@ -35,7 +35,7 @@ The Base Sepolia testnet MVP implements the complete technical lifecycle:
 - Only the disputed amount remains locked.
 - The current arbiter may award no more than the disputed amount.
 - If the arbiter misses the deadline, the disputed balance defaults to the tenant.
-- The replacement-cohort tenant dashboard shows onchain custody and a deliberately accelerated
+- The active taUSDC testnet option shows onchain custody and a deliberately accelerated
   taUSDC preview that grows from funding at 1% per hour and stops at 5%, alongside
   deduction/dispute alerts, deadlines, and resolution status. This is simulated testnet value,
   not real yield.
@@ -76,7 +76,7 @@ The current source includes:
 
 ### Verification snapshot
 
-- 234 passing Foundry tests across 22 suites, plus one opt-in live Base Sepolia fork test skipped
+- 238 passing Foundry tests across 23 suites, plus one opt-in live Base Sepolia fork test skipped
   when no RPC URL is supplied
 - 512 runs per fuzz test
 - Nine stateful accounting properties exercised for 32,768 calls each

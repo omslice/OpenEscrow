@@ -1,6 +1,6 @@
 # OpenEscrow testnet MVP roadmap
 
-Updated 2026-08-09. This is the canonical high-level project status. The
+Updated 2026-08-10. This is the canonical high-level project status. The
 [validation ledger](./mvp-checkpoint-2026-07-29.md) contains detailed evidence, and
 [owner actions](./owner-actions.md) contains only work that needs credentials, signatures,
 external professional review, or an owner decision.
@@ -83,7 +83,7 @@ production custody, or reliance on the compliance research as legal advice.
   suite and Slither rerun cover the hardened source. These protections remain undeployed until a
   newly reviewed escrow/reserve pair and registry are explicitly approved and broadcast.
 - **Verified:** Contract release assurance now forces a clean offline Solidity 0.8.26 production-
-  profile build and binds the full 234-pass/one-skip Foundry result to compiled ABI, runtime and
+  profile build and binds the full 238-pass/one-skip Foundry result to compiled ABI, runtime and
   creation bytecode, storage-layout, selector-collision, EVM-size-margin, and dependency-tree
   evidence. Three new reserve invariants pass 98,304 stateful calls, and an overlapping-ID cohort
   regression proves retired and candidate deployments cannot share funds, roles, reserve
@@ -101,9 +101,9 @@ production custody, or reliance on the compliance research as legal advice.
   artifacts, funds overlapping agreement ID `0`, proves reciprocal/token/treasury/runtime and
   cross-registry isolation, retires and withdraws only the old principal, and leaves the candidate
   active. It then applies all 12 client/server address and block replacements in memory and
-  restores the current files byte-for-byte. The production script now deploys all three contracts
-  as one cohort; its exporter writes a separate candidate manifest and preserves the active
-  manifest as the rollback target. No public broadcast or configuration switch occurred.
+  restores the current files byte-for-byte. The production script now deploys all five release
+  contracts as one cohort; its exporter writes a separate candidate manifest and preserves the
+  active manifest as the rollback target. No public broadcast or configuration switch occurred.
 - **Verified:** The release dependency audit blocks every high/critical finding and every unknown
   moderate advisory. The former transitive `uuid` advisory is removed from the locked
   wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector
@@ -404,7 +404,8 @@ production custody, or reliance on the compliance research as legal advice.
   and an authenticated `About` workspace tab. It is the sole intended Cloudflare website; the
   standalone landing Worker is not a public fallback.
 - **Verified:** The narrow activity-registry recovery deployed `0x5ba6...092e` against the active
-  F18 Base Sepolia escrow without migrating agreement 0 or its funds. The receipt, exact reviewed
+  F18 Base Sepolia escrow without migrating agreement 0 or its funds. It is now part of the
+  historical rollback cohort. The receipt, exact reviewed
   runtime hash, immutable binding, live landlord/two-tenant access, and outsider rejection were
   independently verified before the candidate configuration changed.
 - **Verified:** The consumer UX audit and presentation-only refinement tranches now cover the
@@ -417,6 +418,35 @@ production custody, or reliance on the compliance research as legal advice.
   mobile actions, mobile overflow, keyboard expansion, and rendered metadata are protected by
   focused browser checks and the accessibility smoke flow. See the
   [consumer UX audit](./consumer-ux-audit.md).
+- **Verified:** Exact source commit `7cb1e20` passed the complete seven-stage credential-free pilot
+  candidate on 2026-08-09. The evidence binds 238/239 Foundry results, five contract ABI/runtime/
+  storage-layout checks, two pinned dependency trees, 122 server tests, 320 client/script checks,
+  rendered landlord/multi-tenant and accessibility rehearsals, deployment/incident rehearsals, and
+  both hosting builds to the full commit. The follow-up publication record at `b98255b` also passed
+  the strict clean-checkout reviewer manifest with zero blockers. Those results were
+  pre-deployment evidence; the later bullets separately record the verified cohort activation and
+  exact hosted releases.
+- **Verified:** A read-only 2026-08-09 canonical-host check returned HTTP 200 for the app and
+  readiness endpoint. The live `d97e09a` release reported participant-capable Resend delivery, a
+  healthy 15-minute notification scheduler, encrypted private-R2 evidence with a ready keyring, and
+  an activity registry immutably bound to the current F18 escrow. Cloudflare remote preflight also
+  confirmed the expected D1/R2 bindings and current migrations without changing hosted state.
+- **Verified:** Exact contract source `200848d` deployed a fresh bounded Base Sepolia test-token,
+  reserve, escrow, and activity-registry cohort on 2026-08-09. Two independent public RPCs agreed
+  on all successful receipts, exact runtime bytes, the 1%-per-hour/5%-maximum taUSDC demo bounds,
+  and every reciprocal binding. Canonical release `b941a67` then switched the client and server to
+  escrow `0x9F8C...4b10` and registry `0x88b5...0f53` while preserving the existing D1, private R2,
+  secrets, migrations, and F18 rollback manifest. The live app and readiness endpoint returned 200;
+  release provenance was clean, registry binding ready, receipt verification enabled, participant
+  email ready, notification scheduler healthy, and the evidence keyring ready.
+- **Verified:** Exact application release `4281a1f` was pushed, built from clean source, and
+  deployed to both `openescrow.io` and the retained ChatGPT Sites mirror on 2026-08-10 without
+  replacing either host's D1/R2 bindings, secrets, migrations, or stored data. Both public sites
+  and readiness endpoints returned HTTP 200, reported the same clean 40-character commit, and
+  passed the dual-host canonical redirect check. The complete credential-free release envelope
+  passed on its immediate application predecessor `fca5f13`; `4281a1f` changes only the public
+  capitalization of “Project Funding” and separately passed lint, focused account/accessibility
+  regressions, both exact-source builds, hosted deployment verification, and the dual-host check.
 
 ## Remaining
 
@@ -427,11 +457,16 @@ production custody, or reliance on the compliance research as legal advice.
 - **Planned:** Review and explicitly approve each newer saved candidate before deployment. The live
   site currently matches the last approved exact source; every future deployment must rerun the
   public readiness and release-provenance checks.
+- **Planned:** Run the separate-account synthetic lifecycle and incident/privacy rehearsal on the
+  activated cohort. The strict hosted pilot gate currently remains closed on three official-source
+  monitoring alerts; review Chicago and Arkansas changes and repair the New Hampshire external
+  attestation before calling the deployment pilot-ready.
 - **Planned:** Keep verifying the version-matched activity registry after every public release,
   together with custom-domain notification delivery, scheduler freshness, private-R2 evidence
-  encryption and retained-key recovery, and address attestation. Activate and monitor the daily
-  New Hampshire official-source workflow; treat any changed or stale attestation as a mandatory
-  rule-review event before publishing a new profile version.
+  encryption and retained-key recovery, and address attestation.
+- **Planned, deferred from this milestone:** Resume compliance-source and local-overlay work only
+  after the grant-review functionality, notification, UX, cohort-deployment, and separate-account
+  rehearsal gates above are complete.
 - **Planned:** Validate the refined consumer experience in moderated landlord and tenant sessions.
   Any request to remove, defer, or change a proposal field must be handled as a separate product
   and legal decision rather than presentation-only UX work.

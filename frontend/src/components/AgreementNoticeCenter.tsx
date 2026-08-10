@@ -1,5 +1,12 @@
 import { useAccount, useReadContract } from "wagmi";
-import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
+import {
+  OpenEscrowABI,
+  OPEN_ESCROW_ADDRESS,
+  Phase,
+  YIELD_USDC_ADDRESS,
+  ZERO_ADDRESS,
+} from "../contracts/config";
+import { agreementAmountUnit } from "../lib/agreementAmountDisplay";
 import { countdown, formatTimestamp } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { useNow } from "../lib/useNow";
@@ -28,13 +35,14 @@ export function AgreementNoticeCenter({ id, agreement }: { id: bigint; agreement
     (typeof tenantShare === "bigint" && tenantShare > 0n) ||
     (typeof tenantShare === "number" && tenantShare > 0);
   const isLandlord = me === agreement.landlord.toLowerCase();
+  const amountUnit = agreementAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
   const notices: Notice[] = [];
 
   if (agreement.phase === Phase.Active) {
     notices.push({
       level: "success",
       title: "Deposit confirmed",
-      body: `The escrow holds the tenant's fixed shares. The landlord's claim window starts ${formatTimestamp(agreement.claimWindowStart)}.`,
+      body: `The agreement is funded with ${amountUnit}. The landlord's claim window starts ${formatTimestamp(agreement.claimWindowStart)}.`,
     });
   }
   if (agreement.phase === Phase.ClaimOpen) {
@@ -51,7 +59,7 @@ export function AgreementNoticeCenter({ id, agreement }: { id: bigint; agreement
       body:
         agreement.arbiter === ZERO_ADDRESS
           ? `Landlord and tenant can mutually appoint one before ${formatTimestamp(agreement.arbiterRulingDeadline)}. If they do not, the disputed balance defaults to the tenant.`
-          : `Only the disputed shares remain locked. The ruling deadline is ${formatTimestamp(agreement.arbiterRulingDeadline)} (${countdown(agreement.arbiterRulingDeadline, now)}).`,
+          : `Only the disputed balance (${amountUnit}) remains locked. The ruling deadline is ${formatTimestamp(agreement.arbiterRulingDeadline)} (${countdown(agreement.arbiterRulingDeadline, now)}).`,
     });
   }
   if (agreement.phase === Phase.Closed) {
@@ -62,7 +70,7 @@ export function AgreementNoticeCenter({ id, agreement }: { id: bigint; agreement
       level: "success",
       title: canWithdraw ? "Resolution complete—funds available" : "Agreement resolved",
       body: canWithdraw
-        ? "Your allocated taUSDC shares are ready to withdraw."
+        ? `Your allocated balance (${amountUnit}) is ready to withdraw.`
         : "The onchain allocation is final and no response is required from this wallet.",
     });
   }

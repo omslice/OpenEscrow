@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$DeployerAddress = "0x0B3AA7539bB7EDCd44131F1A71eDCff1c1FDf20E",
-    [string]$RpcUrl = ""
+    [string]$RpcUrl = "",
+    [switch]$PreflightOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -57,14 +58,14 @@ function Resolve-BaseSepoliaRpcUrl {
   throw "No healthy Base Sepolia RPC endpoint returned chain ID 84532. No transaction was signed."
 }
 
-$env:BASE_SEPOLIA_RPC_URL = Resolve-BaseSepoliaRpcUrl -RequestedRpcUrl $RpcUrl
+$verifiedRpcUrl = Resolve-BaseSepoliaRpcUrl -RequestedRpcUrl $RpcUrl
 $selectedRpcLabel = if (
-  $env:BASE_SEPOLIA_RPC_URL -in @(
+  $verifiedRpcUrl -in @(
     "https://sepolia.base.org",
     "https://base-sepolia-rpc.publicnode.com"
   )
 ) {
-  $env:BASE_SEPOLIA_RPC_URL
+  $verifiedRpcUrl
 }
 else {
   "the configured custom endpoint"
@@ -86,7 +87,9 @@ if ($LASTEXITCODE -ne 0 -or $candidateCommit -notmatch '^[0-9a-f]{40}$') {
 Assert-CandidateSourceClean
 
 Push-Location -LiteralPath (Join-Path $repoRoot "frontend")
+$previousRpcUrl = $env:BASE_SEPOLIA_RPC_URL
 try {
+  Remove-Item Env:BASE_SEPOLIA_RPC_URL -ErrorAction SilentlyContinue
   & npm.cmd run contract:assure
   if ($LASTEXITCODE -ne 0) {
     throw "Exact-commit contract assurance failed."
@@ -101,6 +104,12 @@ try {
   }
 }
 finally {
+  if ($null -eq $previousRpcUrl) {
+    Remove-Item Env:BASE_SEPOLIA_RPC_URL -ErrorAction SilentlyContinue
+  }
+  else {
+    $env:BASE_SEPOLIA_RPC_URL = $previousRpcUrl
+  }
   Pop-Location
 }
 
@@ -120,6 +129,13 @@ if (
   throw "Preflight evidence does not belong to the exact candidate commit."
 }
 
+if ($PreflightOnly) {
+  Write-Host ""
+  Write-Host "Base Sepolia deployment preflight passed." -ForegroundColor Green
+  Write-Host "No wallet was opened, no password was requested, and no transaction was signed or broadcast."
+  return
+}
+
 Write-Host ""
 Write-Host "OpenEscrow Base Sepolia deployment" -ForegroundColor Cyan
 Write-Host "Enter the password for the encrypted openescrow-base-sepolia keystore when prompted."
@@ -127,7 +143,7 @@ Write-Host ""
 
 & "$foundryBin\forge.exe" script `
   script/DeployBaseSepolia.s.sol:DeployBaseSepolia `
-  --rpc-url $env:BASE_SEPOLIA_RPC_URL `
+  --rpc-url $verifiedRpcUrl `
   --account openescrow-base-sepolia `
   --sender $env:DEPLOYER_ADDRESS `
   --force `

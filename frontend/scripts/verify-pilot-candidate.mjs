@@ -15,6 +15,14 @@ import { buildReleaseSoftwareInventory } from "./release-software-inventory.mjs"
 export const PILOT_CANDIDATE_SCHEMA_VERSION =
   "openescrow-pilot-candidate/v6";
 
+const EXPECTED_ASSURED_CONTRACTS = Object.freeze([
+  "TestUSDC",
+  "TestAaveUSDC",
+  "OpenEscrow",
+  "OperationsReserve",
+  "AgreementActivityRegistry",
+]);
+
 export const PILOT_CANDIDATE_STEPS = Object.freeze([
   Object.freeze({
     id: "release-check",
@@ -334,16 +342,32 @@ function verifiedContractAssuranceArtifact({
     throw new Error("Contract assurance contains incomplete Foundry results.");
   }
 
+  const assuredContractNames = Array.isArray(summary.contracts)
+    ? summary.contracts.map((contract) => contract?.name).sort()
+    : [];
+  const expectedContractNames = [...EXPECTED_ASSURED_CONTRACTS].sort();
   if (
     !Array.isArray(summary.contracts) ||
-    summary.contracts.length !== 3 ||
+    assuredContractNames.length !== expectedContractNames.length ||
+    assuredContractNames.some(
+      (name, index) => name !== expectedContractNames[index],
+    ) ||
     summary.contracts.some(
       (contract) =>
         contract?.abiMatched !== true ||
+        !/^sha256:[0-9a-f]{64}$/.test(contract?.abiSha256 || "") ||
+        !Number.isInteger(contract?.runtime?.runtimeBytes) ||
+        contract.runtime.runtimeBytes <= 0 ||
         !Number.isInteger(contract?.runtime?.marginBytes) ||
         contract.runtime.marginBytes < 2_048 ||
+        !/^sha256:[0-9a-f]{64}$/.test(contract?.runtime?.sha256 || "") ||
+        !Number.isInteger(contract?.selectors?.count) ||
+        contract.selectors.count <= 0 ||
         !Array.isArray(contract?.selectors?.collisions) ||
-        contract.selectors.collisions.length !== 0,
+        contract.selectors.collisions.length !== 0 ||
+        !/^sha256:[0-9a-f]{64}$/.test(
+          contract?.storageLayoutSha256 || "",
+        ),
     )
   ) {
     throw new Error("Contract assurance contains unsafe or incomplete contract evidence.");

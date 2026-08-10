@@ -26,6 +26,7 @@ import {
   calculateDepositAccounting,
   getDepositAssetForTerms,
 } from "../../shared/deposit-assets.js";
+import { agreementAmountUnit } from "../lib/agreementAmountDisplay";
 
 function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | null {
   switch (agreement.phase) {
@@ -146,6 +147,7 @@ export function AgreementDashboard({
     participantRecord?.terms || { tokenChoice: isYieldToken ? "yield" : "plain" },
   );
   const tokenLabel = depositAsset?.testnetSymbol || (isYieldToken ? "taUSDC" : "testUSDC");
+  const amountUnit = agreementAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
   const testValue = (currentValue.data as bigint | undefined) ?? agreement.depositAmount;
   const accounting = calculateDepositAccounting({
     originalPrincipal: agreement.depositAmount,
@@ -175,10 +177,10 @@ export function AgreementDashboard({
           </strong>
         </div>
         <div className="amount-tile">
-          <span>{isYieldToken ? "Current modeled value" : "Current redeemable value"}</span>
+          <span>{isYieldToken ? "Current modeled value" : "Current deposit value"}</span>
           <strong>
             {agreement.depositAmount > 0n
-              ? `${formatUSDC(accounting.currentRedeemableValue)} ${isYieldToken ? "testUSDC" : tokenLabel}`
+              ? `${formatUSDC(accounting.currentRedeemableValue)} ${isYieldToken ? "testUSDC (modeled)" : tokenLabel}`
               : "Not funded"}
           </strong>
         </div>
@@ -187,7 +189,7 @@ export function AgreementDashboard({
           <strong>
             {isYieldToken && agreement.depositAmount > 0n
               ? `+${formatUSDC(accounting.accruedYield)} testUSDC`
-              : "Not enabled"}
+              : "Not selected"}
           </strong>
         </div>
       </div>
@@ -198,11 +200,15 @@ export function AgreementDashboard({
         </div>
         <div className="amount-tile">
           <span>Final distributed</span>
-          <strong>{formatUSDC(accounting.finalDistributed)} {tokenLabel}</strong>
+          <strong>
+            {accounting.finalDistributed > 0n
+              ? `${formatUSDC(accounting.finalDistributed)} ${amountUnit}`
+              : "Not distributed yet"}
+          </strong>
         </div>
         <div className="amount-tile">
-          <span>Settlement asset</span>
-          <strong>{depositAsset?.settlementAsset || "USDC"}</strong>
+          <span>{isYieldToken ? "Modeled settlement" : "Deposit asset"}</span>
+          <strong>{isYieldToken ? "USDC (simulation only)" : tokenLabel}</strong>
         </div>
       </div>
       {isYieldToken && (
@@ -215,15 +221,15 @@ export function AgreementDashboard({
       <div className="amount-grid secondary">
         <div className="amount-tile">
           <span>Custody status</span>
-          <strong>{agreement.depositAmount > 0n ? "Confirmed onchain" : "Awaiting deposit"}</strong>
+          <strong>{agreement.depositAmount > 0n ? "Deposit confirmed onchain" : "Awaiting deposit"}</strong>
         </div>
         <div className="amount-tile">
           <span>Available to you</span>
-          <strong>{formatUSDC(availableToYou)} shares</strong>
+          <strong>{formatUSDC(availableToYou)} {amountUnit}</strong>
         </div>
         <div className="amount-tile">
           <span>Still unresolved</span>
-          <strong>{formatUSDC(agreement.locked)} shares</strong>
+          <strong>{formatUSDC(agreement.locked)} {amountUnit}</strong>
         </div>
       </div>
       {reserveRequired && (
@@ -342,7 +348,7 @@ export function AgreementDashboard({
       {agreement.claimedAmount > 0n && (
         <div className="dashboard-row">
           <span className="label">Claimed amount</span>
-          <span>{formatUSDC(agreement.claimedAmount)} shares</span>
+          <span>{formatUSDC(agreement.claimedAmount)} {amountUnit}</span>
         </div>
       )}
       {agreement.claimWindowStart > 0n && (
