@@ -90,10 +90,14 @@ provider or hosting control that owns the secret.
   runtime hash; `ESCROW()` returned F18; and no-broadcast calls succeeded for the live landlord and
   both tenants while rejecting an outsider. The retired C004 registry remains an immutable
   historical reference and is not a fallback for the active escrow.
-- [ ] **Evaluate a future hardened three-contract cohort separately.** A later escrow/reserve/
-  registry deployment can incorporate the newest reviewed contract hardening, but it will not
-  migrate active F18 agreement state. Keep it separate from the narrow registry readiness repair
-  and require the full [`base-sepolia-deployment.md`](./base-sepolia-deployment.md) gate.
+- [ ] **Broadcast the reviewed bounded test-token cohort.** The credential-free preflight now
+  verifies the complete hardened escrow/reserve/registry release plus fresh testUSDC and capped
+  taUSDC deployment rehearsal without opening the wallet. From a clean reviewed commit, rerun
+  `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Broadcast-BaseSepolia.ps1` and
+  enter the encrypted-keystore password only in the private PowerShell prompt. Return only the
+  public candidate manifest and transaction hashes. Codex can then verify bytecode and reciprocal
+  bindings, preserve the current F18 cohort as rollback, switch configuration reversibly, and
+  deploy. This creates a new testnet cohort; it does not migrate the active F18 agreement state.
 - [ ] **Choose the first pilot markets for local-rule coverage.**
   State law is routed nationwide, but only Chicago, Seattle, and Portland have
   reviewed city overlays. Name the cities/counties most likely to be used in

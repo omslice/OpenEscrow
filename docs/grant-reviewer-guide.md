@@ -25,6 +25,9 @@ The canonical public app is <https://openescrow.io> and the one-minute overview 
 4. Open the account panel to see notification preferences and connected identity information.
 5. Inspect the source and verification links from the About page.
 
+Both optional notification choices start on for a new verified account. Invitation and claim
+messages required by an active workflow are handled separately from those optional updates.
+
 ### Full flow: use separate test identities
 
 Use separate browser profiles or private windows for the landlord and each tenant. Do not reuse a
@@ -32,13 +35,18 @@ single signed-in identity to simulate multiple parties.
 
 1. As landlord, create a proposal with invented names, an invented property address, short future
    test deadlines, and the standard testUSDC asset.
-2. Send each participant their unique proposal link.
+2. Use **Send invitation email** for each participant and confirm that each separate test inbox
+   receives only its own proposal link. The copy-link control remains available if delivery is
+   delayed or the reviewer prefers another messaging channel.
 3. As every tenant, open only that participant's link, review the identical revision, and approve.
 4. As landlord, finalize the approved revision on Base Sepolia.
 5. As each tenant, mint free test tokens, approve only that tenant's share, and fund it.
 6. Confirm the deposit activates only after every allocated share is funded.
 7. Review the Deposit and Record pages, then exercise a claim, response, resolution, and withdrawal
    if the chosen test deadlines make those actions available.
+8. Confirm that claim notices go to tenants separately and that the landlord receives the saved
+   tenant-response update. Email bodies intentionally omit the property address, deposit amount,
+   evidence, and private agreement notes.
 
 The replacement bounded taUSDC demonstration is not part of the reviewer path until its fresh
 contract cohort is deployed, verified, and activated. The standard testUSDC path is the stable
