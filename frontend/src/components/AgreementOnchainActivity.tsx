@@ -11,6 +11,7 @@ import {
   type RegistryActivityItem,
 } from "../lib/activityRegistryLogs";
 import { createAsyncOperationScope } from "../lib/asyncOperationScope";
+import { blockchainErrorMessage } from "../lib/blockchainErrorMessage";
 import { formatTimestamp, shortAddr } from "../lib/format";
 import type { NegotiationAccess } from "../lib/negotiations";
 import { useActivityRegistryReadiness } from "../lib/useActivityRegistryReadiness";
@@ -78,9 +79,10 @@ export function AgreementOnchainActivity({
     } catch (cause) {
       if (!activityScope.isCurrent(operationId)) return false;
       setError(
-        cause instanceof Error
-          ? cause.message.split("\n")[0]
-          : "The public verification service did not respond.",
+        blockchainErrorMessage(
+          cause,
+          "The public verification history could not be loaded. Wait a moment, then try again.",
+        ),
       );
       return false;
     }
