@@ -14,6 +14,7 @@ import {
   readLandlordBundle,
   readLatestLandlordAccess,
   readNegotiationAccess,
+  recoverNegotiationAccessForAccount,
   recoverDurableFundingCheckout,
   rememberLandlordBundle,
   storeNegotiationAccess,
@@ -381,6 +382,60 @@ test("durable sandbox checkout requests keep bearer access and bigint amounts ou
     "1205000000",
   );
   assert.equal(captured[2].body.eventId, "provider:test-event");
+});
+
+test("signed-in account recovery replaces an expired invitation for the same proposal and role", async () => {
+  const originalFetch = globalThis.fetch;
+  const originalWindow = globalThis.window;
+  const localStorage = new MemoryStorage();
+  const sessionStorage = new MemoryStorage();
+  const expiredInvite: NegotiationAccess = {
+    proposalId: "proposal-recovered",
+    role: "tenant",
+    token: "expired-invite-secret",
+    source: "invite",
+  };
+
+  Object.defineProperty(globalThis, "window", {
+    configurable: true,
+    value: { localStorage, sessionStorage },
+  });
+  globalThis.fetch = (async (_input: string | URL | Request, init?: RequestInit) => {
+    assert.equal(new Headers(init?.headers).get("privy-id-token"), "verified-identity");
+    return Response.json({
+      accesses: [
+        {
+          proposalId: "another-proposal",
+          role: "tenant",
+          token: "another-account-secret",
+        },
+        {
+          proposalId: "proposal-recovered",
+          role: "tenant",
+          token: "current-account-secret",
+        },
+      ],
+    });
+  }) as typeof fetch;
+
+  try {
+    const recovered = await recoverNegotiationAccessForAccount(
+      expiredInvite,
+      "verified-identity",
+    );
+    assert.deepEqual(recovered, {
+      proposalId: "proposal-recovered",
+      role: "tenant",
+      token: "current-account-secret",
+      source: "account",
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+    Object.defineProperty(globalThis, "window", {
+      configurable: true,
+      value: originalWindow,
+    });
+  }
 });
 
 test("private agreement reads use an authorization header instead of a bearer URL", async () => {

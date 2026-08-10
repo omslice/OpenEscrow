@@ -31,6 +31,7 @@ import {
   listNegotiationAccesses,
   loadNegotiation,
   readNegotiationAccess,
+  recoverNegotiationAccessForAccount,
   storeNegotiationAccess,
   updateRecordArchivePreference,
   type NegotiationAccess,
@@ -376,6 +377,39 @@ function AppView({
         )
       : null;
   });
+  const accountAccessRecoveryAttempts = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!identityToken) return;
+    const inviteAccess =
+      proposalAccess?.source === "invite"
+        ? proposalAccess
+        : activeLandlordAccess?.source === "invite"
+          ? activeLandlordAccess
+          : null;
+    if (!inviteAccess) return;
+
+    const recoveryKey = `${accountIdentity || "signed-in"}:${inviteAccess.role}:${inviteAccess.proposalId}`;
+    if (accountAccessRecoveryAttempts.current.has(recoveryKey)) return;
+    accountAccessRecoveryAttempts.current.add(recoveryKey);
+
+    let active = true;
+    void recoverNegotiationAccessForAccount(inviteAccess, identityToken)
+      .then((recovered) => {
+        if (!active || !recovered) return;
+        if (recovered.role === "landlord") {
+          setActiveLandlordAccess(recovered);
+        } else {
+          setProposalAccess(recovered);
+        }
+      })
+      .catch(() => {
+        // Keep the invitation-specific error visible when this signed-in account is not a party.
+      });
+    return () => {
+      active = false;
+    };
+  }, [accountIdentity, activeLandlordAccess, identityToken, proposalAccess]);
 
   useEffect(() => {
     if (initialCapturedAccess?.role !== "landlord") return;

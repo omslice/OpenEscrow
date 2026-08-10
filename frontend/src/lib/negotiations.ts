@@ -1001,6 +1001,20 @@ export async function discoverNegotiationsForAccount(
   return accesses;
 }
 
+export async function recoverNegotiationAccessForAccount(
+  access: NegotiationAccess,
+  identityToken: string,
+) {
+  const accesses = await discoverNegotiationsForAccount(access.role, identityToken);
+  return (
+    accesses.find(
+      (candidate) =>
+        candidate.proposalId === access.proposalId &&
+        candidate.role === access.role,
+    ) || null
+  );
+}
+
 export function revokeAccountSessions(identityToken: string) {
   return request<{
     revoked: true;
