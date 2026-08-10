@@ -7926,6 +7926,213 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
   }
 });
 
+test("the onchain indexer covers every supported lifecycle event and recipient boundary", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const consentedAt = "2026-08-10T12:00:00.000Z";
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("event-map-landlord", "landlord@example.com", consentedAt, consentedAt),
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("event-map-tenant", "tenant@example.com", consentedAt, consentedAt),
+  ]);
+
+  const cases = [
+    [
+      PROPOSAL_CANCELLED_TOPIC,
+      "onchain_proposal_cancelled",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      TENANT_SHARE_FUNDED_TOPIC,
+      "tenant_share_funded",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [AGREEMENT_FUNDED_TOPIC, "agreement_funded", ["landlord@example.com"]],
+    [
+      CLAIM_SUBMITTED_TOPIC,
+      "claim_submitted",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      CLAIM_AMENDED_TOPIC,
+      "claim_amended",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      CLAIM_RETRACTED_TOPIC,
+      "claim_retracted",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      TENANT_CLAIM_RESPONSE_TOPIC,
+      "claim_response",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      LEGACY_CLAIM_RESPONSE_TOPIC,
+      "claim_settled",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      DISPUTE_CREATED_TOPIC,
+      "dispute_created",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      DISPUTE_RESOLVED_TOPIC,
+      "arbiter_ruling",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      WITHDRAWN_TOPIC,
+      "withdrawal_completed",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      NO_CLAIM_WITHDRAWAL_TOPIC,
+      "no_claim_refund_available",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      RESPONSE_TIMED_OUT_TOPIC,
+      "response_timeout_escalated",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      ARBITER_TIMED_OUT_TOPIC,
+      "arbiter_timeout_allocation",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      ARBITER_REPLACEMENT_PROPOSED_TOPIC,
+      "arbiter_replacement_proposed",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      ARBITER_REPLACEMENT_CONFIRMED_TOPIC,
+      "arbiter_replacement_confirmed",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      ARBITER_REPLACEMENT_CANCELLED_TOPIC,
+      "arbiter_replacement_cancelled",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      ARBITER_REPLACED_TOPIC,
+      "arbiter_replacement_accepted",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      ARBITER_RESIGNED_TOPIC,
+      "arbiter_resigned",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+  ];
+  const deploymentBlock = 45_283_514;
+  const indexedBlock = deploymentBlock + 1;
+  const latestBlock = deploymentBlock + 30;
+  const logs = cases.map(([topic], index) => ({
+    address: RECEIPT_TEST_OPEN_ESCROW,
+    topics: [topic, receiptWord(42)],
+    data: "0x",
+    transactionHash: transactionHash(93_000 + index),
+    blockHash: transactionHash(94_000 + index),
+    blockNumber: `0x${indexedBlock.toString(16)}`,
+    logIndex: `0x${index.toString(16)}`,
+    removed: false,
+  }));
+  const providerCalls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, options = {}) => {
+    if (String(input).includes("api.resend.com/emails")) {
+      providerCalls.push(JSON.parse(options.body));
+      return Response.json({ id: `event-map-${providerCalls.length}` });
+    }
+    const payload = JSON.parse(options.body);
+    const result =
+      payload.method === "eth_chainId"
+        ? "0x14a34"
+        : payload.method === "eth_blockNumber"
+          ? `0x${latestBlock.toString(16)}`
+          : payload.method === "eth_getLogs"
+            ? logs
+            : null;
+    return Response.json({ jsonrpc: "2.0", id: payload.id, result });
+  };
+  const env = {
+    DB: db,
+    ONCHAIN_ACTIVITY_INDEXER_ENABLED: "true",
+    OPEN_ESCROW_ADDRESS: RECEIPT_TEST_OPEN_ESCROW,
+    OPEN_ESCROW_DEPLOYMENT_BLOCK: String(deploymentBlock),
+    RESEND_API_KEY: "re_event_map_test",
+    RESEND_WEBHOOK_SECRET: "whsec_event_map_test",
+    NOTIFICATION_FROM_EMAIL: "OpenEscrow <notifications@updates.openescrow.io>",
+    PUBLIC_APP_URL: "https://openescrow.io/",
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  };
+  try {
+    const waits = [];
+    await worker.scheduled(
+      { scheduledTime: Date.parse("2026-08-10T12:15:00.000Z") },
+      env,
+      { waitUntil(promise) { waits.push(promise); } },
+    );
+    await Promise.all(waits);
+
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS count FROM indexed_chain_events").first()
+        .count,
+      cases.length,
+    );
+    for (const [, eventType, expectedRecipients] of cases) {
+      const deliveries = db
+        .prepare(
+          `SELECT recipient_email FROM notification_deliveries
+           WHERE notification_type = ? AND status = 'sent'
+           ORDER BY recipient_email`,
+        )
+        .bind(`agreement_activity_${eventType}`)
+        .all();
+      assert.deepEqual(
+        deliveries.results.map((delivery) => delivery.recipient_email),
+        [...expectedRecipients].sort(),
+        `${eventType} must notify only its intended opted-in roles.`,
+      );
+    }
+    assert.equal(
+      providerCalls.length,
+      cases.reduce((count, [, , recipients]) => count + recipients.length, 0),
+    );
+    for (const call of providerCalls) {
+      assert.match(
+        call.text,
+        /Open your signed-in dashboard: https:\/\/openescrow\.io\/?/,
+        `${call.subject} must point to the canonical app.`,
+      );
+      assert.match(
+        call.text,
+        /This email intentionally omits evidence, tenancy details, and private notes\./,
+        `${call.subject} must remain privacy-minimal.`,
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("the onchain indexer emits one terminal claim notice and audits a confirmed-log reorg", async () => {
   const db = new TestD1();
   const created = await create(db);
