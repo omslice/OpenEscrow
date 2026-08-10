@@ -4986,28 +4986,29 @@ async function sendProposalInvitation(request, env, proposalId) {
   const cooldownStartedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   let recentDelivery;
   try {
-    recentDelivery = await env.DB
+    const recentDeliveries = await env.DB
       .prepare(
         `SELECT idempotency_key, status, provider_message_id, sent_at
          FROM notification_deliveries
          WHERE negotiation_id = ?
            AND recipient_email = ?
            AND notification_type = ?
-           AND idempotency_key LIKE ?
            AND status IN ('sent', 'delivered', 'delayed')
            AND provider_message_id IS NOT NULL
            AND sent_at >= ?
          ORDER BY sent_at DESC
-         LIMIT 1`,
+         LIMIT 20`,
       )
       .bind(
         proposalId,
         recipientEmail,
         notificationType,
-        `${deliveryKeyPrefix}%`,
         cooldownStartedAt,
       )
-      .first();
+      .all();
+    recentDelivery = recentDeliveries.results?.find((candidate) =>
+      String(candidate.idempotency_key || "").startsWith(deliveryKeyPrefix),
+    );
   } catch (error) {
     console.error(
       JSON.stringify({
