@@ -13,6 +13,7 @@ export function PublicIntro({
   showAboutDetails?: boolean;
 }) {
   const yieldDialogRef = useRef<HTMLDialogElement>(null);
+  const yieldDialogCloseRef = useRef<HTMLButtonElement>(null);
   const yieldSummaryRef = useRef<HTMLElement>(null);
   const shouldRestoreYieldFocusRef = useRef(false);
   const [yieldDialogError, setYieldDialogError] = useState<string | null>(null);
@@ -27,6 +28,7 @@ export function PublicIntro({
         }
         return false;
       }
+      yieldDialogCloseRef.current?.focus({ preventScroll: true });
       if (window.location.hash !== `#${yieldHash}`) {
         replaceRecoveryUrl(`${baseHref}#${yieldHash}`, {});
       }
@@ -215,6 +217,7 @@ export function PublicIntro({
           <button
             className="yield-dialog-close"
             type="button"
+            ref={yieldDialogCloseRef}
             aria-label="Close yield explanation"
             onClick={closeYieldExplainer}
           >

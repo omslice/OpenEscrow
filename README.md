@@ -30,8 +30,9 @@ The Base Sepolia testnet MVP implements the complete technical lifecycle:
 - Only the disputed amount remains locked.
 - The current arbiter may award no more than the disputed amount.
 - If the arbiter misses the deadline, the disputed balance defaults to the tenant.
-- The tenant dashboard shows onchain custody, a deliberately accelerated 20%-per-day demo value,
-  deduction/dispute alerts, deadlines, and resolution status. The demo value is not real yield.
+- The tenant dashboard shows onchain custody, a deliberately accelerated 1%-per-hour demo value
+  capped at 5%, deduction/dispute alerts, deadlines, and resolution status. The demo value is not
+  real yield.
 - Agreement parties can download a complete timestamped report, preserve an AES-256-GCM encrypted
   canonical record with a separate verification key, anchor its SHA-256 hash in the Base Sepolia
   activity registry, and verify the encrypted record locally against current agreement parties.
