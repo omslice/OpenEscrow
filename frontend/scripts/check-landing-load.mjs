@@ -428,7 +428,7 @@ try {
     "/funding must load through the SPA fallback.",
   );
   await fundingPage
-    .getByRole("heading", { name: "Funding OpenEscrow", exact: true })
+    .getByRole("heading", { name: "Project funding", exact: true })
     .waitFor({ state: "visible" });
   await fundingPage
     .getByText("Funding disclosures are being verified.", { exact: true })
