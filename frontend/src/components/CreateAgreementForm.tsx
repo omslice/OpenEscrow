@@ -752,16 +752,17 @@ function AgreementForm({
         : null;
     if (!access) return;
     if (draft?.id === access.proposalId) {
-      setAccessBundle((current) =>
-        current
+      setAccessBundle((current) => {
+        if (current?.landlord === access.token) return current;
+        return current
           ? { ...current, landlord: access.token }
           : {
               landlord: access.token,
               tenant: "",
               tenants: [],
               arbiter: null,
-            },
-      );
+            };
+      });
       setFormError((current) =>
         current === "This proposal link is invalid or no longer available." ? null : current,
       );
