@@ -165,7 +165,7 @@ try {
   assert.equal(
     await landingPage
       .locator(".legal-links")
-      .getByRole("link", { name: "Project funding", exact: true })
+      .getByRole("link", { name: "Project Funding", exact: true })
       .getAttribute("href"),
     "/funding",
     "Funding transparency must remain available to signed-out visitors.",
