@@ -4984,59 +4984,81 @@ async function sendProposalInvitation(request, env, proposalId) {
     `proposal-invitation:${proposalId}:${invitedRole}:${targetKey}:` +
     `${suppliedTokenHash.slice(0, 24)}:`;
   const cooldownStartedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-  const recentDelivery = await env.DB
-    .prepare(
-      `SELECT idempotency_key, status, provider_message_id, sent_at
-       FROM notification_deliveries
-       WHERE negotiation_id = ?
-         AND recipient_email = ?
-         AND notification_type = ?
-         AND idempotency_key LIKE ?
-         AND status IN ('sent', 'delivered', 'delayed')
-         AND provider_message_id IS NOT NULL
-         AND sent_at >= ?
-       ORDER BY sent_at DESC
-       LIMIT 1`,
-    )
-    .bind(
-      proposalId,
-      recipientEmail,
-      notificationType,
-      `${deliveryKeyPrefix}%`,
-      cooldownStartedAt,
-    )
-    .first();
-  const timeBucket = Math.floor(Date.now() / (10 * 60 * 1000));
-  const delivered = recentDelivery
-    ? {
-        id: String(recentDelivery.provider_message_id),
-        provider,
-        duplicate: true,
-        pending: false,
-        status: recentDelivery.status,
-        sentAt: recentDelivery.sent_at,
-        idempotencyKey: recentDelivery.idempotency_key,
-      }
-    : await deliverTrackedEmail(env, {
-        negotiationId: proposalId,
+  let recentDelivery;
+  try {
+    recentDelivery = await env.DB
+      .prepare(
+        `SELECT idempotency_key, status, provider_message_id, sent_at
+         FROM notification_deliveries
+         WHERE negotiation_id = ?
+           AND recipient_email = ?
+           AND notification_type = ?
+           AND idempotency_key LIKE ?
+           AND status IN ('sent', 'delivered', 'delayed')
+           AND provider_message_id IS NOT NULL
+           AND sent_at >= ?
+         ORDER BY sent_at DESC
+         LIMIT 1`,
+      )
+      .bind(
+        proposalId,
         recipientEmail,
         notificationType,
-        subject: recordReady
-          ? "Open your OpenEscrow agreement record"
-          : "Review an OpenEscrow agreement proposal",
-        text: [
-          recordReady
-            ? `You have access to an OpenEscrow agreement record as the ${participantLabel}.`
-            : `A landlord invited you to review an OpenEscrow security-deposit proposal as the ${participantLabel}.`,
-          recordReady
-            ? `Open your record: ${canonicalUrl.toString()}`
-            : `Review the terms, request a change, or approve the current revision: ${canonicalUrl.toString()}`,
-          "This role-locked link is intended only for the invited participant. Do not forward it.",
-          "Sign in using the invited email address to keep access connected to your OpenEscrow account.",
-          "OpenEscrow is a Base Sepolia testnet prototype. Do not send real funds or upload real tenancy documents.",
-        ].join("\n\n"),
-        idempotencyKey: `${deliveryKeyPrefix}${timeBucket}`,
-      });
+        `${deliveryKeyPrefix}%`,
+        cooldownStartedAt,
+      )
+      .first();
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "proposal_invitation_step_failed",
+        step: "recent_delivery_lookup",
+      }),
+    );
+    throw error;
+  }
+  const timeBucket = Math.floor(Date.now() / (10 * 60 * 1000));
+  let delivered;
+  try {
+    delivered = recentDelivery
+      ? {
+          id: String(recentDelivery.provider_message_id),
+          provider,
+          duplicate: true,
+          pending: false,
+          status: recentDelivery.status,
+          sentAt: recentDelivery.sent_at,
+          idempotencyKey: recentDelivery.idempotency_key,
+        }
+      : await deliverTrackedEmail(env, {
+          negotiationId: proposalId,
+          recipientEmail,
+          notificationType,
+          subject: recordReady
+            ? "Open your OpenEscrow agreement record"
+            : "Review an OpenEscrow agreement proposal",
+          text: [
+            recordReady
+              ? `You have access to an OpenEscrow agreement record as the ${participantLabel}.`
+              : `A landlord invited you to review an OpenEscrow security-deposit proposal as the ${participantLabel}.`,
+            recordReady
+              ? `Open your record: ${canonicalUrl.toString()}`
+              : `Review the terms, request a change, or approve the current revision: ${canonicalUrl.toString()}`,
+            "This role-locked link is intended only for the invited participant. Do not forward it.",
+            "Sign in using the invited email address to keep access connected to your OpenEscrow account.",
+            "OpenEscrow is a Base Sepolia testnet prototype. Do not send real funds or upload real tenancy documents.",
+          ].join("\n\n"),
+          idempotencyKey: `${deliveryKeyPrefix}${timeBucket}`,
+        });
+  } catch (error) {
+    console.error(
+      JSON.stringify({
+        event: "proposal_invitation_step_failed",
+        step: "tracked_delivery",
+      }),
+    );
+    throw error;
+  }
   if (delivered?.pending) {
     return json(
       {

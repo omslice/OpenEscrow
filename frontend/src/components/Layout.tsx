@@ -186,7 +186,8 @@ export function Layout({
         </nav>
         <div className="donation-message">
           <strong className="donation-message-copy">
-            Support continued development of the open-source OpenEscrow project.
+            Donations support the continued development of OpenEscrow as a free,
+            open-source public good.
           </strong>
           <span className="donation-address-control">
             <span
