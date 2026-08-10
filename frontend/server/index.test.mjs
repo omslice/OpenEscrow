@@ -7277,6 +7277,7 @@ test("proposal invitations are recipient-bound, canonical, tracked, and duplicat
     accessToken = created.access.landlord,
     query = `invite=${role}&proposal=${created.record.id}`,
     fragment = `token=${invitationToken}`,
+    validateOnly = false,
   } = {}) =>
     new Request(
       `https://openescrow.omslice.workers.dev/api/negotiations/${created.record.id}/invitations`,
@@ -7288,11 +7289,29 @@ test("proposal invitations are recipient-bound, canonical, tracked, and duplicat
           invitedRole: role,
           ...(role === "tenant" ? { invitedTenantId: tenantId } : {}),
           invitationUrl: `https://untrusted-client-origin.example/?${query}#${fragment}`,
+          ...(validateOnly ? { validateOnly: true } : {}),
         }),
       },
     );
 
   try {
+    const validation = await jsonResponse(
+      await worker.fetch(invitationRequest({ validateOnly: true }), {
+        DB: db,
+      }),
+    );
+    assert.deepEqual(validation, {
+      current: true,
+      recipientEmail: "tenant@example.com",
+    });
+    assert.equal(deliveries.length, 0);
+    assert.equal(
+      db.database
+        .prepare("SELECT COUNT(*) AS count FROM notification_deliveries")
+        .get().count,
+      0,
+    );
+
     Date.now = () => bucketEdge;
     const first = await jsonResponse(await worker.fetch(invitationRequest(), env));
     Date.now = () => bucketEdge + 2_000;
@@ -7386,6 +7405,14 @@ test("proposal invitations are recipient-bound, canonical, tracked, and duplicat
       env,
     );
     assert.equal(wrongParticipantToken.status, 409);
+    const staleValidation = await worker.fetch(
+      invitationRequest({
+        invitationToken: created.access.arbiter,
+        validateOnly: true,
+      }),
+      { DB: db },
+    );
+    assert.equal(staleValidation.status, 409);
     const wrongProposal = await worker.fetch(
       invitationRequest({ query: "invite=tenant&proposal=another-proposal" }),
       env,

@@ -75,6 +75,7 @@ import {
   resetNegotiationArbiterInvite,
   resetNegotiationTenantInvite,
   sendNegotiationInvitation,
+  validateNegotiationInvitation,
   updateNegotiationTenant,
   clearLandlordBundle,
   createNegotiation,
@@ -1542,7 +1543,24 @@ function AgreementForm({
 
   async function ensureTenantInvite(tenantId: string) {
     const existing = tenantInvite(tenantId);
-    if (existing) return existing;
+    if (existing && landlordAccess) {
+      try {
+        await validateNegotiationInvitation(landlordAccess, {
+          invitedRole: "tenant",
+          invitedTenantId: tenantId,
+          invitationUrl: existing.url,
+        });
+        return existing;
+      } catch (cause) {
+        if (
+          !(cause instanceof Error) ||
+          cause.message !==
+            "This invitation link was replaced. Send the current link instead."
+        ) {
+          throw cause;
+        }
+      }
+    }
     if (!landlordAccess || !draft || !accessBundle) return null;
     const tenant = draft.tenants.find((item) => item.id === tenantId);
     if (!tenant) return null;
@@ -1568,7 +1586,23 @@ function AgreementForm({
 
   async function ensureArbiterInvite() {
     const existing = arbiterInvite();
-    if (existing) return existing;
+    if (existing && landlordAccess) {
+      try {
+        await validateNegotiationInvitation(landlordAccess, {
+          invitedRole: "arbiter",
+          invitationUrl: existing.url,
+        });
+        return existing;
+      } catch (cause) {
+        if (
+          !(cause instanceof Error) ||
+          cause.message !==
+            "This invitation link was replaced. Send the current link instead."
+        ) {
+          throw cause;
+        }
+      }
+    }
     if (!landlordAccess || !draft?.arbiterEmail || !accessBundle) return null;
     const result = await resetNegotiationArbiterInvite(landlordAccess);
     const nextBundle = { ...accessBundle, arbiter: result.invite.token };

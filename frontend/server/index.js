@@ -4872,6 +4872,7 @@ async function sendLandlordIntroduction(request, env) {
 async function sendProposalInvitation(request, env, proposalId) {
   if (!env.DB) return json({ error: "Email delivery tracking is not available." }, 503);
   const body = await request.json().catch(() => ({}));
+  const validateOnly = body.validateOnly === true;
   const row = await rowFor(env.DB, proposalId);
   const role = await authorize(env.DB, row, cleanText(body.token, 500));
   if (role !== "landlord") {
@@ -4881,11 +4882,14 @@ async function sendProposalInvitation(request, env, proposalId) {
     return json({ error: "This proposal no longer accepts invitation emails." }, 409);
   }
 
-  const provider = emailProvider(env);
-  if (!provider) {
+  const provider = validateOnly ? null : emailProvider(env);
+  if (!validateOnly && !provider) {
     return json({ error: "Automatic email delivery is not configured yet." }, 503);
   }
-  if (!emailSenderReadiness(env, provider).participantDeliveryReady) {
+  if (
+    !validateOnly &&
+    !emailSenderReadiness(env, provider).participantDeliveryReady
+  ) {
     return json(
       { error: "Participant email delivery is waiting for the OpenEscrow sending domain." },
       503,
@@ -4959,6 +4963,10 @@ async function sendProposalInvitation(request, env, proposalId) {
   const suppliedTokenHash = await hashToken(invitationToken);
   if (!expectedTokenHash || suppliedTokenHash !== expectedTokenHash) {
     return json({ error: "This invitation link was replaced. Send the current link instead." }, 409);
+  }
+
+  if (validateOnly) {
+    return json({ current: true, recipientEmail });
   }
 
   const canonicalUrl = new URL(publicAppOriginForRequest(request, env));

@@ -306,6 +306,11 @@ export type ProposalInvitationResult =
       recipientEmail: string;
     };
 
+export interface ProposalInvitationValidation {
+  current: true;
+  recipientEmail: string;
+}
+
 type SerializableFundingIntent = Omit<FundingIntent, "amountMicros"> & {
   amountMicros: string;
 };
@@ -850,6 +855,27 @@ export function sendNegotiationInvitation(
       body: JSON.stringify({
         token: access.token,
         ...invitation,
+      }),
+    },
+  );
+}
+
+export function validateNegotiationInvitation(
+  access: NegotiationAccess,
+  invitation: {
+    invitedRole: InviteRole;
+    invitedTenantId?: string;
+    invitationUrl: string;
+  },
+) {
+  return request<ProposalInvitationValidation>(
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}/invitations`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        token: access.token,
+        ...invitation,
+        validateOnly: true,
       }),
     },
   );

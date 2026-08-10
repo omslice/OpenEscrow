@@ -117,6 +117,8 @@ try {
   let destructiveProposalRequests = 0;
   let complianceSourceChecks = 0;
   let sentProposalInvites = 0;
+  let validatedProposalInvites = 0;
+  let refreshedProposalInvites = 0;
   let savedProposal = null;
 
   await page.route("**/api/address-suggestions**", async (route) => {
@@ -225,6 +227,28 @@ try {
     const input = route.request().postDataJSON();
     assert.equal(input.invitedRole, "tenant");
     assert.equal(input.invitedTenantId, "tenant-1");
+    if (input.validateOnly === true) {
+      validatedProposalInvites += 1;
+      if (validatedProposalInvites === 1) {
+        await route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({
+            error: "This invitation link was replaced. Send the current link instead.",
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          current: true,
+          recipientEmail: "taylor.tenant@example.com",
+        }),
+      });
+      return;
+    }
     sentProposalInvites += 1;
     await route.fulfill({
       status: 200,
@@ -236,6 +260,24 @@ try {
       }),
     });
   });
+  await page.route(
+    /\/api\/negotiations\/OE-P-RECOVERY\/tenants\/tenant-1$/,
+    async (route) => {
+      assert.equal(route.request().method(), "POST");
+      refreshedProposalInvites += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          record: savedProposal.record,
+          invite: {
+            ...savedProposal.access.tenants[0],
+            token: "tenant-1-refreshed-token",
+          },
+        }),
+      });
+    },
+  );
   await page.route(/\/api\/negotiations\/[^/]+\/actions$/, async (route) => {
     destructiveProposalRequests += 1;
     await route.fulfill({
@@ -526,6 +568,16 @@ try {
     sentProposalInvites,
     1,
     "The invite action should show a checkmark only after the server confirms delivery.",
+  );
+  assert.equal(
+    refreshedProposalInvites,
+    1,
+    "A stale locally held invitation should rotate once before the email is sent.",
+  );
+  assert.equal(
+    validatedProposalInvites,
+    1,
+    "The direct-send action should validate its locally held link before delivery.",
   );
   await page.getByRole("button", { name: "Refresh account proposals" }).click();
   const savedProposalCard = page.locator(".saved-proposal-card", {
