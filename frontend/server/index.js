@@ -741,6 +741,8 @@ const RECEIPT_EVENT_TOPICS = Object.freeze({
     "0xea55ed64aa907da9463ef6eb21d16b92c8672b37f1305df22c0555cd0cc175cf",
   arbiterReplaced:
     "0x61fd94062542edfecb31f240c9ef0bab60274ed951f163e40614c3d4d02146d1",
+  arbiterResigned:
+    "0xcdf89760bd3dd0338c147bd48cbbb478470981d1ad6a52f99ec80d7e3c17bc71",
   recordSnapshotAnchored:
     "0x4012b6d2c58584f354b2ad24151a4b24d5e18ea9aff9ced4667a2ffe01305ab6",
   activityPublished:
@@ -810,6 +812,10 @@ const INDEXED_OPEN_ESCROW_EVENTS = Object.freeze({
   [RECEIPT_EVENT_TOPICS.arbiterReplaced]: {
     eventType: "arbiter_replacement_accepted",
     recordedActions: ["arbiter_replacement_accepted"],
+  },
+  [RECEIPT_EVENT_TOPICS.arbiterResigned]: {
+    eventType: "arbiter_resigned",
+    recordedActions: ["arbiter_resigned"],
   },
 });
 const ADDRESS_ATTRIBUTION = Object.freeze({
@@ -7097,6 +7103,11 @@ async function sendOptedInAgreementActivityEmails(
       recipients: allAgreementRecipients,
       subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} arbiter changed`,
       text: "The mutually approved replacement arbiter accepted the role. Review the updated participant access in OpenEscrow.",
+    },
+    arbiter_resigned: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} arbiter resigned`,
+      text: "The optional arbiter resigned from this agreement. The landlord and tenants should review whether a mutually approved replacement is needed.",
     },
   }[eventType];
   if (!notification) return [];

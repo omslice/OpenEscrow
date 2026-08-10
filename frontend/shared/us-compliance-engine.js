@@ -331,12 +331,29 @@ export function complianceSnapshotMatchesProfile(
   context = {},
 ) {
   const expected = buildComplianceSnapshot(profile, resolution, context);
-  return Boolean(
-    expected &&
-      snapshot &&
-      typeof snapshot === "object" &&
-      JSON.stringify(snapshot) === JSON.stringify(expected),
-  );
+  if (!expected || !snapshot || typeof snapshot !== "object") return false;
+
+  const serializedSnapshot = JSON.stringify(snapshot);
+  if (serializedSnapshot === JSON.stringify(expected)) return true;
+
+  // A small number of early hosted proposals were saved after a transport layer
+  // replaced non-ASCII punctuation with question marks. Keep the policy gate
+  // fail-closed, but recognize that exact legacy representation on display-only
+  // text fields. Operative terms, versions, URLs, facts, deadlines, amounts, and
+  // requirements still have to match byte-for-byte.
+  const legacyExpected = JSON.parse(JSON.stringify(expected));
+  const replaceLegacyDisplayPunctuation = (container, key) => {
+    if (typeof container?.[key] === "string") {
+      container[key] = Array.from(container[key], (character) =>
+        character.codePointAt(0) > 127 ? "?" : character,
+      ).join("");
+    }
+  };
+  replaceLegacyDisplayPunctuation(legacyExpected.source, "citation");
+  replaceLegacyDisplayPunctuation(legacyExpected.depositCap, "summary");
+  replaceLegacyDisplayPunctuation(legacyExpected.claimPolicy?.source, "citation");
+
+  return serializedSnapshot === JSON.stringify(legacyExpected);
 }
 
 function conditionStatus(condition, facts) {

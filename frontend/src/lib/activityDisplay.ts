@@ -36,6 +36,7 @@ export function friendlyActivitySummary(event: NegotiationEvent): string {
       arbiter_replacement_confirmed: "Both agreement sides confirmed the arbiter change.",
       arbiter_replacement_cancelled: "The pending arbiter change was cancelled.",
       arbiter_replacement_accepted: "The replacement arbiter accepted the role.",
+      arbiter_resigned: "The optional arbiter resigned from this agreement.",
     };
     if (indexedMessages[eventType]) return indexedMessages[eventType];
   }

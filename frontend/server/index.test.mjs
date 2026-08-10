@@ -2248,6 +2248,8 @@ const ARBITER_REPLACEMENT_CANCELLED_TOPIC =
   "0xea55ed64aa907da9463ef6eb21d16b92c8672b37f1305df22c0555cd0cc175cf";
 const ARBITER_REPLACED_TOPIC =
   "0x61fd94062542edfecb31f240c9ef0bab60274ed951f163e40614c3d4d02146d1";
+const ARBITER_RESIGNED_TOPIC =
+  "0xcdf89760bd3dd0338c147bd48cbbb478470981d1ad6a52f99ec80d7e3c17bc71";
 const RECORD_SNAPSHOT_ANCHORED_TOPIC =
   "0x4012b6d2c58584f354b2ad24151a4b24d5e18ea9aff9ced4667a2ffe01305ab6";
 const ACTIVITY_PUBLISHED_TOPIC =
@@ -7713,6 +7715,7 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
   const indexedBlock = deploymentBlock + 1;
   const latestBlock = deploymentBlock + 30;
   const directTransaction = transactionHash(91_001);
+  const resignedTransaction = transactionHash(91_005);
   const directLog = {
     address: RECEIPT_TEST_OPEN_ESCROW,
     topics: [
@@ -7737,6 +7740,20 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
     blockHash: "0x1234",
     transactionHash: transactionHash(91_004),
   };
+  const arbiterResignedLog = {
+    address: RECEIPT_TEST_OPEN_ESCROW,
+    topics: [
+      ARBITER_RESIGNED_TOPIC,
+      receiptWord(42),
+      receiptAddressWord("0x4444444444444444444444444444444444444444"),
+    ],
+    data: "0x",
+    transactionHash: resignedTransaction,
+    blockHash: transactionHash(91_006),
+    blockNumber: `0x${(indexedBlock + 1).toString(16)}`,
+    logIndex: "0x1",
+    removed: false,
+  };
   const providerCalls = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, options = {}) => {
@@ -7752,7 +7769,7 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
         : payload.method === "eth_blockNumber"
           ? `0x${latestBlock.toString(16)}`
           : payload.method === "eth_getLogs"
-            ? [wrongContractLog, malformedLog, directLog]
+            ? [wrongContractLog, malformedLog, directLog, arbiterResignedLog]
             : null;
     return Response.json({ jsonrpc: "2.0", id: payload.id, result });
   };
@@ -7778,10 +7795,15 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
       await Promise.all(waits);
     };
     await runScheduled(Date.parse("2026-08-10T12:15:00.000Z"));
-    assert.equal(providerCalls.length, 2);
+    assert.equal(providerCalls.length, 4);
     assert.deepEqual(
       providerCalls.flatMap((call) => call.to).sort(),
-      ["landlord@example.com", "tenant@example.com"],
+      [
+        "landlord@example.com",
+        "landlord@example.com",
+        "tenant@example.com",
+        "tenant@example.com",
+      ],
     );
     const indexed = db
       .prepare(
@@ -7797,9 +7819,21 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
     });
     assert.equal(
       db.prepare("SELECT COUNT(*) AS count FROM indexed_chain_events").first().count,
-      1,
+      2,
       "Malformed and wrong-contract RPC logs must not enter the durable index.",
     );
+    const resigned = db
+      .prepare(
+        `SELECT negotiation_id, event_type, processing_status
+         FROM indexed_chain_events WHERE transaction_hash = ?`,
+      )
+      .bind(resignedTransaction)
+      .first();
+    assert.deepEqual({ ...resigned }, {
+      negotiation_id: created.record.id,
+      event_type: "arbiter_resigned",
+      processing_status: "processed",
+    });
     const timelineEvent = db
       .prepare(
         `SELECT metadata_json FROM negotiation_events
@@ -7817,9 +7851,18 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
         .first().count,
       2,
     );
+    assert.equal(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM notification_deliveries
+           WHERE notification_type = 'agreement_activity_arbiter_resigned'`,
+        )
+        .first().count,
+      2,
+    );
 
     await runScheduled(Date.parse("2026-08-10T12:30:00.000Z"));
-    assert.equal(providerCalls.length, 2, "A finalized indexed log must not resend.");
+    assert.equal(providerCalls.length, 4, "A finalized indexed log must not resend.");
     const originalDateNow = Date.now;
     const readinessNow = originalDateNow() + 60_000;
     Date.now = () => readinessNow;

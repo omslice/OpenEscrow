@@ -4,6 +4,7 @@ import {
   US_JURISDICTION_PROFILES,
   addressResolutionMatchesProfile,
   buildComplianceSnapshot,
+  complianceSnapshotMatchesProfile,
   evaluateSnapshotCompliance,
   isVersionedComplianceSnapshot,
   jurisdictionProfile,
@@ -49,6 +50,49 @@ test("validated addresses route every state and DC to the exact versioned profil
     assert.equal(snapshot.address.stateCode, profile.postalCode);
     assert.equal(snapshot.source.url, profile.statuteUrl);
   }
+});
+
+test("legacy display punctuation does not look like a substantive policy change", () => {
+  const nevada = US_JURISDICTION_PROFILES.find(
+    (profile) => profile.postalCode === "NV",
+  );
+  assert.ok(nevada);
+  const address = addressFor(nevada);
+  const current = buildComplianceSnapshot(nevada, address);
+  assert.ok(current);
+  assert.equal(
+    complianceSnapshotMatchesProfile(current, nevada, address),
+    true,
+  );
+
+  const legacy = structuredClone(current);
+  const legacyDisplayText = (value: string) =>
+    Array.from(value, (character) =>
+      character.codePointAt(0)! > 127 ? "?" : character,
+    ).join("");
+  legacy.source.citation = legacyDisplayText(legacy.source.citation);
+  legacy.depositCap.summary = legacyDisplayText(legacy.depositCap.summary);
+  legacy.claimPolicy.source.citation = legacyDisplayText(
+    legacy.claimPolicy.source.citation,
+  );
+  assert.equal(
+    complianceSnapshotMatchesProfile(legacy, nevada, address),
+    true,
+  );
+
+  const changedDeadline = structuredClone(legacy);
+  changedDeadline.deadlines[0].days += 1;
+  assert.equal(
+    complianceSnapshotMatchesProfile(changedDeadline, nevada, address),
+    false,
+  );
+
+  const changedCitation = structuredClone(current);
+  changedCitation.source.citation = "A different citation";
+  assert.equal(
+    complianceSnapshotMatchesProfile(changedCitation, nevada, address),
+    false,
+  );
 });
 
 test("address routing fails closed for foreign, unknown, and mismatched states", () => {

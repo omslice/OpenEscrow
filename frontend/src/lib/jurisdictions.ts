@@ -6,6 +6,7 @@ import {
 import {
   addressResolutionMatchesProfile as sharedAddressResolutionMatchesProfile,
   buildComplianceSnapshot as sharedBuildComplianceSnapshot,
+  complianceSnapshotMatchesProfile as sharedComplianceSnapshotMatchesProfile,
   evaluateCompliance as sharedEvaluateCompliance,
   evaluateComplianceSnapshot as sharedEvaluateComplianceSnapshot,
   isVersionedComplianceSnapshot as sharedIsVersionedComplianceSnapshot,
@@ -267,6 +268,17 @@ export function buildComplianceSnapshot(
   return sharedBuildComplianceSnapshot(profile, resolution, {
     facts,
   }) as ComplianceSnapshot | null;
+}
+
+export function complianceSnapshotMatchesProfile(
+  snapshot: ComplianceSnapshot,
+  profile: USJurisdictionProfile,
+  resolution: unknown,
+  facts: unknown = DEFAULT_COMPLIANCE_FACTS,
+): boolean {
+  return sharedComplianceSnapshotMatchesProfile(snapshot, profile, resolution, {
+    facts,
+  });
 }
 
 export function normalizeComplianceFacts(value: unknown): ComplianceFacts {

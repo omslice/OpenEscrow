@@ -116,6 +116,7 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   let destructiveProposalRequests = 0;
   let complianceSourceChecks = 0;
+  let sentProposalInvites = 0;
   let savedProposal = null;
 
   await page.route("**/api/address-suggestions**", async (route) => {
@@ -217,6 +218,22 @@ try {
       status: 200,
       contentType: "application/json",
       body: JSON.stringify(savedProposal.record),
+    });
+  });
+  await page.route(/\/api\/negotiations\/OE-P-RECOVERY\/invitations$/, async (route) => {
+    assert.equal(route.request().method(), "POST");
+    const input = route.request().postDataJSON();
+    assert.equal(input.invitedRole, "tenant");
+    assert.equal(input.invitedTenantId, "tenant-1");
+    sentProposalInvites += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sent: true,
+        duplicate: false,
+        recipientEmail: "taylor.tenant@example.com",
+      }),
     });
   });
   await page.route(/\/api\/negotiations\/[^/]+\/actions$/, async (route) => {
@@ -488,6 +505,28 @@ try {
   await page.getByText(
     "Proposal saved. Invitations are now unlocked for this exact revision.",
   ).waitFor({ state: "visible" });
+  assert.equal(
+    await page.getByRole("button", { name: "Send invite", exact: true }).count(),
+    1,
+    "A published proposal should expose one direct-send action for its tenant.",
+  );
+  assert.equal(
+    await page.getByRole("button", { name: "Send manually", exact: true }).count(),
+    1,
+    "A published proposal should expose one manual-send fallback for its tenant.",
+  );
+  assert.equal(
+    await page.getByRole("button", { name: "Reset link", exact: true }).count(),
+    0,
+    "Participant links should rotate automatically instead of exposing a manual reset action.",
+  );
+  await page.getByRole("button", { name: "Send invite", exact: true }).click();
+  await page.getByRole("button", { name: "✓ Sent", exact: true }).waitFor();
+  assert.equal(
+    sentProposalInvites,
+    1,
+    "The invite action should show a checkmark only after the server confirms delivery.",
+  );
   await page.getByRole("button", { name: "Refresh account proposals" }).click();
   const savedProposalCard = page.locator(".saved-proposal-card", {
     hasText: "OE-P-RECOVERY",

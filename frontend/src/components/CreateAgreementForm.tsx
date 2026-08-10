@@ -448,7 +448,7 @@ function AgreementForm({
   const [invalidField, setInvalidField] = useState<ProposalField | null>(null);
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null);
   const [sendingInvite, setSendingInvite] = useState<string | null>(null);
-  const [sentInvite, setSentInvite] = useState<string | null>(null);
+  const [sentInvites, setSentInvites] = useState<Set<string>>(() => new Set());
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isPreflightingFinalization, setIsPreflightingFinalization] =
     useState(false);
@@ -458,6 +458,10 @@ function AgreementForm({
   const handledReceipt = useRef<`0x${string}` | null>(null);
   const finalizationRetryButton = useRef<HTMLButtonElement>(null);
   const pendingFinalizationStored = useRef(true);
+
+  useEffect(() => {
+    setSentInvites(new Set());
+  }, [draft?.id, draft?.revision]);
 
   function confirmProposalChange(message: string) {
     setFormError(null);
@@ -1028,10 +1032,21 @@ function AgreementForm({
           participants: { landlordName, tenantName, arbiterName },
         });
         setDraft(updated);
+        const refreshed = await rotateParticipantInvites(
+          updated,
+          accessBundle || {
+            landlord: landlordAccess.token,
+            tenant: "",
+            tenants: [],
+            arbiter: null,
+          },
+        );
+        setDraft(refreshed.record);
+        setAccessBundle(refreshed.access);
         setRevisionSummary("");
         setIsEditingRevision(false);
         setFormMessage(
-          `Revision ${updated.revision} published. Prior approvals were reset; resend the review invitations so every tenant${updated.arbiterEmail ? " and the arbiter" : ""} can approve the new revision.`,
+          `Revision ${updated.revision} published. Prior approvals and links were reset; fresh review links are ready to send to every tenant${updated.arbiterEmail ? " and the arbiter" : ""}.`,
         );
         setProposalStep("review");
       }
@@ -1150,19 +1165,21 @@ function AgreementForm({
         ],
       };
       setDraft(result.record);
+      const refreshed = await rotateParticipantInvites(result.record, nextBundle);
+      setDraft(refreshed.record);
       setTenantShareDraft(
         Object.fromEntries(
-          result.record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
+          refreshed.record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
         ),
       );
-      setAccessBundle(nextBundle);
-      rememberLandlordBundle({ record: result.record, access: nextBundle });
+      setAccessBundle(refreshed.access);
+      rememberLandlordBundle(refreshed);
       setNewTenantName("");
       setNewTenantEmail("");
       setShowAdditionalTenant(false);
       setIsEditingRevision(false);
       setFormMessage(
-        `Added ${email}. Revision ${result.record.revision} now requires fresh approval from every tenant${result.record.arbiterEmail ? " and the arbiter" : ""}.`,
+        `Added ${email}. Revision ${result.record.revision} now requires fresh approval from every tenant${result.record.arbiterEmail ? " and the arbiter" : ""}. Fresh links are ready to send.`,
       );
     } catch (cause) {
       setFormError(
@@ -1229,19 +1246,21 @@ function AgreementForm({
         tenants: nextTenants,
       };
       setDraft(result.record);
-      setTenantName(result.record.tenantName || "");
-      setTenantEmail(result.record.tenantEmail);
-      setAccessBundle(nextBundle);
+      const refreshed = await rotateParticipantInvites(result.record, nextBundle);
+      setDraft(refreshed.record);
+      setTenantName(refreshed.record.tenantName || "");
+      setTenantEmail(refreshed.record.tenantEmail);
+      setAccessBundle(refreshed.access);
       setTenantShareDraft(
         Object.fromEntries(
-          result.record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
+          refreshed.record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
         ),
       );
-      rememberLandlordBundle({ record: result.record, access: nextBundle });
+      rememberLandlordBundle(refreshed);
       setEditingTenantId(null);
       setIsEditingRevision(false);
       setFormMessage(
-        `Updated ${email} on the active proposal. Revision ${result.record.revision} now requires fresh approval from every tenant${result.record.arbiterEmail ? " and the arbiter" : ""}.${result.invite ? " The prior email invite was invalidated; send the new invite." : ""}`,
+        `Updated ${email} on the active proposal. Revision ${result.record.revision} now requires fresh approval from every tenant${result.record.arbiterEmail ? " and the arbiter" : ""}. Fresh links are ready to send.`,
       );
     } catch (cause) {
       setFormError(
@@ -1283,22 +1302,24 @@ function AgreementForm({
         tenants: remainingInvites,
       };
       setDraft(result.record);
-      setTenantName(result.record.tenantName || "");
-      setTenantEmail(result.record.tenantEmail);
-      setAccessBundle(nextBundle);
+      const refreshed = await rotateParticipantInvites(result.record, nextBundle);
+      setDraft(refreshed.record);
+      setTenantName(refreshed.record.tenantName || "");
+      setTenantEmail(refreshed.record.tenantEmail);
+      setAccessBundle(refreshed.access);
       setTenantShareDraft(
         Object.fromEntries(
-          result.record.tenants.map((recordTenant) => [
+          refreshed.record.tenants.map((recordTenant) => [
             recordTenant.id,
             recordTenant.depositShareBps,
           ]),
         ),
       );
-      rememberLandlordBundle({ record: result.record, access: nextBundle });
+      rememberLandlordBundle(refreshed);
       setEditingTenantId(null);
       setIsEditingRevision(false);
       setFormMessage(
-        `Removed ${tenant.email} from the active proposal. Revision ${result.record.revision} now requires fresh approval from every remaining tenant${result.record.arbiterEmail ? " and the arbiter" : ""}.`,
+        `Removed ${tenant.email} from the active proposal. Revision ${result.record.revision} now requires fresh approval from every remaining tenant${result.record.arbiterEmail ? " and the arbiter" : ""}. Fresh links are ready to send.`,
       );
     } catch (cause) {
       setFormError(
@@ -1386,14 +1407,25 @@ function AgreementForm({
         shares,
       });
       setDraft(updated);
+      const refreshed = await rotateParticipantInvites(
+        updated,
+        accessBundle || {
+          landlord: landlordAccess.token,
+          tenant: "",
+          tenants: [],
+          arbiter: null,
+        },
+      );
+      setDraft(refreshed.record);
+      setAccessBundle(refreshed.access);
       setTenantShareDraft(
         Object.fromEntries(
-          updated.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
+          refreshed.record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
         ),
       );
       setIsEditingRevision(false);
       setFormMessage(
-        `Updated the tenant deposit split. Revision ${updated.revision} now requires fresh approval from every tenant${updated.arbiterEmail ? " and the arbiter" : ""}.`,
+        `Updated the tenant deposit split. Revision ${updated.revision} now requires fresh approval from every tenant${updated.arbiterEmail ? " and the arbiter" : ""}. Fresh links are ready to send.`,
       );
     } catch (cause) {
       setFormError(
@@ -1462,91 +1494,88 @@ function AgreementForm({
       : null;
   }
 
-  async function resetTenantInvite(tenantId: string) {
-    if (!landlordAccess || !draft || !accessBundle) return;
-    const tenant = draft.tenants.find((item) => item.id === tenantId);
-    if (!tenant) return;
-    if (
-      !confirmProposalChange(
-        `Reset the link for ${tenant.email}? The prior link and any current tenant record session will stop working. The invited email can still find this agreement after signing in.`,
-      )
-    ) {
-      return;
+  async function rotateParticipantInvites(
+    record: NegotiationRecord,
+    bundle: CreatedNegotiation["access"],
+  ) {
+    if (!landlordAccess) {
+      throw new Error("The landlord proposal access is unavailable.");
     }
-
-    setIsSavingDraft(true);
-    setFormError(null);
-    setFormMessage(null);
-    try {
-      const result = await resetNegotiationTenantInvite(landlordAccess, tenantId);
-      const existingInvites = accessBundle.tenants || [];
-      const nextTenants = existingInvites.some((item) => item.id === tenantId)
+    let latestRecord = record;
+    let nextBundle = bundle;
+    for (const tenant of record.tenants) {
+      const result = await resetNegotiationTenantInvite(landlordAccess, tenant.id);
+      const existingInvites = nextBundle.tenants || [];
+      const nextTenants = existingInvites.some((item) => item.id === tenant.id)
         ? existingInvites.map((item) =>
-            item.id === tenantId ? result.invite : item,
+            item.id === tenant.id ? result.invite : item,
           )
         : [...existingInvites, result.invite];
-      const nextBundle = {
-        ...accessBundle,
+      nextBundle = {
+        ...nextBundle,
         tenant: result.invite.isFundingTenant
           ? result.invite.token
-          : accessBundle.tenant,
+          : nextBundle.tenant,
         tenants: nextTenants,
       };
-      setDraft(result.record);
+      latestRecord = result.record;
+      setDraft(latestRecord);
       setAccessBundle(nextBundle);
-      rememberLandlordBundle({ record: result.record, access: nextBundle });
-      setCopiedInvite(null);
-      setSentInvite(null);
-      setFormMessage(
-        `Reset the link for ${tenant.email}. Send the new link; every prior copy is invalid.`,
-      );
-    } catch (cause) {
-      setFormError(
-        cause instanceof Error
-          ? cause.message
-          : "The tenant invitation link could not be reset.",
-      );
-    } finally {
-      setIsSavingDraft(false);
+      rememberLandlordBundle({ record: latestRecord, access: nextBundle });
     }
+    if (record.arbiterEmail) {
+      const result = await resetNegotiationArbiterInvite(landlordAccess);
+      nextBundle = { ...nextBundle, arbiter: result.invite.token };
+      latestRecord = result.record;
+      setDraft(latestRecord);
+      setAccessBundle(nextBundle);
+      rememberLandlordBundle({ record: latestRecord, access: nextBundle });
+    } else if (nextBundle.arbiter) {
+      nextBundle = { ...nextBundle, arbiter: null };
+      setAccessBundle(nextBundle);
+      rememberLandlordBundle({ record: latestRecord, access: nextBundle });
+    }
+    setCopiedInvite(null);
+    setSentInvites(new Set());
+    return { record: latestRecord, access: nextBundle };
   }
 
-  async function resetArbiterInvite() {
-    if (!landlordAccess || !draft || !accessBundle || !draft.arbiterEmail) return;
-    if (
-      !confirmProposalChange(
-        `Reset the link for ${draft.arbiterEmail}? The prior link and any current arbiter record session will stop working. The invited email can still find this agreement after signing in.`,
-      )
-    ) {
-      return;
-    }
+  async function ensureTenantInvite(tenantId: string) {
+    const existing = tenantInvite(tenantId);
+    if (existing) return existing;
+    if (!landlordAccess || !draft || !accessBundle) return null;
+    const tenant = draft.tenants.find((item) => item.id === tenantId);
+    if (!tenant) return null;
+    const result = await resetNegotiationTenantInvite(landlordAccess, tenantId);
+    const existingInvites = accessBundle.tenants || [];
+    const nextTenants = existingInvites.some((item) => item.id === tenantId)
+      ? existingInvites.map((item) =>
+          item.id === tenantId ? result.invite : item,
+        )
+      : [...existingInvites, result.invite];
+    const nextBundle = {
+      ...accessBundle,
+      tenant: result.invite.isFundingTenant
+        ? result.invite.token
+        : accessBundle.tenant,
+      tenants: nextTenants,
+    };
+    setDraft(result.record);
+    setAccessBundle(nextBundle);
+    rememberLandlordBundle({ record: result.record, access: nextBundle });
+    return inviteContent("tenant", result.record.id, result.invite.token);
+  }
 
-    setIsSavingDraft(true);
-    setFormError(null);
-    setFormMessage(null);
-    try {
-      const result = await resetNegotiationArbiterInvite(landlordAccess);
-      const nextBundle = {
-        ...accessBundle,
-        arbiter: result.invite.token,
-      };
-      setDraft(result.record);
-      setAccessBundle(nextBundle);
-      rememberLandlordBundle({ record: result.record, access: nextBundle });
-      setCopiedInvite(null);
-      setSentInvite(null);
-      setFormMessage(
-        `Reset the link for ${result.invite.email}. Send the new link; every prior copy is invalid.`,
-      );
-    } catch (cause) {
-      setFormError(
-        cause instanceof Error
-          ? cause.message
-          : "The arbiter invitation link could not be reset.",
-      );
-    } finally {
-      setIsSavingDraft(false);
-    }
+  async function ensureArbiterInvite() {
+    const existing = arbiterInvite();
+    if (existing) return existing;
+    if (!landlordAccess || !draft?.arbiterEmail || !accessBundle) return null;
+    const result = await resetNegotiationArbiterInvite(landlordAccess);
+    const nextBundle = { ...accessBundle, arbiter: result.invite.token };
+    setDraft(result.record);
+    setAccessBundle(nextBundle);
+    rememberLandlordBundle({ record: result.record, access: nextBundle });
+    return inviteContent("arbiter", result.record.id, result.invite.token);
   }
 
   async function recordInvitation(
@@ -1569,7 +1598,7 @@ function AgreementForm({
   }
 
   async function copyTenantInvite(tenantId: string) {
-    const invitation = tenantInvite(tenantId);
+    const invitation = await ensureTenantInvite(tenantId);
     if (!invitation) return;
     setFormError(null);
     try {
@@ -1584,13 +1613,14 @@ function AgreementForm({
   }
 
   async function sendTenantInvite(tenantId: string) {
-    const invitation = tenantInvite(tenantId);
     const tenant = draft?.tenants.find((item) => item.id === tenantId);
-    if (!invitation || !tenant || !landlordAccess) return;
+    if (!tenant || !landlordAccess) return;
     setFormError(null);
     setFormMessage(null);
     setSendingInvite(tenantId);
     try {
+      const invitation = await ensureTenantInvite(tenantId);
+      if (!invitation) throw new Error("The current tenant invitation could not be prepared.");
       const result = await sendNegotiationInvitation(landlordAccess, {
         invitedRole: "tenant",
         invitedTenantId: tenantId,
@@ -1602,7 +1632,7 @@ function AgreementForm({
         );
         return;
       }
-      setSentInvite(tenantId);
+      setSentInvites((current) => new Set(current).add(tenantId));
       setFormMessage(
         result.duplicate
           ? `The current invitation for ${result.recipientEmail} was already sent recently.`
@@ -1618,7 +1648,7 @@ function AgreementForm({
   }
 
   async function copyArbiterInvite() {
-    const invitation = arbiterInvite();
+    const invitation = await ensureArbiterInvite();
     if (!invitation) return;
     setFormError(null);
     try {
@@ -1633,12 +1663,13 @@ function AgreementForm({
   }
 
   async function sendArbiterInvite() {
-    const invitation = arbiterInvite();
-    if (!invitation || !draft?.arbiterEmail || !landlordAccess) return;
+    if (!draft?.arbiterEmail || !landlordAccess) return;
     setFormError(null);
     setFormMessage(null);
     setSendingInvite("arbiter");
     try {
+      const invitation = await ensureArbiterInvite();
+      if (!invitation) throw new Error("The current arbiter invitation could not be prepared.");
       const result = await sendNegotiationInvitation(landlordAccess, {
         invitedRole: "arbiter",
         invitationUrl: invitation.url,
@@ -1649,7 +1680,7 @@ function AgreementForm({
         );
         return;
       }
-      setSentInvite("arbiter");
+      setSentInvites((current) => new Set(current).add("arbiter"));
       setFormMessage(
         result.duplicate
           ? `The current invitation for ${result.recipientEmail} was already sent recently.`
@@ -3388,44 +3419,25 @@ function AgreementForm({
                   <button
                     className="btn btn-primary"
                     type="button"
-                    disabled={!tenantInvite(tenant.id) || sendingInvite !== null}
-                    title={
-                      !tenantInvite(tenant.id)
-                        ? "The original invitation token is not available on this device. Reset the link to create a new one, or the tenant can sign in with the invited email."
-                        : undefined
-                    }
+                    disabled={isSavingDraft || sendingInvite !== null}
                     onClick={() => void sendTenantInvite(tenant.id)}
                   >
                     {sendingInvite === tenant.id
                       ? "Sending..."
-                      : sentInvite === tenant.id
-                        ? draft.status === "finalized"
-                          ? "Record link sent"
-                          : "Invite sent"
-                        : draft.status === "finalized"
-                          ? "Send record link"
-                          : "Send invite"}
+                      : sentInvites.has(tenant.id)
+                        ? "✓ Sent"
+                        : "Send invite"}
                   </button>
                   <button
                     className="btn btn-secondary"
                     type="button"
-                    disabled={!tenantInvite(tenant.id) || sendingInvite !== null}
+                    disabled={isSavingDraft || sendingInvite !== null}
+                    title="Copy the current invitation so you can send it in your preferred email or messaging app."
                     onClick={() => void copyTenantInvite(tenant.id)}
                   >
                     {copiedInvite === tenant.id
-                      ? "Link copied"
-                      : tenant.approved
-                        ? "Copy record link"
-                        : "Copy invite"}
-                  </button>
-                  <button
-                    className="btn btn-ghost"
-                    type="button"
-                    disabled={isSavingDraft || sendingInvite !== null}
-                    title="Create a new link and invalidate every prior copy."
-                    onClick={() => void resetTenantInvite(tenant.id)}
-                  >
-                    Reset link
+                      ? "✓ Copied"
+                      : "Send manually"}
                   </button>
                 </div>
               </div>
@@ -3449,44 +3461,25 @@ function AgreementForm({
                 <button
                   className="btn btn-primary"
                   type="button"
-                  disabled={!arbiterInvite() || sendingInvite !== null}
-                  title={
-                    !arbiterInvite()
-                      ? "The original invitation token is not available on this device. Reset the link to create a new one, or the arbiter can sign in with the invited email."
-                      : undefined
-                  }
+                  disabled={isSavingDraft || sendingInvite !== null}
                   onClick={() => void sendArbiterInvite()}
                 >
                   {sendingInvite === "arbiter"
                     ? "Sending..."
-                    : sentInvite === "arbiter"
-                      ? draft.status === "finalized"
-                        ? "Record link sent"
-                        : "Invite sent"
-                      : draft.status === "finalized"
-                        ? "Send record link"
-                        : "Send invite"}
+                    : sentInvites.has("arbiter")
+                      ? "✓ Sent"
+                      : "Send invite"}
                 </button>
                 <button
                   className="btn btn-secondary"
                   type="button"
-                  disabled={!arbiterInvite() || sendingInvite !== null}
+                  disabled={isSavingDraft || sendingInvite !== null}
+                  title="Copy the current invitation so you can send it in your preferred email or messaging app."
                   onClick={() => void copyArbiterInvite()}
                 >
                   {copiedInvite === "arbiter"
-                    ? "Arbiter link copied"
-                    : draft.arbiterApproved
-                      ? "Copy record link"
-                      : "Copy arbiter invite"}
-                </button>
-                <button
-                  className="btn btn-ghost"
-                  type="button"
-                  disabled={isSavingDraft || sendingInvite !== null}
-                  title="Create a new link and invalidate every prior copy."
-                  onClick={() => void resetArbiterInvite()}
-                >
-                  Reset link
+                    ? "✓ Copied"
+                    : "Send manually"}
                 </button>
                 </div>
               </div>

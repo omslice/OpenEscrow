@@ -63,4 +63,16 @@ test("direct onchain activity uses consumer-facing notification language", () =>
     }),
     "An unanswered claim was escalated for resolution.",
   );
+  assert.equal(
+    friendlyActivitySummary({
+      id: 10,
+      createdAt: "2026-08-10T10:01:00.000Z",
+      actorRole: "system",
+      action: "onchain_activity_indexed",
+      summary: "Detected arbiter_resigned directly on Base Sepolia.",
+      revision: 1,
+      metadata: { eventType: "arbiter_resigned" },
+    }),
+    "The optional arbiter resigned from this agreement.",
+  );
 });
