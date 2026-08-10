@@ -7438,6 +7438,31 @@ function deadlineCandidates(row, events, now, tenantRows = []) {
     ...lifecycleTenants.map((tenant) => [`tenant-${tenant.id}`, tenant.email]),
   ];
   for (const [role, email] of lifecycleRecipients) {
+    if (now < claimWindowStart) {
+      const possessionReminder = [
+        {
+          type: "possession_return_7_days",
+          scheduledFor: addDays(claimWindowStart, -7),
+          text: "The agreement's expected possession-return date is in seven days. Review the shared timeline and prepare any move-out documentation in OpenEscrow.",
+        },
+        {
+          type: "possession_return_1_day",
+          scheduledFor: addDays(claimWindowStart, -1),
+          text: "The agreement's expected possession-return date is tomorrow. Review the shared timeline and preserve any move-out documentation in OpenEscrow.",
+        },
+      ]
+        .filter((candidate) => candidate.scheduledFor <= now)
+        .at(-1);
+      if (possessionReminder) {
+        candidates.push({
+          ...possessionReminder,
+          role,
+          email,
+          preference: "deadline",
+          subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""}: possession-return reminder`,
+        });
+      }
+    }
     if (claimDeadline <= now) {
       candidates.push({
         type: "claim_period_ended",
