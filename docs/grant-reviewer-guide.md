@@ -1,6 +1,6 @@
 # OpenEscrow grant reviewer guide
 
-Last reviewed: 2026-08-09.
+Last reviewed: 2026-08-10.
 
 OpenEscrow is a free, open-source Base Sepolia prototype for a shared rental-deposit process.
 The canonical public app is <https://openescrow.io> and the one-minute overview is
@@ -48,9 +48,10 @@ single signed-in identity to simulate multiple parties.
    tenant-response update. Email bodies intentionally omit the property address, deposit amount,
    evidence, and private agreement notes.
 
-The replacement bounded taUSDC demonstration is not part of the reviewer path until its fresh
-contract cohort is deployed, verified, and activated. The standard testUSDC path is the stable
-public-review path in the meantime.
+The fresh bounded test-token cohort is deployed, independently checked against its recorded
+runtime bytes and immutable bindings, and active in the canonical app. Standard testUSDC remains
+the simplest public-review path. The optional taUSDC path is a deliberately accelerated,
+1%-per-hour testnet demonstration capped at 5%; it is not a real yield product.
 
 ## What the prototype demonstrates
 
@@ -80,8 +81,9 @@ does not mean the system is approved for a real tenancy or real money.
 - [Independent audit handoff](independent-audit-handoff.md)
 - [Current owner-only actions](owner-actions.md)
 
-Material remaining gates include deployment and verification of the replacement test-token cohort,
-promotion of the exact validated candidate to the canonical host, a hosted rehearsal with genuinely
-separate participant accounts, and an independent professional audit before any real-money
-consideration. The credential-free exact-source candidate itself passed at `7cb1e20`; that result is
-not evidence that the candidate has already been deployed.
+The canonical app and retained Sites mirror now report the same clean release provenance, and the
+fresh contract cohort is active. Material remaining gates include a hosted rehearsal with genuinely
+separate participant accounts, resolution of the strict compliance-source alerts, moderated
+usability testing, and independent professional review before any real-money consideration. See
+the [release evidence index](release-evidence-index.md) for the exact source, deployment, and
+validation boundary.

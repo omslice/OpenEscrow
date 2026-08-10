@@ -60,24 +60,27 @@ provider or hosting control that owns the secret.
   and backup cadence, and pass external receive and reply tests from two providers. Preserve the
   working `updates.openescrow.io` Resend records. The detailed acceptance record remains in the
   private funding workspace; no DNS, mailbox or test-message action is authorized by this file.
-- [ ] **Approve the reviewer-safe repository publication tranche.** Review the community-health,
-  funding-transparency and evidence-manifest changes. The prior tranche is already on `main`; exact
-  candidate `7cb1e20` and its `b98255b` provenance update are pushed to the public feature branch but
-  are not yet merged into the default branch. A
+- [x] **Approve and publish the reviewer-safe repository tranche — completed 2026-08-10.** The
+  owner authorized reconciliation of the public default branch with the live application,
+  verified cohort, community-health, funding-transparency, and evidence-manifest state. The
+  published evidence distinguishes the clean live release `4281a1f`, the exact contract source
+  and immutable deployment manifests, and the remaining external-review and supervised-pilot
+  gates. A
   read-only 2026-08-09 inspection proved that the independently modified
   `frontend-site-dist.tar` exactly matches the ignored 320-file July `site-deploy-artifact/` tree;
   both the working and `HEAD` tar contain the legacy Sites hostname, lack `openescrow.io`, and
   predate the funding route. Keep it outside the selected path commit. The recommended separate
   owner decision is to remove the obsolete tracked bundle after confirming no supported workflow
-  consumes it; do not restore or publish it as current evidence. Approve the exact branch, path
-  list and pull-request/default-branch publication separately; follow
+  consumes it; do not restore or publish it as current evidence. It was excluded from the exact
+  publication path and must not be restored or described as current evidence. Follow
   [`reviewer-publication-runbook.md`](./reviewer-publication-runbook.md).
-- [ ] **Confirm the public funding opening facts and deployment.** The local `/funding` route is
-  fail-closed and currently publishes no balance or recipient. Before deployment, confirm all prior
+- [ ] **Confirm the public funding opening facts.** The live `/funding` route is fail-closed and
+  currently publishes no unconfirmed balance or recipient. Before publishing opening facts,
+  confirm all prior
   grants, donations, sponsorships, rewards and investment; the recipient/entity/fiscal-host
   description; any public receiving address; a monitored funding contact; the confirmation date;
-  and whether pending applications may be named. Publishing source does not authorize deploying
-  the route or changing those facts.
+  and whether pending applications may be named. Publishing the route does not authorize changing
+  those facts.
 - [ ] **Resolve the legacy Sites rollback.** A dual-host transition release was recorded on
   2026-08-08, but current applications, demos and reviewer links must use only `openescrow.io`.
   Do not republish the stale tracked Sites tar. Before any external host deletion, owner must review

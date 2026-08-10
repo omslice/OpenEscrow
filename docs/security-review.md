@@ -281,8 +281,10 @@ rejects the wrong contract, escrow, agreement, tenant, token, transaction sender
 The candidate activity registry now authorizes every tenant through the escrow's immutable
 nonzero ownership share instead of recognizing only the primary tenant stored in the agreement
 struct. A secondary-tenant contract regression proves record anchoring and private-activity
-publication, while the existing stranger regression remains fail-closed. This registry change is
-not deployed until a new version-matched registry is broadcast and validated.
+publication, while the existing stranger regression remains fail-closed. The fresh cohort's
+version-matched registry at `0x88b53d6C35020e82B97462E8a1cBCDc8D6d50f53` is deployed and
+validated against escrow `0x9F8C9555f28C10347C58fc71F430F4cbc3724b10`; this does not make the
+internal review an independent audit.
 
 ### Residual hosted-workflow risks
 

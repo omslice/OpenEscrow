@@ -1,6 +1,6 @@
 # Reviewer-safe repository publication
 
-Last reviewed: 2026-08-09.
+Last reviewed: 2026-08-10.
 
 This runbook turns the current local OpenEscrow evidence into a precise public source snapshot for
 funders, auditors, contributors, and pilot partners. It does not authorize a commit, push, pull
@@ -8,11 +8,11 @@ request, merge, contract deployment, external contact, or claim of independent r
 
 ## Why this is a funding dependency
 
-The public default branch contains the earlier reviewer-publication tranche, but it still predates
-the exact `7cb1e20` pilot candidate. Application prose must not send a reviewer to an older default
-branch and ask them to infer newer candidate evidence. A reviewer-safe snapshot must make the exact
-source commit, current limitations, deployed-contract boundary, and reproducible checks visible
-together.
+The 2026-08-10 publication reconciles the public default branch with the live application,
+verified Base Sepolia cohort, and current reviewer evidence. Every later publication must preserve
+that property: a reviewer should never be sent to an older default branch and asked to infer newer
+application or deployment evidence. A reviewer-safe snapshot makes the exact source commit,
+current limitations, deployed-contract boundary, and reproducible checks visible together.
 
 ## Candidate contents
 
@@ -23,8 +23,8 @@ The candidate should include:
 - the security, conduct, governance, maintainership, and contribution policies;
 - the release evidence index, threat models, audit handoff, and deployment manifests;
 - the current contract sources, pinned dependencies, Foundry profile, and checked-in frontend ABIs;
-- the local fail-closed `/funding` route, typed disclosure source, footer link and regressions, while
-  stating that its opening facts are unconfirmed and the route is not deployed;
+- the live fail-closed `/funding` route, typed disclosure source, footer link and regressions, while
+  withholding any unconfirmed opening balance, recipient, entity, fiscal-host, or application fact;
 - the reviewer-evidence generator and its tests; and
 - no generated deployment bundle unless its provenance and ownership are intentionally reconciled.
 
@@ -96,10 +96,11 @@ Never imply that:
 - planned arbiter, optional-yield, partner, or beneficiary work is already operating.
 - an empty local funding ledger proves zero funding received.
 
-## Owner gate
+## Publication record
 
-The exact `7cb1e20` snapshot is public on the feature branch and has complete credential-free
-candidate evidence. The remaining publication action is an owner-approved pull request and
-default-branch merge, followed separately by the owner-signed cohort deployment and canonical-host
-release. Until the merge is verified, reviewer outreach should use the immutable candidate commit
-URL rather than implying that the default branch or live deployment already matches it.
+The 2026-08-10 tranche followed the sequence above: the owner approved publication, the obsolete
+tracked Sites archive remained excluded, the current candidate passed from a clean checkout, and
+the public default branch was reconciled with the live application and verified cohort evidence.
+Future changes reopen the same gate. Until a later merge and deployment are both verified,
+reviewer outreach must use the last immutable release reference rather than implying that newer
+source is already live.

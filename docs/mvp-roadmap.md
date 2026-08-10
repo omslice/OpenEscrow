@@ -1,6 +1,6 @@
 # OpenEscrow testnet MVP roadmap
 
-Updated 2026-08-09. This is the canonical high-level project status. The
+Updated 2026-08-10. This is the canonical high-level project status. The
 [validation ledger](./mvp-checkpoint-2026-07-29.md) contains detailed evidence, and
 [owner actions](./owner-actions.md) contains only work that needs credentials, signatures,
 external professional review, or an owner decision.
@@ -423,8 +423,9 @@ production custody, or reliance on the compliance research as legal advice.
   storage-layout checks, two pinned dependency trees, 122 server tests, 320 client/script checks,
   rendered landlord/multi-tenant and accessibility rehearsals, deployment/incident rehearsals, and
   both hosting builds to the full commit. The follow-up publication record at `b98255b` also passed
-  the strict clean-checkout reviewer manifest with zero blockers. Neither result claims that the
-  candidate contracts or application are already deployed.
+  the strict clean-checkout reviewer manifest with zero blockers. Those results were
+  pre-deployment evidence; the later bullets separately record the verified cohort activation and
+  exact hosted releases.
 - **Verified:** A read-only 2026-08-09 canonical-host check returned HTTP 200 for the app and
   readiness endpoint. The live `d97e09a` release reported participant-capable Resend delivery, a
   healthy 15-minute notification scheduler, encrypted private-R2 evidence with a ready keyring, and
@@ -438,6 +439,14 @@ production custody, or reliance on the compliance research as legal advice.
   secrets, migrations, and F18 rollback manifest. The live app and readiness endpoint returned 200;
   release provenance was clean, registry binding ready, receipt verification enabled, participant
   email ready, notification scheduler healthy, and the evidence keyring ready.
+- **Verified:** Exact application release `4281a1f` was pushed, built from clean source, and
+  deployed to both `openescrow.io` and the retained ChatGPT Sites mirror on 2026-08-10 without
+  replacing either host's D1/R2 bindings, secrets, migrations, or stored data. Both public sites
+  and readiness endpoints returned HTTP 200, reported the same clean 40-character commit, and
+  passed the dual-host canonical redirect check. The complete credential-free release envelope
+  passed on its immediate application predecessor `fca5f13`; `4281a1f` changes only the public
+  capitalization of “Project Funding” and separately passed lint, focused account/accessibility
+  regressions, both exact-source builds, hosted deployment verification, and the dual-host check.
 
 ## Remaining
 
