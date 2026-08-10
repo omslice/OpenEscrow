@@ -10,8 +10,17 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+cloudflare-dist
+worker-configuration.d.ts
+wrangler.selfhost.jsonc
 *.local
 .screenshots
+.pilot-rehearsal
+.incident-rehearsal
+.pilot-candidate
+.contract-assurance
+.deployment-rehearsal
+.pilot-readiness
 
 # Editor directories and files
 .vscode/*

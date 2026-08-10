@@ -1,0 +1,100 @@
+.address-autocomplete {
+  position: relative;
+  margin-bottom: 14px;
+}
+
+.address-autocomplete > label {
+  margin-bottom: 0;
+}
+
+.address-autocomplete-control {
+  position: relative;
+}
+
+.address-autocomplete-control input {
+  padding-right: 104px;
+}
+
+.address-lookup-state,
+.address-verified {
+  position: absolute;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  font-size: 12px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.address-lookup-state {
+  color: var(--text);
+}
+
+.address-verified {
+  color: var(--success);
+}
+
+.address-suggestions {
+  position: absolute;
+  z-index: 24;
+  top: calc(100% - 10px);
+  right: 0;
+  left: 0;
+  margin: 0;
+  padding: 5px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--bg);
+  box-shadow: var(--shadow);
+  list-style: none;
+}
+
+.address-suggestions button {
+  width: 100%;
+  padding: 9px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-h);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.address-suggestions button:hover,
+.address-suggestions button:focus-visible,
+.address-suggestions button.active {
+  background: var(--accent-bg);
+  outline: 2px solid var(--accent-border);
+}
+
+.address-sr-status {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.address-lookup-note {
+  display: block;
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 12px;
+}
+
+.address-attribution {
+  display: block;
+  margin-top: 5px;
+  color: var(--text);
+  font-size: 11px;
+}
+
+.address-attribution a {
+  color: var(--accent);
+}

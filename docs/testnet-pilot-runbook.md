@@ -1,0 +1,231 @@
+# OpenEscrow controlled testnet pilot runbook
+
+Use this runbook only after every required row from `npm.cmd run pilot:check` reports `PASS`.
+Use invented names, addresses, invoices, and photographs. Do not use a real lease, rental address,
+deposit, debit card, bank account, or dispute.
+
+## Credential-free rehearsal
+
+Before configuring hosted services or using funded test wallets, run:
+
+```powershell
+Set-Location frontend
+npm.cmd run pilot:rehearse
+```
+
+This local rehearsal uses an in-memory D1 database, deterministic fake transaction receipts, and
+ephemeral signed test identities. It independently exercises:
+
+- a funded no-claim agreement using separate signed landlord and tenant identities, including
+  premature-withdrawal denial, the full refund, one-time withdrawal, report, and stable snapshot;
+- a fully accepted claim and both final withdrawals;
+- a two-tenant partial dispute, arbiter ruling, and all final withdrawals;
+- account-isolated archive and restore preferences; and
+- the complete report, canonical JSON snapshot, snapshot hash, and recorded receipt trail;
+- the rendered encrypted-record workflow, including a separate verification-key download,
+  wrong-key rejection, local verification during a public-proof outage, keyboard disclosure, and
+  narrow-screen layout;
+- private-evidence upload and download outages that fail closed without phantom records; and
+- a notification-provider outage followed by one idempotent recovery delivery; and
+- landlord-authorized arbiter link rotation with old-link and active-session invalidation; and
+- verified arbiter-email discovery, cross-account denial, archive isolation, and rediscovery
+  after link rotation; and
+- verified-account record-session containment that leaves other parties and invitation links
+  unaffected, followed by clean signed-in rediscovery; and
+- a role-isolated account data inventory that excludes access secrets and other-party details.
+
+The command writes a machine-readable summary and JUnit report under
+`frontend/.pilot-rehearsal/`. These ignored local artifacts contain no invitation tokens, private
+keys, evidence keys, or real transaction hashes.
+
+Run the separate incident-control rehearsal as well:
+
+```powershell
+npm.cmd run incident:rehearse
+```
+
+It writes exact-source JSON and JUnit evidence under `frontend/.incident-rehearsal/`. Follow
+[`testnet-incident-response-runbook.md`](./testnet-incident-response-runbook.md) for the separate
+owner-led containment, privacy-intake, stop-condition, and resumption drill.
+
+The standard repository check now includes credential-free rendered account-switch, keyboard,
+mobile, and load-recovery smoke checks:
+
+```powershell
+npm.cmd run check
+```
+
+For focused troubleshooting, run `npm.cmd run test:account-switch` or
+`npm.cmd run test:accessibility`; the latter includes the persistent address-listbox contract,
+keyboard selection, and proposal Continue/reset focus recovery. Run
+`npm.cmd run test:evidence-recovery` for the supporting-file same-file retry, status announcements,
+scope isolation, and mobile-width regression. Run
+`npm.cmd run test:deposit-list` to verify that multi-agreement accounts mount only one live deposit
+at a time while retaining keyboard and mobile usability. Run `npm.cmd run test:record-list` to
+verify that collapsed multi-record disclosures retain valid accessible targets, mount their tools
+only on demand, keep archive actions separate, and fit a mobile viewport. The
+production landing-load budget runs through `npm.cmd run check:landing-load`; it keeps the
+agreement workspace, nationwide compliance data, and blockchain wallet providers off a clean
+logged-out visit, shows neutral Google/wallet sign-in without a role selector, verifies mobile
+focus and sizing, and proves agreement links load jurisdiction hints on demand while valid
+invitations retain role-locked entry, load their wallet boundary, scrub their bearer token, and
+recover in the same tab when the first deferred workspace download is intentionally interrupted.
+It also proves that invitee recovery does not leave the bearer in persistent local storage. The
+account-switch check holds archive, inventory, wallet setup,
+record-session revocation, preference-save, and test-email operations open across two deterministic
+identities and proves the old account cannot update, download into, announce inside, or sign out
+the new account. The accessibility check covers the public yield dialog and focus return,
+80%-zoom yield-card spacing and badge legibility, workspace tab keyboard behavior, proposal editor
+focus recovery, keyboard address selection, the official-source provenance/recheck control and its
+failure/retry recovery, and mobile-width overflow.
+
+Dynamic wallet setup, transaction, proposal, negotiation, account-security, notification,
+record-export, and receipt-recovery outcomes use status or alert live regions so they are announced
+without moving keyboard focus. The automated smoke check does not replace a moderated screen-reader
+session with the separate landlord and tenant accounts.
+Notification preference and test-email failures use explicit assertive error announcements rather
+than relying on particular words appearing in the provider's message.
+
+A passing local rehearsal proves that the hosted workflow state machine still behaves consistently.
+It does not prove Google/Privy login, live wallet signing, Base Sepolia contracts, hosted D1/R2,
+email delivery, Cron, or provider dashboards. Complete the separate-account steps below before any
+supervised pilot.
+
+## Test identities
+
+Prepare four separate browser profiles and email accounts:
+
+| Profile | Role | Purpose |
+| --- | --- | --- |
+| L | Landlord | Creates and finalizes the proposal, submits a claim |
+| T1 | Tenant 1 | Owns and funds the first deposit share |
+| T2 | Tenant 2 | Owns and funds the second deposit share |
+| A | Arbiter | Reserved for the currently hidden optional-arbiter UI |
+
+Never share wallet private keys. Each person signs in through their own Google account and uses
+the embedded test wallet created for that identity.
+
+The account security control ends only expiring OpenEscrow record sessions issued through verified
+account discovery and then signs out the current device. It does not revoke invitation links or
+sessions held by Privy, a wallet provider, Google, or an email provider.
+If the user switches to a different verified account while revocation is still running, the server
+containment still completes, but OpenEscrow does not clear account links, sign out, or reload the
+newly selected account.
+More generally, switching verified accounts must immediately clear the prior account's proposals,
+records, archive state, expanded panels, and device-local tracked agreement ids. A search or archive
+request started by the prior account must not repopulate or announce anything in the newly selected
+workspace. Account-inventory, wallet-copy, and embedded-wallet setup callbacks must likewise avoid
+showing a late result from the prior account, and wallet setup for the newly selected account must
+remain retryable.
+
+The account data inventory is a privacy-safe metadata manifest, not a complete access-request
+export and not a deletion request. It lists the verified account's proposal references, roles,
+statuses, archive preferences, notification settings, and active-session count. Complete shared
+agreement records remain in the Record tab. The credential-free rehearsal exercises multiple
+agreement states plus encrypted evidence, then proves the inventory excludes private evidence,
+addresses, wallets, participant details, invitation tokens, and account-session tokens while
+archive and notification preferences survive session containment and clean rediscovery. A
+blocked download keeps the prepared JSON only in current-page memory and offers an explicitly
+described **Copy prepared inventory** fallback; changing the verified identity discards it.
+
+## Release smoke test
+
+1. Open the public site in a signed-out private window.
+2. Confirm the hero says **A better way to handle rental deposits.**
+3. Confirm the site is labelled as a Base Sepolia testnet demonstration.
+4. Choose the landlord workspace and verify that no proposal or notification belonging to another
+   email account appears.
+5. Start a proposal search, switch to a different synthetic verified account before it finishes,
+   and confirm the new workspace never shows the prior account's proposals, records, tracked
+   deposits, archive result, or completion announcement.
+6. Expand **Account and workspace**, send a test email, and confirm it arrives with an unsubscribe
+   link.
+
+Stop if any account can see another account's unrelated proposal, notification, document, or
+email address.
+
+## Landlord-to-two-tenant agreement
+
+1. In profile L, create a generic test proposal with:
+   - an invented rental address;
+   - two tenant names and their separate test email addresses;
+   - a 60/40 deposit ownership split;
+   - the plain test token;
+   - a short but valid testnet claim schedule.
+2. Save the proposal. Confirm one active proposal appears at the top of the Proposals tab.
+3. Send both tenant invitations. Confirm each email contains only that proposal's role-locked
+   review link.
+4. In profile T1, open the invitation, propose a change, and do not approve yet.
+5. In profile L, publish a revised proposal. Confirm every prior approval is reset and the running
+   record retains the earlier revision as history without showing a duplicate active proposal.
+6. In profiles T1 and T2, approve the current revision.
+7. In profile L, confirm one clear finalization action appears. Finalize onchain once and confirm
+   the proposal becomes a finalized agreement.
+
+Expected result: neither tenant can create a landlord proposal from the role-locked invitation,
+and the landlord cannot edit finalized terms without starting a new approval cycle.
+
+## Funding and duplicate prevention
+
+1. In T1, claim the required test tokens. Confirm the displayed total includes 60% of the deposit
+   plus half of the 5-token operations reserve.
+2. Approve the displayed total once, then fund it once.
+3. Confirm the same tenant cannot fund again after the receipt is confirmed.
+4. Repeat in T2. Confirm the displayed total includes 40% of the deposit plus the other half of
+   the reserve.
+5. Confirm the agreement does not become fully funded until both contributions arrive.
+6. In the funding ledger, confirm both names, tenant role badges, funded amounts, ownership
+   percentages, and current withdrawable amounts are correct.
+
+## Claim, evidence, and response
+
+1. Move the test chain to the claim window using only the project's intended test schedule.
+2. Confirm both tenants and the landlord receive the claim-window notification once.
+3. In L, upload an invented PDF and submit an itemized deduction claim.
+4. Confirm T1 and T2 can each open the same authorized evidence link.
+5. Confirm a signed-out browser and an invalid invitation token cannot retrieve the evidence.
+6. In T1, approve the deduction in full.
+7. In T2, accept part of it, add a short explanation, and email the response to the landlord.
+8. Confirm neither party can withdraw while the disputed amount is unresolved.
+
+Expected result: the running record identifies which tenant made each response, and duplicate
+responses are rejected.
+
+## Resolution and report
+
+The arbiter workspace remains intentionally hidden in the current public UI. The automated suite
+tests the optional-arbiter ruling path. For the visible pilot, use either unanimous tenant
+acceptance, a landlord claim retraction, or a no-claim refund path.
+
+1. Complete one supported terminal path.
+2. Confirm each party sees only their own nonzero withdrawal allocation.
+3. Withdraw each allocation once and confirm a second withdrawal is unavailable.
+4. Open the Record tab and export the report.
+5. Confirm the report includes the proposal revision, approvals, funding receipts, evidence
+   receipt, claim, every tenant response, resolution, and withdrawals.
+6. Confirm transaction records labelled as verified link to successful Base Sepolia receipts.
+
+## Email scheduler check
+
+1. Keep agreement-activity and deadline notifications enabled for the test identities.
+2. Wait for two scheduler intervals.
+3. Confirm each logical deadline notice arrives only once per recipient.
+4. Use one test account's unsubscribe link.
+5. Confirm its optional reminders stop without changing the other accounts' preferences.
+
+## Stop conditions
+
+Stop the pilot and preserve screenshots plus the exported record if any of these occur:
+
+- one identity sees another agreement's private data;
+- a role-locked invitation opens the wrong role;
+- a tenant can fund or withdraw twice;
+- a withdrawal is offered before the claim is resolved;
+- an unrelated or reverted transaction hash is accepted;
+- an unauthorized evidence request succeeds;
+- a scheduler sends the same logical notice more than once; or
+- the deployed build differs from the validated commit.
+
+Record the exact time, role, agreement reference, visible message, and transaction hash. Never
+include invitation tokens, private keys, evidence-encryption keys, or email-provider credentials in
+the issue report.

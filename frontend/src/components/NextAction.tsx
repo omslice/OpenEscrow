@@ -1,18 +1,36 @@
-import { useAccount } from "wagmi";
-import { Phase, ZERO_ADDRESS } from "../contracts/config";
+import type { ReactNode } from "react";
+import { useAccount, useReadContract } from "wagmi";
+import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
 import { formatTimestamp } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 
-export function NextAction({ agreement }: { agreement: Agreement }) {
+export function NextAction({
+  id,
+  agreement,
+  onOpenClaims,
+}: {
+  id: bigint;
+  agreement: Agreement;
+  onOpenClaims?: () => void;
+}) {
   const { address } = useAccount();
+  const { data: tenantShare } = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "tenantShareBps",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address },
+  });
   if (!address) return null;
 
   const me = address.toLowerCase();
   const isLandlord = me === agreement.landlord.toLowerCase();
-  const isTenant = me === agreement.tenant.toLowerCase();
+  const isTenant =
+    (typeof tenantShare === "bigint" && tenantShare > 0n) ||
+    (typeof tenantShare === "number" && tenantShare > 0);
   const isArbiter = me === agreement.arbiter.toLowerCase();
 
-  let title = "No action required";
+  let title: ReactNode = "No action required";
   let message = "This agreement is waiting for another participant.";
 
   if (agreement.phase === Phase.Proposed) {
@@ -42,11 +60,28 @@ export function NextAction({ agreement }: { agreement: Agreement }) {
     }
   } else if (agreement.phase === Phase.Active) {
     if (isLandlord) {
-      title = "Submit a claim only if needed";
+      title = (
+        <>
+          Submit a{" "}
+          <a
+            className="next-action-link"
+            href={`#agreement-${id.toString()}-panel-claims`}
+            onClick={(event) => {
+              if (!onOpenClaims) return;
+              event.preventDefault();
+              onOpenClaims();
+            }}
+          >
+            claim
+          </a>{" "}
+          only if needed
+        </>
+      );
       message = `The claim window opens ${formatTimestamp(agreement.claimWindowStart)}. Missing the deadline means a full tenant refund.`;
     } else if (isTenant) {
       title = "Deposit protected";
-      message = "If no timely claim is submitted, you can finalize a full refund after the claim deadline.";
+      message =
+        "If no timely claim is submitted, your deposit automatically becomes fully refundable after the claim deadline.";
     }
   } else if (agreement.phase === Phase.ClaimOpen) {
     if (isTenant) {

@@ -1,8 +1,13 @@
 # OpenEscrow — Security Review
 
-**Scope:** `contracts/OpenEscrow.sol` as deployed to Base Sepolia at
-`0x4365f7B9632d083F1a03D57AE56a0e6d239ef62F`, plus the OpenZeppelin v5.1.0
-library code it depends on (`SafeERC20`, `ReentrancyGuard`, `Address`).
+**Scope:** the `contracts/OpenEscrow.sol` source and OpenZeppelin v5.1.0 library code it depends on
+(`SafeERC20`, `ReentrancyGuard`, `Address`). The historical first review referenced the now-retired
+Base Sepolia deployment at `0x4365f7B9632d083F1a03D57AE56a0e6d239ef62F`. The reviewed and
+regression-tested source was redeployed at the currently configured testnet address
+`0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99` after the multi-tenant lifecycle changes. The separate
+`OperationsReserve`, mock-token, and `AgreementActivityRegistry` contracts have automated tests
+but are not covered by the original line-by-line review described below. They are covered by the
+2026-08-05 secondary-contract addendum near the end of this document.
 **Method:** manual line-by-line review (access control matrix, state-machine transition
 completeness, arithmetic/overflow analysis, external-call/reentrancy analysis, timestamp
 sensitivity, economic/griefing vectors) plus automated static analysis (Slither 0.11.5).
@@ -135,11 +140,12 @@ need revisiting if the pinned token ever changes.
 
 ## Areas reviewed with no issues found
 
-- **Reentrancy:** only two external calls exist (`safeTransferFrom` in `tenantAcceptAndFund`,
-  `safeTransfer` in `withdraw`), both behind `nonReentrant` (a single shared guard across the
-  whole contract, so cross-function reentrancy is blocked too, not just same-function
-  reentrancy), both using OpenZeppelin's `SafeERC20`. Verified further by two dedicated
-  reentrancy tests using a token mock that attempts to reenter mid-transfer.
+- **Reentrancy:** in the core source reviewed at that time, token interaction was limited to
+  `safeTransferFrom` during funding and `safeTransfer` during withdrawal. Both used OpenZeppelin's
+  `SafeERC20` behind one shared `nonReentrant` guard, and malicious-token regressions exercised
+  transfer callbacks. The current multi-tenant and atomic-reserve funding path has additional
+  external interactions; its contract-wide guard, effects-before-interactions ordering, and
+  expanded adversarial coverage are reviewed in the 2026-08-05 addendum below.
 - **Arithmetic:** every subtraction in the fund-accounting paths (`submitClaim`, `amendClaim`,
   `_settleResponse`, `resolveDispute`) is bounded by an explicit prior check or a maintained
   invariant (`locked == claimedAmount` while a claim is open and unamended/unresolved),
@@ -174,6 +180,315 @@ an external audit.
 The review also corrected a getter test that claimed to verify nonexistent-agreement behavior
 without calling the getter. `getAgreement` now explicitly reverts `AgreementDoesNotExist`, matching
 the test name, the rest of the read API, and frontend expectations.
+
+## Historical frontend dependency check — 2026-07-25
+
+On 2026-07-25, `npm audit --omit=dev` reported ten moderate `uuid` advisories in transitive MetaMask connector
+dependencies pulled through Privy/wagmi. The suggested forced remediation would downgrade
+`@privy-io/react-auth` across a breaking boundary, so it was not applied automatically. No high or
+critical advisory was reported. Those historical advisories are no longer present in the current
+lockfile; the latest audit result is recorded in the 2026-08-05 addendum below.
+
+## Testnet release gate addendum — 2026-07-26
+
+The frontend CI now runs `npm run release:check`, which combines:
+
+- lint, all hosted/server tests, all client-logic tests, and a production build;
+- `npm audit --omit=dev --audit-level=high`, which blocks high or critical production-dependency
+  advisories while continuing to report the known moderate transitive advisories;
+- exact preservation of the existing Sites project ID and D1/R2 binding names;
+- a fail-closed testnet configuration check that rejects an enabled real-fiat onramp or production
+  approval flag;
+- catalog checks that preserve USDC as the non-yield default, keep USDY unavailable for U.S. and
+  Canadian contexts, and keep FRNT without a funding route.
+
+This is a local release-candidate gate, not the hosted pilot-service gate. After deployment,
+`npm run pilot:check` separately verifies email, Cron, evidence encryption, registry binding,
+address attestations, and official-source baselines against the live readiness endpoint.
+
+## Hosted workflow and evidence addendum — 2026-07-25
+
+A separate review covered the hosted D1 agreement record, notification scheduler, private evidence
+routes, and the frontend-to-record action boundary. This remains an AI-assisted internal review.
+
+The review found that the readable secondary record accepted syntactically valid transaction
+hashes and action payloads without enforcing enough lifecycle order. A party could not move
+onchain funds through that API, but could create a misleading off-chain audit trail: for example,
+recording a tenant response before a claim, recording a ruling without a dispute, recording a
+withdrawal before resolution, or recording the same party's funding more than once under different
+transaction hashes.
+
+The hosted action handler now:
+
+- enforces one reserve and one deposit contribution per tenant;
+- requires a positive, deposit-bounded claim and permits only one original claim;
+- restricts amendments to an unanswered original claim and prevents increases;
+- requires one valid response from every invited tenant;
+- computes whether a real disputed balance exists before accepting an arbiter ruling;
+- bounds the arbiter award by the disputed amount;
+- rejects withdrawals until a response, ruling, retraction, or refund resolves the claim;
+- validates timeout actions against their prerequisite lifecycle state; and
+- records tenant IDs on funding, response, and withdrawal events so co-tenants cannot be
+  conflated.
+
+Base Sepolia receipt verification is enabled by default. Every recorded transaction must have a
+successful receipt whose single matching event proves the current deployment address, event
+signature, agreement ID, and every action-specific field available in that event. Finalization
+also proves every approved tenant wallet/share, the primary tenant, optional arbiter, deposit,
+deadlines, selected token at the confirmed block, and the creating landlord wallet. Tenant
+funding, responses, withdrawals, and private-registry actions bind the submitted participant;
+amount-bearing events bind the validated amount; record anchors and activity receipts bind the
+submitted hash and activity type. Aggregate `AgreementFunded` and `ClaimResponded` events cannot
+stand in for participant-specific events. Verification can be disabled only through an explicit
+emergency diagnostics setting.
+
+Sponsored-wallet client flows also inspect the mined receipt status before they announce success
+or hand a transaction hash to private-record recovery. A reverted or unknown receipt stops test
+token claims, approval/funding follow-up, record anchoring, and privacy-safe activity publishing;
+it therefore cannot create a temporary funded state or a misleading recovery record while the
+server-side verifier later rejects the same transaction.
+
+Evidence upload now checks PDF/JPEG/PNG/WebP file signatures instead of trusting a browser-provided
+MIME type. Evidence downloads and printable reports add no-referrer, no-sniffing, anti-framing, and
+restrictive content-security headers. Static app responses also receive no-referrer and no-sniffing
+headers. Current-client agreement, report, and canonical-snapshot reads carry their agreement
+bearer in the authorization header rather than the URL. The report control performs an
+authenticated fetch and starts a local browser download. The Worker ignores query-string
+credentials for all three private reads: a missing, malformed, or wrong authorization header
+fails closed, while a valid header remains authoritative even if the URL contains an unrelated
+query value.
+
+Compliance finalization now treats wallet preflight only as an audited readiness observation.
+The exact versioned official-source set is checked again before the receipt can be saved, and a
+later changed, stale, pending, or incomplete source state cannot be waived by that earlier event.
+Stored v3/v4 snapshots also cross a structural validation boundary before deadline, claim, report,
+or workspace use. Malformed collections and nested source/fact/cap/overlay/policy shapes fail
+closed; valid JSON-decoded evaluations are recursively copied and frozen so mutable database
+objects cannot alter an evaluation after it is produced.
+
+Automated coverage at this addendum is 221 passing Solidity tests across 20 suites, including the
+three 32,768-call stateful invariants and 512-run fuzz cases, plus 98 passing hosted workflow tests.
+The workflow suite contains a complete two-tenant/optional-arbiter negotiation, funding, claim,
+response, dispute, ruling, refund, and withdrawal scenario. Receipt regressions independently
+reject wrong finalization participants, amounts, and tokens; another tenant's funding event;
+aggregate-event substitution; altered claim/amendment values; a relabeled landlord, tenant, or
+arbiter; altered tenant-response counts; wrong ruling allocations; wrong withdrawal parties or
+amounts; wrong timeout outcomes; and altered private-record hashes, activity types, or actors.
+Finalization coverage also rejects altered arbiter/deadline/share fields, missing participant
+logs, and two partial logs that only match when improperly combined. Operations-reserve coverage
+rejects the wrong contract, escrow, agreement, tenant, token, transaction sender, or exact share.
+The candidate activity registry now authorizes every tenant through the escrow's immutable
+nonzero ownership share instead of recognizing only the primary tenant stored in the agreement
+struct. A secondary-tenant contract regression proves record anchoring and private-activity
+publication, while the existing stranger regression remains fail-closed. This registry change is
+not deployed until a new version-matched registry is broadcast and validated.
+
+### Residual hosted-workflow risks
+
+- Receipt verification depends on a Base Sepolia RPC endpoint. A temporary provider outage can
+  delay saving the readable receipt record, although it does not alter the completed onchain
+  transaction and the UI retains a retry path.
+- A compliance source can close between transaction broadcast and private receipt persistence.
+  The source gate intentionally stays closed even after a successful preflight, so the transaction
+  hash and private proposal must be preserved and explicitly reconciled; the application does not
+  silently finalize against a newly blocked source state.
+- Older finalized records created before landlord-wallet capture now re-verify their stored
+  finalization receipt, exact approved terms and participants, selected token, and creating
+  landlord before accepting another landlord receipt. The recovered wallet is preserved in the
+  audit trail for later checks; an unavailable or mismatched original receipt fails closed.
+- A ready proposal now checks bounded Base Sepolia event ranges after its saved preflight for one
+  unambiguous exact prior `AgreementProposed` event before the UI may submit a new finalization.
+  Discovery is scoped to the connected landlord wallet and matches the approved funding tenant,
+  arbiter, amount, possession-return date, and all three periods. Any candidate still passes
+  through the hosted verifier for the successful receipt, deployed contract, selected token,
+  every tenant share, creating sender, and exclusive proposal assignment. The database trigger
+  atomically rejects reuse of a finalization receipt across proposal records. A found receipt
+  disables the contract-write control and uses a proposal-, role-, and wallet-scoped Record-only
+  recovery entry with no bearer; save failures survive reload without a second agreement. Multiple
+  exact candidates or an RPC failure block a new write rather than weakening duplicate checks.
+  The currently deployed event does not include the private proposal id, so one matching candidate
+  is a strong recovery signal rather than a cryptographic proposal binding. A production contract
+  should emit a blinded proposal reference; until then, ambiguous recovery requires operator
+  review and never auto-attaches a receipt.
+- Arbiter replacement is now mirrored through verified proposal, confirmation, cancellation, and
+  acceptance receipts. A nominee's private-record link remains fail-closed until both agreement
+  parties confirm; acceptance atomically changes the saved exact wallet and email, rotates the
+  bearer, and revokes former-arbiter sessions. Nominee-session provenance also lets invitation
+  reset or cancellation revoke only nominee sessions without removing the current arbiter early.
+  A verified terminal agreement action also expires an unaccepted nominee and its sessions. An
+  authorized participant can recover an interrupted hosted save through a bounded event search
+  near the saved proposal time; the discovered acceptance or cancellation is still submitted to
+  the same exact receipt verifier. Manual transaction-hash entry remains a collapsed technical
+  fallback rather than a normal participant requirement.
+  This hosted safeguard depends on receipt verification remaining enabled.
+- A landlord's pre-funding `cancelProposal` transaction is now mirrored into the hosted lifecycle
+  only after the server verifies the successful `ProposalCancelled` receipt against the exact
+  contract, agreement, and previously verified landlord sender. The D1 status then leaves active
+  proposal/deposit discovery while the append-only event history and report remain available.
+  Receipt verification is mandatory for this state change, exact retries are idempotent, and the
+  browser keeps an interrupted Record-only retry in the exact tab without a bearer credential or
+  a second contract write. If that browser-tab recovery is unavailable, matching landlord access
+  can search bounded Base Sepolia ranges backward from the current block to the saved finalization
+  time, then submit the discovered candidate through the same exact server verifier. Removed,
+  malformed, wrong-event, and wrong-agreement logs are rejected; lookup and Record-save failures
+  remain explicit retries and never expose a second cancellation control or require a raw hash.
+  Until reconciliation succeeds, the contract remains the authority and the stale hosted Record
+  must not be relied upon.
+- Invitation URLs are bearer credentials. A landlord can reset a tenant or optional-arbiter link
+  without changing approved terms; the reset invalidates the prior direct link and the affected
+  account-discovery sessions, while the matching verified email can discover a fresh session.
+  Invitee bearer recovery is scoped to the current browser tab rather than persistent local
+  storage; an older locally stored invitation is moved into session storage and the local copy is
+  removed when encountered. Landlord-created proposal access and verified account-discovery
+  sessions retain their separate durability rules. If URL cleanup removes the role hint before a
+  deferred remount, proposal-only recovery succeeds only when exactly one invitation role matches;
+  multiple matching roles fail closed.
+  A verified user can also revoke all of their own derived record sessions without changing other
+  participants or invitation links. A complete support recovery flow still needs product design.
+  Account-discovery sessions expire after 24 hours and are capped at the five newest sessions per
+  user, role, and tenant context when a tenant identity context is present, while landlord sessions
+  remain capped per agreement and role. Normal tabs and devices keep working without letting
+  repeated refreshes accumulate long-lived bearer tokens. Invitations must not be forwarded or
+  logged.
+- The server record cannot prove that the human-readable note or uploaded document accurately
+  describes the onchain action. Its hash and transaction receipt prove integrity and occurrence,
+  not truth.
+- Email delivery, evidence-key backup, scheduler operation, and separate-account browser testing
+  remain operator responsibilities documented in `pilot-services-setup.md`.
+
+## Secondary contracts and cross-function reentrancy addendum — 2026-08-05
+
+This internal review covered `OperationsReserve`, `AgreementActivityRegistry`, and the
+`OpenEscrow` atomic deposit-plus-reserve boundary. The method combined a manual access-control,
+state-machine, accounting, external-call, reentrancy, deployment-binding, and denial-of-service
+trace with Slither 0.11.5 and adversarial Foundry tests. It remains an AI-assisted internal review,
+not an independent audit.
+
+| Severity | Finding | Resolution |
+| --- | --- | --- |
+| Low / defense in depth | Atomic funding called the reserve before recording the tenant contribution. The entry point was guarded, but a malicious allowlisted token that was itself an agreement party could enter a different, previously unguarded lifecycle function during its transfer callback. | Every externally callable lifecycle mutation now shares the same reentrancy guard, and funding records all agreement effects before token or reserve interactions. A malicious-token regression proves a cross-function arbiter-replacement callback reverts and leaves no contribution, pending replacement, or token balance. Slither no longer reports the funding reentrancy path. |
+| Low | The reserve's one-time `configureEscrow` check matched token addresses but did not require the candidate escrow to point back to that exact reserve. A deployment mistake could therefore bind the reserve permanently to a matching-token escrow that would never call it. | Configuration now requires the reciprocal immutable `OPERATIONS_RESERVE` address. |
+| Low | Standalone reserve payment and the escrow-only record path did not require a fundable agreement phase, so a tenant could send the expressly non-refundable test reserve before arbiter acceptance or after cancellation. | Standalone payments require `ReadyToFund`. The atomic record path accepts `ReadyToFund` for earlier co-tenants or `Active` for the final contribution because escrow effects are now recorded before the external call. Cancelled, proposed, closed, claim, and dispute phases fail closed. |
+| Low | The activity registry treated a named arbiter as a party before acceptance and after decline or resignation. That actor could not move escrow funds but could publish misleading public activity hashes. | Registry authorization now requires the current arbiter to be accepted, not declined, and not resigned. Dedicated unaccepted, declined, and resigned regressions fail closed. |
+
+The reserve still has an immutable treasury that may withdraw only separately disclosed reserve
+balances; it has no path to withdraw refundable principal held by `OpenEscrow`. Direct standalone
+reserve payment remains a testnet compatibility surface and can precede a later landlord
+cancellation, so the current client uses only the atomic deposit-plus-reserve action. A production
+design should remove that unused surface or define an explicit reserve-refund policy after legal
+and provider review.
+
+The registry stores only hashes and events. Parties can spend their own gas publishing repeated
+activity hashes, but this does not grow escrow state or block another party. A hash proves content
+integrity relative to the holder's private bytes; it does not prove truth, authorship beyond the
+calling wallet, legal sufficiency, or confidentiality.
+
+After the fixes, the complete Foundry run passes 234 tests across 22 suites, including nine
+32,768-call stateful accounting properties and the existing fuzz cases. One opt-in live Base
+Sepolia Aave adapter fork test remains skipped without an RPC URL. The current production
+dependency audit reports zero known advisories, and the full hosted application gate passes.
+Remaining Slither results are reviewed design signals: day-scale timestamp deadlines, dependency
+pragma ranges, constant naming, and intentionally ignored participant arrays. None is being
+treated as proof that the contracts are vulnerability-free.
+
+These changes are source-level only. The configured Base Sepolia escrow/reserve pair and activity
+registry do not contain this complete addendum's fixes. Because the core and reserve are mutually
+bound and immutable, activating the funding hardening requires a new reviewed pair; the registry
+must then be deployed against that exact escrow. Existing testnet agreements stay on their old
+immutable code and must be treated as a retired cohort rather than silently migrated.
+
+## Deterministic contract-release assurance addendum — 2026-08-05
+
+The release envelope now forces a clean offline production-profile compile before
+the complete Foundry suite. It fails closed when a compiled frontend ABI differs,
+runtime bytecode has less than 2,048 bytes of EVM size margin, function selectors
+collide, the declared compiler/optimizer/fuzz/invariant profile changes, or the
+reviewed Foundry/OpenZeppelin source trees differ from their pinned gitlink and
+canonical SHA-256 manifests. It records runtime, creation-bytecode, ABI, selector,
+and storage-layout hashes for all three production contracts.
+
+An immutable-cohort regression deploys two independent escrow/reserve/registry
+sets with overlapping agreement identifiers. It proves that balances, reserve
+receipts, roles, and registry publication authority do not cross cohorts and that
+closing the retired agreement cannot change the candidate agreement. A dedicated
+operations-reserve handler adds three stateful invariants covering net token
+accounting, exact unique tenant shares with agreement-token binding, and immutable
+escrow/reserve/treasury bindings.
+
+Pilot-candidate schema v6 binds this contract-assurance evidence to the exact source
+commit together with the deployment rehearsal, both operational rehearsals, the hashed npm
+manifest/lockfile and exact production software inventory, every packaged Cloudflare and Sites
+byte, and the reviewed Cloudflare Worker/origin/binding/scheduler safety boundary.
+The detailed assumptions, residual risks, reproduction commands, and independent
+review questions are in `contract-threat-model.md` and
+`independent-audit-handoff.md`.
+
+The current release envelope includes a separate credential-free local deployment artifact.
+Ephemeral Anvil deploys two full three-contract cohorts from the compiled
+artifacts, exercises overlapping funded agreement IDs and exact cross-registry authorization
+failures, retires only the old principal, verifies all immutable/runtime bindings, and performs a
+12-field in-memory configuration switch followed by byte-for-byte rollback. The public network
+and currently configured cohort remain unchanged.
+
+## Hosted API abuse-resistance addendum — 2026-08-05
+
+The Worker now rejects oversized bodies before route parsing, including streamed bodies without a
+declared length. Normal JSON actions are limited to 512 KiB, private file retrieval actions to
+16 KiB, and evidence uploads to 11 MiB of multipart data while the existing 10 MiB file ceiling
+remains authoritative. Malformed multipart data returns a bounded user-facing error.
+
+Cloudflare-hosted API traffic is divided into address, compliance-refresh, evidence, notification,
+profile, negotiation-read/write, and readiness buckets. Atomic D1 counters apply route-appropriate
+windows; their subject is a SHA-256 digest of the edge-provided client address, so raw addresses
+are not stored and attacker-controlled bearer variations cannot create new subjects. Old windows are removed
+by the scheduled/opportunistic maintenance path, the cleanup query has a verified index plan, and a
+rate-limit storage failure blocks the request instead of silently disabling the control.
+
+Privy verification accepts only ES256 P-256 signing keys and now bounds key-fetch time, response
+size, key count, cache size, token lifetime, and future `iat`/`nbf` claims. Concurrent and repeated
+verification shares a cached key set; unknown-key refresh is deliberately throttled. Unexpected
+Worker exceptions return a generic correlation ID and emit a structured log containing only the
+HTTP method, pathname, ID, and error class. A regression injects the same secret into a query,
+authorization header, and exception and proves it appears in neither the response nor log.
+
+These controls reduce application-layer abuse; they are not a WAF, bot challenge, provider spend
+limit, or denial-of-service guarantee. Privy sponsorship budgets and alerts remain an operator
+control, and production traffic still requires external application-security review and runtime
+monitoring.
+
+The main account-scale database paths are also explicitly indexed. Migration `0020` covers
+verified-email landlord, tenant, original-arbiter, and confirmed replacement-arbiter discovery;
+expired-session removal; per-account session containment; notification-consent lookup; and the
+finalized-agreement scheduler. Query-plan tests require each intended index. Replacement-arbiter
+discovery uses two indexed candidate queries joined by `UNION`, avoiding the former cross-table
+`OR` scan. Session creation for 45 discovered agreements completes in three bounded D1 batches,
+and the browser limits private-record reads to six concurrent requests. These are scale and
+availability controls, not a claim that the current bounded testnet agreement enumerator is a
+production indexer.
+
+The same remote-response boundary now protects Base Sepolia verification. JSON-RPC bodies are
+stream-limited to 512 KiB and must return JSON-RPC 2.0 with the exact request ID and one result.
+Configured custom endpoints must identify Base Sepolia before they can support registry readiness
+or receipt recording. Confirmed receipt objects must contain the submitted transaction hash, a
+block hash/number, success status, sender, and a bounded log collection before event-specific
+matching begins. Identical concurrent receipt/state calls share one in-flight request, reducing
+provider load without caching a receipt across time. Adversarial regressions reject a wrong chain,
+wrong response ID, oversized response, and mismatched transaction receipt, then prove a valid retry
+can finalize normally.
+
+Compliance address routing now requires a complete numbered U.S. street result and a recognized
+state before the Worker can sign an address attestation. Broad place/street results, foreign or
+unknown-state records, and duplicate provider IDs fail closed. Local compliance-overlay data is
+also schema-checked at module load so a future malformed scope, source, condition, or deadline
+cannot be silently applied. These checks establish input and catalog integrity; they do not prove
+legal coverage or replace qualified review.
+
+The funding lifecycle now has a provider-neutral adapter boundary with deterministic conformance
+mocks. Adapter output is exact-shaped and bound to the saved provider and attempt, while terminal
+production events still require signed-provider or authorized-operator provenance plus unique
+reconciliation evidence. The tests cover timeouts, late outcomes, replay conflicts, cancellation,
+failure, refund, and recovery across distinct provider IDs. No production provider endpoint,
+signature verifier, real-money route, or operator authority was enabled by this internal seam.
 
 ## Disclaimer
 

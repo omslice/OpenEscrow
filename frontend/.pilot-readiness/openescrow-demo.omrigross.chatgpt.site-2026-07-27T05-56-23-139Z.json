@@ -1,0 +1,117 @@
+{
+  "baseUrl": "https://openescrow-demo.omrigross.chatgpt.site",
+  "ok": false,
+  "requiredActionCount": 7,
+  "optionalAvailable": 1,
+  "required": [
+    {
+      "label": "Automatic email provider",
+      "detail": "not configured"
+    },
+    {
+      "label": "Hosted notification scheduler",
+      "detail": "no hosted run recorded"
+    },
+    {
+      "label": "Evidence encryption at rest",
+      "detail": "master key not configured"
+    },
+    {
+      "label": "Version-matched onchain record registry",
+      "detail": "registry binding not verified"
+    },
+    {
+      "label": "Server-attested property addresses",
+      "detail": "ADDRESS_ATTESTATION_SECRET is not configured"
+    },
+    {
+      "label": "Official compliance source release gate",
+      "detail": "unknown source checks block new compliance profiles"
+    },
+    {
+      "label": "Compliance source monitor freshness",
+      "detail": "monitor not enabled"
+    }
+  ],
+  "optional": [
+    {
+      "label": "Encrypted decentralized evidence",
+      "detail": "optional pilot experiment not configured"
+    }
+  ],
+  "checks": [
+    {
+      "label": "Automatic email provider",
+      "ready": false,
+      "detail": "not configured",
+      "required": true
+    },
+    {
+      "label": "Hosted notification scheduler",
+      "ready": false,
+      "detail": "no hosted run recorded",
+      "required": true
+    },
+    {
+      "label": "Private evidence storage",
+      "ready": true,
+      "detail": "private-r2",
+      "required": true
+    },
+    {
+      "label": "Evidence encryption at rest",
+      "ready": false,
+      "detail": "master key not configured",
+      "required": true
+    },
+    {
+      "label": "Evidence file-content validation",
+      "ready": true,
+      "detail": "PDF and image signatures enforced",
+      "required": true
+    },
+    {
+      "label": "Agreement lifecycle state guards",
+      "ready": true,
+      "detail": "enabled",
+      "required": true
+    },
+    {
+      "label": "Onchain transaction receipt verification",
+      "ready": true,
+      "detail": "enabled for Base Sepolia",
+      "required": true
+    },
+    {
+      "label": "Version-matched onchain record registry",
+      "ready": false,
+      "detail": "registry binding not verified",
+      "required": true
+    },
+    {
+      "label": "Server-attested property addresses",
+      "ready": false,
+      "detail": "ADDRESS_ATTESTATION_SECRET is not configured",
+      "required": true
+    },
+    {
+      "label": "Official compliance source release gate",
+      "ready": false,
+      "detail": "unknown source checks block new compliance profiles",
+      "required": true
+    },
+    {
+      "label": "Compliance source monitor freshness",
+      "ready": false,
+      "detail": "monitor not enabled",
+      "required": true
+    },
+    {
+      "label": "Encrypted decentralized evidence",
+      "ready": false,
+      "detail": "optional pilot experiment not configured",
+      "required": false
+    }
+  ],
+  "checkedAt": "2026-07-27T05:56:23.138Z"
+}

@@ -1,12 +1,15 @@
 # OpenEscrow
 
-**A tenant-default security-deposit escrow prototype.**
+**A better way to handle rental deposits.**
 
-[X](https://x.com/0penEscrow) · [LinkedIn](https://www.linkedin.com/company/openescrow)
+[X](https://x.com/0penEscrow) · [Farcaster](https://farcaster.xyz/openescrow) · [LinkedIn](https://www.linkedin.com/company/openescrow)
 
-OpenEscrow explores a simple product hypothesis: a rental security deposit should remain protected by default, while a landlord who seeks a deduction must submit a timely claim that the tenant can accept or dispute.
+A clear, documented process from agreement to refund, with fair dispute resolution and optional
+yield. Automated, tracked, and secured by Ethereum.
 
-**Public testnet demo:** [openescrow-demo.omrigross.chatgpt.site](https://openescrow-demo.omrigross.chatgpt.site)
+**Public testnet app:** [openescrow.io](https://openescrow.io)
+
+**Product walkthrough:** [openescrow.io/demo](https://openescrow.io/demo)
 
 The project is an open-source public-interest prototype. It is not a law firm, bank, licensed escrow provider, production custody service, or substitute for jurisdiction-specific legal advice.
 
@@ -14,18 +17,37 @@ The project is an open-source public-interest prototype. It is not a law firm, b
 
 The Base Sepolia testnet MVP implements the complete technical lifecycle:
 
+> **Deployment boundary:** the currently hosted app remains attached to the recorded July 25
+> legacy test-token cohort while the replacement bounded `testUSDC` / `taUSDC` cohort is being
+> deployed and verified. Use the standard test-token path for public review until the replacement
+> cohort is activated. No existing agreement or stored record is migrated by that contract switch.
+
 - A landlord proposes an agreement.
+- Every tenant approves the same saved revision and owns an explicit deposit percentage; shares
+  default evenly and any change resets the approval cycle.
 - An arbiter may be nominated up front and must explicitly accept; or the parties can create the
   agreement without one and mutually appoint one later if a dispute occurs.
-- The tenant accepts and funds with either allowlisted plain testUSDC or test-only ytUSDC shares.
+- Each tenant funds only their approved portion with allowlisted plain testUSDC or test-only
+  taUSDC shares. The agreement activates only after the full deposit has been received.
 - The landlord may submit one timely claim with evidence commitments.
 - The tenant may accept all, accept part, or dispute the claim.
 - Tenant silence becomes a dispute; it never pays the landlord automatically.
 - Only the disputed amount remains locked.
 - The current arbiter may award no more than the disputed amount.
 - If the arbiter misses the deadline, the disputed balance defaults to the tenant.
-- The tenant dashboard shows onchain custody, a deliberately accelerated 20%-per-day demo value,
-  deduction/dispute alerts, deadlines, and resolution status. The demo value is not real yield.
+- The replacement-cohort tenant dashboard shows onchain custody and a deliberately accelerated
+  taUSDC preview that grows from funding at 1% per hour and stops at 5%, alongside
+  deduction/dispute alerts, deadlines, and resolution status. This is simulated testnet value,
+  not real yield.
+- Agreement parties can download a complete timestamped report, preserve an AES-256-GCM encrypted
+  canonical record with a separate verification key, anchor its SHA-256 hash in the Base Sepolia
+  activity registry, and verify the encrypted record locally against current agreement parties.
+- Supporting PDFs and images can be encrypted in a party-authorized private vault or stored as
+  encrypted IPFS ciphertext while a content hash supplies the integrity receipt.
+- Opted-in accounts receive provider-neutral, idempotent action and deadline notices with
+  one-click unsubscribe and a signed-in delivery self-test.
+- Embedded-wallet tenants have a guarded Privy card/bank checkout path ready for sandbox
+  configuration; the public Base Sepolia demo continues to use free test tokens.
 - Tenant and landlord withdraw credited balances using pull payments.
 
 The current source includes:
@@ -36,18 +58,33 @@ The current source includes:
 - [`docs/mvp-spec.md`](docs/mvp-spec.md) — normative MVP behavior
 - [`docs/open-questions.md`](docs/open-questions.md) — legal and product questions blocking real-money use
 - [`docs/security-review.md`](docs/security-review.md) — internal review record and limitations
+- [`docs/dependency-risk-register.md`](docs/dependency-risk-register.md) — fail-closed production dependency audit policy and time-bounded exceptions
+- [`docs/privacy-threat-model.md`](docs/privacy-threat-model.md) — hosted data flows, authorization,
+  evidence protection, recovery boundaries, and the privacy-deletion design gate
 - [`docs/usability-test-plan.md`](docs/usability-test-plan.md) — moderated research script and success gate
 - [`docs/pilot-readiness-brief.md`](docs/pilot-readiness-brief.md) — legal, partner, privacy, and audit handoff
+- [`docs/pilot-services-setup.md`](docs/pilot-services-setup.md) — email, fiat sandbox, and encrypted evidence setup
+- [`docs/owner-actions.md`](docs/owner-actions.md) — running list of owner-only credentials, signatures, decisions, and external reviews
+- [`docs/mvp-roadmap.md`](docs/mvp-roadmap.md) — canonical high-level testnet MVP status, remaining work, and material unknowns
+- [`docs/release-evidence-index.md`](docs/release-evidence-index.md) — claim-to-evidence map for reviewers, contributors, auditors, partners, and funders
+- [`docs/grant-reviewer-guide.md`](docs/grant-reviewer-guide.md) — concise reviewer routes, safety boundaries, and known limitations
+- [`docs/reviewer-publication-runbook.md`](docs/reviewer-publication-runbook.md) — exact-source manifest and owner-gated publication procedure
+- [`GOVERNANCE.md`](GOVERNANCE.md) — current decision process, roles, conflicts, funding independence, and succession direction
+- [`MAINTAINERS.md`](MAINTAINERS.md) — current maintainers and the path to shared stewardship
+- [`SECURITY.md`](SECURITY.md) — private vulnerability reporting and safe research boundaries
+- [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) — participation and enforcement expectations
 
 ### Verification snapshot
 
-- 136 Foundry tests
+- 234 passing Foundry tests across 22 suites, plus one opt-in live Base Sepolia fork test skipped
+  when no RPC URL is supplied
 - 512 runs per fuzz test
-- 256 stateful invariant runs at depth 128
+- Nine stateful accounting properties exercised for 32,768 calls each
 - Frontend lint, TypeScript compilation, and production build
 - Full landlord → arbiter → tenant → dispute → ruling → withdrawal demonstration
 
-These checks materially improve confidence but do not replace an independent smart-contract audit.
+These checks materially improve confidence, but OpenEscrow has not been independently audited and
+they do not replace an independent professional smart-contract audit.
 
 ## MVP architecture
 
@@ -62,8 +99,8 @@ The testnet MVP deliberately excludes the earlier factory/module design.
 | Disputes | Disputed funds remain locked until ruling or timeout |
 | Evidence | Public hash, opaque URI, type, timestamp, submitter |
 | Administration | No owner, pause key, upgrade proxy, or privileged resolver |
-| Yield | Not included |
-| Fees | None |
+| Yield | Funding-relative taUSDC demo accounting at 1%/hour, capped at 5%; no production strategy |
+| Fees | No escrow fee; separate fixed 5 testUSDC pilot operations reserve split evenly among tenants |
 
 See [`docs/technical-overview.md`](docs/technical-overview.md) and [`docs/protocol-flow.md`](docs/protocol-flow.md).
 
@@ -126,5 +163,7 @@ See [`ROADMAP.md`](ROADMAP.md) for release gates.
 ## Contributing
 
 Issues and pull requests are welcome. Read [`CONTRIBUTING.md`](CONTRIBUTING.md) before proposing changes.
+Please report suspected vulnerabilities privately through [`SECURITY.md`](SECURITY.md), not in a
+public issue.
 
 OpenEscrow is licensed under the [MIT License](LICENSE).

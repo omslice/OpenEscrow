@@ -1,0 +1,65 @@
+name: Accessibility report
+description: Report a keyboard, screen-reader, contrast, motion, zoom, language, or mobile-access barrier using synthetic data.
+title: "[Accessibility]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for testing access. Do not include real participant information, private evidence, credentials, or unresolved vulnerability details. Use Base Sepolia and synthetic accounts/data.
+  - type: checkboxes
+    id: preparation
+    attributes:
+      label: Safety and preparation
+      options:
+        - label: I used synthetic data and accounts I control.
+          required: true
+        - label: This report contains no private participant data or secrets.
+          required: true
+        - label: I searched existing issues.
+          required: true
+  - type: textarea
+    id: task
+    attributes:
+      label: Task and barrier
+      description: What were you trying to accomplish, where did you encounter the barrier, and what happened?
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected accessible behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment and assistive technology
+      description: Browser, operating system, viewport/zoom, keyboard-only use, screen reader/version, contrast or reduced-motion setting, and language as relevant.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Include the public testnet URL or source commit and exact synthetic workflow.
+    validations:
+      required: true
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact
+      options:
+        - Blocks the task completely
+        - Requires assistance or an unsafe workaround
+        - Causes substantial confusion, delay, or error risk
+        - Minor friction or presentation issue
+        - Unsure
+    validations:
+      required: true
+  - type: textarea
+    id: standard
+    attributes:
+      label: Relevant standard or suggestion
+      description: Optional WCAG criterion, platform guidance, or proposed improvement.
+    validations:
+      required: false

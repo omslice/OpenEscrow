@@ -1,0 +1,13 @@
+﻿{
+    "network":  "base-sepolia",
+    "chainId":  84532,
+    "sourceCommit":  "4a9da8e041b6adf175e9ef42fe23f035dca08e7b",
+    "escrowSourceCommit":  "64a9fb70a677621f1747bba20b273059296a2521",
+    "exportedAtUtc":  "2026-08-09T08:17:59.2509957Z",
+    "agreementActivityRegistry":  {
+                                      "address":  "0x5ba6533811ee528f6802bb969ab01ff95d7f092e",
+                                      "transactionHash":  "0xdc4b2b57623b8d5ad688dd97295e6f138ebbd9af41806672eb204d6daeca35db",
+                                      "deploymentBlock":  45247418,
+                                      "escrowAddress":  "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99"
+                                  }
+}

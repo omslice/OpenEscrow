@@ -1,0 +1,74 @@
+name: Feature or design proposal
+description: Propose a public-benefit improvement with its safety and evidence requirements.
+title: "[Proposal]: "
+labels:
+  - enhancement
+body:
+  - type: markdown
+    attributes:
+      value: |
+        OpenEscrow prioritizes a safe, independently reviewed pilot over feature volume. Material changes to funds, custody, yield, fees, identity, evidence, compliance, privacy, arbitration, or production operations require a design issue before code.
+  - type: checkboxes
+    id: preparation
+    attributes:
+      label: Preparation
+      options:
+        - label: I searched existing issues, ROADMAP.md, and the current MVP specification.
+          required: true
+        - label: This proposal contains no private participant data or unresolved vulnerability details.
+          required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Describe the observed problem, affected role, and evidence that it exists before describing a solution.
+    validations:
+      required: true
+  - type: textarea
+    id: public_benefit
+    attributes:
+      label: Public-benefit fit
+      description: Explain how this improves fairness, transparency, accessibility, security, privacy, portability, or accountable open infrastructure.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed outcome
+      description: Describe the smallest complete user outcome, not just an implementation preference.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and non-goals
+      description: What else could solve the problem, what should not change, and why this belongs now.
+    validations:
+      required: true
+  - type: checkboxes
+    id: risk_areas
+    attributes:
+      label: Review areas
+      description: Select every area that may be affected.
+      options:
+        - label: Smart-contract state, authorization, funds, fees, or upgrade/deployment behavior
+        - label: Custody, fiat, provider, yield, or financial-product behavior
+        - label: Privacy, evidence, authentication, identity, retention, or deletion
+        - label: Housing law, compliance sources, deadlines, notices, or dispute process
+        - label: Accessibility, language, mobile, or first-time-user comprehension
+        - label: Data migration, immutable deployed cohorts, self-hosting, or rollback
+        - label: Funding independence, governance, conflicts, or essential-record access
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Validation and review plan
+      description: Tests, user research, official sources, professional reviews, migration gates, and stop conditions needed before release.
+    validations:
+      required: true
+  - type: textarea
+    id: conflicts
+    attributes:
+      label: Relevant affiliations or conflicts
+      description: Disclose employment, investment, vendor, grant, token, customer, or organizational interests affected by the proposal, or state none.
+    validations:
+      required: true

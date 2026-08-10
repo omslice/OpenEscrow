@@ -18,9 +18,17 @@ This spec supersedes the flow described in `protocol-flow.md` and `technical-ove
 6. **New:** onchain evidence is a structured record — content hash, privacy-safe URI/opaque identifier, evidence type code, timestamp, submitting party — and nothing else. No names, physical addresses, lease documents, invoices, or photographs go onchain directly. Public IPFS (or any public pointer) is explicitly documented as not private storage. See §9 and the data model in §2.
 7. **Changed from the first draft:** there is no administrator role at all — not even the creation-only `pauseNewAgreements()` proposed in the first draft of §10. Every function is permissionless or role-gated to landlord/tenant/arbiter; nothing is gated to a deployer/owner address.
 8. Single immutable test-token address supplied at deployment; no generic ERC20, ETH, fees,
-   upgradeability, or multi-chain support. The current deployment uses static `ytUSDC` shares whose
-   *displayed testUSDC value* grows linearly at 20% per day. This is experimental accounting only:
+   upgradeability, or multi-chain support. The candidate deployment uses static `taUSDC` shares whose
+   *displayed testUSDC value* grows from agreement funding at 1% per hour and stops at 5%. This is
+   experimental accounting only:
    no underlying asset, redemption, real yield, or monetary value.
+
+**Operations-reserve addendum (2026-07-25):** decision 8 still governs the core `OpenEscrow`
+contract: no fee is taken from deposit principal and the deposit invariant is unchanged. New
+email-negotiated proposals separately disclose a fixed 5 testUSDC pilot service reserve, paid to an
+independent `OperationsReserve` contract atomically with deposit funding. It covers the product's sponsored
+transactions and document-storage budget, has a separate onchain receipt, and is never deductible
+or refundable as part of the security deposit.
 
 ## 0. Scope lock (as given)
 
@@ -107,7 +115,7 @@ Disputed --arbiter rules, before arbiterRulingDeadline--> Closed (ResolvedByArbi
 Disputed --arbiterRulingDeadline passes, no ruling--> Closed (ResolvedByTimeout)
 ```
 
-`Cancelled` and `Closed` are terminal. `Closed` has five possible *reasons* (`NoClaim`, `ClaimRetracted`, `Settled`, `ResolvedByArbiter`, `ResolvedByTimeout`) recorded for UI/events but they are not separate FSM phases — nothing behaves differently between them except the accounting that already happened to get there. `withdraw()` is callable in any phase, including `Closed`, whenever the caller has a nonzero balance; it is not itself a phase transition.
+`Cancelled` and `Closed` are terminal. `Closed` has five possible *reasons* (`NoClaim`, `ClaimRetracted`, `Settled`, `ResolvedByArbiter`, `ResolvedByTimeout`) recorded for UI/events but they are not separate FSM phases — nothing behaves differently between them except the accounting that already happened to get there. `withdraw()` is callable only after the agreement reaches `Closed` or `Cancelled` and the caller has a nonzero credited balance. Allocations may be calculated earlier, but no party can remove funds while a deduction claim or dispute remains unresolved.
 
 Arbiter-replacement (§8) and arbiter-resignation are **not** phase transitions — they can happen inside `ReadyToFund`, `Active`, `ClaimOpen`, or `Disputed` without changing `phase`.
 
@@ -115,12 +123,12 @@ Arbiter-replacement (§8) and arbiter-resignation are **not** phase transitions 
 
 | # | From | Action | To | Caller | Key guards |
 |---|---|---|---|---|---|
-| T1 | (none) | `createAgreement` | `Proposed` | anyone (becomes landlord) | `tenant != arbiter != landlord`; `depositAmount > 0`; `claimWindowStart >= now`; each of `claimPeriod`/`responsePeriod`/`arbiterRulingPeriod` in `[MIN_PERIOD, MAX_PERIOD]` |
+| T1 | (none) | `createAgreement` / `createMultiTenantAgreementWithToken` | `Proposed` | anyone (becomes landlord) | one to ten unique tenants; positive shares total 10,000 bps; tenant/arbiter/landlord roles are disjoint; `depositAmount > 0`; valid timing |
 | T2 | `Proposed` | `acceptArbiterRole` | `ReadyToFund` | nominated arbiter | not already accepted |
 | T3 | `Proposed` | `declineArbiterRole` | `Proposed` (unchanged; landlord must renominate or cancel) | nominated arbiter | records `arbiterDeclined=true`; this nominee cannot later accept unless renominated |
 | T4 | `Proposed` / `ReadyToFund` | `renominateArbiter(newArbiter)` | `Proposed` | landlord | pre-funding only; resets `arbiterAccepted=false` and `arbiterDeclined=false` |
 | T5 | `Proposed` / `ReadyToFund` | `cancelProposal` | `Cancelled` | landlord | pre-funding only |
-| T6 | `ReadyToFund` | `tenantAcceptAndFund` | `Active` | tenant (must equal nominated tenant) | pulls `D` via `transferFrom`; requires prior `approve` |
+| T6 | `ReadyToFund` | `fundTenantShareWithReserve` (`fundTenantShare` and `tenantAcceptAndFund` remain test-compatible deposit-only aliases) | `ReadyToFund` or `Active` | any recorded tenant | atomically pulls that tenant's approved deposit portion plus disclosed reserve share; remains `ReadyToFund` until all deposit portions total the agreed deposit |
 | T7 | `Active` | `submitClaim(C, evidenceURI)` | `ClaimOpen` | landlord | `now < claimSubmissionDeadline`; `0 < C <= D` |
 | T8 | `Active` | `withdrawNoClaim` | `Closed(NoClaim)` | tenant | `now >= claimSubmissionDeadline`; no claim ever submitted |
 | T9 | `ClaimOpen` | `amendClaim(newC, newEvidence)` | `ClaimOpen` (or `Closed(ClaimRetracted)` if `newC == 0`) | landlord | tenant has not yet responded; `!claimAmended` (at most one amendment, ever); `now < responseDeadline`; `newC <= currentC` (never increases, see §5); `responseDeadline` is **not** touched |
@@ -147,7 +155,7 @@ At the exact instant `now == deadline`, the window is expired, never open. This 
 
 Derived deadlines:
 - `claimSubmissionDeadline = claimWindowStart + claimPeriod`
-- `responseDeadline = (time of last submit/amend) + responsePeriod`
+- `responseDeadline = (time of original claim submission) + responsePeriod`
 - `arbiterRulingDeadline = (time dispute created, or time replacement arbiter accepted if later) + arbiterRulingPeriod`
 
 `claimWindowStart` is a fixed timestamp chosen by the landlord at proposal time and implicitly accepted by the tenant when they fund (§15 / `open-questions.md` item A1 — real move-out timing is a legal question this MVP does not attempt to solve). If `claimWindowStart` has already passed by the time the tenant funds, the claim window is simply open immediately — useful for demos, and not a bug.
@@ -159,11 +167,11 @@ No function executes automatically at a deadline. Every transition in §3a that 
 ## 5. Claims: full, partial, absent, late, amended
 
 - **Full claim:** `C == D`. Handled identically to partial in all logic; `D - C == 0` unclaimed remainder, so no tenant-withdrawable amount is created at submission.
-- **Partial claim:** `0 < C < D`. `D - C` becomes tenant-withdrawable immediately (T7 accounting, §9).
+- **Partial claim:** `0 < C < D`. `D - C` is allocated to the tenants immediately for accounting, but remains inside escrow and cannot be withdrawn until the claim reaches a terminal resolution (T7 accounting, §9).
 - **Absent claim:** no `submitClaim` before `claimSubmissionDeadline`. Tenant recovers everything via `withdrawNoClaim` (T8).
 - **Late claim:** `submitClaim` after `claimSubmissionDeadline` reverts (`ClaimWindowClosed`). There is no grace period. A landlord who misses the deadline has no further on-chain recourse in this agreement.
 - **Amended claim:** `amendClaim` is permitted **at most once** per agreement, only before the tenant has responded, and may only **decrease or hold** `C`, never increase it. It never touches `responseDeadline` — that deadline is fixed at the moment of the *original* `submitClaim` and nothing after that can move it, up or down.
-  - The non-increasing rule is a fund-safety requirement, not a stylistic choice: the moment a claim is submitted, `D - C` is already tenant-withdrawable and the tenant may call `withdraw()` immediately. If a later amendment were allowed to *raise* `C`, the contract would have no way to claw back tokens the tenant already pulled out, and the accounting invariant would break. Capping amendments to non-increasing values makes withdrawal timing irrelevant to correctness.
+  - The non-increasing rule is a fund-safety requirement, not a stylistic choice: the moment a claim is submitted, `D - C` is allocated to the tenants. It remains locked from withdrawal until resolution, but increasing the claim later would still reverse an already-recorded allocation. Capping amendments to non-increasing values keeps the accounting monotonic and auditable.
   - The fixed-deadline rule eliminates a griefing vector present in an earlier draft of this spec, where a landlord could repeatedly amend right before `responseDeadline` to indefinitely reset the tenant's response window. With the deadline fixed at first submission and only one amendment ever permitted, there is nothing left to reset — the griefing vector doesn't just get bounded, it's structurally impossible. The tradeoff: if a landlord amends late in the original response window, the tenant may have very little time left to react to the amended figure before `finalizeNoResponse` becomes callable. This is accepted as intended behavior per the approved decision, not a bug — a tenant facing a shrinking claim close to the deadline is never worse off in dollar terms than facing the original (larger) claim, since amendment can only reduce what's at stake.
   - `newC == 0` is treated as claim retraction and closes the agreement in the tenant's favor immediately (§3a, T9) — this is also the only way for a landlord to voluntarily withdraw a claim in this MVP; there is no separate "cancel claim" function, and retraction consumes the single amendment allowance like any other amendment.
 
@@ -171,12 +179,12 @@ No function executes automatically at a deadline. Every transition in §3a that 
 
 ## 6. Tenant acceptance, partial acceptance, and disputes
 
-There is a single tenant-facing function, `respondToClaim(A)`, that unifies acceptance and disputing — there is no separate "dispute" action:
+There is a single tenant-facing function, `respondToClaim(A)`, that unifies acceptance and disputing — there is no separate "dispute" action. Every tenant records one response. The amount accepted without dispute is the lowest amount approved by every tenant; settlement waits until every tenant responds:
 
 - `A == C` — full acceptance. No dispute created. `Ld += C`, agreement closes `Settled`.
 - `0 < A < C` — partial acceptance. `Ld += A` immediately; the remainder `C - A` becomes `disputedAmount`, locked pending the arbiter.
 - `A == 0` — full dispute. Nothing moves to `Ld`; the entire `C` becomes `disputedAmount`.
-- **No response** by `responseDeadline`: anyone may call `finalizeNoResponse`, which is defined as equivalent to `respondToClaim(0)` — i.e. tenant silence is treated as a full dispute of the claimed amount, *not* as acceptance. This is a deliberate policy choice consistent with the project's stated "burden of proof is on the claimant" philosophy: a landlord's claim is never auto-approved by tenant inaction. This is flagged as a product decision worth re-confirming in `open-questions.md` — the alternative (silence = acceptance) is simpler and more common in other escrow designs, but shifts risk onto an inattentive tenant.
+- **Any missing response** by `responseDeadline`: anyone may call `finalizeNoResponse`, which treats the full claimed amount as disputed. Tenant silence is never acceptance. This is a deliberate policy choice consistent with the project's stated "burden of proof is on the claimant" philosophy.
 
 ---
 
@@ -213,7 +221,10 @@ Per-agreement invariant, must hold in every phase after funding:
 depositAmount (D) == tenantWithdrawable (T) + landlordWithdrawable (Ld) + locked + withdrawn (W)
 ```
 
-Before funding, `D = T = Ld = locked = W = 0`. `D` is fixed the instant `tenantAcceptAndFund` succeeds and never changes again.
+Before the first contribution, `D = T = Ld = locked = W = 0`. During partial funding,
+`depositAmount` and `locked` increase by the exact contribution received while the agreement
+remains `ReadyToFund`. Once contributions equal `agreedAmount`, the agreement becomes `Active`;
+no later action can increase `depositAmount`.
 
 Contract-wide invariant (sum over all agreements `i`), useful for Foundry invariant tests against actual token balance:
 
@@ -229,7 +240,7 @@ not weaken solvency. The required property is that the balance always covers lia
 
 | Transition | Precondition | ΔT | ΔLd | Δlocked | ΔW | Resulting phase |
 |---|---|---|---|---|---|---|
-| `tenantAcceptAndFund` | — | 0 | 0 | `+D` | 0 | `Active` |
+| `fundTenantShare` | tenant has not funded | 0 | 0 | `+tenant portion` | 0 | `ReadyToFund`, or `Active` when the agreed total is reached |
 | `submitClaim(C)` | `locked == D` (no prior claim) | `+(D-C)` | 0 | `= C` (i.e. `-(D-C)`) | 0 | `ClaimOpen` |
 | `amendClaim(newC)`, `newC > 0` | tenant hasn't responded; `!claimAmended`; `now < responseDeadline` (unchanged by this call) | `-(newC-C)`* | 0 | `+(newC-C)`* | 0 | `ClaimOpen` |
 | `amendClaim(0)` | tenant hasn't responded; `!claimAmended`; `now < responseDeadline` (unchanged by this call) | `+C` | 0 | `-C` | 0 | `Closed(ClaimRetracted)` |
@@ -273,7 +284,7 @@ Rationale: this is a testnet/demo contract with no upgrade path and no real fund
 ### Threat model
 | Threat | Mitigation | Residual risk |
 |---|---|---|
-| Reentrancy on `withdraw` | Pull-payment pattern; only `withdraw` and `tenantAcceptAndFund` touch the token; checks-effects-interactions; `nonReentrant` guard | Low |
+| Reentrancy during funding, reserve transfer, or `withdraw` | Pull-payment withdrawals; all public lifecycle mutations share one `nonReentrant` guard; the shared funding path records effects before token and reserve calls; balance-delta checks cover incoming deposit/reserve transfers | Low |
 | Malicious/inflated landlord claim | Dispute + arbiter mechanism; amend-only-downward; burden of proof stays with landlord on tenant silence | Depends entirely on arbiter honesty (see below) |
 | Unresponsive tenant | `finalizeNoResponse` defaults to full dispute, not auto-accept | None — this is the corrected design |
 | Unresponsive/malicious arbiter | Timeout defaults disputed funds to tenant; mutual-consent replacement path | A colluding arbiter can still rule wrongly *within* their ruling period — there is no appeal in this MVP. This is the single biggest trust dependency in the system and is inherent to the "mutually accepted arbiter, no decentralized arbitration" scope decision, not a bug to fix here. |
@@ -328,7 +339,7 @@ Legend: U = unit, F = fuzz, I = invariant.
 | §8 arbiter timeout | U + F | Fuzz time past `arbiterRulingDeadline`; confirm full `locked` goes to tenant; confirm `resolveDispute` reverts after timeout is claimable |
 | §8 resignation blocks ruling | U | `resolveDispute` reverts `ArbiterHasResigned` after `resignAsArbiter`, until replaced |
 | §10 no admin | U | No function reverts with an authorization error for a "deployer"/"owner" concept because no such role exists; the contract has no constructor argument, storage slot, or function gated to any address other than a specific agreement's landlord/tenant/arbiter |
-| Reentrancy | U | Malicious ERC20 mock (reentering on `transfer`/`transferFrom`) attempts reentry on `withdraw` and on `tenantAcceptAndFund`; must revert |
+| Reentrancy | U | Malicious ERC20 mock (reentering on `transfer`/`transferFrom`) attempts same-function reentry on funding/withdrawal and cross-function lifecycle mutation during funding; every attempt must revert atomically |
 | Token edge cases | U | `depositAmount` = 1 (dust); very large `depositAmount` near `type(uint256).max` guarded by realistic USDC supply assumptions |
 | Gas sanity | U (gas-report) | Not a correctness test, but track gas per action to catch accidental storage-layout regressions |
 
@@ -337,9 +348,15 @@ Legend: U = unit, F = fuzz, I = invariant.
 ## 14. Minimal frontend journey
 
 1. **Connect wallet.** Detect/prompt switch to Base Sepolia.
-2. **Landlord: create agreement.** Form for tenant address, arbiter address, deposit amount (USDC, human-readable input converted to base units), claim window start date, claim/response/arbiter-ruling periods (sensible presets + custom), and optional jurisdiction context. Submits `createAgreement`. Jurisdiction context is explicitly off-chain: the frontend stores it in the shared URL and local browser storage, while the contract neither validates nor enforces it.
-3. **Arbiter: accept/decline.** A link/notification surface (off-chain, e.g. shared URL) showing pending arbiter invitations; one button each for accept/decline.
-4. **Tenant: review and fund.** Read-only summary of proposed terms (this is the tenant's only chance to review before committing — no on-chain negotiation, §1). Two transactions: `approve` then `tenantAcceptAndFund`, or a single UI step that queues both.
+2. **Landlord: create agreement.** Form for tenant names/emails, deposit ownership percentages
+   (even by default), property, deposit amount, token, and jurisdiction timing. Every tenant must
+   approve the saved offchain revision before the landlord finalizes it onchain.
+3. **Optional arbiter (shelved in the pilot UI).** The underlying accept/decline and replacement
+   flow remains implemented, but new tenant/landlord-only pilot proposals omit an arbiter.
+4. **Each tenant: review and fund.** Every tenant approves only their exact onchain deposit portion,
+   pays an equal share of the separately disclosed operations reserve, and calls
+   `fundTenantShareWithReserve` once so both transfers succeed or revert together. The dashboard
+   shows partial progress until the agreed deposit total is received.
 5. **Agreement dashboard** (all parties). Current phase, countdown to the next relevant deadline, deposit amount, claimed amount if any, evidence link, withdrawable balance for the connected address with a withdraw button.
 6. **Landlord: submit/amend claim.** Amount + a content hash and a privacy-safe pointer/URI (evidence content itself is uploaded off-chain, e.g. to IPFS via a pinning service, with a clear warning that public IPFS is not private). Once amended, the amendment control disappears — only one is ever allowed, and the response deadline shown to the landlord does not move when they use it.
 7. **Tenant: respond to claim.** Accept in full, accept a partial amount with the rest disputed, or dispute in full — one slider/input driving `respondToClaim(A)`.

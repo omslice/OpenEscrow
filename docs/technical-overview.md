@@ -13,14 +13,41 @@ The contract has:
 - One immutable ERC-20 token address
 - No owner or administrator
 - No proxy or upgrade path
-- No protocol fee
+- No fee deducted from or accounted as part of the escrowed deposit
 - No external rules or yield module
 - Per-agreement landlord, tenant, and arbiter roles
 - Pull-based tenant and landlord withdrawals
 
+### `OperationsReserve.sol`
+
+New proposals disclose a separate, fixed 5 testUSDC pilot reserve. The tenant pays it to the
+`OperationsReserve` contract before funding, and the payment produces its own onchain receipt.
+It is not held by `OpenEscrow`, is not refundable deposit principal, and can never become part of a
+landlord deduction claim. The testnet amount is intended to model sponsored Base transactions,
+retries, and encrypted document-storage costs; it is not a validated production price.
+
+### `AgreementActivityRegistry.sol`
+
+This separate, no-custody contract is bound to the active `OpenEscrow` deployment. The landlord,
+tenant, or current arbiter may independently anchor the SHA-256 hash of a canonical agreement
+record or publish a typed activity hash. It stores no names, emails, notes, document pointers, or
+evidence content, and it cannot move escrowed funds. An anchor proves that a party wallet attested
+to exact bytes at a particular block time; it does not prove the underlying content is true or
+legally sufficient.
+
+The finalized-agreement dashboard can also build a versioned activity envelope in the browser,
+hash it with `keccak256`, and publish only that hash as a note, document receipt, formal notice, or
+decision receipt. The readable content is never sent to the server; the user can download a private
+JSON proof that can later reproduce the public hash. Registry receipts are polled into both the
+agreement dashboard and the wallet-scoped notification bell. The D1 record stores only the
+activity type, content hash, and transaction receipt so the printable timeline can reference the
+onchain action without retaining the private plaintext. The dashboard can verify a downloaded
+proof locally by reconstructing the canonical envelope, recomputing its hash, and confirming the
+matching registry event in the referenced Base Sepolia transaction.
+
 ### Frontend
 
-The React frontend talks directly to Base Sepolia through wagmi and viem. It stores tracked agreement IDs in the browser and can discover agreements by scanning bounded event-log ranges from the deployment block.
+The React frontend talks directly to Base Sepolia through wagmi and viem. It stores tracked agreement IDs in the browser and can discover agreements by scanning bounded event-log ranges from the deployment block. Saved proposal activity refreshes automatically, and notification read state is kept locally per connected wallet.
 
 This is acceptable for a small testnet demonstration. A pilot-ready version needs an indexer and notification service.
 
@@ -69,7 +96,7 @@ The inequality is deliberate: anyone can send the token directly to the contract
 
 ## Claims and evidence
 
-A claim includes:
+A contract claim includes:
 
 - Claimed amount
 - Nonzero content hash
@@ -79,6 +106,11 @@ A claim includes:
 - Submitter address
 
 The landlord may amend once, downward only, before the tenant responds. An amendment never resets the response deadline.
+
+The app separately captures structured deduction line items in the D1 negotiation record and
+printable report. It validates that their total equals the aggregate onchain claim amount. These
+off-chain line items improve documentation but are not contract state and do not remove the need
+for privacy-safe, legally sufficient supporting evidence.
 
 The contract cannot determine whether evidence is truthful or legally sufficient. That remains the arbiter's responsibility and, ultimately, a jurisdiction-specific legal question.
 
@@ -94,7 +126,9 @@ The contract cannot determine whether evidence is truthful or legally sufficient
 
 ## Security model
 
-The contract uses OpenZeppelin `SafeERC20` and `ReentrancyGuard`. Token calls occur only during funding and withdrawal.
+The contracts use OpenZeppelin `SafeERC20` and `ReentrancyGuard`. The core escrow token calls occur
+only during funding and withdrawal; the separate operations-reserve contract handles only reserve
+collection and treasury withdrawal.
 
 The primary residual risks are:
 

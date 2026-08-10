@@ -1,0 +1,47 @@
+{
+  "name": "frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "build:sites": "npm run build && node prepare-sites.mjs",
+    "lint": "oxlint",
+    "test:client-logic": "node --test --experimental-strip-types src/lib/*.test.ts",
+    "check": "npm run lint && npm run test:server && npm run test:client-logic && npm run build",
+    "release:check": "npm run check && npm audit --omit=dev --audit-level=high && node scripts/check-release-config.mjs",
+    "pilot:check": "node scripts/check-pilot-readiness.mjs",
+    "pilot:check:artifact": "node scripts/check-pilot-readiness.mjs --json --artifact",
+    "pilot:check:json": "node scripts/check-pilot-readiness.mjs --json",
+    "deploy:pilot-candidate": "cmd /c npm run check && npm run build:sites && npm run pilot:check:artifact",
+    "deploy:pilot-live": "node scripts/deploy-live.mjs",
+    "test:server": "node --test server/index.test.mjs",
+    "e2e:live": "node e2e-full-flow.mjs",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "@privy-io/react-auth": "^3.35.2",
+    "@privy-io/wagmi": "^4.0.15",
+    "@tanstack/react-query": "^5.101.4",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
+    "viem": "2.55.5",
+    "wagmi": "3.7.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.13.2",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.3",
+    "dotenv": "^17.4.2",
+    "oxlint": "^1.71.0",
+    "playwright": "^1.61.1",
+    "typescript": "~5.9.3",
+    "vite": "^8.1.1"
+  },
+  "overrides": {
+    "axios": "1.18.1",
+    "ws": "8.21.1"
+  }
+}

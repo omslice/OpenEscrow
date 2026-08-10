@@ -41,24 +41,45 @@ contract WithdrawTest is Base {
         _assertConserved(id);
     }
 
-    function test_withdraw_partial_doesNotDisturbOtherPartysBalance() public {
+    function test_withdraw_revertsWhileClaimIsOpen_evenWithTenantCredit() public {
         uint256 id = _readyAgreement();
-        _submitClaim(id, DEPOSIT / 2); // tenant already has DEPOSIT/2 withdrawable
+        _submitClaim(id, DEPOSIT / 2);
 
         vm.prank(tenant);
-        escrow.withdraw(id); // withdraw the unclaimed remainder mid-dispute-window
+        vm.expectRevert(OpenEscrow.InvalidPhase.selector);
+        escrow.withdraw(id);
 
         OpenEscrow.Agreement memory a = escrow.getAgreement(id);
-        assertEq(a.tenantWithdrawable, 0);
-        assertEq(a.withdrawn, DEPOSIT / 2);
-        assertEq(a.locked, DEPOSIT / 2, "claimed portion must be untouched by tenant's partial withdrawal");
+        assertEq(a.tenantWithdrawable, DEPOSIT / 2);
+        assertEq(a.withdrawn, 0);
+        assertEq(a.locked, DEPOSIT / 2);
+        _assertConserved(id);
+    }
+
+    function test_withdraw_revertsWhileClaimIsDisputed_evenWithCredits() public {
+        uint256 id = _readyAgreement();
+        _submitClaim(id, DEPOSIT / 2);
+        vm.prank(tenant);
+        escrow.respondToClaim(id, DEPOSIT / 4);
+
+        vm.prank(tenant);
+        vm.expectRevert(OpenEscrow.InvalidPhase.selector);
+        escrow.withdraw(id);
+        vm.prank(landlord);
+        vm.expectRevert(OpenEscrow.InvalidPhase.selector);
+        escrow.withdraw(id);
+
+        OpenEscrow.Agreement memory a = escrow.getAgreement(id);
+        assertEq(a.tenantWithdrawable, DEPOSIT / 2);
+        assertEq(a.landlordWithdrawable, DEPOSIT / 4);
+        assertEq(a.withdrawn, 0);
         _assertConserved(id);
     }
 
     function test_withdraw_revertsWithNothingCredited() public {
         uint256 id = _readyAgreement();
         vm.prank(tenant);
-        vm.expectRevert(OpenEscrow.NothingToWithdraw.selector);
+        vm.expectRevert(OpenEscrow.InvalidPhase.selector);
         escrow.withdraw(id);
     }
 
@@ -108,7 +129,7 @@ contract WithdrawTest is Base {
 
     function test_reentrancy_duringFunding_isBlocked() public {
         ReentrantToken rtoken = new ReentrantToken();
-        OpenEscrow rescrow = new OpenEscrow(address(rtoken), address(rtoken));
+        OpenEscrow rescrow = new OpenEscrow(address(rtoken), address(rtoken), address(0));
 
         rtoken.mint(address(rtoken), DEPOSIT * 2);
         rtoken.selfApprove(address(rescrow), type(uint256).max);
@@ -131,9 +152,39 @@ contract WithdrawTest is Base {
         assertEq(rtoken.balanceOf(address(rescrow)), 0);
     }
 
+    function test_crossFunctionReentrancy_duringFunding_isBlocked() public {
+        ReentrantToken rtoken = new ReentrantToken();
+        OpenEscrow rescrow = new OpenEscrow(address(rtoken), address(rtoken), address(0));
+        address replacement = makeAddr("reentrantReplacement");
+
+        rtoken.mint(address(rtoken), DEPOSIT * 2);
+        rtoken.selfApprove(address(rescrow), type(uint256).max);
+
+        vm.prank(landlord);
+        uint256 id = rescrow.createAgreement(
+            address(rtoken), arbiter, DEPOSIT, uint64(block.timestamp), CLAIM_PERIOD, RESPONSE_PERIOD, ARBITER_PERIOD
+        );
+        vm.prank(arbiter);
+        rescrow.acceptArbiterRole(id);
+
+        rtoken.arm(
+            address(rescrow), abi.encodeWithSelector(OpenEscrow.proposeArbiterReplacement.selector, id, replacement)
+        );
+
+        vm.prank(address(rtoken));
+        vm.expectRevert(ReentrancyGuard.ReentrancyGuardReentrantCall.selector);
+        rescrow.tenantAcceptAndFund(id);
+
+        OpenEscrow.Agreement memory agreement = rescrow.getAgreement(id);
+        assertEq(uint8(agreement.phase), uint8(OpenEscrow.Phase.ReadyToFund));
+        assertEq(agreement.pendingArbiter, address(0));
+        assertEq(rescrow.tenantContribution(id, address(rtoken)), 0);
+        assertEq(rtoken.balanceOf(address(rescrow)), 0);
+    }
+
     function test_reentrancy_duringWithdraw_isBlocked() public {
         ReentrantToken rtoken = new ReentrantToken();
-        OpenEscrow rescrow = new OpenEscrow(address(rtoken), address(rtoken));
+        OpenEscrow rescrow = new OpenEscrow(address(rtoken), address(rtoken), address(0));
 
         rtoken.mint(address(rtoken), DEPOSIT * 2);
         rtoken.selfApprove(address(rescrow), type(uint256).max);

@@ -1,4 +1,4 @@
-[
+﻿[
   {
     "type": "constructor",
     "inputs": [
@@ -9,6 +9,11 @@
       },
       {
         "name": "yieldToken",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "operationsReserve",
         "type": "address",
         "internalType": "address"
       }
@@ -50,6 +55,19 @@
         "name": "",
         "type": "uint64",
         "internalType": "uint64"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "OPERATIONS_RESERVE",
+    "inputs": [],
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
       }
     ],
     "stateMutability": "view"
@@ -326,6 +344,25 @@
   },
   {
     "type": "function",
+    "name": "claimResponseCount",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "confirmArbiterReplacement",
     "inputs": [
       {
@@ -442,6 +479,65 @@
   },
   {
     "type": "function",
+    "name": "createMultiTenantAgreementWithToken",
+    "inputs": [
+      {
+        "name": "tenants",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "sharesBps",
+        "type": "uint16[]",
+        "internalType": "uint16[]"
+      },
+      {
+        "name": "arbiter",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "token",
+        "type": "address",
+        "internalType": "address"
+      },
+      {
+        "name": "depositAmount",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "claimWindowStart",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "claimPeriod",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "responsePeriod",
+        "type": "uint64",
+        "internalType": "uint64"
+      },
+      {
+        "name": "arbiterRulingPeriod",
+        "type": "uint64",
+        "internalType": "uint64"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
     "name": "declineArbiterRole",
     "inputs": [
       {
@@ -475,6 +571,32 @@
   {
     "type": "function",
     "name": "finalizeNoResponse",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "fundTenantShare",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [],
+    "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "fundTenantShareWithReserve",
     "inputs": [
       {
         "name": "id",
@@ -699,6 +821,59 @@
   },
   {
     "type": "function",
+    "name": "getTenantParticipants",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "tenants",
+        "type": "address[]",
+        "internalType": "address[]"
+      },
+      {
+        "name": "sharesBps",
+        "type": "uint16[]",
+        "internalType": "uint16[]"
+      },
+      {
+        "name": "contributions",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      },
+      {
+        "name": "withdrawable",
+        "type": "uint256[]",
+        "internalType": "uint256[]"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "minimumAcceptedClaimAmount",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
     "name": "nextAgreementId",
     "inputs": [],
     "outputs": [
@@ -745,6 +920,30 @@
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "requiredTenantContribution",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "tenant",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -868,6 +1067,126 @@
     ],
     "outputs": [],
     "stateMutability": "nonpayable"
+  },
+  {
+    "type": "function",
+    "name": "tenantAcceptedClaimAmount",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "tenantClaimResponded",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "bool",
+        "internalType": "bool"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "tenantContribution",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "tenantShareBps",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint16",
+        "internalType": "uint16"
+      }
+    ],
+    "stateMutability": "view"
+  },
+  {
+    "type": "function",
+    "name": "tenantWithdrawableByAddress",
+    "inputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      },
+      {
+        "name": "",
+        "type": "address",
+        "internalType": "address"
+      }
+    ],
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint256",
+        "internalType": "uint256"
+      }
+    ],
+    "stateMutability": "view"
   },
   {
     "type": "function",
@@ -1175,7 +1494,7 @@
         "internalType": "uint256"
       },
       {
-        "name": "additionalReleasedToTenant",
+        "name": "additionalAllocatedToTenants",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -1238,7 +1557,7 @@
         "internalType": "uint256"
       },
       {
-        "name": "unclaimedReleased",
+        "name": "unclaimedAllocatedToTenants",
         "type": "uint256",
         "indexed": false,
         "internalType": "uint256"
@@ -1386,6 +1705,99 @@
   },
   {
     "type": "event",
+    "name": "TenantClaimResponseRecorded",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "tenant",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "acceptedAmount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "responseCount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "requiredResponseCount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TenantParticipantAdded",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "tenant",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "shareBps",
+        "type": "uint16",
+        "indexed": false,
+        "internalType": "uint16"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
+    "name": "TenantShareFunded",
+    "inputs": [
+      {
+        "name": "id",
+        "type": "uint256",
+        "indexed": true,
+        "internalType": "uint256"
+      },
+      {
+        "name": "tenant",
+        "type": "address",
+        "indexed": true,
+        "internalType": "address"
+      },
+      {
+        "name": "amount",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      },
+      {
+        "name": "totalFunded",
+        "type": "uint256",
+        "indexed": false,
+        "internalType": "uint256"
+      }
+    ],
+    "anonymous": false
+  },
+  {
+    "type": "event",
     "name": "Withdrawn",
     "inputs": [
       {
@@ -1451,6 +1863,11 @@
   },
   {
     "type": "error",
+    "name": "ClaimResponseAlreadyStarted",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "ClaimWindowClosed",
     "inputs": []
   },
@@ -1491,6 +1908,11 @@
   },
   {
     "type": "error",
+    "name": "InvalidOperationsReserve",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "InvalidPeriod",
     "inputs": []
   },
@@ -1511,6 +1933,11 @@
   },
   {
     "type": "error",
+    "name": "InvalidTenantShares",
+    "inputs": []
+  },
+  {
+    "type": "error",
     "name": "NoReplacementPending",
     "inputs": []
   },
@@ -1522,6 +1949,11 @@
   {
     "type": "error",
     "name": "NothingToWithdraw",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "OperationsReserveNotConfigured",
     "inputs": []
   },
   {
@@ -1554,6 +1986,16 @@
         "internalType": "address"
       }
     ]
+  },
+  {
+    "type": "error",
+    "name": "TenantAlreadyFunded",
+    "inputs": []
+  },
+  {
+    "type": "error",
+    "name": "TenantAlreadyResponded",
+    "inputs": []
   },
   {
     "type": "error",

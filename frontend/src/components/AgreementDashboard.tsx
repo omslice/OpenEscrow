@@ -1,5 +1,9 @@
 import {
-  MockUSDCABI,
+  TestAaveUSDCABI,
+  OpenEscrowABI,
+  OPEN_ESCROW_ADDRESS,
+  OPERATIONS_RESERVE_ADDRESS,
+  OperationsReserveABI,
   Phase,
   YIELD_USDC_ADDRESS,
   ZERO_ADDRESS,
@@ -7,12 +11,21 @@ import {
   phaseLabel,
 } from "../contracts/config";
 import { countdown, formatTimestamp, formatUSDC, shortAddr } from "../lib/format";
+import { agreementReference } from "../lib/displayIds";
 import { useNow } from "../lib/useNow";
 import type { Agreement } from "../lib/useAgreement";
 import { useAccount, useReadContract } from "wagmi";
-import { jurisdictionLabel, readJurisdiction } from "../lib/jurisdictions";
+import {
+  GENERIC_TEST_POLICY,
+  isJurisdictionCode,
+  jurisdictionLabel,
+} from "../lib/jurisdictions";
 import { roleLabel, useInviteRole } from "../lib/inviteContext";
 import type { NegotiationRecord } from "../lib/negotiations";
+import {
+  calculateDepositAccounting,
+  getDepositAssetForTerms,
+} from "../../shared/deposit-assets.js";
 
 function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | null {
   switch (agreement.phase) {
@@ -68,26 +81,59 @@ export function AgreementDashboard({
   const { address } = useAccount();
   const normalized = address?.toLowerCase();
   const inviteRole = useInviteRole();
+  const tenantShare = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "tenantShareBps",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address },
+  });
+  const tenantCredit = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "tenantWithdrawableByAddress",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address, refetchInterval: 5000 },
+  });
+  const isTenant =
+    (typeof tenantShare.data === "bigint" && tenantShare.data > 0n) ||
+    (typeof tenantShare.data === "number" && tenantShare.data > 0);
   const actualRole =
     normalized === agreement.landlord.toLowerCase()
       ? "landlord"
-      : normalized === agreement.tenant.toLowerCase()
+      : isTenant
         ? "tenant"
         : normalized === agreement.arbiter.toLowerCase()
           ? "arbiter"
           : null;
   const availableToYou =
-    normalized === agreement.tenant.toLowerCase()
-      ? agreement.tenantWithdrawable
+    isTenant
+      ? typeof tenantCredit.data === "bigint"
+        ? tenantCredit.data
+        : 0n
       : normalized === agreement.landlord.toLowerCase()
         ? agreement.landlordWithdrawable
         : 0n;
-  const jurisdiction = readJurisdiction(id);
+  const jurisdiction =
+    participantRecord && isJurisdictionCode(participantRecord.terms.jurisdiction)
+      ? participantRecord.terms.jurisdiction
+      : GENERIC_TEST_POLICY.jurisdiction;
+  const reserveRequired = participantRecord?.terms.operationsReserve === "5";
+  const reservePayment = useReadContract({
+    address: OPERATIONS_RESERVE_ADDRESS,
+    abi: OperationsReserveABI,
+    functionName: "paid",
+    args: [OPEN_ESCROW_ADDRESS, id, address || agreement.tenant],
+    query: {
+      enabled: reserveRequired,
+      refetchInterval: 5000,
+    },
+  });
   const currentValue = useReadContract({
     address: agreement.token,
-    abi: MockUSDCABI,
-    functionName: "convertToAssets",
-    args: [agreement.depositAmount],
+    abi: TestAaveUSDCABI,
+    functionName: "previewAssetsSince",
+    args: [agreement.depositAmount, agreement.fundedAt],
     query: {
       enabled:
         agreement.depositAmount > 0n &&
@@ -95,55 +141,75 @@ export function AgreementDashboard({
       refetchInterval: 5000,
     },
   });
-  const fundedValue = useReadContract({
-    address: agreement.token,
-    abi: MockUSDCABI,
-    functionName: "convertToAssetsAt",
-    args: [agreement.depositAmount, agreement.fundedAt],
-    query: {
-      enabled:
-        agreement.depositAmount > 0n &&
-        agreement.fundedAt > 0n &&
-        agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase(),
-    },
-  });
   const isYieldToken = agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase();
-  const tokenLabel = isYieldToken ? "ytUSDC" : "testUSDC";
+  const depositAsset = getDepositAssetForTerms(
+    participantRecord?.terms || { tokenChoice: isYieldToken ? "yield" : "plain" },
+  );
+  const tokenLabel = depositAsset?.testnetSymbol || (isYieldToken ? "taUSDC" : "testUSDC");
   const testValue = (currentValue.data as bigint | undefined) ?? agreement.depositAmount;
-  const startingValue = (fundedValue.data as bigint | undefined) ?? agreement.depositAmount;
-  const testYield = testValue > startingValue ? testValue - startingValue : 0n;
+  const accounting = calculateDepositAccounting({
+    originalPrincipal: agreement.depositAmount,
+    currentRedeemableValue: testValue,
+    feesAndSlippage: 0n,
+    finalDistributed: agreement.withdrawn,
+  });
 
   return (
     <div className="dashboard">
       <div className="agreement-heading">
         <div>
-          <span className="eyebrow">Agreement #{id.toString()}</span>
+          <span className="eyebrow">
+            {agreementReference(id)} · onchain ID {id.toString()}
+          </span>
           <h2>Security deposit</h2>
         </div>
         <span className={`phase-badge phase-${agreement.phase}`}>{phaseLabel[agreement.phase]}</span>
       </div>
       <div className="amount-grid">
         <div className="amount-tile">
-          <span>Deposit shares in escrow</span>
+          <span>Original principal</span>
           <strong>
             {agreement.depositAmount > 0n
-              ? `${formatUSDC(agreement.depositAmount)} ${tokenLabel}`
+              ? `${formatUSDC(accounting.originalPrincipal)} ${isYieldToken ? "testUSDC value" : tokenLabel}`
               : `${formatUSDC(agreement.agreedAmount)} ${tokenLabel} proposed`}
           </strong>
         </div>
         <div className="amount-tile">
-          <span>{isYieldToken ? "Current testUSDC value" : "Token value"}</span>
-          <strong>{agreement.depositAmount > 0n ? formatUSDC(testValue) : "Not funded"}</strong>
+          <span>{isYieldToken ? "Current modeled value" : "Current redeemable value"}</span>
+          <strong>
+            {agreement.depositAmount > 0n
+              ? `${formatUSDC(accounting.currentRedeemableValue)} ${isYieldToken ? "testUSDC" : tokenLabel}`
+              : "Not funded"}
+          </strong>
         </div>
         <div className="amount-tile">
-          <span>Demo yield accrued</span>
-          <strong>{isYieldToken && agreement.depositAmount > 0n ? `+${formatUSDC(testYield)}` : "Not enabled"}</strong>
+          <span>Accrued yield</span>
+          <strong>
+            {isYieldToken && agreement.depositAmount > 0n
+              ? `+${formatUSDC(accounting.accruedYield)} testUSDC`
+              : "Not enabled"}
+          </strong>
+        </div>
+      </div>
+      <div className="amount-grid secondary">
+        <div className="amount-tile">
+          <span>Fees &amp; slippage</span>
+          <strong>{formatUSDC(accounting.feesAndSlippage)} · not modeled in testnet</strong>
+        </div>
+        <div className="amount-tile">
+          <span>Final distributed</span>
+          <strong>{formatUSDC(accounting.finalDistributed)} {tokenLabel}</strong>
+        </div>
+        <div className="amount-tile">
+          <span>Settlement asset</span>
+          <strong>{depositAsset?.settlementAsset || "USDC"}</strong>
         </div>
       </div>
       {isYieldToken && (
         <p className="yield-disclaimer">
-          Test-only projection at 20% per day. The escrow holds fixed ytUSDC shares; there is no
-          underlying asset, redemption, or real yield.
+          Simulated Aave-style path only: demo value grows from the agreement funding time at 1%
+          per hour and stops at 5%. The escrow holds fixed taUSDC shares; there is no aUSDC,
+          underlying USDC, redemption, live APY, or real yield.
         </p>
       )}
       <div className="amount-grid secondary">
@@ -160,12 +226,22 @@ export function AgreementDashboard({
           <strong>{formatUSDC(agreement.locked)} shares</strong>
         </div>
       </div>
+      {reserveRequired && (
+        <div className="dashboard-row">
+          <span className="label">Network &amp; storage reserve</span>
+          <strong>
+            {reservePayment.data === true
+              ? `$5 ${tokenLabel} reserve paid separately`
+              : `$5 ${tokenLabel} reserve due before funding`}
+          </strong>
+        </div>
+      )}
       <div className="dashboard-row">
         <span className="label">Your role for this agreement</span>
         <strong>{actualRole ? roleLabel[actualRole] : "Not a party with this wallet"}</strong>
       </div>
       {inviteRole && actualRole && inviteRole !== actualRole && (
-        <p className="tx-error role-mismatch">
+        <p className="tx-error role-mismatch" role="alert">
           This link invited you as the {inviteRole}, but the connected wallet is registered as the{" "}
           {actualRole}. Sign out and use the {inviteRole}'s Google account or connected wallet.
         </p>
@@ -191,32 +267,76 @@ export function AgreementDashboard({
       />
       <PartyIdentity
         label="Tenant"
-        name={participantRecord?.tenantName}
-        email={participantRecord?.tenantEmail}
+        name={
+          participantRecord?.tenants.find((tenant) => tenant.isFundingTenant)?.name ||
+          participantRecord?.tenantName
+        }
+        email={
+          participantRecord?.tenants.find((tenant) => tenant.isFundingTenant)?.email ||
+          participantRecord?.tenantEmail
+        }
         address={agreement.tenant}
-      />
-      <PartyIdentity
-        label="Arbiter"
-        name={participantRecord?.arbiterName}
-        email={participantRecord?.arbiterEmail}
-        address={agreement.arbiter === ZERO_ADDRESS ? null : agreement.arbiter}
-        fallback="No arbiter selected"
         suffix={
-          agreement.arbiter === ZERO_ADDRESS
-            ? ""
-            : agreement.arbiterAccepted
-              ? " (accepted)"
-              : agreement.arbiterDeclined
-                ? " (declined)"
-                : agreement.arbiterResigned
-                  ? " (resigned)"
-                  : " (pending acceptance)"
+          participantRecord?.tenants.find((tenant) => tenant.isFundingTenant)
+            ? ` (${(
+                participantRecord.tenants.find((tenant) => tenant.isFundingTenant)!
+                  .depositShareBps / 100
+              )
+                .toFixed(2)
+                .replace(/\.?0+$/, "")}% share)`
+            : ""
         }
       />
+      {participantRecord?.tenants
+        .filter((tenant) => !tenant.isFundingTenant)
+        .map((tenant) => (
+          <PartyIdentity
+            key={tenant.id}
+            label="Tenant"
+            name={tenant.name}
+            email={tenant.email}
+            address={tenant.wallet}
+            fallback="Approval wallet not recorded"
+            suffix={` (${(tenant.depositShareBps / 100)
+              .toFixed(2)
+              .replace(/\.?0+$/, "")}% share)`}
+          />
+        ))}
+      {(agreement.arbiter !== ZERO_ADDRESS || participantRecord?.arbiterEmail) && (
+        <PartyIdentity
+          label="Arbiter"
+          name={participantRecord?.arbiterName}
+          email={participantRecord?.arbiterEmail}
+          address={agreement.arbiter === ZERO_ADDRESS ? null : agreement.arbiter}
+          fallback="Arbiter wallet not recorded"
+          suffix={
+            agreement.arbiter === ZERO_ADDRESS
+              ? ""
+              : agreement.arbiterAccepted
+                ? " (accepted)"
+                : agreement.arbiterDeclined
+                  ? " (declined)"
+                  : agreement.arbiterResigned
+                    ? " (resigned)"
+                    : " (pending acceptance)"
+          }
+        />
+      )}
+      {participantRecord?.terms.propertyAddress && (
+        <div className="dashboard-row">
+          <span className="label">Rental property</span>
+          <span>{participantRecord.terms.propertyAddress}</span>
+        </div>
+      )}
       <div className="dashboard-row">
-        <span className="label">Jurisdiction context</span>
+        <span className="label">Jurisdiction policy</span>
         <span>
-          {jurisdictionLabel(jurisdiction)} <small className="offchain-label">off-chain</small>
+          {jurisdictionLabel(jurisdiction)}{" "}
+          <small className="offchain-label">
+            {jurisdiction === GENERIC_TEST_POLICY.jurisdiction
+              ? "test profile"
+              : "address-applied rules"}
+          </small>
         </span>
       </div>
       {agreement.claimedAmount > 0n && (
@@ -227,7 +347,7 @@ export function AgreementDashboard({
       )}
       {agreement.claimWindowStart > 0n && (
         <div className="dashboard-row">
-          <span className="label">Claim window opens</span>
+          <span className="label">Expected tenant vacates / claim window opens</span>
           <span>{formatTimestamp(agreement.claimWindowStart)}</span>
         </div>
       )}
@@ -243,15 +363,15 @@ export function AgreementDashboard({
         <summary>Accounting details</summary>
         <div className="dashboard-row">
           <span className="label">Tenant withdrawable</span>
-          <span>{formatUSDC(agreement.tenantWithdrawable)} ytUSDC shares</span>
+          <span>{formatUSDC(agreement.tenantWithdrawable)} {tokenLabel}</span>
         </div>
         <div className="dashboard-row">
           <span className="label">Landlord withdrawable</span>
-          <span>{formatUSDC(agreement.landlordWithdrawable)} ytUSDC shares</span>
+          <span>{formatUSDC(agreement.landlordWithdrawable)} {tokenLabel}</span>
         </div>
         <div className="dashboard-row">
           <span className="label">Already withdrawn</span>
-          <span>{formatUSDC(agreement.withdrawn)} ytUSDC shares</span>
+          <span>{formatUSDC(agreement.withdrawn)} {tokenLabel}</span>
         </div>
       </details>
     </div>

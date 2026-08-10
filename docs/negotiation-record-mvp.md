@@ -9,8 +9,9 @@
    revision resets every approval.
 4. Once the tenant and, when appointed, the arbiter approve, their approval wallets are mapped to
    the proposal and onchain finalization unlocks.
-5. The landlord remains the only party that can initiate or amend a deduction claim. The claim UI
-   requires an evidence description and document URI.
+5. The landlord remains the only party that can initiate or amend a deduction claim. Each claim is
+   itemized by category, description, and amount, with the line-item total required to match the
+   onchain claim. The claim UI also requires an evidence description and document URI.
 6. The tenant may approve, partially approve, or dispute the claim and add a note. An appointed
    arbiter may review the onchain evidence pointers, rule on a dispute, and add a ruling note.
 
@@ -21,10 +22,47 @@ append-only event stream. Proposal creation, full revision snapshots, requested 
 approvals, invitations, onchain finalization, evidence uploads, deduction claims, notifications,
 tenant responses, and arbiter rulings are timestamped by the server.
 
+After the tenant funds onchain, the app also appends the funding transaction receipt to this
+timeline. If the chain transaction succeeds while the D1 write is unavailable, the browser keeps a
+wallet-scoped pending receipt and offers a retry; repeated submissions are idempotent.
+
 Every role-specific link can open a printable report containing the parties, current terms,
-revision snapshots, approval state, and event timeline. The record is ready to be hashed and
-anchored onchain later; the current MVP does not claim that the off-chain event stream is itself
-immutable or independently notarized.
+revision snapshots, approval state, itemized deduction tables, and event timeline. The record is
+also exportable as browser-encrypted canonical JSON: object keys are deterministically ordered and
+the server returns the SHA-256 hash of the exact canonical bytes. The browser encrypts those bytes
+with a fresh AES-256-GCM key and downloads the key separately. After onchain finalization, the
+landlord, tenant, or current arbiter can submit the plaintext record hash to the separate
+`AgreementActivityRegistry`. Until a party submits that anchor, the off-chain event stream is not
+itself immutable or independently notarized.
+
+Version 3 canonical records bind the snapshot to Base Sepolia, the exact `OpenEscrow`
+deployment, and the matching activity-registry deployment. The browser rejects a version 3
+archive from a different release before describing it as onchain-verified. Private activity proof
+version 2 applies the same domain binding to its hashed envelope and also requires the referenced
+transaction to have been sent to the configured registry. Legacy proof files remain parseable,
+but every receipt lookup is still scoped to the configured registry address.
+
+The printable report groups every recorded transaction hash into a receipt table with a direct
+BaseScan link. This makes funding, claim, response, ruling, reserve, finalization, and registry
+transactions easier to audit without treating a client-submitted hash as independently verified;
+the explorer receipt remains the source to check.
+
+Encrypted full-record exports have a local verifier. The user selects the encrypted JSON and
+provides its separately saved verification key. The browser decrypts the file, validates the
+snapshot schema and proposal identity, recomputes the SHA-256 hash, reads the current agreement
+parties directly from Base Sepolia, and checks the registry's `anchoredBy` mapping for each party.
+The encrypted file, key, and plaintext are not uploaded during verification. A valid but
+unanchored record is clearly distinguished from one whose hash was attested by an agreement-party
+wallet.
+
+Before exposing any registry-backed tool, the frontend reads the registry's immutable `ESCROW()`
+reference and compares it with the active escrow. A mismatch disables publishing, anchoring,
+verification, event history, and registry notifications so agreement IDs from two contract
+releases cannot be conflated.
+
+Printable reports include a dedicated onchain evidence table for recorded snapshot anchors,
+including direct BaseScan receipt links. This table does not claim that plaintext is public or
+independently stored; a hash must be checked against the relevant encrypted record and key.
 
 ## External services
 

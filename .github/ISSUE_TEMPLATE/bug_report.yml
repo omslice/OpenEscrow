@@ -1,0 +1,92 @@
+name: Bug report
+description: Report a reproducible OpenEscrow problem using synthetic Base Sepolia data.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve OpenEscrow. Do not use this form for a suspected vulnerability; follow SECURITY.md privately. Never include private keys, recovery phrases, access or invitation tokens, real leases, addresses, identity documents, evidence, or other personal data.
+  - type: checkboxes
+    id: safety
+    attributes:
+      label: Safety check
+      options:
+        - label: This is not a suspected security vulnerability or private-data exposure.
+          required: true
+        - label: I used Base Sepolia, synthetic information, and accounts or wallets I control.
+          required: true
+        - label: I searched existing issues and the current roadmap.
+          required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Affected surface
+      options:
+        - Public introduction or About
+        - Sign-in, account, or settings
+        - Proposal or agreement negotiation
+        - Deposit funding or withdrawal
+        - Claim, response, dispute, or arbitration
+        - Record, evidence, export, or verification
+        - Notifications
+        - Compliance-source or address workflow
+        - Smart contracts or deployment configuration
+        - Self-hosting or release tooling
+        - Documentation
+        - Other
+    validations:
+      required: true
+  - type: input
+    id: location
+    attributes:
+      label: URL, source commit, or contract address
+      description: Identify the exact public testnet URL, commit, chain, or deployed address without including a secret.
+      placeholder: https://openescrow.io/... or commit/address
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      description: Use minimal synthetic data and state the participant role/account boundary.
+      placeholder: |
+        1. Sign in as a synthetic landlord account...
+        2. Open...
+        3. Observe...
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Browser/device, wallet type, viewport, network, and whether this is hosted or self-hosted. Do not include credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Redacted evidence
+      description: Optional screenshots, logs, request IDs, or transaction hashes. Confirm they contain no secrets or personal data.
+    validations:
+      required: false
+  - type: textarea
+    id: impact
+    attributes:
+      label: User impact and accessibility considerations
+      description: Who is blocked or confused, whether a safe workaround exists, and any keyboard/mobile/screen-reader impact.
+    validations:
+      required: true

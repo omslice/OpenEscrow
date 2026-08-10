@@ -1,0 +1,68 @@
+name: Official-source update
+description: Report a changed, moved, unavailable, or newly relevant government source without proposing automatic legal conclusions.
+title: "[Official source]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This form is for source provenance and change detection, not legal advice. Never include a real lease, participant, property address, dispute, or private evidence. A source change must fail closed and receive human review; it must not automatically rewrite a rule or finalized agreement.
+  - type: checkboxes
+    id: preparation
+    attributes:
+      label: Source check
+      options:
+        - label: The reported source is an official government or court source, not a blog or aggregator.
+          required: true
+        - label: I checked the existing jurisdiction profile, source registry, and related issues.
+          required: true
+        - label: This report contains no real participant or property data.
+          required: true
+  - type: input
+    id: jurisdiction
+    attributes:
+      label: Jurisdiction and tenancy segment
+      placeholder: State / city or county / tenancy type
+    validations:
+      required: true
+  - type: input
+    id: source
+    attributes:
+      label: Official source URL
+      placeholder: https://official-government.example/...
+    validations:
+      required: true
+  - type: dropdown
+    id: observation
+    attributes:
+      label: Observation
+      options:
+        - Source content changed
+        - Source moved or redirects
+        - Source is unavailable or blocked
+        - Effective date changed
+        - A new official source may apply
+        - Current profile cites the wrong source
+        - Other provenance issue
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Verifiable evidence
+      description: Observation date, official publication/effective date, relevant headings or section numbers, and any archived official notice. Quote sparingly.
+    validations:
+      required: true
+  - type: textarea
+    id: profile
+    attributes:
+      label: Affected profile, overlay, version, or source identifier
+      description: Include repository paths or identifiers when known.
+    validations:
+      required: false
+  - type: textarea
+    id: reviewer_boundary
+    attributes:
+      label: Human-review boundary
+      description: State what needs qualified legal or policy review. Do not present your interpretation as approved law or executable product behavior.
+    validations:
+      required: true

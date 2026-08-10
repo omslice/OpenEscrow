@@ -61,7 +61,7 @@ contract ClaimsTest is Base {
 
     // ---- submitClaim: full / partial / absent / late --------------------
 
-    function test_submitClaim_partial_releasesUnclaimedImmediately() public {
+    function test_submitClaim_partial_allocatesUnclaimedButKeepsWithdrawalLocked() public {
         uint256 id = _readyAgreement();
         uint256 claimAmt = DEPOSIT / 4;
         _submitClaim(id, claimAmt);

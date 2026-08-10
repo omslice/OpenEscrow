@@ -1,6 +1,11 @@
 import { useReadContract } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS } from "../contracts/config";
+import {
+  privateEvidencePath,
+  publicEvidenceUrl,
+} from "../lib/evidenceAccess";
 import { formatTimestamp, shortAddr } from "../lib/format";
+import type { NegotiationAccess } from "../lib/negotiations";
 
 interface EvidenceEntry {
   contentHash: `0x${string}`;
@@ -21,7 +26,13 @@ const TYPE_LABEL: Record<number, string> = {
   14: "Claim—other",
 };
 
-export function EvidenceList({ id }: { id: bigint }) {
+export function EvidenceList({
+  id,
+  negotiationAccess,
+}: {
+  id: bigint;
+  negotiationAccess?: NegotiationAccess | null;
+}) {
   const { data } = useReadContract({
     address: OPEN_ESCROW_ADDRESS,
     abi: OpenEscrowABI,
@@ -35,26 +46,71 @@ export function EvidenceList({ id }: { id: bigint }) {
 
   return (
     <div className="evidence-list">
-      <h4>Evidence trail ({entries.length})</h4>
+      <h4>Supporting files ({entries.length})</h4>
       <p className="hint">
-        Only a hash and pointer are ever stored on-chain - the contract never sees or validates the
-        underlying content.
+        This list shows when supporting documentation was added. The public agreement record keeps
+        a digital fingerprint and protected file reference, but it does not inspect or judge the
+        file itself.
       </p>
       <ul>
-        {entries.map((e, i) => (
-          <li key={i}>
-            <strong>{TYPE_LABEL[e.evidenceType] ?? `Type ${e.evidenceType}`}</strong> by{" "}
-            {shortAddr(e.submittedBy)} at {formatTimestamp(e.timestamp)}
-            <br />
-            hash: <code>{e.contentHash}</code>
-            {e.uri && (
-              <>
-                <br />
-                pointer: <code>{e.uri}</code>
-              </>
-            )}
-          </li>
-        ))}
+        {entries.map((e, i) => {
+          const typeLabel = TYPE_LABEL[e.evidenceType] ?? "Supporting record";
+          const privatePath = negotiationAccess
+            ? privateEvidencePath(e.uri)
+            : null;
+          const documentUrl = publicEvidenceUrl(e.uri);
+          return (
+            <li key={`${e.contentHash}:${e.timestamp.toString()}:${i}`}>
+              <div className="evidence-entry-summary">
+                <strong>{typeLabel}</strong>
+                <span>Added {formatTimestamp(e.timestamp)}</span>
+              </div>
+              {privatePath && negotiationAccess ? (
+                <form
+                  className="evidence-document-form"
+                  action={privatePath}
+                  method="post"
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  <input
+                    type="hidden"
+                    name="token"
+                    value={negotiationAccess.token}
+                    readOnly
+                  />
+                  <button
+                    className="evidence-document-link"
+                    type="submit"
+                    aria-label={`View supporting file for ${typeLabel}`}
+                  >
+                    View supporting file
+                  </button>
+                </form>
+              ) : documentUrl ? (
+                <a
+                  className="evidence-document-link"
+                  href={documentUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  aria-label={`View supporting file for ${typeLabel}`}
+                >
+                  View supporting file
+                </a>
+              ) : (
+                <span className="hint">Supporting file access is unavailable from this view.</span>
+              )}
+              <details className="technical-details evidence-verification-details">
+                <summary>Verification details</summary>
+                <span>Submitted by wallet: {shortAddr(e.submittedBy)}</span>
+                <code title={e.contentHash}>Digital fingerprint: {e.contentHash}</code>
+                {TYPE_LABEL[e.evidenceType] === undefined && (
+                  <span>Record category code: {e.evidenceType}</span>
+                )}
+              </details>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );

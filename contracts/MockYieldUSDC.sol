@@ -4,7 +4,8 @@ pragma solidity 0.8.26;
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 /// @title MockYieldUSDC
-/// @notice Test-only yield-bearing share token. Share balances are fixed while their
+/// @notice Legacy test-only yield-bearing share token retained to verify the retired
+///         Base Sepolia cohort. New deployments use TestAaveUSDC instead. Share balances are fixed while their
 ///         displayed testUSDC value grows linearly at 20% per day.
 /// @dev There is no underlying asset or redemption mechanism. This contract exists
 ///      only to exercise yield-aware escrow UX on Base Sepolia.

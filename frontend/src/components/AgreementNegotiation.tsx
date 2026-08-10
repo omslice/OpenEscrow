@@ -1,17 +1,38 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { usePrivy } from "@privy-io/react-auth";
 import { useAccount } from "wagmi";
 import { ACCOUNT_AUTH_ENABLED } from "../lib/accountConfig";
-import { jurisdictionLabel, type JurisdictionCode } from "../lib/jurisdictions";
+import {
+  CALIFORNIA_POLICY,
+  evaluateSnapshotCompliance,
+  isVersionedComplianceSnapshot,
+  jurisdictionLabel,
+  jurisdictionProfile,
+  type JurisdictionCode,
+} from "../lib/jurisdictions";
 import {
   loadNegotiation,
   negotiationAction,
-  negotiationReportUrl,
   type NegotiationAccess,
   type NegotiationRecord,
 } from "../lib/negotiations";
+import { agreementReference, proposalReference } from "../lib/displayIds";
 import { roleLabel } from "../lib/inviteContext";
-import { AgreementCard } from "./AgreementCard";
+import {
+  INITIAL_NEGOTIATION_FEEDBACK,
+  createNegotiationRefreshGuard,
+  reduceNegotiationFeedback,
+} from "../lib/negotiationFeedback";
+import { useVisiblePolling } from "../lib/visiblePolling";
+import {
+  complianceDeadlineFallbackText,
+  complianceDeadlineNeedsReview,
+  shouldShowComplianceDeadline,
+} from "../lib/complianceDeadlineDisplay";
+import { getDepositAssetForTerms } from "../../shared/deposit-assets.js";
+import {
+  dynamicComplianceFactsForProfile,
+} from "../../shared/us-compliance-facts.js";
 
 function approvalLabel(record: NegotiationRecord, role: "tenant" | "arbiter") {
   const approved = role === "tenant" ? record.tenantApproved : record.arbiterApproved;
@@ -20,14 +41,160 @@ function approvalLabel(record: NegotiationRecord, role: "tenant" | "arbiter") {
 
 function Terms({ record }: { record: NegotiationRecord }) {
   const { terms } = record;
+  const depositAsset = getDepositAssetForTerms(terms);
+  const assetSnapshot = terms.depositAssetSnapshot;
+  const isLegacyCalifornia =
+    terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
+    terms.policyVersion === CALIFORNIA_POLICY.version;
+  const storedComplianceSnapshot = terms.complianceSnapshot;
+  const complianceSnapshot = isVersionedComplianceSnapshot(
+    storedComplianceSnapshot,
+  )
+    ? storedComplianceSnapshot
+    : null;
+  const complianceSnapshotInvalid = Boolean(
+    storedComplianceSnapshot && !complianceSnapshot,
+  );
+  const researchProfile = storedComplianceSnapshot
+    ? null
+    : jurisdictionProfile(terms.jurisdiction);
   return (
     <dl className="negotiation-terms">
-      <div><dt>Deposit</dt><dd>{terms.deposit} {terms.tokenChoice === "yield" ? "ytUSDC" : "testUSDC"}</dd></div>
-      <div><dt>Lease expiration</dt><dd>{new Date(terms.claimWindowStart).toLocaleString()}</dd></div>
-      <div><dt>Claim period</dt><dd>{terms.claimDays} days</dd></div>
-      <div><dt>Tenant response</dt><dd>{terms.responseDays} days</dd></div>
-      <div><dt>Arbiter ruling</dt><dd>{terms.arbiterDays} days</dd></div>
-      <div><dt>Jurisdiction context</dt><dd>{jurisdictionLabel(terms.jurisdiction as JurisdictionCode)}</dd></div>
+      <div><dt>Rental property</dt><dd>{terms.propertyAddress || "Legacy proposal: not recorded"}</dd></div>
+      {terms.addressResolution && (
+        <div>
+          <dt>Validated location</dt>
+          <dd>
+            {terms.addressResolution.city || "Unincorporated locality"}
+            {terms.addressResolution.county ? `, ${terms.addressResolution.county}` : ""},{" "}
+            {terms.addressResolution.stateCode}
+            {terms.addressResolution.postalCode
+              ? ` ${terms.addressResolution.postalCode}`
+              : ""}
+          </dd>
+        </div>
+      )}
+      <div>
+        <dt>Deposit</dt>
+        <dd>
+          {terms.deposit} {assetSnapshot?.testnetSymbol || depositAsset?.testnetSymbol || "testUSDC"}
+          {assetSnapshot ? ` · ${assetSnapshot.displayName}` : ""}
+        </dd>
+      </div>
+      {assetSnapshot && (
+        <div>
+          <dt>Deposit asset terms</dt>
+          <dd>
+            <strong>
+              {assetSnapshot.yieldType === "none"
+                ? "No yield"
+                : `${assetSnapshot.yieldSource} · ${assetSnapshot.yieldVariability} yield`}
+            </strong>
+            <span>Settlement asset: {assetSnapshot.settlementAsset}</span>
+            <details>
+              <summary>Eligibility, risk, and accepted disclosures</summary>
+              <p>{assetSnapshot.eligibility}</p>
+              <p>{assetSnapshot.mainRisk}</p>
+              <p>{assetSnapshot.liquidityRisk}</p>
+              <ul>
+                {assetSnapshot.disclosures.map((disclosure) => (
+                  <li key={disclosure}>{disclosure}</li>
+                ))}
+              </ul>
+              <small>
+                Catalog {assetSnapshot.catalogVersion} · {assetSnapshot.implementationStatus}
+              </small>
+            </details>
+          </dd>
+        </div>
+      )}
+      {(isLegacyCalifornia || researchProfile) && <div><dt>Monthly rent used for cap</dt><dd>{terms.monthlyRent || "Legacy proposal: not recorded"}</dd></div>}
+      <div>
+        <dt>Testnet operations reserve</dt>
+        <dd>
+          $5 {assetSnapshot?.testnetSymbol || depositAsset?.testnetSymbol || "testUSDC"} total ·
+          split evenly between tenants · not refundable principal
+        </dd>
+      </div>
+      <div><dt>Expected possession returned</dt><dd>{new Date(terms.claimWindowStart).toLocaleString()}</dd></div>
+      <div><dt>{isLegacyCalifornia ? "California accounting/refund period" : researchProfile ? "Statewide onchain safeguard window" : "Test deduction window"}</dt><dd>{terms.claimDays} calendar days · {isLegacyCalifornia || researchProfile ? "profile default" : "agreed test value"}</dd></div>
+      <div><dt>Tenant response</dt><dd>{terms.responseDays} days · {isLegacyCalifornia || researchProfile ? "OpenEscrow test rule" : "agreed test value"}</dd></div>
+      {record.arbiterEmail && (
+        <div><dt>Arbiter ruling</dt><dd>{terms.arbiterDays} days · {isLegacyCalifornia || researchProfile ? "OpenEscrow test rule" : "agreed test value"}</dd></div>
+      )}
+      <div><dt>Jurisdiction</dt><dd>{jurisdictionLabel(terms.jurisdiction as JurisdictionCode)}</dd></div>
+      <div><dt>Policy profile</dt><dd>{terms.policyVersion || "Legacy proposal"}</dd></div>
+      {isLegacyCalifornia && (
+      <div>
+        <dt>California deposit-cap facts</dt>
+        <dd>
+          {terms.smallLandlordException ? "Qualifying small-landlord exception asserted" : "Standard one-month cap"}
+          {terms.tenantIsServiceMember ? " · tenant is a service member" : ""}
+        </dd>
+      </div>
+      )}
+      <div><dt>Electronic record and return consent</dt><dd>{terms.electronicDeliveryConsent ? "Included in this approval" : "Not recorded"}</dd></div>
+      {(complianceSnapshot || researchProfile) && (
+        <div>
+          <dt>Compliance requirements</dt>
+          <dd>
+            <details>
+              <summary>
+                {(complianceSnapshot?.deadlines || researchProfile?.deadlines || []).length}{" "}
+                deadline path
+                {(complianceSnapshot?.deadlines || researchProfile?.deadlines || []).length === 1
+                  ? ""
+                  : "s"}{" "}
+                and{" "}
+                {(complianceSnapshot?.requirements || researchProfile?.requirements || []).length}{" "}
+                recorded requirements
+              </summary>
+              <ul>
+                {(complianceSnapshot?.requirements || researchProfile?.requirements || []).map(
+                  (requirement) => (
+                  <li key={requirement}>{requirement}</li>
+                  ),
+                )}
+              </ul>
+              {complianceSnapshot?.overlays.map((overlay) => (
+                <section key={overlay.id}>
+                  <strong>
+                    {overlay.label} ·{" "}
+                    {overlay.applicability === "applies"
+                      ? "applied"
+                      : "needs a property or program fact"}
+                  </strong>
+                  <ul>
+                    {overlay.requirements.map((requirement) => (
+                      <li key={requirement}>{requirement}</li>
+                    ))}
+                  </ul>
+                  {overlay.privacyNote && <small>{overlay.privacyNote}</small>}
+                </section>
+              ))}
+              <small>
+                {(complianceSnapshot?.unresolvedOverlays || [
+                  "Local, federal, housing-program, and fact-specific overlays still require resolution.",
+                ]).join(" ")}{" "}
+                Software output is not legal advice.
+              </small>
+            </details>
+          </dd>
+        </div>
+      )}
+      {complianceSnapshotInvalid && (
+        <div>
+          <dt>Compliance requirements</dt>
+          <dd>
+            <strong>Recorded compliance details need review.</strong>
+            <span>
+              OpenEscrow will not substitute today&apos;s rules for the agreement&apos;s
+              saved version. Preserve the record and contact support before relying on
+              its checklist or deadlines.
+            </span>
+          </dd>
+        </div>
+      )}
     </dl>
   );
 }
@@ -48,40 +215,230 @@ function AgreementNegotiationView({
   const { address, isConnected } = useAccount();
   const [record, setRecord] = useState<NegotiationRecord | null>(null);
   const [changeSummary, setChangeSummary] = useState("");
+  const [complianceEventName, setComplianceEventName] = useState("");
+  const [complianceEventOccurredAt, setComplianceEventOccurredAt] = useState("");
+  const [complianceEventNote, setComplianceEventNote] = useState("");
+  const [complianceFactName, setComplianceFactName] = useState("");
+  const [complianceFactValue, setComplianceFactValue] = useState("");
+  const [complianceFactNote, setComplianceFactNote] = useState("");
   const [isWorking, setIsWorking] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [feedback, dispatchFeedback] = useReducer(
+    reduceNegotiationFeedback,
+    INITIAL_NEGOTIATION_FEEDBACK,
+  );
+  const refreshGuard = useRef(createNegotiationRefreshGuard());
+  const refreshInFlight = useRef<Promise<void> | null>(null);
+  const [assetConsent, setAssetConsent] = useState(false);
+  const deviceTimeZone =
+    Intl.DateTimeFormat().resolvedOptions().timeZone || "your device timezone";
 
-  const refresh = useCallback(async () => {
-    try {
-      setRecord(await loadNegotiation(access));
-      setError(null);
-    } catch (loadError) {
-      setError(loadError instanceof Error ? loadError.message : "Unable to load this proposal.");
-    }
+  const refresh = useCallback(() => {
+    if (refreshInFlight.current) return refreshInFlight.current;
+
+    const guard = refreshGuard.current;
+    const refreshEpoch = guard.capture();
+    const request = (async () => {
+      setIsRefreshing(true);
+      try {
+        const nextRecord = await loadNegotiation(access);
+        if (!guard.isCurrent(refreshEpoch)) return;
+        setRecord(nextRecord);
+        dispatchFeedback({ type: "refresh_succeeded" });
+      } catch (loadError) {
+        if (!guard.isCurrent(refreshEpoch)) return;
+        dispatchFeedback({
+          type: "refresh_failed",
+          message:
+            loadError instanceof Error
+              ? loadError.message
+              : "Unable to load this proposal.",
+        });
+      }
+    })();
+    refreshInFlight.current = request;
+    void request.finally(() => {
+      if (refreshInFlight.current !== request) return;
+      refreshInFlight.current = null;
+      if (guard.isCurrent(refreshEpoch)) setIsRefreshing(false);
+    });
+    return request;
   }, [access]);
 
   useEffect(() => {
+    const guard = refreshGuard.current;
+    guard.invalidate();
+    refreshInFlight.current = null;
+    setRecord(null);
+    setIsRefreshing(false);
+    setMessage(null);
+    dispatchFeedback({ type: "reset" });
     void refresh();
-    const interval = window.setInterval(() => void refresh(), 10_000);
-    return () => window.clearInterval(interval);
+    return () => {
+      guard.invalidate();
+    };
   }, [refresh]);
+
+  useVisiblePolling(refresh, 10_000);
+
+  useEffect(() => {
+    setAssetConsent(false);
+  }, [record?.id, record?.revision]);
+
+  function beginAction() {
+    refreshGuard.current.invalidate();
+    refreshInFlight.current = null;
+    setIsWorking(true);
+    setIsRefreshing(false);
+    setMessage(null);
+    dispatchFeedback({ type: "action_started" });
+  }
+
+  function commitActionRecord(nextRecord: NegotiationRecord) {
+    refreshGuard.current.invalidate();
+    setRecord(nextRecord);
+    dispatchFeedback({ type: "action_succeeded" });
+  }
+
+  function reportActionFailure(error: unknown, fallback: string) {
+    dispatchFeedback({
+      type: "action_failed",
+      message: error instanceof Error ? error.message : fallback,
+    });
+  }
 
   async function act(
     action:
-      | { type: "approve"; wallet: string; name?: string }
+      | { type: "approve"; wallet: string; name?: string; assetConsent?: boolean }
       | { type: "propose_change"; summary: string },
     success: string,
   ) {
-    setIsWorking(true);
-    setMessage(null);
-    setError(null);
+    beginAction();
     try {
-      setRecord(await negotiationAction(access, action));
+      const nextRecord = await negotiationAction(access, action);
+      commitActionRecord(nextRecord);
       setMessage(success);
       if (action.type === "propose_change") setChangeSummary("");
     } catch (actionError) {
-      setError(actionError instanceof Error ? actionError.message : "The record could not be updated.");
+      reportActionFailure(actionError, "The record could not be updated.");
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function proposeComplianceEvent() {
+    if (!complianceEventName || !complianceEventOccurredAt) return;
+    beginAction();
+    try {
+      const nextRecord = await negotiationAction(access, {
+        type: "propose_compliance_event",
+        eventName: complianceEventName,
+        occurredAt: new Date(complianceEventOccurredAt).toISOString(),
+        note: complianceEventNote.trim() || undefined,
+      });
+      commitActionRecord(nextRecord);
+      setComplianceEventOccurredAt("");
+      setComplianceEventNote("");
+      setMessage("The lifecycle event is recorded and awaiting confirmation by the other party.");
+    } catch (actionError) {
+      reportActionFailure(
+        actionError,
+        "The lifecycle event could not be recorded.",
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function confirmComplianceEvent(proposalEventId: number) {
+    beginAction();
+    try {
+      const nextRecord = await negotiationAction(access, {
+        type: "confirm_compliance_event",
+        proposalEventId,
+      });
+      commitActionRecord(nextRecord);
+      setMessage("The lifecycle event is confirmed and its compliance deadlines are active.");
+    } catch (actionError) {
+      reportActionFailure(
+        actionError,
+        "The lifecycle event could not be confirmed.",
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function proposeComplianceFact() {
+    if (
+      !complianceFactName ||
+      (complianceFactValue !== "true" && complianceFactValue !== "false")
+    ) {
+      return;
+    }
+    beginAction();
+    try {
+      const nextRecord = await negotiationAction(access, {
+        type: "propose_compliance_fact",
+        factName: complianceFactName,
+        value: complianceFactValue === "true",
+        note: complianceFactNote.trim() || undefined,
+      });
+      commitActionRecord(nextRecord);
+      setComplianceFactName("");
+      setComplianceFactValue("");
+      setComplianceFactNote("");
+      setMessage(
+        "The conditional fact is recorded and awaiting confirmation by the other party.",
+      );
+    } catch (actionError) {
+      reportActionFailure(
+        actionError,
+        "The conditional fact could not be recorded.",
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function confirmComplianceFact(proposalEventId: number) {
+    beginAction();
+    try {
+      const nextRecord = await negotiationAction(access, {
+        type: "confirm_compliance_fact",
+        proposalEventId,
+      });
+      commitActionRecord(nextRecord);
+      setMessage(
+        "The conditional fact is confirmed and its deadline branch is active.",
+      );
+    } catch (actionError) {
+      reportActionFailure(
+        actionError,
+        "The conditional fact could not be confirmed.",
+      );
+    } finally {
+      setIsWorking(false);
+    }
+  }
+
+  async function rejectComplianceFact(proposalEventId: number) {
+    beginAction();
+    try {
+      const nextRecord = await negotiationAction(access, {
+        type: "reject_compliance_fact",
+        proposalEventId,
+      });
+      commitActionRecord(nextRecord);
+      setMessage(
+        "The conditional fact was not confirmed. Either party may record a corrected proposal.",
+      );
+    } catch (actionError) {
+      reportActionFailure(
+        actionError,
+        "The conditional fact response could not be recorded.",
+      );
     } finally {
       setIsWorking(false);
     }
@@ -91,14 +448,29 @@ function AgreementNegotiationView({
     return (
       <section className="card negotiation-workspace">
         <h2>Agreement proposal</h2>
-        <p>{error || "Loading the landlord's proposal..."}</p>
+        <p
+          className={feedback.refreshError ? "tx-error" : undefined}
+          role={feedback.refreshError ? "alert" : "status"}
+        >
+          {feedback.refreshError || "Loading the landlord's proposal..."}
+        </p>
+        {feedback.refreshError && (
+          <button
+            className="btn btn-secondary"
+            type="button"
+            disabled={isRefreshing}
+            onClick={() => void refresh()}
+          >
+            {isRefreshing ? "Retrying..." : "Try loading again"}
+          </button>
+        )}
       </section>
     );
   }
 
   const invitedEmail =
     access.role === "tenant"
-      ? record.tenantEmail
+      ? record.viewerEmail || record.tenantEmail
       : access.role === "arbiter"
         ? record.arbiterEmail
         : record.landlordEmail;
@@ -111,22 +483,124 @@ function AgreementNegotiationView({
     );
   const canRespond =
     (access.role === "tenant" || access.role === "arbiter") && invitedEmailMatches;
+  const viewingTenant =
+    access.role === "tenant"
+      ? record.tenants.find((tenant) => tenant.id === record.viewerTenantId) ||
+        record.tenants.find(
+          (tenant) =>
+            tenant.email.trim().toLowerCase() === invitedEmail?.trim().toLowerCase(),
+        )
+      : null;
   const alreadyApproved =
     access.role === "tenant"
-      ? record.tenantApproved
+      ? Boolean(viewingTenant?.approved)
       : access.role === "arbiter"
         ? record.arbiterApproved
         : false;
+  const reviewAsset = getDepositAssetForTerms(record.terms);
+  const requiresAssetConsent = Boolean(
+    record.terms.depositAssetId && reviewAsset?.consentRequired,
+  );
+  const storedComplianceSnapshot = record.terms.complianceSnapshot;
+  const complianceSnapshot = isVersionedComplianceSnapshot(
+    storedComplianceSnapshot,
+  )
+    ? storedComplianceSnapshot
+    : null;
+  const activeComplianceProfile = storedComplianceSnapshot
+    ? null
+    : jurisdictionProfile(record.terms.jurisdiction);
+  const dynamicFactOptions = dynamicComplianceFactsForProfile(
+    complianceSnapshot || activeComplianceProfile,
+  );
+  const eventOptions = [
+    ...(complianceSnapshot?.deadlines || []),
+    ...(complianceSnapshot?.overlays || []).flatMap((overlay) => overlay.deadlines),
+  ].filter(
+    (deadline, index, deadlines) =>
+      deadlines.findIndex((candidate) => candidate.trigger === deadline.trigger) === index,
+  );
+  const confirmedProposalIds = new Set(
+    record.events
+      .filter((event) => event.action === "compliance_event_confirmed")
+      .map((event) => Number(event.metadata?.proposalEventId)),
+  );
+  const pendingComplianceEvents = record.events.filter(
+    (event) =>
+      event.action === "compliance_event_proposed" &&
+      !confirmedProposalIds.has(event.id),
+  );
+  const confirmedEventValues = Object.fromEntries(
+    record.events
+      .filter((event) => event.action === "compliance_event_confirmed")
+      .map((event) => [
+        String(event.metadata?.eventName || ""),
+        String(event.metadata?.occurredAt || ""),
+      ]),
+  );
+  const resolvedFactProposalIds = new Set(
+    record.events
+      .filter(
+        (event) =>
+          event.action === "compliance_fact_confirmed" ||
+          event.action === "compliance_fact_rejected",
+      )
+      .map((event) => Number(event.metadata?.proposalEventId)),
+  );
+  const pendingComplianceFacts = record.events.filter(
+    (event) =>
+      event.action === "compliance_fact_proposed" &&
+      !resolvedFactProposalIds.has(event.id),
+  );
+  const confirmedFactValues = Object.fromEntries(
+    record.events
+      .filter(
+        (event) =>
+          event.action === "compliance_fact_confirmed" &&
+          typeof event.metadata?.value === "boolean",
+      )
+      .map((event) => [
+        String(event.metadata?.factName || ""),
+        event.metadata?.value,
+      ]),
+  );
+  const unresolvedDynamicFactOptions = dynamicFactOptions.filter(
+    (definition) =>
+      typeof confirmedFactValues[definition.key] !== "boolean" &&
+      !pendingComplianceFacts.some(
+        (event) => event.metadata?.factName === definition.key,
+      ),
+  );
+  const complianceEvaluation =
+    complianceSnapshot
+      ? evaluateSnapshotCompliance(complianceSnapshot, {
+          facts: {
+            ...(record.terms.complianceFacts || {}),
+            ...confirmedFactValues,
+            monthlyRent: record.terms.monthlyRent || null,
+            deposit: record.terms.deposit,
+          },
+          events: confirmedEventValues,
+        })
+      : null;
 
   return (
     <section className="card negotiation-workspace" aria-labelledby="proposal-review-title">
       <div className="negotiation-heading">
         <div>
-          <span className="eyebrow">Proposal {record.id} · revision {record.revision}</span>
+          <span className="eyebrow">
+            {proposalReference(record.id)} · revision {record.revision}
+          </span>
           <h2 id="proposal-review-title">Review the landlord’s agreement</h2>
         </div>
         <span className={`negotiation-status status-${record.status}`}>
-          {record.status === "draft" ? "Under review" : record.status === "ready" ? "Approved" : "Onchain"}
+          {record.status === "draft"
+            ? "Under review"
+            : record.status === "ready"
+              ? "Approved"
+              : record.status === "finalized"
+                ? "Onchain"
+                : "Cancelled"}
         </span>
       </div>
       <p className="hint">
@@ -162,35 +636,305 @@ function AgreementNegotiationView({
           <strong>{record.landlordName || record.landlordEmail}</strong>
           {record.landlordName && <small>{record.landlordEmail}</small>}
         </div>
-        <div>
-          <span>Tenant</span>
-          <strong>{record.tenantName || record.tenantEmail}</strong>
-          {record.tenantName && <small>{record.tenantEmail}</small>}
-        </div>
-        <div>
-          <span>Arbiter</span>
-          <strong>{record.arbiterName || record.arbiterEmail || "Not appointed"}</strong>
-          {record.arbiterName && record.arbiterEmail && <small>{record.arbiterEmail}</small>}
-        </div>
-      </div>
-      <Terms record={record} />
-
-      <div className="approval-grid">
-        <div className={record.tenantApproved ? "approval approved" : "approval"}>
-          <strong>Tenant</strong>
-          <span>{approvalLabel(record, "tenant")}</span>
-        </div>
+        {record.tenants.map((tenant) => (
+          <div
+            className={tenant.approved ? "participant-approved" : "participant-awaiting"}
+            key={tenant.id}
+          >
+            <span>
+              Tenant · {(tenant.depositShareBps / 100).toFixed(2).replace(/\.?0+$/, "")}% share
+            </span>
+            <strong>{tenant.name || tenant.email}</strong>
+            {tenant.name && <small>{tenant.email}</small>}
+            <small className="party-review-status">
+              {tenant.approved
+                ? `Approved revision ${record.revision}`
+                : "Awaiting approval"}
+            </small>
+          </div>
+        ))}
         {record.arbiterEmail && (
-          <div className={record.arbiterApproved ? "approval approved" : "approval"}>
-            <strong>Arbiter</strong>
-            <span>{approvalLabel(record, "arbiter")}</span>
+          <div
+            className={
+              record.arbiterApproved ? "participant-approved" : "participant-awaiting"
+            }
+          >
+            <span>Arbiter</span>
+            <strong>{record.arbiterName || record.arbiterEmail}</strong>
+            {record.arbiterName && <small>{record.arbiterEmail}</small>}
+            <small className="party-review-status">
+              {approvalLabel(record, "arbiter")}
+            </small>
           </div>
         )}
       </div>
+      <Terms record={record} />
 
-      {canRespond && record.status !== "finalized" && (
+      {record.status === "finalized" &&
+        complianceSnapshot &&
+        (access.role === "landlord" || access.role === "tenant") &&
+        invitedEmailMatches && (
+          <section className="negotiation-response">
+            <h3>Confirmed compliance timeline</h3>
+            <p className="field-help">
+              A landlord or tenant proposes the actual event time; the other side confirms it
+              before OpenEscrow activates the offchain compliance deadlines. This does not alter
+              the already-deployed smart contract timer.
+            </p>
+            <label>
+              Lifecycle event
+              <select
+                value={complianceEventName}
+                onChange={(event) => setComplianceEventName(event.target.value)}
+              >
+                <option value="">Choose an event</option>
+                {eventOptions.map((deadline) => (
+                  <option key={deadline.trigger} value={deadline.trigger}>
+                    {deadline.triggerDescription}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Actual date and time
+              <input
+                type="datetime-local"
+                value={complianceEventOccurredAt}
+                onChange={(event) => setComplianceEventOccurredAt(event.target.value)}
+              />
+            </label>
+            <p className="field-help">
+              OpenEscrow saves this using your device timezone ({deviceTimeZone}). Enter the time
+              as it occurred at the property and ask the other party to verify it. This testnet
+              does not yet verify the property&apos;s timezone automatically.
+            </p>
+            <label>
+              Non-sensitive note
+              <textarea
+                rows={2}
+                value={complianceEventNote}
+                onChange={(event) => setComplianceEventNote(event.target.value)}
+                placeholder="Record delivery or possession context; do not enter protected or medical details."
+              />
+            </label>
+            <button
+              className="btn btn-secondary"
+              type="button"
+              disabled={
+                isWorking || !complianceEventName || !complianceEventOccurredAt
+              }
+              onClick={() => void proposeComplianceEvent()}
+            >
+              Propose actual event time
+            </button>
+            {pendingComplianceEvents.map((event) => (
+              <div className="role-mismatch" key={event.id}>
+                <p>
+                  <strong>{String(event.metadata?.eventName)}</strong>{" "}
+                  {new Date(String(event.metadata?.occurredAt)).toLocaleString()} · proposed by{" "}
+                  {event.actorRole}
+                </p>
+                {event.actorRole !== access.role && (
+                  <button
+                    className="btn btn-primary"
+                    type="button"
+                    disabled={isWorking}
+                    onClick={() => void confirmComplianceEvent(event.id)}
+                  >
+                    Confirm event
+                  </button>
+                )}
+              </div>
+            ))}
+            {dynamicFactOptions.length > 0 && (
+              <section>
+                <h4>Resolve a conditional deadline branch</h4>
+                <p className="field-help">
+                  Some state deadlines depend on a fact that the property address
+                  cannot establish. One agreement party records a yes/no fact and
+                  the other confirms it before OpenEscrow uses that branch.
+                </p>
+                {unresolvedDynamicFactOptions.length > 0 && (
+                  <>
+                    <label>
+                      Conditional fact
+                      <select
+                        value={complianceFactName}
+                        onChange={(event) => {
+                          setComplianceFactName(event.target.value);
+                          setComplianceFactValue("");
+                        }}
+                      >
+                        <option value="">Choose a fact</option>
+                        {unresolvedDynamicFactOptions.map((definition) => (
+                          <option key={definition.key} value={definition.key}>
+                            {definition.label}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    {complianceFactName && (
+                      <>
+                        <p className="field-help">
+                          {
+                            dynamicFactOptions.find(
+                              (definition) =>
+                                definition.key === complianceFactName,
+                            )?.question
+                          }
+                        </p>
+                        <label>
+                          Answer
+                          <select
+                            value={complianceFactValue}
+                            onChange={(event) =>
+                              setComplianceFactValue(event.target.value)
+                            }
+                          >
+                            <option value="">Choose yes or no</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                          </select>
+                        </label>
+                        <label>
+                          Non-sensitive note
+                          <textarea
+                            rows={2}
+                            value={complianceFactNote}
+                            onChange={(event) =>
+                              setComplianceFactNote(event.target.value)
+                            }
+                            placeholder="Reference the private record or delivery step; do not enter protected details."
+                          />
+                        </label>
+                        <p className="field-help">
+                          {
+                            dynamicFactOptions.find(
+                              (definition) =>
+                                definition.key === complianceFactName,
+                            )?.guidance
+                          }
+                        </p>
+                        <button
+                          className="btn btn-secondary"
+                          type="button"
+                          disabled={!complianceFactValue || isWorking}
+                          onClick={() => void proposeComplianceFact()}
+                        >
+                          Propose conditional fact
+                        </button>
+                      </>
+                    )}
+                  </>
+                )}
+                {pendingComplianceFacts.map((event) => (
+                  <div className="role-mismatch" key={event.id}>
+                    <p>
+                      <strong>{String(event.metadata?.label)}</strong>:{" "}
+                      {event.metadata?.value === true ? "Yes" : "No"} · proposed
+                      by {event.actorRole}
+                    </p>
+                    {event.actorRole !== access.role && (
+                      <div className="button-row">
+                        <button
+                          className="btn btn-primary"
+                          type="button"
+                          disabled={isWorking}
+                          onClick={() => void confirmComplianceFact(event.id)}
+                        >
+                          Confirm fact
+                        </button>
+                        <button
+                          className="btn btn-secondary"
+                          type="button"
+                          disabled={isWorking}
+                          onClick={() => void rejectComplianceFact(event.id)}
+                        >
+                          Not correct
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                ))}
+                {Object.entries(confirmedFactValues).map(
+                  ([factName, value]) => {
+                    const definition = dynamicFactOptions.find(
+                      (candidate) => candidate.key === factName,
+                    );
+                    return definition ? (
+                      <p className="field-help" key={factName}>
+                        Confirmed: <strong>{definition.label}</strong> —{" "}
+                        {value === true ? "Yes" : "No"}
+                      </p>
+                    ) : null;
+                  },
+                )}
+              </section>
+            )}
+            {complianceEvaluation && (
+              <ul>
+                {[
+                  ...complianceEvaluation.deadlines.filter(
+                    (deadline: { comparison: string | null }) =>
+                      !deadline.comparison,
+                  ),
+                  ...(complianceEvaluation.combinedDeadlines || []),
+                  ...complianceEvaluation.overlays.flatMap(
+                    (overlay: { deadlines: Array<Record<string, unknown>> }) =>
+                      overlay.deadlines,
+                  ),
+                ]
+                  .filter(
+                    (deadline: { status: string }) =>
+                      shouldShowComplianceDeadline(deadline.status),
+                  )
+                  .map(
+                    (deadline: {
+                      id: string;
+                      label: string;
+                      status: string;
+                      dueAt: string | null;
+                    }) => (
+                      <li
+                        className={
+                          complianceDeadlineNeedsReview(deadline.status)
+                            ? "compliance-deadline-needs-review"
+                            : undefined
+                        }
+                        key={deadline.id}
+                      >
+                        {deadline.label}:{" "}
+                        {deadline.dueAt
+                          ? new Date(deadline.dueAt).toLocaleString()
+                          : complianceDeadlineFallbackText(deadline.status)}
+                      </li>
+                    ),
+                  )}
+              </ul>
+            )}
+          </section>
+        )}
+
+      {canRespond && record.status !== "finalized" && record.status !== "cancelled" && (
         <div className="negotiation-response">
           <h3>Respond to revision {record.revision}</h3>
+          {requiresAssetConsent && reviewAsset && !alreadyApproved && (
+            <label className="asset-consent">
+              <input
+                type="checkbox"
+                checked={assetConsent}
+                disabled={isWorking}
+                onChange={(event) => setAssetConsent(event.target.checked)}
+              />
+              <span>
+                <strong>I affirmatively agree to {reviewAsset.displayName}.</strong>
+                <small>
+                  I reviewed the variable yield, eligibility, additional risks, simulation status,
+                  and {reviewAsset.settlementAsset} settlement disclosed above.
+                </small>
+              </span>
+            </label>
+          )}
           <label>
             Proposed change
             <textarea
@@ -215,11 +959,22 @@ function AgreementNegotiationView({
             </button>
             <button
               className="btn btn-primary"
-              disabled={isWorking || alreadyApproved || !isConnected || !address}
+              disabled={
+                isWorking ||
+                alreadyApproved ||
+                !isConnected ||
+                !address ||
+                (requiresAssetConsent && !assetConsent)
+              }
               onClick={() =>
                 address &&
                 void act(
-                  { type: "approve", wallet: address, name: currentName?.trim() || undefined },
+                  {
+                    type: "approve",
+                    wallet: address,
+                    name: currentName?.trim() || undefined,
+                    assetConsent: requiresAssetConsent ? assetConsent : undefined,
+                  },
                   `Revision ${record.revision} approved and your wallet was recorded.`,
                 )
               }
@@ -231,40 +986,31 @@ function AgreementNegotiationView({
         </div>
       )}
 
-      <div className="record-header">
-        <div>
-          <h3>Running agreement record</h3>
-          <p className="hint">Append-only actions with server timestamps, ready for future onchain anchoring.</p>
+      {feedback.refreshError && (
+        <div className="negotiation-refresh-warning">
+          <p role="status">
+            The latest proposal revision could not be checked. The version shown may be
+            out of date.
+          </p>
+          <button
+            className="btn btn-ghost"
+            type="button"
+            disabled={isRefreshing}
+            onClick={() => void refresh()}
+          >
+            {isRefreshing ? "Retrying..." : "Retry refresh"}
+          </button>
         </div>
-        <a
-          className="btn btn-ghost small"
-          href={negotiationReportUrl(access)}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Open timestamped report
-        </a>
-      </div>
-      <ol className="activity-timeline">
-        {record.events.map((event) => (
-          <li key={event.id}>
-            <time dateTime={event.createdAt}>{new Date(event.createdAt).toLocaleString()}</time>
-            <strong>{roleLabel[event.actorRole as keyof typeof roleLabel] || "System"}</strong>
-            <span>{event.summary}</span>
-          </li>
-        ))}
-      </ol>
-      {message && <p className="tx-success">{message}</p>}
-      {error && <p className="tx-error">{error}</p>}
+      )}
+      {message && <p className="tx-success" role="status">{message}</p>}
+      {feedback.actionError && (
+        <p className="tx-error" role="alert">{feedback.actionError}</p>
+      )}
       {record.status === "finalized" && record.onchainAgreementId && (
-        <div className="finalized-agreement-workspace">
-          <span className="eyebrow">Live deduction and resolution workflow</span>
-          <AgreementCard
-            id={BigInt(record.onchainAgreementId)}
-            negotiationAccess={access}
-            participantRecord={record}
-          />
-        </div>
+        <p className="tx-success" role="status">
+          Finalized as {agreementReference(record.onchainAgreementId)}. Open the
+          Deposits tab to manage the deposit or the Record tab to review its history.
+        </p>
       )}
     </section>
   );

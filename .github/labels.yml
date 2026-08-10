@@ -1,0 +1,36 @@
+- name: good first issue
+  color: "7057ff"
+  description: Bounded contribution with no custody or legal-interpretation decision.
+- name: help wanted
+  color: "008672"
+  description: Maintainers welcome outside implementation or review.
+- name: accessibility
+  color: "1d76db"
+  description: Keyboard, screen-reader, contrast, motion, zoom, language, or mobile access.
+- name: privacy
+  color: "5319e7"
+  description: Personal-data minimization, authorization, evidence, retention, or deletion.
+- name: compliance-data
+  color: "fbca04"
+  description: Official-source provenance and versioning; not legal advice.
+- name: smart-contracts
+  color: "0e8a16"
+  description: Solidity, invariants, deployment bindings, or onchain lifecycle.
+- name: frontend
+  color: "c5def5"
+  description: Consumer application, interaction, accessibility, or client logic.
+- name: pilot-evidence
+  color: "bfdadc"
+  description: Synthetic research, supervised-pilot gates, measurement, or partner feedback.
+- name: security
+  color: "b60205"
+  description: Public hardening work only; unresolved vulnerabilities must remain private.
+- name: documentation
+  color: "0075ca"
+  description: Public, operator, contributor, or technical documentation.
+- name: governance
+  color: "d4c5f9"
+  description: Decision rights, maintainership, conflicts, funding independence, or succession.
+- name: funding-readiness
+  color: "006b75"
+  description: Verifiable public-good, grant, sponsor, audit, or transparency evidence.

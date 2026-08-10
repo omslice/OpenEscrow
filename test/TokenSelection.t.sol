@@ -8,7 +8,7 @@ import {MockYieldUSDC} from "../contracts/MockYieldUSDC.sol";
 contract TokenSelectionTest is Base {
     function test_agreementCanSelectYieldTokenAndPreservesShares() public {
         MockYieldUSDC yieldToken = new MockYieldUSDC();
-        OpenEscrow selectedEscrow = new OpenEscrow(address(usdc), address(yieldToken));
+        OpenEscrow selectedEscrow = new OpenEscrow(address(usdc), address(yieldToken), address(0));
         uint256 selectedId = selectedEscrow.createAgreementWithToken(
             tenant,
             address(0),

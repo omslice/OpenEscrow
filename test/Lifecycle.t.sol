@@ -229,7 +229,7 @@ contract LifecycleTest is Base {
 
     function test_tenantAcceptAndFund_revertsOnDepositMismatch_shortTransferToken() public {
         ShortTransferToken shortToken = new ShortTransferToken();
-        OpenEscrow shortEscrow = new OpenEscrow(address(shortToken), address(shortToken));
+        OpenEscrow shortEscrow = new OpenEscrow(address(shortToken), address(shortToken), address(0));
         shortToken.mint(tenant, DEPOSIT);
         vm.prank(tenant);
         shortToken.approve(address(shortEscrow), type(uint256).max);

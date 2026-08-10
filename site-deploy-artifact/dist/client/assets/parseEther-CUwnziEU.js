@@ -1,0 +1,1 @@
+import{Mt as e}from"./ccip-DNwZND7k.js";function t(t,n=`wei`){return e(t,n)}export{t};

@@ -1,0 +1,7 @@
+dist/
+node_modules/
+.wrangler/
+worker-configuration.d.ts
+public/favicon.svg
+public/openescrow-logo.svg
+public/openescrow-wordmark.svg

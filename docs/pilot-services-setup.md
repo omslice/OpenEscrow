@@ -1,0 +1,408 @@
+# OpenEscrow pilot services setup
+
+This guide covers the external accounts and values that cannot be created safely from the
+repository. Complete the email section first. Keep fiat funding in sandbox and keep evidence in
+the private vault until each section passes its verification checklist.
+
+## Morning owner checklist
+
+The application code, private R2 binding, D1 records, account sign-in, embedded wallets, manual
+email fallbacks, provider adapters, lifecycle state guards, transaction-receipt verification,
+evidence encryption/key recovery, address attestation, and deterministic lifecycle tests are
+already in place. The hosted scheduler is running and the nationwide compliance-source gate is
+current. The strict Cloudflare pilot readiness check now shows two owner actions:
+
+1. **Verify a sending domain in Resend**, create a sending-only API key, and add the email values
+   below to the canonical Cloudflare Worker.
+2. **Review and broadcast the hardened Base Sepolia escrow/reserve/registry cohort**, then verify
+   that the registry is bound to that exact escrow before changing the app configuration.
+
+Complete email independently of the contract promotion; neither action requires recreating R2,
+the evidence keyring, address attestation, or the Cron Trigger. Keep the optional fiat sandbox
+disabled. Do not send API keys, signing keys, or evidence recovery material in chat, screenshots,
+email, or Git. Enter secrets only in the provider and hosting controls that own them.
+
+After the settings are saved and the site is redeployed, ask Codex to run the pilot readiness
+check, or run:
+
+```powershell
+cd frontend
+npm.cmd run pilot:check
+```
+
+The required rows should all report `PASS`. The decentralized-evidence row may remain `OPTIONAL`
+for the pilot. Run this again after every deployment because the endpoint checks the deployed
+runtime, not the developer machine. Evidence readiness passes only when the active encryption key
+and every retained key referenced by stored evidence are available. It also compares each
+configured key with the non-secret fingerprint recorded beside new ciphertext, so restoring only
+the active key—or putting different bytes under an expected retained-key ID—is not sufficient
+after a rotation.
+
+To retain an exact operator-readable result at a chosen path, add
+`--json --artifact-path=<path>`. OpenEscrow creates missing parent folders and writes the artifact
+even when a required check or the readiness endpoint itself fails, so the failed gate and recovery
+action remain reviewable. Each artifact uses the `openescrow-pilot-readiness/v1` schema and records
+the packaged Worker's full Git commit. A missing or malformed release identifier is a required
+failure rather than an unattributed readiness result. The Sites packaging command also refuses
+uncommitted frontend, hosting-manifest, or migration inputs and verifies that its generated
+provenance matches the exact source commit.
+
+### What the automated release gate now covers
+
+The repository test gate includes 77 server/workflow scenarios and 220 passing
+contract tests, with one opt-in fork test skipped by default. The
+workflow suite exercises a landlord, two tenants, and an optional arbiter through proposal
+revision, unanimous approval, finalization, each tenant's reserve and deposit contribution,
+deduction claim, different tenant responses, dispute, ruling, withdrawal, no-claim refund,
+claim retraction, email idempotency, evidence authorization, and report generation. It also
+rejects duplicate funding, duplicate responses, premature rulings, premature withdrawals,
+impossible timeout records, and spoofed evidence file types.
+
+The deterministic suite does not replace a real browser test with separate Google accounts. Use
+invented identities and Base Sepolia tokens only for that final operator test. Follow
+[`testnet-pilot-runbook.md`](./testnet-pilot-runbook.md) and stop at its first failed safety
+condition.
+
+## 0. Verify onchain receipts recorded by the hosted workflow
+
+The D1 agreement record is a readable secondary record; the contracts remain the source of truth.
+When receipt verification is enabled, OpenEscrow asks a Base Sepolia JSON-RPC endpoint for every
+transaction receipt before saving the related workflow event. It requires a successful receipt,
+the current deployed contract address, the expected event signature, and the correct agreement
+ID. This prevents a user from attaching an unrelated transaction hash to the agreement record.
+
+Receipt verification is enabled by default and uses `https://sepolia.base.org`. No owner setting
+or credential is required for a small controlled testnet pilot. If the public endpoint becomes
+unreliable, configure a dedicated Base Sepolia endpoint without exposing its key to the browser:
+
+```dotenv
+BASE_SEPOLIA_RPC_URL=https://your-private-base-sepolia-rpc.example/
+```
+
+The deployed contract addresses are pinned in the server verifier. Override them only when the
+contracts have intentionally been redeployed and the frontend configuration was updated in the
+same reviewed release:
+
+```dotenv
+OPEN_ESCROW_ADDRESS=0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99
+OPERATIONS_RESERVE_ADDRESS=0x5d2E9c429F9d117c7b028c8f0f67d37252aDceC0
+# Copy ACTIVITY_REGISTRY_ADDRESS from the version-matched deployment manifest.
+VERIFY_ACTIVITY_REGISTRY_BINDING=true
+```
+
+The retired `0xC004...1951` activity registry points to an earlier escrow and is
+not a valid override. The public readiness response performs an `ESCROW()` call
+against the configured registry and reports ready only when it matches the
+configured OpenEscrow address.
+
+After deployment, submit one invented Base Sepolia action and confirm its running record contains
+`transaction_receipt_verified`. A temporary RPC failure must leave the onchain transaction
+unchanged and show a retryable “save receipt” error.
+
+`VERIFY_TRANSACTION_RECEIPTS=false` is an emergency local-diagnostics escape hatch. Do not use it
+for the public deployment or a controlled pilot.
+
+## 1. Free automatic email delivery
+
+### What is already implemented
+
+- Resend and provider-neutral webhook delivery
+- Signed-in self-test that only emails the verified account
+- Agreement-activity and deadline notification preferences
+- Unsubscribe links
+- Idempotent scheduled deliveries with failed-delivery retry
+- Privacy-minimal email copy that omits addresses, amounts, evidence, and notes
+- A scheduled Worker handler plus a safe opportunistic check during normal app visits
+
+### Resend setup
+
+1. Create a free Resend account.
+2. Add a domain you own. Prefer a sending subdomain such as `notify.openescrow.org`.
+3. Add the SPF and DKIM records shown by Resend to the domain's DNS settings.
+4. Wait until Resend shows the domain as verified.
+5. Create a sending-only API key.
+6. Add these two runtime values to the `openescrow` staging Worker in Cloudflare. Store
+   `RESEND_API_KEY` as an encrypted secret and `NOTIFICATION_FROM_EMAIL` as a runtime variable:
+
+```dotenv
+RESEND_API_KEY=re_replace_with_your_key
+NOTIFICATION_FROM_EMAIL=OpenEscrow <notifications@notify.your-domain.example>
+```
+
+`PUBLIC_APP_URL` is pinned to `https://openescrow.io/` in the reviewed
+staging configuration. The compliance monitor, address-attestation secret, evidence keyring, and
+Cron Trigger are also already configured and verified; do not replace or duplicate them while
+adding email. Never put `RESEND_API_KEY` in a `VITE_` variable, Git, or a browser-visible settings
+file.
+
+### Scheduler behavior
+
+The canonical Cloudflare Worker already runs this Cron Trigger:
+
+```cron
+*/15 * * * *
+```
+
+This checks every fifteen minutes. The job refuses to run more than once every ten minutes, and
+each logical notice has an idempotency key, so repeated checks do not create duplicate email.
+When the compliance monitor is enabled, the same trigger checks the next small official-source
+batch every fifteen minutes while an initial baseline is incomplete. After every registered source
+has an initial result, it automatically returns to at most one rotating batch per day. Source
+monitoring stores signatures and status metadata in D1; it does not change an agreement or
+compliance profile automatically.
+
+The monitor checks four sources per batch, so the first nationwide baseline normally completes in
+about four hours when the trigger remains healthy. While monitoring is enabled, a
+state-profile proposal is blocked until its exact statewide and applicable
+overlay sources have fresh successful checks. A source-page signature change
+requires a reviewed, newly versioned rule profile; do not bypass the gate by
+turning monitoring off.
+
+Do not add a second trigger. Normal homepage traffic also performs a safe fallback check, but the
+hosted Cron Trigger remains the pilot scheduler and must continue reporting a recent successful
+run in readiness.
+
+### Verify
+
+1. Sign in to OpenEscrow with a Google account.
+2. Expand **Account and workspace**.
+3. Enable the desired email preferences.
+4. Confirm the panel says **Automatic delivery ready**.
+5. Click **Send test email**.
+6. Check inbox and spam.
+7. Open the unsubscribe link from a test account and confirm both optional preferences turn off.
+
+### Self-hosted provider alternative
+
+Set these values instead of `RESEND_API_KEY`:
+
+```dotenv
+EMAIL_WEBHOOK_URL=https://your-mail-adapter.example/send
+EMAIL_WEBHOOK_TOKEN=replace_with_a_long_random_secret
+NOTIFICATION_FROM_EMAIL=OpenEscrow <notifications@your-domain.example>
+```
+
+OpenEscrow sends the webhook a JSON envelope containing `from`, `to`, `subject`, `text`, and
+`idempotencyKey`. The adapter must return `{"id":"provider-message-id"}` on success. This keeps the
+open-source application portable across mail services.
+
+## 2. Debit card and bank onboarding
+
+### Safety boundary
+
+The current escrow and tokens are on Base Sepolia. A real card or bank payment cannot buy the
+test tokens. Keep the current faucet for the public demo. Only activate real fiat funding after:
+
+- Base mainnet contracts use supported real USDC;
+- the contracts and deployment have passed an independent security review;
+- legal and regulatory review approves the pilot flow; and
+- the on-ramp provider has approved the application and required KYC flow.
+
+### What is already implemented
+
+- Google/email sign-in with an automatically created Privy embedded wallet
+- A card/bank checkout component at the point where a tenant needs funds
+- Exact prefilled amount including the tenant's deposit and operations-reserve share
+- Sandbox versus production configuration
+- Automatic balance refresh after the provider flow
+- Device-local recovery for interrupted checkout attempts, with duplicate-event and invalid
+  lifecycle rejection
+- Safe handling for delayed confirmation, cancellation, failure, refund-pending, and refunded
+  provider states without recording agreement funding
+- Existing gas-sponsored approval and agreement funding after funds arrive
+- Free test-token fallback on Base Sepolia
+
+### Privy sandbox setup
+
+1. Open the existing Privy application.
+2. Enable fiat funding/on-ramp providers.
+3. Enable Coinbase Onramp or another supported card provider.
+4. Add the OpenEscrow production and local development domains to the allowed origins.
+5. Confirm Google login and embedded Ethereum wallets remain enabled.
+6. Configure these public build values in `frontend/.env.local` before creating a sandbox build:
+
+```dotenv
+VITE_FIAT_ONRAMP_ENABLED=true
+VITE_FIAT_ONRAMP_ENVIRONMENT=sandbox
+VITE_FIAT_ONRAMP_CHAIN=eip155:8453
+VITE_FIAT_ONRAMP_ASSET=usdc
+VITE_FIAT_ONRAMP_PRODUCTION_APPROVED=false
+```
+
+The chain uses the CAIP-2 Base mainnet identifier and the asset uses Privy's documented `usdc`
+symbol. OpenEscrow rejects token-address and non-USDC destinations. Sandbox mode simulates the
+provider checkout; it must not be confused with funding the Base Sepolia escrow.
+
+These are Vite build-time values, not hosted Worker secrets. Changing them requires a new
+validated build and deployment. The enabled UI labels the experience as a sandbox, states that
+no real money moves, and continues to direct the tenant to the free Base Sepolia faucet.
+
+Production is deliberately double-gated: both `VITE_FIAT_ONRAMP_ENABLED=true` and
+`VITE_FIAT_ONRAMP_PRODUCTION_APPROVED=true` are required, with environment set to `production`.
+Do not set the production-approval flag until the mainnet escrow, legal/provider approvals, and
+independent security review are complete.
+
+The current recovery ledger is deliberately provider-neutral and persists sandbox attempts in D1,
+with browser storage used only as a best-effort local cache. Every event records whether it came
+from an unverified browser callback, a future signed provider webhook, or a future authorized
+operator reconciliation. The tenant sandbox endpoint can create only the unverified class.
+Future trusted events also require a globally unique SHA-256 reconciliation key and an exact
+payload digest; the durable ledger rejects a replayed key even across different checkout attempts.
+Production still requires provider-specific signature verification, authorized operator controls,
+webhook monitoring, and reviewed cancellation/refund semantics before trusted event classes can
+be accepted.
+
+### Production design
+
+The intended production experience is:
+
+1. The tenant signs in with Google.
+2. OpenEscrow creates and selects the embedded wallet without showing blockchain terminology.
+3. The tenant chooses card, Apple Pay, Google Pay, or ACH.
+4. The regulated provider performs KYC and delivers USDC to the embedded wallet.
+5. OpenEscrow refreshes the balance.
+6. The tenant gives one app-level confirmation to approve and fund the escrow.
+
+Use ACH as the recommended option for a full deposit. Card and provider fees must be displayed
+separately and must not be taken from the $5 operations reserve.
+
+### Off-ramp design
+
+Do not activate off-ramping on testnet. The eventual tenant action should be labelled **Transfer
+refund to my bank**, not **Bridge** or **Send from wallet**. A regulated provider must create the
+bank off-ramp session after the escrow has made the tenant's allocation withdrawable. The
+production implementation needs provider credentials, webhook verification, KYC status handling,
+and a recovery path before it can safely be enabled.
+
+## 3. Private and decentralized evidence
+
+### What is already implemented
+
+- Agreement-party authorization on every upload and retrieval
+- Private R2 vault as the default
+- SHA-256 integrity receipt for every document
+- File-signature validation for PDF, JPEG, PNG, and WebP uploads instead of trusting the
+  browser-declared content type
+- Optional application-layer AES-256-GCM encryption
+- Per-file keys derived with HKDF from a deployment master key
+- Encrypted-IPFS mode that refuses to publish evidence unless encryption is configured
+- Authorized retrieval, decryption, and integrity verification
+- CID and storage method recorded in the private timestamped agreement record
+
+### Generate the evidence master key
+
+Run this once in PowerShell:
+
+```powershell
+$bytes = New-Object byte[] 32
+[System.Security.Cryptography.RandomNumberGenerator]::Fill($bytes)
+[Convert]::ToBase64String($bytes)
+```
+
+Save the output in a password manager and add it to the hosted runtime as:
+
+```dotenv
+EVIDENCE_ENCRYPTION_KEY=replace_with_the_generated_base64_value
+EVIDENCE_ENCRYPTION_KEY_ID=primary
+```
+
+Losing this value makes encrypted evidence unrecoverable. Changing it after uploads exist also
+prevents those existing files from being decrypted unless the prior key remains in the versioned
+decryption keyring. Participant-controlled recovery and an approved retention/deletion schedule
+are not implemented yet.
+
+### Rotate the evidence key without losing older files
+
+Each encrypted evidence row records the non-secret ID of the key that protected it. To rotate:
+
+1. Keep the current key and its ID in the project password manager.
+2. Generate a new 32-byte base64 key.
+3. Set `EVIDENCE_ENCRYPTION_KEY` to the new key and give it a new stable ID, such as
+   `EVIDENCE_ENCRYPTION_KEY_ID=2026-q3`.
+4. Add every retired key to the server-only `EVIDENCE_DECRYPTION_KEYS` secret as a JSON object:
+
+   ```dotenv
+   EVIDENCE_DECRYPTION_KEYS={"primary":"replace_with_the_prior_base64_key"}
+   ```
+
+5. Redeploy, then verify one invented file uploaded before rotation and one uploaded after
+   rotation. Both must download with matching SHA-256 receipts.
+
+Never reuse one ID for different key bytes. Never remove a retained key merely to simplify the
+configuration; remove it only after every file encrypted with that ID has been handled under an
+approved retention/deletion policy and any required recovery backup has been verified.
+
+New encrypted rows also record a `sha256:` fingerprint of the 32-byte master key. The fingerprint
+does not reveal the key, but it lets the hosted readiness check distinguish an exact retained
+backup from unrelated bytes stored under the same key ID. A missing or mismatched key keeps
+`keyringReady` false.
+
+Rows created before the fingerprint migration remain fail-closed until an agreement party opens
+the evidence with the approved keyring. OpenEscrow then writes the missing fingerprint only after
+AES-GCM decryption succeeds and the resulting plaintext matches the row's existing SHA-256
+receipt. A wrong backup cannot decrypt the file and cannot backfill the fingerprint. Preserve the
+ciphertext and metadata, restore only an approved backup, and never bypass readiness by editing a
+fingerprint directly.
+
+### Recommended pilot mode: encrypted private R2
+
+```dotenv
+EVIDENCE_STORAGE_MODE=private-r2
+EVIDENCE_ENCRYPTION_KEY=replace_with_the_generated_base64_value
+EVIDENCE_ENCRYPTION_KEY_ID=primary
+```
+
+The application encrypts the document before persistent storage and verifies the original
+SHA-256 hash after decryption. This is private and inexpensive, but R2 is not decentralized.
+
+Keep this as the pilot default. Do not enable the decentralized mode merely to complete a
+checklist; participant-controlled key recovery should be designed before decentralized storage
+becomes the only copy of evidence.
+
+### Experimental decentralized mode: encrypted IPFS
+
+1. Create a free Pinata account.
+2. Create a JWT that can upload files.
+3. Configure:
+
+```dotenv
+PINATA_JWT=replace_with_the_server_side_jwt
+EVIDENCE_STORAGE_MODE=encrypted-ipfs
+EVIDENCE_ENCRYPTION_KEY=replace_with_the_generated_base64_value
+EVIDENCE_ENCRYPTION_KEY_ID=primary
+IPFS_GATEWAY_URL=https://gateway.pinata.cloud/ipfs
+```
+
+Only ciphertext is uploaded to IPFS. Agreement parties open the document through OpenEscrow,
+which authorizes them, retrieves the ciphertext by CID, decrypts it, and checks the integrity
+receipt. Never paste an unencrypted public `ipfs://` URI containing tenancy evidence.
+
+Storacha can replace Pinata as the decentralized pinning layer later. The encryption and
+authorized-retrieval design should remain the same; only the upload and gateway adapter changes.
+
+### Verify
+
+1. Use a proposal containing only invented test identities.
+2. Upload a small test PDF or image.
+3. Confirm the UI reports private or encrypted decentralized storage.
+4. Open the evidence as the landlord and every tenant.
+5. Confirm an invalid invitation token receives an access error.
+6. Confirm the downloaded response includes the same SHA-256 receipt recorded by OpenEscrow.
+7. After a rotation, confirm readiness reports zero missing, unverified, and mismatched evidence
+   keys.
+8. Never test with a real lease, invoice, address, or damage photograph.
+
+## Pilot go/no-go checklist
+
+- [ ] Resend domain is verified.
+- [ ] Signed-in test email arrives.
+- [ ] Cron Trigger has a recent successful run.
+- [ ] Duplicate scheduled checks send only one message.
+- [ ] Base Sepolia receipt verification reports `PASS`.
+- [ ] An unrelated transaction hash is rejected from the running record.
+- [ ] Base Sepolia still uses only free test tokens.
+- [ ] Fiat checkout remains sandbox-only.
+- [ ] Evidence master key is backed up.
+- [ ] R2 evidence is encrypted and party-authorized.
+- [ ] Encrypted-IPFS mode has been tested only with invented documents.
+- [ ] No real-money pilot begins before legal review and an independent contract audit.

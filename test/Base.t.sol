@@ -28,7 +28,7 @@ abstract contract Base is Test {
 
     function setUp() public virtual {
         usdc = new MockUSDC();
-        escrow = new OpenEscrow(address(usdc), address(usdc));
+        escrow = new OpenEscrow(address(usdc), address(usdc), address(0));
 
         usdc.mint(tenant, 1_000_000e6);
         vm.prank(tenant);

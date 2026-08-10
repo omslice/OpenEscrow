@@ -1,0 +1,51 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "replace-openescrow-selfhost-testnet",
+  "account_id": "00000000000000000000000000000000",
+  "main": "cloudflare-dist/server/index.js",
+  "compatibility_date": "2026-08-07",
+  "workers_dev": true,
+  "preview_urls": true,
+  "assets": {
+    "directory": "./cloudflare-dist/client",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": true
+  },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "replace-openescrow-db",
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "../drizzle"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "EVIDENCE",
+      "bucket_name": "replace-openescrow-evidence"
+    }
+  ],
+  "vars": {
+    "ACTIVITY_REGISTRY_ADDRESS": "0x5ba6533811ee528f6802bb969ab01ff95d7f092e",
+    "API_RATE_LIMIT_ENABLED": "true",
+    "COMPLIANCE_SOURCE_MONITOR_ENABLED": "true",
+    "EVIDENCE_STORAGE_MODE": "private-r2",
+    "PRIVY_APP_ID": "replace-with-your-privy-app-id",
+    "PUBLIC_APP_URL": "https://replace.example/",
+    "VERIFY_ACTIVITY_REGISTRY_BINDING": "true",
+    "VERIFY_TRANSACTION_RECEIPTS": "true"
+  },
+  "triggers": {
+    "crons": ["*/15 * * * *"]
+  },
+  "observability": {
+    "enabled": true,
+    "logs": {
+      "enabled": true,
+      "head_sampling_rate": 0.1,
+      "invocation_logs": true
+    }
+  }
+}

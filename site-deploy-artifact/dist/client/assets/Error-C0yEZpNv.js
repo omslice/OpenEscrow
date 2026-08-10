@@ -1,0 +1,1 @@
+var e=class extends Error{constructor({error:e,code:t,status:n}){super(e),this.name=`PrivyApiError`,this.error=e,this.code=t,this.status=n}},t=class extends Error{constructor({error:e,code:t}){super(e),this.code=t,this.error=e}},n=class extends Error{constructor({error:e,code:t,response:n}){super(e),this.code=t,this.error=e,this.response=n}};export{n,e as r,t};
