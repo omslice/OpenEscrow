@@ -1,6 +1,7 @@
 [CmdletBinding()]
 param(
-    [string]$DeployerAddress = "0x0B3AA7539bB7EDCd44131F1A71eDCff1c1FDf20E"
+    [string]$DeployerAddress = "0x0B3AA7539bB7EDCd44131F1A71eDCff1c1FDf20E",
+    [string]$RpcUrl = ""
 )
 
 $ErrorActionPreference = "Stop"
@@ -8,13 +9,67 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $foundryBin = Join-Path $env:USERPROFILE ".foundry\bin"
 
-$env:BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org"
 if ($DeployerAddress -notmatch '^0x[0-9a-fA-F]{40}$') {
   throw "The configured deployer address is not a valid Ethereum address."
 }
 $env:DEPLOYER_ADDRESS = $DeployerAddress
 
 Set-Location -LiteralPath $repoRoot
+
+function Resolve-BaseSepoliaRpcUrl {
+  param([string]$RequestedRpcUrl)
+
+  $configuredRpcUrl = if ($RequestedRpcUrl) {
+    $RequestedRpcUrl
+  }
+  elseif ($env:BASE_SEPOLIA_RPC_URL) {
+    $env:BASE_SEPOLIA_RPC_URL
+  }
+  else {
+    ""
+  }
+
+  $candidates = if ($configuredRpcUrl) {
+    @($configuredRpcUrl)
+  }
+  else {
+    @(
+      "https://sepolia.base.org",
+      "https://base-sepolia-rpc.publicnode.com"
+    )
+  }
+
+  foreach ($candidate in $candidates) {
+    $chainIdOutput = & "$foundryBin\cast.exe" chain-id --rpc-url $candidate 2>$null
+    $chainIdExitCode = $LASTEXITCODE
+    $chainId = ($chainIdOutput | Out-String).Trim()
+    if ($chainIdExitCode -eq 0 -and $chainId -eq "84532") {
+      return $candidate
+    }
+
+    if ($configuredRpcUrl) {
+      throw "The configured RPC endpoint did not return Base Sepolia chain ID 84532. No transaction was signed."
+    }
+
+    Write-Warning "A public Base Sepolia RPC endpoint was unavailable; trying the documented fallback."
+  }
+
+  throw "No healthy Base Sepolia RPC endpoint returned chain ID 84532. No transaction was signed."
+}
+
+$env:BASE_SEPOLIA_RPC_URL = Resolve-BaseSepoliaRpcUrl -RequestedRpcUrl $RpcUrl
+$selectedRpcLabel = if (
+  $env:BASE_SEPOLIA_RPC_URL -in @(
+    "https://sepolia.base.org",
+    "https://base-sepolia-rpc.publicnode.com"
+  )
+) {
+  $env:BASE_SEPOLIA_RPC_URL
+}
+else {
+  "the configured custom endpoint"
+}
+Write-Host "Verified Base Sepolia RPC: $selectedRpcLabel" -ForegroundColor Green
 
 function Assert-CandidateSourceClean {
   $sourceChanges = @(& git status --porcelain=v1 --untracked-files=all -- `

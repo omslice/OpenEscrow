@@ -17,6 +17,11 @@ The project is an open-source public-interest prototype. It is not a law firm, b
 
 The Base Sepolia testnet MVP implements the complete technical lifecycle:
 
+> **Deployment boundary:** the currently hosted app remains attached to the recorded July 25
+> legacy test-token cohort while the replacement bounded `testUSDC` / `taUSDC` cohort is being
+> deployed and verified. Use the standard test-token path for public review until the replacement
+> cohort is activated. No existing agreement or stored record is migrated by that contract switch.
+
 - A landlord proposes an agreement.
 - Every tenant approves the same saved revision and owns an explicit deposit percentage; shares
   default evenly and any change resets the approval cycle.
@@ -30,9 +35,10 @@ The Base Sepolia testnet MVP implements the complete technical lifecycle:
 - Only the disputed amount remains locked.
 - The current arbiter may award no more than the disputed amount.
 - If the arbiter misses the deadline, the disputed balance defaults to the tenant.
-- The tenant dashboard shows onchain custody, a deliberately accelerated 1%-per-hour demo value
-  capped at 5%, deduction/dispute alerts, deadlines, and resolution status. The demo value is not
-  real yield.
+- The replacement-cohort tenant dashboard shows onchain custody and a deliberately accelerated
+  taUSDC preview that grows from funding at 1% per hour and stops at 5%, alongside
+  deduction/dispute alerts, deadlines, and resolution status. This is simulated testnet value,
+  not real yield.
 - Agreement parties can download a complete timestamped report, preserve an AES-256-GCM encrypted
   canonical record with a separate verification key, anchor its SHA-256 hash in the Base Sepolia
   activity registry, and verify the encrypted record locally against current agreement parties.
@@ -61,6 +67,7 @@ The current source includes:
 - [`docs/owner-actions.md`](docs/owner-actions.md) — running list of owner-only credentials, signatures, decisions, and external reviews
 - [`docs/mvp-roadmap.md`](docs/mvp-roadmap.md) — canonical high-level testnet MVP status, remaining work, and material unknowns
 - [`docs/release-evidence-index.md`](docs/release-evidence-index.md) — claim-to-evidence map for reviewers, contributors, auditors, partners, and funders
+- [`docs/grant-reviewer-guide.md`](docs/grant-reviewer-guide.md) — concise reviewer routes, safety boundaries, and known limitations
 - [`docs/reviewer-publication-runbook.md`](docs/reviewer-publication-runbook.md) — exact-source manifest and owner-gated publication procedure
 - [`GOVERNANCE.md`](GOVERNANCE.md) — current decision process, roles, conflicts, funding independence, and succession direction
 - [`MAINTAINERS.md`](MAINTAINERS.md) — current maintainers and the path to shared stewardship

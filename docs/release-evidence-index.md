@@ -10,6 +10,7 @@ newest source is publicly deployed.
 
 - Product: <https://openescrow.io>
 - Walkthrough: <https://openescrow.io/demo>
+- Reviewer guide: [grant-reviewer-guide.md](grant-reviewer-guide.md)
 - Repository: <https://github.com/omslice/OpenEscrow>
 - Network: Base Sepolia, chain ID 84532
 - License: [MIT](../LICENSE)
@@ -57,6 +58,7 @@ Update this section whenever a clean, exact later candidate passes or a deployme
 | Privacy and evidence | [Privacy threat model](privacy-threat-model.md), [hosted-data continuity](hosted-data-continuity.md), [incident runbook](testnet-incident-response-runbook.md) | Designed authorization, encryption, recovery and containment boundaries | Legal compliance, zero breach risk, or approved real-data use |
 | Compliance engineering | [U.S. jurisdiction profiles](us-jurisdiction-profiles.md), source registry/tests, `.github/workflows/compliance-source-monitor.yml` | Versioned official-source research and fail-closed change handling | Legal advice, complete local law, or counsel approval |
 | User and pilot readiness | [Consumer UX audit](consumer-ux-audit.md), [usability plan](usability-test-plan.md), [pilot runbook](testnet-pilot-runbook.md), [pilot brief](pilot-readiness-brief.md) | Automated UX coverage and planned supervised validation | Real beneficiary outcomes or completed partner pilot |
+| Grant review path | [Grant reviewer guide](grant-reviewer-guide.md) | Concise one-minute, five-minute and separate-account test routes with safety boundaries | A completed external review, real-user pilot or production approval |
 | Self-hosting | `self-host/cloudflare/`, release package scripts and SBOM checks | Reproducible Cloudflare-oriented packaging at the recorded baseline | Maintenance by a third party or production suitability |
 | Governance and contribution | [Governance](../GOVERNANCE.md), [maintainers](../MAINTAINERS.md), [contributing](../CONTRIBUTING.md), [security policy](../SECURITY.md), [Code of Conduct](../CODE_OF_CONDUCT.md) | Current founder-maintained process, intake and safety rules | Outside maintainers, community governance or nonprofit status |
 | Funding transparency | `frontend/src/components/FundingPage.tsx`, `frontend/src/lib/fundingTransparency.ts`, their tests and the rendered landing check | A local fail-closed public route that separates applications, commitments, receipts, spending and in-kind support and requires complete owner-confirmed opening facts | A live canonical route, a zero funding balance, a legal recipient, tax deductibility or permission to solicit or receive funds |

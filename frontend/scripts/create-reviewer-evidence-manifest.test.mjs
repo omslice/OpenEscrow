@@ -45,6 +45,8 @@ test("accepts current, bounded public claims", () => {
       "has not been independently audited",
     ].join("\n"),
     "SECURITY.md": "Base Sepolia public-interest prototype; not audited",
+    "docs/grant-reviewer-guide.md":
+      "Review https://openescrow.io on Base Sepolia using test tokens, not real funds.",
     "docs/release-evidence-index.md":
       "This does not claim the newest source is publicly deployed. Say public on Base Sepolia.",
     "frontend/src/Root.tsx": 'if (path === "/funding") {}',
@@ -68,6 +70,7 @@ test("rejects stale links, stale test counts, and missing deployment boundaries"
   const errors = evaluatePublicCopy({
     "README.md": "openescrow-demo.omrigross.chatgpt.site\n221 passing Foundry tests",
     "SECURITY.md": "",
+    "docs/grant-reviewer-guide.md": "",
     "docs/release-evidence-index.md": "",
   });
   assert.ok(errors.some((error) => error.includes("openescrow.io/demo")));

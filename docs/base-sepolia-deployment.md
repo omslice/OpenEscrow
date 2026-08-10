@@ -1,7 +1,7 @@
 # Base Sepolia deployment
 
-This runbook deploys a matching `OpenEscrow`, `OperationsReserve`, and
-`AgreementActivityRegistry` release with a
+This runbook deploys a matching `TestUSDC`, `TestAaveUSDC`, `OpenEscrow`,
+`OperationsReserve`, and `AgreementActivityRegistry` release with a
 locally encrypted Foundry keystore. It does not put a private key in this repository,
 the shell history, or an environment variable.
 
@@ -23,16 +23,16 @@ The first command prompts locally for the key and a keystore password. Foundry s
 the encrypted keystore outside this repository. Record the displayed public deployer
 address and fund it with only enough Base Sepolia ETH for this deployment.
 
-## Configure public deployment inputs
+## Configure the public deployment endpoint
 
-The upgraded contracts use the existing Base Sepolia demo tokens unless a deliberate
-token replacement is being tested:
+The wrapper verifies the official Base Sepolia endpoint with Foundry before any wallet prompt. If
+that endpoint is unavailable, it tries the alternative public endpoint documented by Base. To use
+a dedicated provider instead, pass `-RpcUrl` or set `BASE_SEPOLIA_RPC_URL`; a configured endpoint
+must return chain ID `84532` and never silently falls back.
 
 ```powershell
 $foundryBin = Join-Path $env:USERPROFILE ".foundry\bin"
 $env:BASE_SEPOLIA_RPC_URL = "https://sepolia.base.org"
-$env:TOKEN_ADDRESS = "0xE129b23BD89904D363ba226eE52deC74185D7789"
-$env:YIELD_TOKEN_ADDRESS = "0x2746034FF16371A65c133016470f85535992dabC"
 $env:DEPLOYER_ADDRESS = & "$foundryBin\cast.exe" wallet address --account openescrow-base-sepolia
 ```
 
@@ -62,8 +62,9 @@ Set-Location ..
   -vvvv
 ```
 
-The simulation should show exactly three release-contract creations:
-`OperationsReserve`, `OpenEscrow`, and `AgreementActivityRegistry`, with the reserve's
+The simulation should show exactly five release-contract creations:
+`TestUSDC`, `TestAaveUSDC`, `OperationsReserve`, `OpenEscrow`, and
+`AgreementActivityRegistry`, with the reserve's
 one-time `configureEscrow` call between the escrow and registry deployments. The
 credential-free rehearsal separately deploys two complete cohorts on ephemeral local
 Anvil, funds overlapping agreement ID `0`, proves registry isolation, closes only the
@@ -112,7 +113,7 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
 Get-Content .\deployments\base-sepolia-candidate.json
 ```
 
-The exporter verifies chain ID `84532`, one successful receipt for each of the three
+The exporter verifies chain ID `84532`, one successful receipt for each of the five deployed
 contracts, reciprocal escrow/reserve construction and configuration, exact registry binding,
 matching token constructor arguments, deployment blocks, transaction hashes, and the exact source
 commit before writing a candidate manifest. It deliberately leaves
@@ -120,9 +121,10 @@ commit before writing a candidate manifest. It deliberately leaves
 
 Before releasing the site, confirm on a Base Sepolia explorer that:
 
-- both deployment transactions succeeded;
-- `OpenEscrow.TOKEN()` and `OperationsReserve.TOKEN()` equal `TOKEN_ADDRESS`;
-- `OpenEscrow.YIELD_TOKEN()` equals `YIELD_TOKEN_ADDRESS`;
+- all deployment and configuration transactions succeeded;
+- `OpenEscrow.TOKEN()` and `OperationsReserve.TOKEN()` equal the newly deployed `TestUSDC`;
+- `OpenEscrow.YIELD_TOKEN()` and `OperationsReserve.YIELD_TOKEN()` equal the newly deployed
+  `TestAaveUSDC`;
 - `OpenEscrow.OPERATIONS_RESERVE()` equals the deployed reserve;
 - `OperationsReserve.ESCROW()` equals the deployed escrow;
 - `OperationsReserve.TREASURY()` equals the intended deployer address;
