@@ -383,11 +383,12 @@ export function PublicIntro({
             <p className="eyebrow">About the builder</p>
             <h3>Built by Omri Gross</h3>
             <p>
-              Omri works at the intersection of housing policy, public-interest technology, and
-              blockchain. His work has included policy, guidance, workflows, tracking,
-              contractor management, and implementation across multiple complex national program
-              environments. OpenEscrow demonstrates how verifiable shared systems can
-              reduce confusion and conflict around an everyday housing process.
+              Omri works at the intersection of housing, regulatory compliance, and emerging
+              technology. His experience spans the public and private sectors, including policy,
+              guidance, workflow design, program tracking, contractor management, and
+              implementation across complex national programs. OpenEscrow demonstrates how
+              verifiable shared systems can reduce confusion and conflict around an everyday
+              housing process.
             </p>
             <p>
               Omri&apos;s essay{" "}
