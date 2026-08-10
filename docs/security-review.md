@@ -394,11 +394,16 @@ Remaining Slither results are reviewed design signals: day-scale timestamp deadl
 pragma ranges, constant naming, and intentionally ignored participant arrays. None is being
 treated as proof that the contracts are vulnerability-free.
 
-These changes are source-level only. The configured Base Sepolia escrow/reserve pair and activity
-registry do not contain this complete addendum's fixes. Because the core and reserve are mutually
-bound and immutable, activating the funding hardening requires a new reviewed pair; the registry
-must then be deployed against that exact escrow. Existing testnet agreements stay on their old
-immutable code and must be treated as a retired cohort rather than silently migrated.
+These fixes are present in the active Base Sepolia cohort compiled from exact source commit
+`200848d67f0865fa76484f3f2788122361c28dfe`: escrow
+`0x9F8C9555f28C10347C58fc71F430F4cbc3724b10`, reserve
+`0xDB6637e5A858A8fd3A3Cd85C1625D9a0b022A626`, and activity registry
+`0x88b53D6c35020E82B97462e8a1CBDcd8D6D50f53`. The active deployment manifest records successful
+receipts, exact runtime-bytecode matches, reciprocal escrow/reserve bindings, and the exact
+registry binding confirmed through two Base Sepolia RPC providers. The older F18 cohort predates
+this complete addendum and remains retired; its agreements and balances were not migrated. Because
+each cohort is mutually bound and immutable, any future core fix will still require a new reviewed
+escrow/reserve pair and a registry deployed against that exact escrow.
 
 ## Deterministic contract-release assurance addendum — 2026-08-05
 
