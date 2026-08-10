@@ -249,8 +249,8 @@ const releaseManifest = {
   network: "base-sepolia",
   chainId: 84_532,
   contracts: {
-    escrow: "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99",
-    activityRegistry: "0x5ba6533811ee528f6802bb969ab01ff95d7f092e",
+    escrow: "0x9F8C9555f28C10347C58fc71F430F4cbc3724b10",
+    activityRegistry: "0x88b53d6C35020e82B97462E8a1cBCDc8D6d50f53",
   },
   boundaries: {
     realMoneyEnabled: false,

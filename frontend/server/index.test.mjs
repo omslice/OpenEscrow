@@ -2198,12 +2198,12 @@ const RECEIPT_TEST_LANDLORD = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const RECEIPT_TEST_TENANT = "0x1111111111111111111111111111111111111111";
 const RECEIPT_TEST_OTHER_TENANT = "0x2222222222222222222222222222222222222222";
 const RECEIPT_TEST_ARBITER = "0x3333333333333333333333333333333333333333";
-const RECEIPT_TEST_USDC = "0xe129b23bd89904d363ba226ee52dec74185d7789";
-const RECEIPT_TEST_YIELD_USDC = "0x2746034ff16371a65c133016470f85535992dabc";
+const RECEIPT_TEST_USDC = "0x3d147c9c4a9191caba99be3174c674c04b33e152";
+const RECEIPT_TEST_YIELD_USDC = "0x596bf42f18d2a82c346b7007402fe9f22c1ad32f";
 const RECEIPT_TEST_OPEN_ESCROW =
-  "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99";
+  "0x9F8C9555f28C10347C58fc71F430F4cbc3724b10";
 const RECEIPT_TEST_OPERATIONS_RESERVE =
-  "0x5d2E9c429F9d117c7b028c8f0f67d37252aDceC0";
+  "0xDB6637e5A858A8FD3a3CD85c1625d9A0b022A626";
 const AGREEMENT_PROPOSED_TOPIC =
   "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6";
 const PROPOSAL_CANCELLED_TOPIC =
@@ -3215,11 +3215,11 @@ test("tenant can request changes, approve, and make an arbiter-free proposal rea
   assert.equal(firstSnapshot.snapshot.onchain.chainId, 84532);
   assert.equal(
     firstSnapshot.snapshot.onchain.escrowAddress.toLowerCase(),
-    "0xf18bfdbfd3ff84c603cbdf895d2a96ac7260ae99",
+    "0x9f8c9555f28c10347c58fc71f430f4cbc3724b10",
   );
   assert.equal(
     firstSnapshot.snapshot.onchain.activityRegistryAddress.toLowerCase(),
-    "0x5ba6533811ee528f6802bb969ab01ff95d7f092e",
+    "0x88b53d6c35020e82b97462e8a1cbcdc8d6d50f53",
   );
 });
 
@@ -6967,7 +6967,7 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
       return Response.json({
         jsonrpc: "2.0",
         id: payload.id,
-        result: `0x${"0".repeat(24)}f18bfdbfd3ff84c603cbdf895d2a96ac7260ae99`,
+        result: `0x${"0".repeat(24)}9f8c9555f28c10347c58fc71f430f4cbc3724b10`,
       });
     }
     if (url === "https://mismatched-rpc.example/") {
@@ -7037,7 +7037,7 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     assert.equal(readiness.email.schedulerAgeMinutes, null);
     assert.equal(
       readiness.recordIntegrity.activityRegistry.boundEscrowAddress,
-      "0xf18bfdbfd3ff84c603cbdf895d2a96ac7260ae99",
+      "0x9f8c9555f28c10347c58fc71f430f4cbc3724b10",
     );
     assert.equal(readiness.complianceSources.configured, false);
     assert.ok(readiness.complianceSources.total >= 57);
@@ -13834,7 +13834,7 @@ test("receipt verification binds tenant funding to the exact participant and amo
         from: RECEIPT_TEST_TENANT,
         logs: [
           {
-            address: "0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99",
+            address: "0x9F8C9555f28C10347C58fc71F430F4cbc3724b10",
             topics:
               eventTopic === TENANT_SHARE_FUNDED_TOPIC
                 ? [
@@ -14385,7 +14385,7 @@ test("legacy finalized records re-prove and preserve the landlord wallet before 
     from: RECEIPT_TEST_LANDLORD,
     logs: [
       {
-        address: "0x5ba6533811ee528f6802bb969ab01ff95d7f092e",
+        address: "0x88b53d6C35020e82B97462E8a1cBCDc8D6d50f53",
         topics: [
           ACTIVITY_PUBLISHED_TOPIC,
           receiptWord(42),
@@ -14746,7 +14746,7 @@ test("receipt verification binds private record anchors to the submitted hash, t
         logs: [
           isActivity
             ? {
-                address: "0x5ba6533811ee528f6802bb969ab01ff95d7f092e",
+                address: "0x88b53d6C35020e82B97462E8a1cBCDc8D6d50f53",
                 topics: [
                   ACTIVITY_PUBLISHED_TOPIC,
                   receiptWord(42),
@@ -14759,7 +14759,7 @@ test("receipt verification binds private record anchors to the submitted hash, t
                 ),
               }
             : {
-                address: "0x5ba6533811ee528f6802bb969ab01ff95d7f092e",
+                address: "0x88b53d6C35020e82B97462E8a1cBCDc8D6d50f53",
                 topics: [
                   RECORD_SNAPSHOT_ANCHORED_TOPIC,
                   receiptWord(42),
