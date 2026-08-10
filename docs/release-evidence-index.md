@@ -34,15 +34,20 @@ contract cohort and repository HEAD all match.
 
 ## Current source and deployment boundary
 
-- The complete credential-free pilot-candidate envelope last recorded in the repository passed on
-  commit `3e42b37`.
-- The New Hampshire monitor (`a07d953`), proposal/deposit UX (`d25b7a9`), account/settings UX
-  (`6bcc101`), bounded test-token cohort (`84dcb31`), Base Sepolia signer correction (`460eaac`)
-  and public contact update (`d97e09a`) are newer source milestones with narrower reported checks.
-- The generated `frontend-site-dist.tar` must be intentionally reconciled and the complete release
-  envelope rerun before a later commit is called a clean audit or deployment candidate.
-- The public F18 escrow cohort and its activity registry predate parts of the newest source. Use the
-  manifests below for exact addresses; never describe `main` as the deployed contract.
+- The complete credential-free pilot-candidate envelope passed on exact source commit
+  [`7cb1e20`](https://github.com/omslice/OpenEscrow/commit/7cb1e20588ebb9cdc2bffbf7ea6a914b94453634).
+  It covers the bounded testUSDC/taUSDC cohort, participant notification delivery, landlord and
+  multi-tenant lifecycle checks, rendered accessibility/UX checks, deployment and incident
+  rehearsals, and exact-source Cloudflare and Sites builds.
+- The canonical hosted app currently reports clean release commit `d97e09a`; the `7cb1e20`
+  candidate and its fresh test-token cohort are not yet deployed. Do not describe candidate source
+  as the live contract or application.
+- The modified `frontend-site-dist.tar` is a separately owned obsolete generated archive and was
+  excluded from both exact-source hosting builds and the candidate source envelope. It still needs
+  an explicit owner decision before any future Sites packaging; it is not current release evidence.
+- The public F18 escrow cohort and its repaired activity registry predate parts of the newest
+  source. Use the manifests below for exact addresses; never describe repository HEAD as the
+  deployed contract.
 
 Update this section whenever a clean, exact later candidate passes or a deployment is approved.
 
@@ -71,20 +76,19 @@ Repository release documentation records:
 - 238 passing Foundry tests across 23 suites;
 - one opt-in live Base Sepolia Aave fork test skipped without an RPC URL;
 - nine stateful accounting properties exercised for 32,768 calls each; and
-- a complete clean pilot-candidate envelope on `3e42b37`.
+- five ABI/runtime/storage-layout checks and two pinned dependency-tree checks; and
+- a complete credential-free pilot-candidate envelope on `7cb1e20`.
 
-On 2026-08-09, the publication working tree based on `d97e09a` completed `npm run check`
-successfully: 122
-server tests and, after the local funding-transparency and reviewer-publication tranche, 313
-client/script logic tests. The latest combined gate passed cleanly across the rendered
-account/funding/evidence/accessibility/deposit/record/pilot checks, roadmap and community-health
-checks, TypeScript/Vite production build, bundle budget, and provider-free landing check. An earlier
-combined run had one private-record browser timeout waiting for an existing field; its immediate
-isolated rerun passed. Foundry was not
-available in that Windows funding workspace and was not rerun there.
+On 2026-08-09, exact candidate `7cb1e20` completed all seven credential-free candidate stages:
+the repository release envelope, deployment rehearsal, pilot rehearsal, incident rehearsal,
+Cloudflare build/configuration validation, and Sites build. The envelope included 122 server tests,
+320 client/script logic tests, the Foundry snapshot above, rendered account/funding/evidence/
+accessibility/deposit/record/multi-party checks, TypeScript/Vite production builds, bundle budgets,
+and provider-free landing checks. The resulting candidate JSON reports `ok: true` and binds every
+stage to the full 40-character commit.
 
-Treat this as dated development evidence, not a clean tagged release. The exact candidate must rerun
-the complete contract and application envelope from a clean tree.
+Treat this as exact development and release-candidate evidence, not as proof that `7cb1e20` is
+deployed, independently audited, production-ready, or approved for real funds.
 
 ## Community-health evidence
 

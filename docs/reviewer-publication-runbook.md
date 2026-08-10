@@ -8,10 +8,11 @@ request, merge, contract deployment, external contact, or claim of independent r
 
 ## Why this is a funding dependency
 
-The public default branch currently predates important product, test, security, governance, and
-canonical-domain work. Application prose must not send a reviewer to an older repository and then
-ask them to infer the newer evidence. A reviewer-safe snapshot must make the exact source commit,
-current limitations, deployed-contract boundary, and reproducible checks visible together.
+The public default branch contains the earlier reviewer-publication tranche, but it still predates
+the exact `7cb1e20` pilot candidate. Application prose must not send a reviewer to an older default
+branch and ask them to infer newer candidate evidence. A reviewer-safe snapshot must make the exact
+source commit, current limitations, deployed-contract boundary, and reproducible checks visible
+together.
 
 ## Candidate contents
 
@@ -97,6 +98,8 @@ Never imply that:
 
 ## Owner gate
 
-The next external action is an owner-approved public push of a reviewed exact snapshot. Until that
-happens, the generated manifest is local preparation and the Runtime Verification readiness email
-must retain its `[PUBLISHED COMMIT]` placeholder.
+The exact `7cb1e20` snapshot is public on the feature branch and has complete credential-free
+candidate evidence. The remaining publication action is an owner-approved pull request and
+default-branch merge, followed separately by the owner-signed cohort deployment and canonical-host
+release. Until the merge is verified, reviewer outreach should use the immutable candidate commit
+URL rather than implying that the default branch or live deployment already matches it.

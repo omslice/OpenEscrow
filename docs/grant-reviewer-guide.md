@@ -80,6 +80,8 @@ does not mean the system is approved for a real tenancy or real money.
 - [Independent audit handoff](independent-audit-handoff.md)
 - [Current owner-only actions](owner-actions.md)
 
-Material remaining gates include a verified replacement test-token cohort, a clean exact-source
-release, a hosted rehearsal with genuinely separate participant accounts, and an independent
-professional audit before any real-money consideration.
+Material remaining gates include deployment and verification of the replacement test-token cohort,
+promotion of the exact validated candidate to the canonical host, a hosted rehearsal with genuinely
+separate participant accounts, and an independent professional audit before any real-money
+consideration. The credential-free exact-source candidate itself passed at `7cb1e20`; that result is
+not evidence that the candidate has already been deployed.
