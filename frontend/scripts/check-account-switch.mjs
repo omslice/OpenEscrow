@@ -935,6 +935,9 @@ try {
     exact: true,
   });
   await recordArchiveSummary.waitFor({ state: "visible" });
+  await page.waitForFunction(
+    () => document.activeElement?.id === "record-archive-summary",
+  );
   assert.equal(
     await page.evaluate(
       () => document.activeElement?.id === "record-archive-summary",
