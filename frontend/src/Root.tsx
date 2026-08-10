@@ -151,7 +151,7 @@ export function Root() {
       <Suspense
         fallback={
           <div className="app-loading" role="status">
-            Loading OpenEscrow funding transparency...
+            Loading project funding...
           </div>
         }
       >

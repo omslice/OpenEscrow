@@ -16,7 +16,8 @@ test("the public funding route is lazy and available without account initializat
   assert.match(root, /const FundingPage = lazy/);
   assert.match(root, /path === "\/funding"/);
   assert.match(root, /<FundingPage \/>/);
-  assert.match(layout, /href="\/funding">Funding &amp; transparency<\/a>/);
+  assert.match(layout, /href="\/funding">Project funding<\/a>/);
+  assert.match(fundingPage, /<h2 id="funding-page-title">Project funding<\/h2>/);
 });
 
 test("the unconfirmed public state cannot imply that zero funding was received", () => {

@@ -60,7 +60,7 @@ export function FundingPage() {
       <article className="funding-page" aria-labelledby="funding-page-title">
         <header className="funding-page-heading">
           <p className="eyebrow">Public-good accountability</p>
-          <h2 id="funding-page-title">Funding OpenEscrow</h2>
+          <h2 id="funding-page-title">Project funding</h2>
           <p>
             OpenEscrow is free, MIT-licensed public infrastructure for a fairer, more transparent
             rental security-deposit process. Grants, donations, sponsorships, and aligned support

@@ -158,8 +158,18 @@ test("the header wordmark and compact donation copy control retain accessible tr
 test("the signed-out header keeps its brand readable before stacking", () => {
   assert.match(layoutSource, /className="app-brand"/);
   assert.match(appStyles, /\.app-brand\s*\{[^}]*min-width:\s*280px;/s);
+  assert.match(appStyles, /\.tagline\s*\{[^}]*max-width:\s*46ch;[^}]*overflow-wrap:\s*anywhere;/s);
+  assert.match(layoutSource, /app-header-account-entry/);
   assert.match(
     appStyles,
-    /@media \(max-width: 860px\)[\s\S]*\.app-header\s*\{[^}]*flex-direction:\s*column;[\s\S]*\.app-brand\s*\{[^}]*min-width:\s*0;/s,
+    /\.app-header-account-entry\s*\{[^}]*grid-template-columns:\s*minmax\(280px, 1fr\) minmax\(0, 420px\);/s,
+  );
+  assert.match(
+    appStyles,
+    /\.app-header-account-entry \.account-entry \.btn\s*\{[^}]*flex:\s*1 1 180px;[^}]*min-width:\s*0;/s,
+  );
+  assert.match(
+    appStyles,
+    /@media \(max-width: 860px\)[\s\S]*\.app-header-account-entry\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);[\s\S]*\.app-brand\s*\{[^}]*min-width:\s*0;/s,
   );
 });

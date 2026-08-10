@@ -338,9 +338,9 @@ export function PublicIntro({
               housing details stay in the participant-controlled record.
             </p>
             <p>
-              The goal is practical trust and accountability, not speculative crypto. The current
-              application is a Base Sepolia testnet prototype built for learning, testing, and
-              responsible public collaboration.
+              The goal is practical trust and accountability. The current application is a Base
+              Sepolia testnet prototype built for learning, testing, and responsible public
+              collaboration.
             </p>
             <div className="about-links" aria-label="OpenEscrow project links">
               <a
@@ -401,7 +401,6 @@ export function PublicIntro({
               emphasis on transparency, security, and responsible implementation.
             </p>
             <div className="about-links" aria-label="Omri Gross links">
-              <a href="mailto:omri@openescrow.io">Email Omri</a>
               <a
                 href="https://linktr.ee/omslice"
                 target="_blank"

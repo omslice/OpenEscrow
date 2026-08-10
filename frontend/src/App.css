@@ -61,6 +61,24 @@
   align-items: center;
   gap: 10px;
   flex: 0 0 auto;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.app-header-account-entry {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) minmax(0, 420px);
+}
+
+.app-header-account-entry .header-actions,
+.app-header-account-entry .account-entry {
+  width: 100%;
+  min-width: 0;
+}
+
+.app-header-account-entry .account-entry .btn {
+  flex: 1 1 180px;
+  min-width: 0;
 }
 
 .notification-center {
@@ -200,10 +218,12 @@
 
 .tagline {
   margin: 8px 0 0;
+  width: 100%;
+  max-width: 46ch;
   font-size: 15px;
   line-height: 1.55;
   color: var(--text);
-  max-width: 620px;
+  overflow-wrap: anywhere;
 }
 
 .eyebrow {
@@ -1506,6 +1526,7 @@ html.demo-route #root {
   justify-content: flex-end;
   gap: 8px;
   flex-wrap: wrap;
+  max-width: 100%;
 }
 
 .legal-consent-note {
@@ -1515,6 +1536,7 @@ html.demo-route #root {
   font-size: 11px;
   line-height: 1.45;
   text-align: right;
+  overflow-wrap: anywhere;
 }
 
 .legal-consent-note a {
@@ -5138,6 +5160,10 @@ a.btn.disabled {
   .app-header {
     align-items: flex-start;
     flex-direction: column;
+  }
+
+  .app-header-account-entry {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .app-brand {
