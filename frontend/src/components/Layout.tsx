@@ -185,10 +185,9 @@ export function Layout({
           </a>
         </nav>
         <div className="donation-message">
-          <span>
-            <strong>Support the open-source project.</strong> Donations help fund continued
-            OpenEscrow development.
-          </span>
+          <strong className="donation-message-copy">
+            Support continued development of the open-source OpenEscrow project.
+          </strong>
           <span className="donation-address-control">
             <span
               className="donation-address"
