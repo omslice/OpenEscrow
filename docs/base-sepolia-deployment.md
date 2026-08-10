@@ -90,6 +90,11 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
 
 Only after that command passes, rerun without `-PreflightOnly` to broadcast:
 
+RPC liveness and chain identity are checked before the release gate. The wrapper deliberately
+removes the RPC URL while running contract assurance and the deployment rehearsal so their
+evidence remains offline, deterministic, and reproducible; the verified endpoint is supplied only
+to the later broadcast command.
+
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\Broadcast-BaseSepolia.ps1
