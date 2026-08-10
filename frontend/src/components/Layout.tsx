@@ -94,7 +94,9 @@ export function Layout({
   return (
     <div className="app-shell">
       <header
-        className={`app-header${accountEntry === undefined ? "" : " app-header-account-entry"}`}
+        className={`app-header${
+          !showNotifications || accountEntry !== undefined ? " app-header-account-entry" : ""
+        }`}
       >
         <div className="app-brand">
           <h1 className="app-title">
