@@ -1790,7 +1790,9 @@ function AppView({
         </section>
       )}
       {(inviteRole || !workspaceRole || isChangingRole) && (
-        <AccountCenter />
+        <AccountCenter
+          workspaceRole={inviteRole ? roleLabel[inviteRole] : undefined}
+        />
       )}
 
       {workspaceRole && (

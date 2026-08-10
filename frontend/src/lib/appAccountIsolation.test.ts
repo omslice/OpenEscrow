@@ -102,3 +102,10 @@ test("newly finalized agreement ids are persisted by the account-scoped workspac
     /<CreateAgreementForm[\s\S]*?onTrackAgreement=\{addId\}[\s\S]*?\/>/,
   );
 });
+
+test("role-locked invitations show their participant role beside the account name", () => {
+  assert.match(
+    appSource,
+    /\(inviteRole \|\| !workspaceRole \|\| isChangingRole\)[\s\S]*?<AccountCenter[\s\S]*?workspaceRole=\{inviteRole \? roleLabel\[inviteRole\] : undefined\}/,
+  );
+});

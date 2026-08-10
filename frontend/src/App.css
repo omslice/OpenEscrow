@@ -88,10 +88,19 @@
   max-width: 30ch;
 }
 
-.app-header-account-entry .header-actions,
-.app-header-account-entry .account-entry {
+.app-header-account-entry .header-actions {
   width: 100%;
   min-width: 0;
+}
+
+.app-header-account-entry .account-entry {
+  flex: 1 1 0;
+  width: auto;
+  min-width: 0;
+}
+
+.app-header-account-entry .notification-center {
+  flex: 0 0 auto;
 }
 
 .app-header-account-entry .account-entry .btn {

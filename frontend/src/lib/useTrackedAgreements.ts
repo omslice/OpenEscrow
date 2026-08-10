@@ -3,7 +3,10 @@ import {
   readRecoveryJson,
   writeRecoveryJson,
 } from "./browserRecovery";
+import { chain, OPEN_ESCROW_ADDRESS } from "../contracts/config";
 import { trackedAgreementStorageKey } from "./trackedAgreementStorage";
+
+const TRACKED_AGREEMENT_RELEASE_SCOPE = `${chain.id}:${OPEN_ESCROW_ADDRESS}`;
 
 function isTrackedAgreementIdList(value: unknown): value is string[] {
   return (
@@ -19,7 +22,10 @@ function isTrackedAgreementIdList(value: unknown): value is string[] {
  * account identity so switching accounts cannot expose a previous account's list.
  */
 export function useTrackedAgreements(accountScope?: string | null) {
-  const storageKey = trackedAgreementStorageKey(accountScope);
+  const storageKey = trackedAgreementStorageKey(
+    accountScope,
+    TRACKED_AGREEMENT_RELEASE_SCOPE,
+  );
   const [state, setState] = useState<{
     storageKey: string;
     ids: bigint[];

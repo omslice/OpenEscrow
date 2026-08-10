@@ -190,6 +190,69 @@ try {
     await landingPage.locator(".legal-consent-note").count() >= 1,
     "Sign-in controls must link the Terms of Use and Privacy Policy before authentication.",
   );
+  await landingPage.setViewportSize({ width: 1126, height: 900 });
+  await landingPage.evaluate(() => {
+    const headerActions = document.querySelector(".header-actions");
+    const buttons = headerActions?.querySelectorAll(".account-entry .btn");
+    if (!headerActions || !buttons || buttons.length !== 2) {
+      throw new Error("The signed-out header controls are unavailable for layout verification.");
+    }
+    const notifications = document.createElement("details");
+    notifications.className = "notification-center invite-layout-fixture";
+    const summary = document.createElement("summary");
+    summary.setAttribute("aria-label", "Notifications (7 unread)");
+    summary.innerHTML = '<span aria-hidden="true">Bell</span><b>7</b>';
+    notifications.append(summary);
+    headerActions.prepend(notifications);
+    buttons[0].textContent = "Continue as tenant with Google";
+    buttons[1].textContent = "Use a tenant wallet";
+  });
+  const inviteHeaderBounds = await landingPage.evaluate(() => {
+    const header = document.querySelector(".app-header");
+    const accountEntry = document.querySelector(".header-actions .account-entry");
+    const controls = document.querySelectorAll(
+      ".header-actions .notification-center, .header-actions .account-entry .btn, .header-actions .legal-consent-note",
+    );
+    if (!header || !accountEntry || controls.length !== 4) {
+      throw new Error("The invite-header layout fixture is incomplete.");
+    }
+    const headerRect = header.getBoundingClientRect();
+    const accountRect = accountEntry.getBoundingClientRect();
+    return {
+      headerLeft: headerRect.left,
+      headerRight: headerRect.right,
+      accountLeft: accountRect.left,
+      accountRight: accountRect.right,
+      controlBounds: [...controls].map((control) => {
+        const rect = control.getBoundingClientRect();
+        return { left: rect.left, right: rect.right };
+      }),
+      pageFitsViewport: document.documentElement.scrollWidth <= window.innerWidth,
+    };
+  });
+  assert.equal(
+    inviteHeaderBounds.pageFitsViewport,
+    true,
+    "The role-restricted invite header must not create page-level horizontal overflow.",
+  );
+  assert.ok(
+    inviteHeaderBounds.accountLeft >= inviteHeaderBounds.headerLeft - 0.5 &&
+      inviteHeaderBounds.accountRight <= inviteHeaderBounds.headerRight + 0.5 &&
+      inviteHeaderBounds.controlBounds.every(
+        ({ left, right }) =>
+          left >= inviteHeaderBounds.headerLeft - 0.5 &&
+          right <= inviteHeaderBounds.headerRight + 0.5,
+      ),
+    "Every invite sign-in control and legal notice must stay inside the header boundary.",
+  );
+  await landingPage.evaluate(() => {
+    document.querySelector(".invite-layout-fixture")?.remove();
+    const buttons = document.querySelectorAll(".header-actions .account-entry .btn");
+    if (buttons.length === 2) {
+      buttons[0].textContent = "Continue with Google";
+      buttons[1].textContent = "Continue with a wallet";
+    }
+  });
   await landingPage.getByRole("heading", { name: "Built by Omri Gross" }).waitFor();
   const projectWalkthrough = landingPage.locator(".project-demo-video video");
   await projectWalkthrough.waitFor({ state: "visible" });
