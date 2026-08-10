@@ -22,9 +22,10 @@ provider or hosting control that owns the secret.
    bindings, prepare the reversible configuration switch, and preserve the current cohort.
 4. Run the separate-account synthetic pilot and the incident/privacy drill after the new site
    candidate is explicitly approved and deployed.
-5. Configure only the remaining sending-email values when ready. Evidence encryption, address
-   attestation, private R2, and the hosted scheduler are already configured and verified; preserve
-   those existing controls and keep every secret in its owning dashboard.
+5. Complete the remaining privacy-contact receive/reply acceptance checks. Participant notification
+   sending, evidence encryption, address attestation, private R2, and the hosted scheduler are
+   already configured and verified; preserve those controls and keep every secret in its owning
+   dashboard.
 
 ## Actionable now
 
@@ -60,15 +61,16 @@ provider or hosting control that owns the secret.
   working `updates.openescrow.io` Resend records. The detailed acceptance record remains in the
   private funding workspace; no DNS, mailbox or test-message action is authorized by this file.
 - [ ] **Approve the reviewer-safe repository publication tranche.** Review the community-health,
-  funding-transparency and evidence-manifest changes. The release commits are already pushed to the
-  public feature branch, while the default `main` branch still exposes the older July snapshot. A
+  funding-transparency and evidence-manifest changes. The prior tranche is already on `main`; exact
+  candidate `7cb1e20` and its `b98255b` provenance update are pushed to the public feature branch but
+  are not yet merged into the default branch. A
   read-only 2026-08-09 inspection proved that the independently modified
   `frontend-site-dist.tar` exactly matches the ignored 320-file July `site-deploy-artifact/` tree;
   both the working and `HEAD` tar contain the legacy Sites hostname, lack `openescrow.io`, and
   predate the funding route. Keep it outside the selected path commit. The recommended separate
   owner decision is to remove the obsolete tracked bundle after confirming no supported workflow
   consumes it; do not restore or publish it as current evidence. Approve the exact branch, path
-  list, commit message and push separately; follow
+  list and pull-request/default-branch publication separately; follow
   [`reviewer-publication-runbook.md`](./reviewer-publication-runbook.md).
 - [ ] **Confirm the public funding opening facts and deployment.** The local `/funding` route is
   fail-closed and currently publishes no balance or recipient. Before deployment, confirm all prior

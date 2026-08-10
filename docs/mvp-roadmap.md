@@ -101,9 +101,9 @@ production custody, or reliance on the compliance research as legal advice.
   artifacts, funds overlapping agreement ID `0`, proves reciprocal/token/treasury/runtime and
   cross-registry isolation, retires and withdraws only the old principal, and leaves the candidate
   active. It then applies all 12 client/server address and block replacements in memory and
-  restores the current files byte-for-byte. The production script now deploys all three contracts
-  as one cohort; its exporter writes a separate candidate manifest and preserves the active
-  manifest as the rollback target. No public broadcast or configuration switch occurred.
+  restores the current files byte-for-byte. The production script now deploys all five release
+  contracts as one cohort; its exporter writes a separate candidate manifest and preserves the
+  active manifest as the rollback target. No public broadcast or configuration switch occurred.
 - **Verified:** The release dependency audit blocks every high/critical finding and every unknown
   moderate advisory. The former transitive `uuid` advisory is removed from the locked
   wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector
@@ -417,6 +417,18 @@ production custody, or reliance on the compliance research as legal advice.
   mobile actions, mobile overflow, keyboard expansion, and rendered metadata are protected by
   focused browser checks and the accessibility smoke flow. See the
   [consumer UX audit](./consumer-ux-audit.md).
+- **Verified:** Exact source commit `7cb1e20` passed the complete seven-stage credential-free pilot
+  candidate on 2026-08-09. The evidence binds 238/239 Foundry results, five contract ABI/runtime/
+  storage-layout checks, two pinned dependency trees, 122 server tests, 320 client/script checks,
+  rendered landlord/multi-tenant and accessibility rehearsals, deployment/incident rehearsals, and
+  both hosting builds to the full commit. The follow-up publication record at `b98255b` also passed
+  the strict clean-checkout reviewer manifest with zero blockers. Neither result claims that the
+  candidate contracts or application are already deployed.
+- **Verified:** A read-only 2026-08-09 canonical-host check returned HTTP 200 for the app and
+  readiness endpoint. The live `d97e09a` release reported participant-capable Resend delivery, a
+  healthy 15-minute notification scheduler, encrypted private-R2 evidence with a ready keyring, and
+  an activity registry immutably bound to the current F18 escrow. Cloudflare remote preflight also
+  confirmed the expected D1/R2 bindings and current migrations without changing hosted state.
 
 ## Remaining
 
@@ -427,11 +439,16 @@ production custody, or reliance on the compliance research as legal advice.
 - **Planned:** Review and explicitly approve each newer saved candidate before deployment. The live
   site currently matches the last approved exact source; every future deployment must rerun the
   public readiness and release-provenance checks.
+- **Planned:** Broadcast, independently verify, and activate the fresh bounded testUSDC/taUSDC
+  cohort. Preserve the current F18 cohort as the explicit rollback target, apply the rehearsed
+  client/server switch only after live bytecode and reciprocal bindings pass, then deploy the exact
+  approved application candidate and rerun canonical readiness/provenance checks.
 - **Planned:** Keep verifying the version-matched activity registry after every public release,
   together with custom-domain notification delivery, scheduler freshness, private-R2 evidence
-  encryption and retained-key recovery, and address attestation. Activate and monitor the daily
-  New Hampshire official-source workflow; treat any changed or stale attestation as a mandatory
-  rule-review event before publishing a new profile version.
+  encryption and retained-key recovery, and address attestation.
+- **Planned, deferred from this milestone:** Resume compliance-source and local-overlay work only
+  after the grant-review functionality, notification, UX, cohort-deployment, and separate-account
+  rehearsal gates above are complete.
 - **Planned:** Validate the refined consumer experience in moderated landlord and tenant sessions.
   Any request to remove, defer, or change a proposal field must be handled as a separate product
   and legal decision rather than presentation-only UX work.
