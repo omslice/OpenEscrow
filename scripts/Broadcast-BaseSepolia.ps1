@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$DeployerAddress = "0x0B3AA7539bB7EDCd44131F1A71eDCff1c1FDf20E",
-    [string]$RpcUrl = ""
+    [string]$RpcUrl = "",
+    [switch]$PreflightOnly
 )
 
 $ErrorActionPreference = "Stop"
@@ -118,6 +119,13 @@ if (
   $deploymentEvidence.sourceCommit -ne $candidateCommit
 ) {
   throw "Preflight evidence does not belong to the exact candidate commit."
+}
+
+if ($PreflightOnly) {
+  Write-Host ""
+  Write-Host "Base Sepolia deployment preflight passed." -ForegroundColor Green
+  Write-Host "No wallet was opened, no password was requested, and no transaction was signed or broadcast."
+  return
 }
 
 Write-Host ""

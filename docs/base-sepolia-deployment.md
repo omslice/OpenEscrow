@@ -74,9 +74,21 @@ candidate switch.
 ## Broadcast with the encrypted keystore
 
 The recommended entry point binds the exact clean commit to fresh contract-assurance and local
-deployment-rehearsal evidence, derives the public signer from the encrypted keystore, performs the
-unified forced-recompile broadcast, and exports a candidate manifest without changing the active
-application. It also rechecks the pinned dependency-tree hashes immediately before signing:
+deployment-rehearsal evidence, pins the expected public signer while Foundry unlocks the matching
+encrypted keystore locally, performs the unified forced-recompile broadcast, and exports a
+candidate manifest without changing the active application. It also rechecks the pinned
+dependency-tree hashes immediately before signing:
+
+First run the complete credential-free preflight. It performs the same RPC, source, assurance,
+rehearsal, and dependency checks, then stops before opening the wallet:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\Broadcast-BaseSepolia.ps1 `
+  -PreflightOnly
+```
+
+Only after that command passes, rerun without `-PreflightOnly` to broadcast:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
