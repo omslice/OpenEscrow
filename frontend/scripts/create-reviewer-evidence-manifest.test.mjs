@@ -40,7 +40,7 @@ test("accepts current, bounded public claims", () => {
   const errors = evaluatePublicCopy({
     "README.md": [
       "https://openescrow.io/demo",
-      "234 passing Foundry tests across 22 suites",
+      "238 passing Foundry tests across 23 suites",
       "Base Sepolia",
       "has not been independently audited",
     ].join("\n"),
@@ -74,7 +74,7 @@ test("rejects stale links, stale test counts, and missing deployment boundaries"
     "docs/release-evidence-index.md": "",
   });
   assert.ok(errors.some((error) => error.includes("openescrow.io/demo")));
-  assert.ok(errors.some((error) => error.includes("234 passing Foundry tests")));
+  assert.ok(errors.some((error) => error.includes("238 passing Foundry tests")));
   assert.ok(errors.some((error) => error.includes("retired public copy")));
   assert.ok(errors.some((error) => error.includes("newest source is publicly deployed")));
 });

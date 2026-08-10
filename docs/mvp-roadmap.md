@@ -83,7 +83,7 @@ production custody, or reliance on the compliance research as legal advice.
   suite and Slither rerun cover the hardened source. These protections remain undeployed until a
   newly reviewed escrow/reserve pair and registry are explicitly approved and broadcast.
 - **Verified:** Contract release assurance now forces a clean offline Solidity 0.8.26 production-
-  profile build and binds the full 234-pass/one-skip Foundry result to compiled ABI, runtime and
+  profile build and binds the full 238-pass/one-skip Foundry result to compiled ABI, runtime and
   creation bytecode, storage-layout, selector-collision, EVM-size-margin, and dependency-tree
   evidence. Three new reserve invariants pass 98,304 stateful calls, and an overlapping-ID cohort
   regression proves retired and candidate deployments cannot share funds, roles, reserve

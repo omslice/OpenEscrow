@@ -68,7 +68,7 @@ Update this section whenever a clean, exact later candidate passes or a deployme
 
 Repository release documentation records:
 
-- 234 passing Foundry tests across 22 suites;
+- 238 passing Foundry tests across 23 suites;
 - one opt-in live Base Sepolia Aave fork test skipped without an RPC URL;
 - nine stateful accounting properties exercised for 32,768 calls each; and
 - a complete clean pilot-candidate envelope on `3e42b37`.

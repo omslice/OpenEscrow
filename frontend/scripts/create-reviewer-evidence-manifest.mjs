@@ -35,6 +35,7 @@ export const REVIEWER_FILES = Object.freeze([
   "scripts/Broadcast-BaseSepolia.ps1",
   "deployments/base-sepolia-latest.json",
   "docs/base-sepolia-deployment.md",
+  "docs/mvp-roadmap.md",
   "docs/owner-actions.md",
   "docs/grant-reviewer-guide.md",
   "frontend/README.md",
@@ -80,9 +81,11 @@ export const REVIEWER_PUBLICATION_TRANCHE_FILES = Object.freeze([
   "SECURITY.md",
   "docs/base-sepolia-deployment.md",
   "docs/grant-reviewer-guide.md",
+  "docs/mvp-roadmap.md",
   "docs/owner-actions.md",
   "docs/release-evidence-index.md",
   "docs/reviewer-publication-runbook.md",
+  "docs/security-review.md",
   "frontend/README.md",
   "frontend/package.json",
   "frontend/scripts/check-community-health.mjs",
@@ -106,7 +109,7 @@ export const REVIEWER_EXCLUDED_WORKTREE_PATHS = Object.freeze({
 
 const REQUIRED_PUBLIC_COPY = Object.freeze([
   ["README.md", "https://openescrow.io/demo"],
-  ["README.md", "234 passing Foundry tests across 22 suites"],
+  ["README.md", "238 passing Foundry tests across 23 suites"],
   ["README.md", "Base Sepolia"],
   ["README.md", "has not been independently audited"],
   ["SECURITY.md", "Base Sepolia public-interest prototype"],
@@ -331,7 +334,7 @@ export function collectReviewerEvidence(repositoryRoot, generatedAt = new Date()
       chainId: 84532,
     },
     claimSnapshot: {
-      contractTests: { passed: 234, suites: 22, skippedLiveFork: 1 },
+      contractTests: { passed: 238, suites: 23, skippedLiveFork: 1 },
       assurance: "Internal automated and manual evidence; no independent audit is claimed.",
       deploymentBoundary:
         "The current source candidate is newer than the immutable public Base Sepolia contract cohort.",

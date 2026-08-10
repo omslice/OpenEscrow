@@ -76,7 +76,7 @@ The current source includes:
 
 ### Verification snapshot
 
-- 234 passing Foundry tests across 22 suites, plus one opt-in live Base Sepolia fork test skipped
+- 238 passing Foundry tests across 23 suites, plus one opt-in live Base Sepolia fork test skipped
   when no RPC URL is supplied
 - 512 runs per fuzz test
 - Nine stateful accounting properties exercised for 32,768 calls each

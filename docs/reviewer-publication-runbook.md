@@ -18,7 +18,7 @@ current limitations, deployed-contract boundary, and reproducible checks visible
 The candidate should include:
 
 - the current `openescrow.io` product and walkthrough links;
-- the dated 234-pass, 22-suite Foundry snapshot and one opt-in live-fork skip;
+- the dated 238-pass, 23-suite Foundry snapshot and one opt-in live-fork skip;
 - the security, conduct, governance, maintainership, and contribution policies;
 - the release evidence index, threat models, audit handoff, and deployment manifests;
 - the current contract sources, pinned dependencies, Foundry profile, and checked-in frontend ABIs;
@@ -85,7 +85,7 @@ entered until the owner verifies the underlying facts.
 
 Before the default branch is updated, use an exact public commit URL and describe only evidence
 contained in that commit. After publication, record the immutable URL in the funding evidence
-ledger and every application packet that cites the 234-test snapshot.
+ledger and every application packet that cites the 238-test snapshot.
 
 Never imply that:
 

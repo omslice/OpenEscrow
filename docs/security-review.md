@@ -383,7 +383,7 @@ activity hashes, but this does not grow escrow state or block another party. A h
 integrity relative to the holder's private bytes; it does not prove truth, authorship beyond the
 calling wallet, legal sufficiency, or confidentiality.
 
-After the fixes, the complete Foundry run passes 234 tests across 22 suites, including nine
+After the fixes, the complete Foundry run passes 238 tests across 23 suites, including nine
 32,768-call stateful accounting properties and the existing fuzz cases. One opt-in live Base
 Sepolia Aave adapter fork test remains skipped without an RPC URL. The current production
 dependency audit reports zero known advisories, and the full hosted application gate passes.
