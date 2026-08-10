@@ -7,7 +7,7 @@ on:
       - "selfhost-v*"
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
   attestations: write
 
@@ -45,6 +45,10 @@ jobs:
           test -n "$sbom"
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
           echo "sbom=$sbom" >> "$GITHUB_OUTPUT"
+          echo "checksum=${archive}.sha256" >> "$GITHUB_OUTPUT"
+          manifest="$(find self-host-dist -mindepth 2 -maxdepth 2 -type f -name 'release-manifest.json' -print -quit)"
+          test -n "$manifest"
+          echo "manifest=$manifest" >> "$GITHUB_OUTPUT"
 
       - name: Attest archive and SBOM
         uses: actions/attest@v4
@@ -62,3 +66,27 @@ jobs:
             self-host-dist/*/SBOM.cdx.json
             self-host-dist/*/release-manifest.json
           if-no-files-found: error
+
+      - name: Publish tagged self-host release
+        if: startsWith(github.ref, 'refs/tags/selfhost-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARCHIVE: ${{ steps.artifacts.outputs.archive }}
+          CHECKSUM: ${{ steps.artifacts.outputs.checksum }}
+          SBOM: ${{ steps.artifacts.outputs.sbom }}
+          MANIFEST: ${{ steps.artifacts.outputs.manifest }}
+        shell: bash
+        run: |
+          notes="$(mktemp)"
+          printf '%s\n' \
+            'Supported Cloudflare-oriented distribution of the complete OpenEscrow Base Sepolia testnet application.' \
+            '' \
+            'This release is for synthetic testing and qualified self-host operators. It does not enable mainnet, real rental deposits, a production fiat route, or production yield assets. Read the bundled self-host/cloudflare/README.md, SECURITY.md, BACKUP-AND-RESTORE.md, and UPGRADE.md before deployment.' \
+            '' \
+            'Verify the archive checksum and GitHub artifact attestation before use.' > "$notes"
+          gh release create "$GITHUB_REF_NAME" \
+            "$ARCHIVE" "$CHECKSUM" "$SBOM" "$MANIFEST" \
+            --verify-tag \
+            --latest \
+            --title "OpenEscrow self-hosted testnet v0.1.0" \
+            --notes-file "$notes"

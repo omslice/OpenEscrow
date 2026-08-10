@@ -593,6 +593,212 @@
   text-underline-offset: 3px;
 }
 
+.help-page {
+  display: grid;
+  gap: 22px;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.help-page-heading,
+.help-page > section,
+.testnet-deployment-card {
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.help-page-heading h2,
+.help-section-heading h3,
+.testnet-deployment-card h3 {
+  margin: 0;
+}
+
+.help-page-heading > p:last-of-type,
+.help-section-heading + p,
+.testnet-deployment-card p,
+.help-page > section > p {
+  color: var(--muted);
+}
+
+.help-page a {
+  color: var(--accent);
+  font-weight: 750;
+  text-underline-offset: 3px;
+}
+
+.help-section-nav,
+.help-actions,
+.project-demo-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  align-items: center;
+}
+
+.help-section-nav {
+  margin-top: 18px;
+}
+
+.testnet-deployment-card {
+  display: grid;
+  gap: 18px;
+  scroll-margin-top: 20px;
+}
+
+.network-badge {
+  display: inline-flex;
+  margin-bottom: 10px;
+  padding: 7px 11px;
+  border: 1px solid color-mix(in srgb, var(--success) 55%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+  color: var(--text-h);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+}
+
+.deployment-links {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.deployment-links > div {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+}
+
+.deployment-links dt {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.deployment-links dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+}
+
+.help-section-heading {
+  margin-bottom: 16px;
+}
+
+.role-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.role-guide-grid article {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg));
+}
+
+.role-guide-grid h4 {
+  margin: 0 0 10px;
+  color: var(--text-h);
+}
+
+.role-guide-grid ol {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+}
+
+.help-page section,
+.testnet-deployment-card {
+  scroll-margin-top: 20px;
+}
+
+.help-page section > h4 {
+  margin: 24px 0 10px;
+}
+
+.help-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 12px;
+}
+
+.help-table-scroll:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.help-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+}
+
+.help-table th,
+.help-table td {
+  padding: 11px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.help-table thead th {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.help-table tbody th {
+  color: var(--text-h);
+  font-size: 14px;
+}
+
+.faq-list {
+  display: grid;
+  gap: 10px;
+}
+
+.faq-list details {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg));
+}
+
+.faq-list summary {
+  cursor: pointer;
+  color: var(--text-h);
+  font-weight: 800;
+}
+
+.faq-list p {
+  margin: 10px 0 0;
+  color: var(--muted);
+}
+
+.about-download-release {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.about-download-release small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 @media (max-width: 720px) {
   .funding-page-heading,
   .funding-page > section,
@@ -602,6 +808,16 @@
 
   .funding-summary,
   .funding-principles {
+    grid-template-columns: 1fr;
+  }
+
+  .help-page-heading,
+  .help-page > section,
+  .testnet-deployment-card {
+    padding: 18px;
+  }
+
+  .role-guide-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -1268,6 +1484,18 @@ html.demo-route #root {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 16%, var(--surface));
   transform: translateY(-2px);
+}
+
+.about-links .about-download-release {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.about-links .about-download-release small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .about-download-coming-soon {

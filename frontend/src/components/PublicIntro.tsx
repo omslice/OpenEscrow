@@ -134,9 +134,14 @@ export function PublicIntro({
           Your browser cannot play this video. You can{" "}
           <a href="/openescrow-demo.mp4">open the OpenEscrow overview directly</a>.
         </video>
-        <a className="project-demo-page-link" href="/demo">
-          Open the standalone demo
-        </a>
+        <div className="project-demo-links">
+          <a className="project-demo-page-link" href="/demo">
+            Open the standalone demo
+          </a>
+          <a className="project-demo-page-link" href="/help">
+            Read the help and role guides
+          </a>
+        </div>
       </section>
 
       <div className="how-it-works-block" id="how-it-works">
@@ -367,15 +372,15 @@ export function PublicIntro({
               >
                 Farcaster
               </a>
-              <button
-                className="about-download-coming-soon"
-                type="button"
-                disabled
-                aria-label="Download self-hosted OpenEscrow (coming soon)"
+              <a
+                className="about-download-release"
+                href="https://github.com/omslice/OpenEscrow/releases/tag/selfhost-v0.1.0-testnet"
+                target="_blank"
+                rel="noreferrer"
               >
                 <span>Download self-hosted app</span>
-                <small>Coming soon</small>
-              </button>
+                <small>Base Sepolia testnet release</small>
+              </a>
             </div>
           </article>
 

@@ -30,6 +30,11 @@ const FundingPage = lazy(() =>
     default: module.FundingPage,
   })),
 );
+const HelpPage = lazy(() =>
+  import("./components/HelpPage").then((module) => ({
+    default: module.HelpPage,
+  })),
+);
 
 function PublicAccountEntry({
   onChoose,
@@ -156,6 +161,20 @@ export function Root() {
         }
       >
         <FundingPage />
+      </Suspense>
+    );
+  }
+
+  if (path === "/help" || path === "/docs") {
+    return (
+      <Suspense
+        fallback={
+          <div className="app-loading" role="status">
+            Loading OpenEscrow help...
+          </div>
+        }
+      >
+        <HelpPage />
       </Suspense>
     );
   }

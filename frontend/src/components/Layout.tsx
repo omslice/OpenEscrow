@@ -100,11 +100,13 @@ export function Layout({
       >
         <div className="app-brand">
           <h1 className="app-title">
+            <span className="sr-only">OpenEscrow</span>
             <picture>
               <source media="(prefers-color-scheme: light)" srcSet="/openescrow-wordmark.svg" />
               <img
                 src="/openescrow-logo-tapered-dark.png"
-                alt="OpenEscrow"
+                alt=""
+                aria-hidden="true"
                 className="app-wordmark-logo"
               />
             </picture>
@@ -176,6 +178,7 @@ export function Layout({
       <main className="app-main">{children}</main>
       <footer className="app-footer">
         <nav className="legal-links" aria-label="Legal and project information">
+          <a href="/help">Help &amp; Guides</a>
           <a href="/funding">Project Funding</a>
           <a href="/privacy">Privacy Policy</a>
           <a href="/terms">Terms of Use</a>

@@ -8,6 +8,8 @@ import { chromium } from "playwright";
 const host = "127.0.0.1";
 const port = 4179;
 const baseUrl = `http://${host}:${port}`;
+const OPEN_ESCROW_ADDRESS = "0x9f8c9555f28c10347c58fc71f430f4cbc3724b10";
+const ACTIVITY_REGISTRY_ADDRESS = "0x88b53d6c35020e82b97462e8a1cbcdc8d6d50f53";
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url));
 const assetsRoot = path.join(frontendRoot, "dist", "assets");
 const viteEntrypoint = fileURLToPath(
@@ -165,6 +167,14 @@ try {
   assert.equal(
     await landingPage
       .locator(".legal-links")
+      .getByRole("link", { name: "Help & Guides", exact: true })
+      .getAttribute("href"),
+    "/help",
+    "Public help must remain available to signed-out visitors.",
+  );
+  assert.equal(
+    await landingPage
+      .locator(".legal-links")
       .getByRole("link", { name: "Project Funding", exact: true })
       .getAttribute("href"),
     "/funding",
@@ -272,6 +282,18 @@ try {
       .getAttribute("href"),
     "/demo",
     "The public overview should link to the standalone demo page.",
+  );
+  assert.equal(
+    await landingPage
+      .getByRole("link", { name: "Read the help and role guides", exact: true })
+      .getAttribute("href"),
+    "/help",
+    "The public overview should provide a text alternative beside the video.",
+  );
+  assert.equal(
+    (await landingPage.getByRole("heading", { level: 1 }).textContent())?.trim(),
+    "OpenEscrow",
+    "The image-led wordmark must retain an indexable textual H1.",
   );
   assert.equal(
     await landingPage
@@ -532,6 +554,53 @@ try {
     "/funding must not create horizontal overflow at mobile width.",
   );
   await fundingContext.close();
+
+  for (const helpPath of ["/help", "/docs"]) {
+    const helpContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await isolateFromExternalProviders(helpContext);
+    const helpPage = await helpContext.newPage();
+    const helpAssets = observeLocalScripts(helpPage);
+    const helpResponse = await helpPage.goto(`${baseUrl}${helpPath}`, {
+      waitUntil: "domcontentloaded",
+    });
+    assert.equal(helpResponse?.status(), 200, `${helpPath} must load through the SPA fallback.`);
+    await helpPage
+      .getByRole("heading", { name: "OpenEscrow help and quick-start guides", exact: true })
+      .waitFor({ state: "visible" });
+    for (const role of ["Landlord", "Tenant", "Arbiter"]) {
+      await helpPage.getByRole("heading", { name: role, exact: true }).waitFor();
+    }
+    assert.equal(
+      await helpPage.getByText("Base Sepolia · chain 84532", { exact: true }).count(),
+      1,
+      `${helpPath} must display the active network and chain identity.`,
+    );
+    assert.equal(
+      await helpPage
+        .getByRole("link", { name: OPEN_ESCROW_ADDRESS, exact: true })
+        .getAttribute("href"),
+      `https://sepolia.basescan.org/address/${OPEN_ESCROW_ADDRESS}`,
+      `${helpPath} must label and link the active escrow contract.`,
+    );
+    assert.equal(
+      await helpPage
+        .getByRole("link", { name: ACTIVITY_REGISTRY_ADDRESS, exact: true })
+        .getAttribute("href"),
+      `https://sepolia.basescan.org/address/${ACTIVITY_REGISTRY_ADDRESS}`,
+      `${helpPath} must label and link the separate activity registry.`,
+    );
+    assert.equal(
+      [...helpAssets].some((assetName) => assetName.startsWith("AuthenticatedRoot-")),
+      false,
+      `${helpPath} must not load the account provider.`,
+    );
+    assert.equal(
+      await helpPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      true,
+      `${helpPath} must not create page-level horizontal overflow at mobile width.`,
+    );
+    await helpContext.close();
+  }
 
   const demoContext = await browser.newContext();
   await isolateFromExternalProviders(demoContext);
