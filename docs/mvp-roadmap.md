@@ -404,7 +404,8 @@ production custody, or reliance on the compliance research as legal advice.
   and an authenticated `About` workspace tab. It is the sole intended Cloudflare website; the
   standalone landing Worker is not a public fallback.
 - **Verified:** The narrow activity-registry recovery deployed `0x5ba6...092e` against the active
-  F18 Base Sepolia escrow without migrating agreement 0 or its funds. The receipt, exact reviewed
+  F18 Base Sepolia escrow without migrating agreement 0 or its funds. It is now part of the
+  historical rollback cohort. The receipt, exact reviewed
   runtime hash, immutable binding, live landlord/two-tenant access, and outsider rejection were
   independently verified before the candidate configuration changed.
 - **Verified:** The consumer UX audit and presentation-only refinement tranches now cover the
@@ -429,6 +430,14 @@ production custody, or reliance on the compliance research as legal advice.
   healthy 15-minute notification scheduler, encrypted private-R2 evidence with a ready keyring, and
   an activity registry immutably bound to the current F18 escrow. Cloudflare remote preflight also
   confirmed the expected D1/R2 bindings and current migrations without changing hosted state.
+- **Verified:** Exact contract source `200848d` deployed a fresh bounded Base Sepolia test-token,
+  reserve, escrow, and activity-registry cohort on 2026-08-09. Two independent public RPCs agreed
+  on all successful receipts, exact runtime bytes, the 1%-per-hour/5%-maximum taUSDC demo bounds,
+  and every reciprocal binding. Canonical release `b941a67` then switched the client and server to
+  escrow `0x9F8C...4b10` and registry `0x88b5...0f53` while preserving the existing D1, private R2,
+  secrets, migrations, and F18 rollback manifest. The live app and readiness endpoint returned 200;
+  release provenance was clean, registry binding ready, receipt verification enabled, participant
+  email ready, notification scheduler healthy, and the evidence keyring ready.
 
 ## Remaining
 
@@ -439,10 +448,10 @@ production custody, or reliance on the compliance research as legal advice.
 - **Planned:** Review and explicitly approve each newer saved candidate before deployment. The live
   site currently matches the last approved exact source; every future deployment must rerun the
   public readiness and release-provenance checks.
-- **Planned:** Broadcast, independently verify, and activate the fresh bounded testUSDC/taUSDC
-  cohort. Preserve the current F18 cohort as the explicit rollback target, apply the rehearsed
-  client/server switch only after live bytecode and reciprocal bindings pass, then deploy the exact
-  approved application candidate and rerun canonical readiness/provenance checks.
+- **Planned:** Run the separate-account synthetic lifecycle and incident/privacy rehearsal on the
+  activated cohort. The strict hosted pilot gate currently remains closed on three official-source
+  monitoring alerts; review Chicago and Arkansas changes and repair the New Hampshire external
+  attestation before calling the deployment pilot-ready.
 - **Planned:** Keep verifying the version-matched activity registry after every public release,
   together with custom-domain notification delivery, scheduler freshness, private-R2 evidence
   encryption and retained-key recovery, and address attestation.

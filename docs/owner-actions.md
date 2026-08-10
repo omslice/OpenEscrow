@@ -92,14 +92,20 @@ provider or hosting control that owns the secret.
   runtime hash; `ESCROW()` returned F18; and no-broadcast calls succeeded for the live landlord and
   both tenants while rejecting an outsider. The retired C004 registry remains an immutable
   historical reference and is not a fallback for the active escrow.
-- [ ] **Broadcast the reviewed bounded test-token cohort.** The credential-free preflight now
-  verifies the complete hardened escrow/reserve/registry release plus fresh testUSDC and capped
-  taUSDC deployment rehearsal without opening the wallet. From a clean reviewed commit, rerun
-  `powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Broadcast-BaseSepolia.ps1` and
-  enter the encrypted-keystore password only in the private PowerShell prompt. Return only the
-  public candidate manifest and transaction hashes. Codex can then verify bytecode and reciprocal
-  bindings, preserve the current F18 cohort as rollback, switch configuration reversibly, and
-  deploy. This creates a new testnet cohort; it does not migrate the active F18 agreement state.
+- [x] **Broadcast, verify, and activate the reviewed bounded test-token cohort — completed
+  2026-08-09.** Exact contract source `200848d` deployed fresh testUSDC, capped taUSDC, reserve,
+  escrow `0x9F8C...4b10`, and registry `0x88b5...0f53`. Two public RPC providers agreed on all six
+  successful receipts, all five exact runtime bytecodes, the one-time reciprocal reserve binding,
+  and every immutable token/escrow/registry address. Canonical app release `b941a67` activated the
+  cohort without changing the existing Cloudflare D1, private R2 bucket, secrets, or migrations.
+  The F18 cohort and its `0x5ba6...092e` registry remain in
+  `deployments/base-sepolia-rollback-f18.json`; no old agreement or balance was migrated.
+- [ ] **Run the separate-account synthetic pilot on the new cohort.** Create an invented landlord,
+  tenant, and optional arbiter flow using only test tokens; confirm discovery, notification,
+  evidence, registry, claim, refund, and withdrawal behavior before inviting outside testers.
+  The strict hosted pilot gate also remains fail-closed on three compliance-source alerts (Chicago,
+  Arkansas, and New Hampshire); review or repair those sources rather than accepting a new baseline
+  automatically.
 - [ ] **Choose the first pilot markets for local-rule coverage.**
   State law is routed nationwide, but only Chicago, Seattle, and Portland have
   reviewed city overlays. Name the cities/counties most likely to be used in

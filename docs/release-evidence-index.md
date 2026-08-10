@@ -39,15 +39,16 @@ contract cohort and repository HEAD all match.
   It covers the bounded testUSDC/taUSDC cohort, participant notification delivery, landlord and
   multi-tenant lifecycle checks, rendered accessibility/UX checks, deployment and incident
   rehearsals, and exact-source Cloudflare and Sites builds.
-- The canonical hosted app currently reports clean release commit `d97e09a`; the `7cb1e20`
-  candidate and its fresh test-token cohort are not yet deployed. Do not describe candidate source
-  as the live contract or application.
+- The canonical hosted app reports clean release commit `b941a67`. It activates the fresh bounded
+  test-token cohort compiled from exact contract source `200848d`: escrow `0x9F8C...4b10`, reserve
+  `0xDB66...A626`, and activity registry `0x88b5...0f53`.
 - The modified `frontend-site-dist.tar` is a separately owned obsolete generated archive and was
   excluded from both exact-source hosting builds and the candidate source envelope. It still needs
   an explicit owner decision before any future Sites packaging; it is not current release evidence.
-- The public F18 escrow cohort and its repaired activity registry predate parts of the newest
-  source. Use the manifests below for exact addresses; never describe repository HEAD as the
-  deployed contract.
+- The F18 escrow cohort and its repaired activity registry are preserved as historical rollback
+  state in `deployments/base-sepolia-rollback-f18.json`; their agreement state and balances were not
+  migrated. Use the manifests below for exact addresses and never infer contract deployment from a
+  moving repository HEAD.
 
 Update this section whenever a clean, exact later candidate passes or a deployment is approved.
 
@@ -89,6 +90,13 @@ stage to the full 40-character commit.
 
 Treat this as exact development and release-candidate evidence, not as proof that `7cb1e20` is
 deployed, independently audited, production-ready, or approved for real funds.
+
+On 2026-08-09, the unified cohort broadcast produced six successful Base Sepolia transactions.
+Two public RPC providers independently returned the same receipts, exact deployed runtime bytes,
+and reciprocal bindings for the five new contracts. Canonical app release `b941a67` then passed
+HTTP, clean-provenance, registry-binding, receipt-verification, email, scheduler, and private-R2
+keyring checks. The separate strict pilot gate still reports three compliance-source alerts and no
+independent security audit has been completed.
 
 ## Community-health evidence
 

@@ -3,8 +3,9 @@
 **Scope:** the `contracts/OpenEscrow.sol` source and OpenZeppelin v5.1.0 library code it depends on
 (`SafeERC20`, `ReentrancyGuard`, `Address`). The historical first review referenced the now-retired
 Base Sepolia deployment at `0x4365f7B9632d083F1a03D57AE56a0e6d239ef62F`. The reviewed and
-regression-tested source was redeployed at the currently configured testnet address
-`0xF18BfDbFd3FF84c603CbDf895D2a96aC7260AE99` after the multi-tenant lifecycle changes. The separate
+regression-tested source was previously deployed at the now-historical F18 address after the
+multi-tenant lifecycle changes. The currently configured bounded testnet cohort was compiled from
+exact source `200848d` and deployed at `0x9F8C9555f28C10347C58fc71F430F4cbc3724b10`. The separate
 `OperationsReserve`, mock-token, and `AgreementActivityRegistry` contracts have automated tests
 but are not covered by the original line-by-line review described below. They are covered by the
 2026-08-05 secondary-contract addendum near the end of this document.
