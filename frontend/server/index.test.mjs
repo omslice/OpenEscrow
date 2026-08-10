@@ -7817,6 +7817,186 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
   }
 });
 
+test("the onchain indexer retries failed in-app activity email without duplicating the action", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const consentedAt = "2026-08-10T12:00:00.000Z";
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("landlord-user", "landlord@example.com", consentedAt, consentedAt),
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("tenant-user", "tenant@example.com", consentedAt, consentedAt),
+  ]);
+
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "operations_reserve_paid",
+      amount: "5",
+      transactionHash: transactionHash(92_000),
+    }),
+  );
+
+  const deploymentBlock = 45_283_514;
+  const indexedBlock = deploymentBlock + 1;
+  const latestBlock = deploymentBlock + 30;
+  const fundingTransaction = transactionHash(92_001);
+  const env = {
+    DB: db,
+    ONCHAIN_ACTIVITY_INDEXER_ENABLED: "true",
+    OPEN_ESCROW_ADDRESS: RECEIPT_TEST_OPEN_ESCROW,
+    OPEN_ESCROW_DEPLOYMENT_BLOCK: String(deploymentBlock),
+    RESEND_API_KEY: "re_indexer_retry_test",
+    RESEND_WEBHOOK_SECRET: "whsec_indexer_retry_test",
+    NOTIFICATION_FROM_EMAIL: "OpenEscrow <notifications@updates.openescrow.io>",
+    PUBLIC_APP_URL: "https://openescrow.io/",
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  };
+  const originalFetch = globalThis.fetch;
+  const failedKeys = [];
+  globalThis.fetch = async (input, options = {}) => {
+    assert.match(String(input), /api\.resend\.com\/emails/);
+    failedKeys.push(options.headers["idempotency-key"]);
+    return Response.json({ error: "provider unavailable" }, { status: 503 });
+  };
+  try {
+    const funded = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.tenant,
+        {
+          type: "tenant_share_funded",
+          amount: "1200",
+          transactionHash: fundingTransaction,
+        },
+        env,
+      ),
+    );
+    assert.equal(
+      funded.events.filter((event) => event.action === "tenant_share_funded").length,
+      1,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM notification_deliveries
+         WHERE notification_type = 'agreement_activity_tenant_share_funded'
+           AND status = 'failed'`,
+      )
+      .first().count,
+    2,
+  );
+  assert.equal(failedKeys.length, 2);
+
+  const indexedLog = {
+    address: RECEIPT_TEST_OPEN_ESCROW,
+    topics: [
+      TENANT_SHARE_FUNDED_TOPIC,
+      receiptWord(42),
+      receiptAddressWord(RECEIPT_TEST_TENANT),
+    ],
+    data: receiptData(receiptWord(1_200_000_000n)),
+    transactionHash: fundingTransaction,
+    blockHash: transactionHash(92_002),
+    blockNumber: `0x${indexedBlock.toString(16)}`,
+    logIndex: "0x0",
+    removed: false,
+  };
+  const providerCalls = [];
+  globalThis.fetch = async (input, options = {}) => {
+    const url = String(input);
+    if (url.includes("api.resend.com/emails")) {
+      providerCalls.push({
+        body: JSON.parse(options.body),
+        idempotencyKey: options.headers["idempotency-key"],
+      });
+      return Response.json({ id: `indexed-retry-${providerCalls.length}` });
+    }
+    const payload = JSON.parse(options.body);
+    const result =
+      payload.method === "eth_chainId"
+        ? "0x14a34"
+        : payload.method === "eth_blockNumber"
+          ? `0x${latestBlock.toString(16)}`
+          : payload.method === "eth_getLogs"
+            ? [indexedLog]
+            : null;
+    return Response.json({ jsonrpc: "2.0", id: payload.id, result });
+  };
+  try {
+    const runScheduled = async (scheduledTime) => {
+      const waits = [];
+      await worker.scheduled(
+        { scheduledTime },
+        env,
+        { waitUntil(promise) { waits.push(promise); } },
+      );
+      await Promise.all(waits);
+    };
+    await runScheduled(Date.parse("2026-08-10T12:15:00.000Z"));
+    assert.equal(providerCalls.length, 2);
+    assert.ok(
+      providerCalls.every((call) =>
+        call.idempotencyKey.endsWith(fundingTransaction.slice(2)),
+      ),
+      "The app action and indexer retry must share the transaction-bound delivery key.",
+    );
+    assert.deepEqual(
+      providerCalls.map((call) => call.idempotencyKey).sort(),
+      failedKeys.sort(),
+      "The recovery pass must reuse the exact failed app-delivery keys.",
+    );
+    assert.equal(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM notification_deliveries
+           WHERE notification_type = 'agreement_activity_tenant_share_funded'
+             AND status = 'sent'`,
+        )
+        .first().count,
+      2,
+    );
+    const indexed = db
+      .prepare(
+        `SELECT processing_status FROM indexed_chain_events
+         WHERE transaction_hash = ? AND log_index = 0`,
+      )
+      .bind(fundingTransaction)
+      .first();
+    assert.equal(indexed.processing_status, "recorded_in_app");
+    assert.equal(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM negotiation_events
+           WHERE negotiation_id = ? AND action = 'onchain_activity_indexed'`,
+        )
+        .bind(created.record.id)
+        .first().count,
+      0,
+      "The recovery pass must not duplicate the already-recorded agreement action.",
+    );
+
+    await runScheduled(Date.parse("2026-08-10T12:30:00.000Z"));
+    assert.equal(providerCalls.length, 2, "A recovered delivery must not resend.");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("readiness tracks notification scheduler freshness against the 15-minute cadence", async () => {
   const now = Date.parse("2027-07-02T12:00:00.000Z");
   const freshDb = new TestD1();

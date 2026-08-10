@@ -341,9 +341,12 @@ production custody, or reliance on the compliance research as legal advice.
   activity mappings. Proposal invitations remain an intentional **Send invite** action.
 - **Verified:** A confirmation-delayed Base Sepolia Worker indexer now scans bounded ranges from
   the active deployment block, deduplicates logs by chain/transaction/log index, reconciles only a
-  unique finalized D1 agreement, and safely reuses the activity-email ledger for supported direct
-  onchain actions. Cursor, pending, unmatched, and error state are exposed in readiness; local
-  regressions prove one direct withdrawal is recorded and emailed once across repeated schedules.
+  unique finalized or cancelled D1 agreement, and safely reuses the activity-email ledger for
+  supported direct onchain actions. Transaction-bound delivery keys let the same indexer retry
+  email when an in-app onchain action was saved during a temporary provider failure, without
+  duplicating the action or an accepted send. Cursor, pending, unmatched, and error state are
+  exposed in readiness; local regressions prove one direct withdrawal is recorded and emailed once
+  across repeated schedules.
 - **Verified:** The canonical Cloudflare app and both local readiness endpoints exposed the same
   exact release provenance on 2026-08-08. Cloudflare scheduler health, evidence
   encryption/keyring, address attestation, Google sign-in origin, private R2 storage, D1, static

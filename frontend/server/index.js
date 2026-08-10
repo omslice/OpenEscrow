@@ -3762,7 +3762,7 @@ async function matchingNegotiationForIndexedEvent(db, agreementId) {
   const matches = await db
     .prepare(
       `SELECT * FROM agreement_negotiations
-       WHERE status = 'finalized' AND onchain_agreement_id = ?
+       WHERE status IN ('finalized', 'cancelled') AND onchain_agreement_id = ?
        ORDER BY updated_at DESC
        LIMIT 2`,
     )
@@ -3813,23 +3813,7 @@ async function processIndexedChainEvent(env, record) {
   }
 
   const boundRecord = { ...record, negotiation_id: negotiationId };
-  if (await recordedAppEventForIndexedEvent(env.DB, boundRecord)) {
-    await env.DB
-      .prepare(
-        `UPDATE indexed_chain_events
-         SET negotiation_id = ?, processing_status = 'recorded_in_app', processed_at = ?
-         WHERE chain_id = ? AND transaction_hash = ? AND log_index = ?`,
-      )
-      .bind(
-        negotiationId,
-        new Date().toISOString(),
-        record.chain_id,
-        record.transaction_hash,
-        record.log_index,
-      )
-      .run();
-    return;
-  }
+  const recordedInApp = await recordedAppEventForIndexedEvent(env.DB, boundRecord);
 
   const eventAlreadyRecorded = await env.DB
     .prepare(
@@ -3843,7 +3827,7 @@ async function processIndexedChainEvent(env, record) {
     .bind(negotiationId, record.transaction_hash, record.log_index)
     .first();
   const now = new Date().toISOString();
-  if (!eventAlreadyRecorded?.id) {
+  if (!recordedInApp && !eventAlreadyRecorded?.id) {
     await env.DB.batch([
       env.DB
         .prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?")
@@ -3874,8 +3858,7 @@ async function processIndexedChainEvent(env, record) {
     throw new Error("Participant email delivery is not ready for indexed activity.");
   }
   const canonicalRequest = new Request(publicAppOrigin(env, "https://openescrow.io/"));
-  const deliveryKey =
-    `${record.transaction_hash.slice(2)}-${record.log_index}`;
+  const deliveryKey = record.transaction_hash.slice(2);
   const deliveries = await sendOptedInAgreementActivityEmails(
     canonicalRequest,
     env,
@@ -3889,17 +3872,18 @@ async function processIndexedChainEvent(env, record) {
     env.DB
       .prepare(
         `UPDATE indexed_chain_events
-         SET negotiation_id = ?, processing_status = 'processed', processed_at = ?
+         SET negotiation_id = ?, processing_status = ?, processed_at = ?
          WHERE chain_id = ? AND transaction_hash = ? AND log_index = ?`,
       )
       .bind(
         negotiationId,
+        recordedInApp ? "recorded_in_app" : "processed",
         processedAt,
         record.chain_id,
         record.transaction_hash,
         record.log_index,
       ),
-    ...deliveries.map((delivery) =>
+    ...deliveries.filter((delivery) => !delivery.duplicate).map((delivery) =>
       eventStatement(
         env.DB,
         negotiationId,
@@ -7140,6 +7124,12 @@ async function sendOptedInAgreementActivityEmails(
     try {
       const unsubscribeUrl = await unsubscribeUrlFor(env.DB, appUrl, email);
       const recipientKey = (await hashToken(email)).slice(0, 16);
+      const transactionHash = cleanText(activity.transactionHash, 100).toLowerCase();
+      const stableDeliveryKey =
+        cleanText(activity.deliveryKey, 200) ||
+        (/^0x[0-9a-f]{64}$/.test(transactionHash)
+          ? transactionHash.slice(2)
+          : row.updated_at);
       const delivered = await deliverTrackedEmail(env, {
         negotiationId: row.id,
         recipientEmail: email,
@@ -7148,10 +7138,15 @@ async function sendOptedInAgreementActivityEmails(
         text: `${notification.text}\n\nOpen your signed-in dashboard: ${appUrl}\n\nThis email intentionally omits evidence, tenancy details, and private notes.${unsubscribeUrl ? `\n\nTurn off optional OpenEscrow emails: ${unsubscribeUrl}` : ""}`,
         idempotencyKey:
           `agreement-${row.id}-${eventType}-${recipientRole}-${recipientKey}-` +
-          `${cleanText(activity.deliveryKey, 200) || row.updated_at}`,
+          stableDeliveryKey,
       });
       if (delivered?.id) {
-        results.push({ recipientRole, email, messageId: delivered.id });
+        results.push({
+          recipientRole,
+          email,
+          messageId: delivered.id,
+          duplicate: Boolean(delivered.duplicate),
+        });
       } else if (strictDelivery) {
         const suppressed = await isNotificationSuppressed(env.DB, email);
         if (!suppressed) {

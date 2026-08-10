@@ -64,6 +64,8 @@ reads confirmed lifecycle events from the active OpenEscrow deployment, reconcil
 one finalized D1 agreement, and sends the same opted-in activity notices for actions submitted
 outside the OpenEscrow UI. It never guesses an email-to-wallet association; unknown agreements are
 retained as unmatched public events without exposing them to hosted accounts.
+Transaction-bound delivery keys also let the indexer retry an email that failed after an in-app
+onchain action was recorded, without duplicating the agreement action or a provider-accepted send.
 Readiness is healthy only after the durable cursor is caught up to the confirmation-delayed chain
 head and no matched event remains pending.
 
