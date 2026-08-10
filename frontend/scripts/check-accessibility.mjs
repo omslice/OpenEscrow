@@ -331,13 +331,13 @@ try {
     "https://linktr.ee/omslice",
     "The About tab should link to Omri's Linktree.",
   );
-  const selfHostDownload = page.getByRole("button", {
-    name: "Download self-hosted OpenEscrow (coming soon)",
+  const selfHostDownload = page.getByRole("link", {
+    name: /Download self-hosted app/,
   });
   assert.equal(
-    await selfHostDownload.isDisabled(),
-    true,
-    "The self-host download should remain explicitly unavailable until a supported package exists.",
+    await selfHostDownload.getAttribute("href"),
+    "https://github.com/omslice/OpenEscrow/releases/tag/selfhost-v0.1.0-testnet",
+    "The self-host download should link to the supported Base Sepolia release.",
   );
 
   const yieldSummary = page.getByText("Earn yield?", { exact: true });
