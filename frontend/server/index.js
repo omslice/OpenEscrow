@@ -563,6 +563,51 @@ CREATE TABLE IF NOT EXISTS scheduled_job_runs (
   last_started_at TEXT NOT NULL
 )`;
 
+const ONCHAIN_INDEXER_STATE_SCHEMA = `
+CREATE TABLE IF NOT EXISTS onchain_indexer_state (
+  name TEXT PRIMARY KEY,
+  next_block INTEGER NOT NULL,
+  latest_finalized_block INTEGER,
+  last_started_at TEXT,
+  last_succeeded_at TEXT,
+  last_error TEXT
+)`;
+
+const INDEXED_CHAIN_EVENTS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS indexed_chain_events (
+  chain_id INTEGER NOT NULL,
+  contract_address TEXT NOT NULL,
+  transaction_hash TEXT NOT NULL,
+  log_index INTEGER NOT NULL,
+  block_number INTEGER NOT NULL,
+  block_hash TEXT NOT NULL,
+  onchain_agreement_id TEXT NOT NULL,
+  negotiation_id TEXT,
+  event_type TEXT NOT NULL,
+  processing_status TEXT NOT NULL,
+  indexed_at TEXT NOT NULL,
+  processed_at TEXT,
+  PRIMARY KEY (chain_id, transaction_hash, log_index),
+  FOREIGN KEY (negotiation_id)
+    REFERENCES agreement_negotiations(id) ON DELETE SET NULL
+)`;
+
+const INDEXED_CHAIN_EVENTS_RECONCILIATION_INDEX = `
+CREATE INDEX IF NOT EXISTS indexed_chain_events_reconciliation_idx
+ON indexed_chain_events (processing_status, onchain_agreement_id, block_number)`;
+
+const INDEXED_CHAIN_EVENTS_NEGOTIATION_INDEX = `
+CREATE INDEX IF NOT EXISTS indexed_chain_events_negotiation_idx
+ON indexed_chain_events (negotiation_id, block_number, log_index)`;
+
+const SCHEDULED_IN_APP_NOTIFICATION_INDEX = `
+CREATE UNIQUE INDEX IF NOT EXISTS negotiation_events_scheduled_notice_idx
+ON negotiation_events (
+  negotiation_id,
+  json_extract(metadata_json, '$.idempotencyKey')
+)
+WHERE action = 'scheduled_notification_due'`;
+
 const COMPLIANCE_SOURCE_CHECKS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS compliance_source_checks (
   source_key TEXT PRIMARY KEY,
@@ -648,6 +693,11 @@ const ACTIVITY_REGISTRY_ESCROW_SELECTOR = "0xe681c4aa";
 const ACTIVITY_REGISTRY_READINESS_TTL_MS = 60_000;
 const HOSTED_NOTIFICATION_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000;
 const HOSTED_NOTIFICATION_SCHEDULER_GRACE_MS = 2 * HOSTED_NOTIFICATION_SCHEDULER_INTERVAL_MS;
+const DEFAULT_OPEN_ESCROW_DEPLOYMENT_BLOCK = 45_283_514;
+const ONCHAIN_INDEXER_CONFIRMATION_BLOCKS = 20;
+const ONCHAIN_INDEXER_BLOCK_RANGE = 2_000;
+const ONCHAIN_INDEXER_MAX_RANGES_PER_RUN = 4;
+const ONCHAIN_INDEXER_HEALTH_GRACE_MS = 2 * HOSTED_NOTIFICATION_SCHEDULER_INTERVAL_MS;
 const COMPLIANCE_SOURCE_BOOTSTRAP_INTERVAL_MS = 15 * 60 * 1000;
 const COMPLIANCE_SOURCE_MONITOR_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const RECEIPT_EVENT_TOPICS = Object.freeze({
@@ -695,6 +745,72 @@ const RECEIPT_EVENT_TOPICS = Object.freeze({
     "0x4012b6d2c58584f354b2ad24151a4b24d5e18ea9aff9ced4667a2ffe01305ab6",
   activityPublished:
     "0x2aca0841f18e301ab87df30a3dd50b022d848e0b1ee373dcbe9f914886b2eea7",
+});
+const INDEXED_OPEN_ESCROW_EVENTS = Object.freeze({
+  [RECEIPT_EVENT_TOPICS.proposalCancelled]: {
+    eventType: "onchain_proposal_cancelled",
+    recordedActions: ["onchain_proposal_cancelled"],
+  },
+  [RECEIPT_EVENT_TOPICS.tenantShareFunded]: {
+    eventType: "tenant_share_funded",
+    recordedActions: ["tenant_share_funded", "agreement_funded"],
+  },
+  [RECEIPT_EVENT_TOPICS.agreementFunded]: {
+    eventType: "agreement_funded",
+    recordedActions: ["agreement_funded"],
+  },
+  [RECEIPT_EVENT_TOPICS.claimSubmitted]: {
+    eventType: "claim_submitted",
+    recordedActions: ["deduction_claim_submitted"],
+  },
+  [RECEIPT_EVENT_TOPICS.claimAmended]: {
+    eventType: "claim_amended",
+    recordedActions: ["deduction_claim_amended"],
+  },
+  [RECEIPT_EVENT_TOPICS.claimRetracted]: {
+    eventType: "claim_retracted",
+    recordedActions: ["deduction_claim_amended"],
+  },
+  [RECEIPT_EVENT_TOPICS.tenantClaimResponse]: {
+    eventType: "claim_response",
+    recordedActions: ["claim_response_submitted"],
+  },
+  [RECEIPT_EVENT_TOPICS.disputeResolved]: {
+    eventType: "arbiter_ruling",
+    recordedActions: ["arbiter_ruling_submitted"],
+  },
+  [RECEIPT_EVENT_TOPICS.withdrawn]: {
+    eventType: "withdrawal_completed",
+    recordedActions: ["withdrawal_completed"],
+  },
+  [RECEIPT_EVENT_TOPICS.noClaimWithdrawal]: {
+    eventType: "no_claim_refund_available",
+    recordedActions: ["timeout_executed"],
+  },
+  [RECEIPT_EVENT_TOPICS.responseTimedOut]: {
+    eventType: "response_timeout_escalated",
+    recordedActions: ["timeout_executed"],
+  },
+  [RECEIPT_EVENT_TOPICS.arbiterTimedOut]: {
+    eventType: "arbiter_timeout_allocation",
+    recordedActions: ["timeout_executed"],
+  },
+  [RECEIPT_EVENT_TOPICS.arbiterReplacementProposed]: {
+    eventType: "arbiter_replacement_proposed",
+    recordedActions: ["arbiter_replacement_proposed"],
+  },
+  [RECEIPT_EVENT_TOPICS.arbiterReplacementConfirmed]: {
+    eventType: "arbiter_replacement_confirmed",
+    recordedActions: ["arbiter_replacement_confirmed"],
+  },
+  [RECEIPT_EVENT_TOPICS.arbiterReplacementCancelled]: {
+    eventType: "arbiter_replacement_cancelled",
+    recordedActions: ["arbiter_replacement_cancelled"],
+  },
+  [RECEIPT_EVENT_TOPICS.arbiterReplaced]: {
+    eventType: "arbiter_replacement_accepted",
+    recordedActions: ["arbiter_replacement_accepted"],
+  },
 });
 const ADDRESS_ATTRIBUTION = Object.freeze({
   label: "© OpenStreetMap contributors",
@@ -3546,6 +3662,434 @@ async function isBaseSepoliaRpc(parsedUrl) {
   return true;
 }
 
+function onchainActivityIndexerEnabled(env) {
+  return cleanText(env.ONCHAIN_ACTIVITY_INDEXER_ENABLED, 20).toLowerCase() === "true";
+}
+
+function configuredOpenEscrowDeploymentBlock(env) {
+  const configured = Number(cleanText(env.OPEN_ESCROW_DEPLOYMENT_BLOCK, 30));
+  return Number.isSafeInteger(configured) && configured > 0
+    ? configured
+    : DEFAULT_OPEN_ESCROW_DEPLOYMENT_BLOCK;
+}
+
+function rpcHexNumber(value) {
+  if (!/^0x[0-9a-fA-F]+$/.test(cleanText(value, 100))) return null;
+  const parsed = Number.parseInt(value.slice(2), 16);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function indexedAgreementId(log) {
+  const word = normalizedReceiptWord(log?.topics?.[1]);
+  if (!word) return null;
+  try {
+    return BigInt(word).toString(10);
+  } catch {
+    return null;
+  }
+}
+
+function indexedLogRecord(log, expectedAddress, indexedAt) {
+  const topic0 = cleanText(log?.topics?.[0], 80).toLowerCase();
+  const definition = INDEXED_OPEN_ESCROW_EVENTS[topic0];
+  const transactionHash = cleanText(log?.transactionHash, 100).toLowerCase();
+  const blockHash = cleanText(log?.blockHash, 100).toLowerCase();
+  const blockNumber = rpcHexNumber(log?.blockNumber);
+  const logIndex = rpcHexNumber(log?.logIndex);
+  const agreementId = indexedAgreementId(log);
+  if (
+    !definition ||
+    cleanText(log?.address, 80).toLowerCase() !== expectedAddress ||
+    !/^0x[0-9a-f]{64}$/.test(transactionHash) ||
+    !/^0x[0-9a-f]{64}$/.test(blockHash) ||
+    blockNumber === null ||
+    logIndex === null ||
+    agreementId === null ||
+    log?.removed === true
+  ) {
+    return null;
+  }
+  return {
+    chainId: 84532,
+    contractAddress: expectedAddress,
+    transactionHash,
+    logIndex,
+    blockNumber,
+    blockHash,
+    onchainAgreementId: agreementId,
+    eventType: definition.eventType,
+    recordedActions: definition.recordedActions,
+    indexedAt,
+  };
+}
+
+async function baseSepoliaRpcUrls(env) {
+  const candidates = Array.from(
+    new Set(
+      [
+        cleanText(env.BASE_SEPOLIA_RPC_URL, 1000),
+        DEFAULT_BASE_SEPOLIA_RPC_URL,
+        FALLBACK_BASE_SEPOLIA_RPC_URL,
+      ].filter(Boolean),
+    ),
+  );
+  const parsed = [];
+  for (const candidate of candidates) {
+    try {
+      const url = new URL(candidate);
+      if (url.protocol !== "https:") continue;
+      if (await isBaseSepoliaRpc(url)) parsed.push(url);
+    } catch {
+      // Ignore malformed or wrong-chain fallbacks; readiness exposes failure.
+    }
+  }
+  return parsed;
+}
+
+async function indexedRpcResult(rpcUrls, method, params, timeoutMs = 7_500) {
+  for (const rpcUrl of rpcUrls) {
+    const rpc = await fetchJsonRpc(
+      rpcUrl,
+      { jsonrpc: "2.0", id: 84533, method, params },
+      timeoutMs,
+    );
+    if (rpc.ok) return rpc.result;
+  }
+  throw new Error("Base Sepolia activity could not be read from the configured RPCs.");
+}
+
+async function matchingNegotiationForIndexedEvent(db, agreementId) {
+  const matches = await db
+    .prepare(
+      `SELECT * FROM agreement_negotiations
+       WHERE status = 'finalized' AND onchain_agreement_id = ?
+       ORDER BY updated_at DESC
+       LIMIT 2`,
+    )
+    .bind(agreementId)
+    .all();
+  return matches.results?.length === 1 ? matches.results[0] : null;
+}
+
+async function recordedAppEventForIndexedEvent(db, record) {
+  const definition = Object.values(INDEXED_OPEN_ESCROW_EVENTS).find(
+    (candidate) => candidate.eventType === record.event_type,
+  );
+  if (!definition?.recordedActions?.length || !record.negotiation_id) return false;
+  const placeholders = definition.recordedActions.map(() => "?").join(", ");
+  const existing = await db
+    .prepare(
+      `SELECT id FROM negotiation_events
+       WHERE negotiation_id = ?
+         AND action IN (${placeholders})
+         AND lower(json_extract(metadata_json, '$.transactionHash')) = ?
+       LIMIT 1`,
+    )
+    .bind(record.negotiation_id, ...definition.recordedActions, record.transaction_hash)
+    .first();
+  return Boolean(existing?.id);
+}
+
+async function processIndexedChainEvent(env, record) {
+  let negotiationId = cleanText(record.negotiation_id, 100);
+  let row = negotiationId ? await rowFor(env.DB, negotiationId).catch(() => null) : null;
+  if (!row) {
+    row = await matchingNegotiationForIndexedEvent(
+      env.DB,
+      String(record.onchain_agreement_id),
+    );
+    negotiationId = row?.id || "";
+  }
+  if (!row || !negotiationId) {
+    await env.DB
+      .prepare(
+        `UPDATE indexed_chain_events
+         SET processing_status = 'unmatched', negotiation_id = NULL
+         WHERE chain_id = ? AND transaction_hash = ? AND log_index = ?`,
+      )
+      .bind(record.chain_id, record.transaction_hash, record.log_index)
+      .run();
+    return;
+  }
+
+  const boundRecord = { ...record, negotiation_id: negotiationId };
+  if (await recordedAppEventForIndexedEvent(env.DB, boundRecord)) {
+    await env.DB
+      .prepare(
+        `UPDATE indexed_chain_events
+         SET negotiation_id = ?, processing_status = 'recorded_in_app', processed_at = ?
+         WHERE chain_id = ? AND transaction_hash = ? AND log_index = ?`,
+      )
+      .bind(
+        negotiationId,
+        new Date().toISOString(),
+        record.chain_id,
+        record.transaction_hash,
+        record.log_index,
+      )
+      .run();
+    return;
+  }
+
+  const eventAlreadyRecorded = await env.DB
+    .prepare(
+      `SELECT id FROM negotiation_events
+       WHERE negotiation_id = ?
+         AND action = 'onchain_activity_indexed'
+         AND lower(json_extract(metadata_json, '$.transactionHash')) = ?
+         AND json_extract(metadata_json, '$.logIndex') = ?
+       LIMIT 1`,
+    )
+    .bind(negotiationId, record.transaction_hash, record.log_index)
+    .first();
+  const now = new Date().toISOString();
+  if (!eventAlreadyRecorded?.id) {
+    await env.DB.batch([
+      env.DB
+        .prepare("UPDATE agreement_negotiations SET updated_at = ? WHERE id = ?")
+        .bind(now, negotiationId),
+      eventStatement(
+        env.DB,
+        negotiationId,
+        now,
+        "system",
+        "onchain_activity_indexed",
+        `Detected ${record.event_type.replaceAll("_", " ")} directly on Base Sepolia and reconciled it with this agreement.`,
+        Number(row.revision),
+        {
+          eventType: record.event_type,
+          transactionHash: record.transaction_hash,
+          blockNumber: record.block_number,
+          blockHash: record.block_hash,
+          logIndex: record.log_index,
+          chainId: record.chain_id,
+        },
+      ),
+    ]);
+    row = await rowFor(env.DB, negotiationId);
+  }
+
+  const provider = emailProvider(env);
+  if (!provider || !emailSenderReadiness(env, provider).participantDeliveryReady) {
+    throw new Error("Participant email delivery is not ready for indexed activity.");
+  }
+  const canonicalRequest = new Request(publicAppOrigin(env, "https://openescrow.io/"));
+  const deliveryKey =
+    `${record.transaction_hash.slice(2)}-${record.log_index}`;
+  const deliveries = await sendOptedInAgreementActivityEmails(
+    canonicalRequest,
+    env,
+    row,
+    record.event_type,
+    { deliveryKey, indexedOnchain: true },
+    true,
+  );
+  const processedAt = new Date().toISOString();
+  await env.DB.batch([
+    env.DB
+      .prepare(
+        `UPDATE indexed_chain_events
+         SET negotiation_id = ?, processing_status = 'processed', processed_at = ?
+         WHERE chain_id = ? AND transaction_hash = ? AND log_index = ?`,
+      )
+      .bind(
+        negotiationId,
+        processedAt,
+        record.chain_id,
+        record.transaction_hash,
+        record.log_index,
+      ),
+    ...deliveries.map((delivery) =>
+      eventStatement(
+        env.DB,
+        negotiationId,
+        processedAt,
+        "system",
+        "agreement_activity_notification_sent",
+        `Sent the indexed ${record.event_type.replaceAll("_", " ")} notice to the opted-in ${delivery.recipientRole}.`,
+        Number(row.revision),
+        {
+          eventType: record.event_type,
+          recipientRole: delivery.recipientRole,
+          messageId: delivery.messageId,
+          indexedOnchain: true,
+          transactionHash: record.transaction_hash,
+          logIndex: record.log_index,
+        },
+      ),
+    ),
+  ]);
+}
+
+async function reconcilePendingIndexedEvents(env) {
+  const pending = await env.DB
+    .prepare(
+      `SELECT * FROM indexed_chain_events
+       WHERE processing_status IN ('pending', 'unmatched')
+       ORDER BY CASE processing_status WHEN 'pending' THEN 0 ELSE 1 END,
+                block_number, log_index
+       LIMIT 100`,
+    )
+    .all();
+  for (const record of pending.results || []) {
+    await processIndexedChainEvent(env, record);
+  }
+}
+
+async function runOnchainActivityIndexer(env, now = new Date()) {
+  if (!env.DB || !onchainActivityIndexerEnabled(env)) return;
+  await initialize(env.DB);
+  const stateName = "base-sepolia-openescrow-activity";
+  const deploymentBlock = configuredOpenEscrowDeploymentBlock(env);
+  const startedAt = now.toISOString();
+  await env.DB
+    .prepare(
+      `INSERT INTO onchain_indexer_state
+         (name, next_block, last_started_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT(name) DO UPDATE SET last_started_at = excluded.last_started_at`,
+    )
+    .bind(stateName, deploymentBlock, startedAt)
+    .run();
+
+  try {
+    const rpcUrls = await baseSepoliaRpcUrls(env);
+    if (!rpcUrls.length) throw new Error("No verified Base Sepolia RPC is available.");
+    const latestHex = await indexedRpcResult(rpcUrls, "eth_blockNumber", []);
+    const latestBlock = rpcHexNumber(latestHex);
+    if (latestBlock === null) throw new Error("Base Sepolia returned an invalid block number.");
+    const finalizedBlock = Math.max(0, latestBlock - ONCHAIN_INDEXER_CONFIRMATION_BLOCKS);
+    let state = await env.DB
+      .prepare("SELECT * FROM onchain_indexer_state WHERE name = ?")
+      .bind(stateName)
+      .first();
+    let nextBlock = Math.max(deploymentBlock, Number(state?.next_block || deploymentBlock));
+    const address = cleanText(
+      env.OPEN_ESCROW_ADDRESS || DEFAULT_OPEN_ESCROW_ADDRESS,
+      80,
+    ).toLowerCase();
+    if (!WALLET_PATTERN.test(address)) {
+      throw new Error("The active OpenEscrow address is invalid.");
+    }
+    const topicFilter = Object.keys(INDEXED_OPEN_ESCROW_EVENTS);
+    for (
+      let range = 0;
+      range < ONCHAIN_INDEXER_MAX_RANGES_PER_RUN && nextBlock <= finalizedBlock;
+      range += 1
+    ) {
+      const toBlock = Math.min(
+        finalizedBlock,
+        nextBlock + ONCHAIN_INDEXER_BLOCK_RANGE - 1,
+      );
+      const result = await indexedRpcResult(
+        rpcUrls,
+        "eth_getLogs",
+        [
+          {
+            address,
+            topics: [topicFilter],
+            fromBlock: `0x${nextBlock.toString(16)}`,
+            toBlock: `0x${toBlock.toString(16)}`,
+          },
+        ],
+      );
+      if (!Array.isArray(result) || result.length > 5_000) {
+        throw new Error("Base Sepolia returned an invalid activity-log result.");
+      }
+      const indexedAt = new Date().toISOString();
+      let records = result
+        .map((log) => indexedLogRecord(log, address, indexedAt))
+        .filter(Boolean)
+        .sort(
+          (left, right) =>
+            left.blockNumber - right.blockNumber || left.logIndex - right.logIndex,
+        );
+      const fullyFundedTransactions = new Set(
+        records
+          .filter((record) => record.eventType === "agreement_funded")
+          .map(
+            (record) => `${record.transactionHash}:${record.onchainAgreementId}`,
+          ),
+      );
+      records = records.filter(
+        (record) =>
+          record.eventType !== "tenant_share_funded" ||
+          !fullyFundedTransactions.has(
+            `${record.transactionHash}:${record.onchainAgreementId}`,
+          ),
+      );
+      for (const record of records) {
+        const inserted = await env.DB
+          .prepare(
+            `INSERT OR IGNORE INTO indexed_chain_events
+               (chain_id, contract_address, transaction_hash, log_index,
+                block_number, block_hash, onchain_agreement_id, negotiation_id,
+                event_type, processing_status, indexed_at, processed_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, 'pending', ?, NULL)`,
+          )
+          .bind(
+            record.chainId,
+            record.contractAddress,
+            record.transactionHash,
+            record.logIndex,
+            record.blockNumber,
+            record.blockHash,
+            record.onchainAgreementId,
+            record.eventType,
+            record.indexedAt,
+          )
+          .run();
+        if (Number(inserted?.meta?.changes ?? inserted?.changes ?? 0) > 0) {
+          await processIndexedChainEvent(env, {
+            chain_id: record.chainId,
+            contract_address: record.contractAddress,
+            transaction_hash: record.transactionHash,
+            log_index: record.logIndex,
+            block_number: record.blockNumber,
+            block_hash: record.blockHash,
+            onchain_agreement_id: record.onchainAgreementId,
+            negotiation_id: null,
+            event_type: record.eventType,
+            processing_status: "pending",
+            indexed_at: record.indexedAt,
+          });
+        }
+      }
+      nextBlock = toBlock + 1;
+      await env.DB
+        .prepare(
+          `UPDATE onchain_indexer_state
+           SET next_block = ?, latest_finalized_block = ?,
+               last_succeeded_at = ?, last_error = NULL
+           WHERE name = ?`,
+        )
+        .bind(nextBlock, finalizedBlock, new Date().toISOString(), stateName)
+        .run();
+    }
+    await reconcilePendingIndexedEvents(env);
+    await env.DB
+      .prepare(
+        `UPDATE onchain_indexer_state
+         SET latest_finalized_block = ?, last_succeeded_at = ?, last_error = NULL
+         WHERE name = ?`,
+      )
+      .bind(finalizedBlock, new Date().toISOString(), stateName)
+      .run();
+  } catch (error) {
+    await env.DB
+      .prepare(
+        `UPDATE onchain_indexer_state
+         SET last_error = ? WHERE name = ?`,
+      )
+      .bind(
+        cleanText(error instanceof Error ? error.message : "Indexer failed.", 500),
+        stateName,
+      )
+      .run();
+    throw error;
+  }
+}
+
 async function fetchPrivyJwks(appId, forceRefresh = false) {
   const now = Date.now();
   const cached = privyJwksCache.get(appId);
@@ -3733,6 +4277,11 @@ async function initialize(db) {
     db.prepare(FUNDING_CHECKOUT_EVENTS_PROVENANCE_UPDATE_GUARD),
     db.prepare(BACKFILL_PRIMARY_TENANTS),
     db.prepare(SCHEDULED_JOB_RUNS_SCHEMA),
+    db.prepare(ONCHAIN_INDEXER_STATE_SCHEMA),
+    db.prepare(INDEXED_CHAIN_EVENTS_SCHEMA),
+    db.prepare(INDEXED_CHAIN_EVENTS_RECONCILIATION_INDEX),
+    db.prepare(INDEXED_CHAIN_EVENTS_NEGOTIATION_INDEX),
+    db.prepare(SCHEDULED_IN_APP_NOTIFICATION_INDEX),
     db.prepare(COMPLIANCE_SOURCE_CHECKS_SCHEMA),
     db.prepare(COMPLIANCE_SOURCE_CHECKS_INDEX),
     db.prepare(API_RATE_LIMITS_SCHEMA),
@@ -3925,6 +4474,9 @@ async function notificationPreferences(request, env) {
 
 async function serviceReadiness(env) {
   let schedulerLastRunAt = null;
+  let onchainIndexerState = null;
+  let onchainIndexerPendingEvents = 0;
+  let onchainIndexerUnmatchedEvents = 0;
   let complianceSourceLastRunAt = null;
   let referencedEvidenceKeys = [];
   let complianceSourceStats = {
@@ -3956,6 +4508,24 @@ async function serviceReadiness(env) {
       .bind("notification-reminders")
       .first();
     schedulerLastRunAt = scheduledRun?.last_started_at || null;
+    onchainIndexerState = await env.DB
+      .prepare("SELECT * FROM onchain_indexer_state WHERE name = ?")
+      .bind("base-sepolia-openescrow-activity")
+      .first();
+    const pendingIndexedEvents = await env.DB
+      .prepare(
+        `SELECT COUNT(*) AS count FROM indexed_chain_events
+         WHERE processing_status = 'pending'`,
+      )
+      .first();
+    onchainIndexerPendingEvents = Number(pendingIndexedEvents?.count || 0);
+    const unmatchedIndexedEvents = await env.DB
+      .prepare(
+        `SELECT COUNT(*) AS count FROM indexed_chain_events
+         WHERE processing_status = 'unmatched'`,
+      )
+      .first();
+    onchainIndexerUnmatchedEvents = Number(unmatchedIndexedEvents?.count || 0);
     const sourceRun = await env.DB
       .prepare("SELECT last_started_at FROM scheduled_job_runs WHERE name = ?")
       .bind("compliance-source-monitor")
@@ -4059,6 +4629,25 @@ async function serviceReadiness(env) {
     !Number.isFinite(schedulerLastRunMs)
       ? null
       : Math.max(0, Math.round((nowMs - schedulerLastRunMs) / (60 * 1000)));
+  const onchainIndexerLastSuccessMs = onchainIndexerState?.last_succeeded_at
+    ? Date.parse(onchainIndexerState.last_succeeded_at)
+    : Number.NaN;
+  const onchainIndexerNextBlock = Number(onchainIndexerState?.next_block);
+  const onchainIndexerLatestFinalizedBlock = Number(
+    onchainIndexerState?.latest_finalized_block,
+  );
+  const onchainIndexerCaughtUp =
+    Number.isSafeInteger(onchainIndexerNextBlock) &&
+    Number.isSafeInteger(onchainIndexerLatestFinalizedBlock) &&
+    onchainIndexerNextBlock > onchainIndexerLatestFinalizedBlock;
+  const onchainIndexerHealthy =
+    onchainActivityIndexerEnabled(env) &&
+    Number.isFinite(onchainIndexerLastSuccessMs) &&
+    nowMs - onchainIndexerLastSuccessMs <= ONCHAIN_INDEXER_HEALTH_GRACE_MS &&
+    nowMs >= onchainIndexerLastSuccessMs &&
+    onchainIndexerCaughtUp &&
+    onchainIndexerPendingEvents === 0 &&
+    !onchainIndexerState?.last_error;
   const complianceSourceMonitorAgeMinutes = !Number.isFinite(
     complianceSourceLastRunMs,
   )
@@ -4146,6 +4735,20 @@ async function serviceReadiness(env) {
       transactionReceiptVerification: receiptVerificationEnabled(env),
       chain: "Base Sepolia",
       activityRegistry: registryReadiness,
+      activityIndexer: {
+        configured: onchainActivityIndexerEnabled(env),
+        healthy: onchainIndexerHealthy,
+        caughtUp: onchainIndexerCaughtUp,
+        lastStartedAt: onchainIndexerState?.last_started_at || null,
+        lastSucceededAt: onchainIndexerState?.last_succeeded_at || null,
+        nextBlock: onchainIndexerState?.next_block ?? null,
+        latestFinalizedBlock:
+          onchainIndexerState?.latest_finalized_block ?? null,
+        pendingEventCount: onchainIndexerPendingEvents,
+        unmatchedEventCount: onchainIndexerUnmatchedEvents,
+        error: onchainIndexerState?.last_error || null,
+        confirmationBlocks: ONCHAIN_INDEXER_CONFIRMATION_BLOCKS,
+      },
     },
     addressValidation: {
       configured: addressAttestationConfigured(
@@ -6377,12 +6980,18 @@ async function sendOptedInAgreementActivityEmails(
   row,
   eventType,
   activity = {},
+  strictDelivery = false,
 ) {
   if (!emailProvider(env)) return [];
   const tenantRecipients = (await tenantsFor(env.DB, row.id)).map((tenant) => [
     "tenant",
     tenant.email,
   ]);
+  const allAgreementRecipients = [
+    ["landlord", row.landlord_email],
+    ...tenantRecipients,
+    ["arbiter", row.arbiter_email],
+  ];
   const claimResponseCopy =
     {
       approve: {
@@ -6455,13 +7064,72 @@ async function sendOptedInAgreementActivityEmails(
       subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} ruling recorded`,
       text: "The appointed arbiter recorded a ruling. Review the allocation and transaction receipt in OpenEscrow.",
     },
+    cancel_proposal: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow proposal ${row.id} cancelled`,
+      text: "The landlord cancelled this saved proposal. Its timestamped history remains available in the Record.",
+    },
+    onchain_proposal_cancelled: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} cancelled`,
+      text: "The unfunded onchain agreement was cancelled on Base Sepolia. Review the recorded transaction in OpenEscrow.",
+    },
+    claim_retracted: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} claim withdrawn`,
+      text: "The landlord withdrew the deduction claim. Review the resulting refund allocation in OpenEscrow.",
+    },
+    withdrawal_completed: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} withdrawal completed`,
+      text: "An agreement party completed an available withdrawal. Review the participant-controlled record and transaction receipt in OpenEscrow.",
+    },
+    no_claim_refund_available: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} full refund recorded`,
+      text: "The no-claim period ended and the full tenant refund was recorded on Base Sepolia. Review the resulting allocation in OpenEscrow.",
+    },
+    response_timeout_escalated: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} response period ended`,
+      text: "A claim response deadline passed without every tenant response, so the contract escalated the disputed amount for resolution. Review the current status in OpenEscrow.",
+    },
+    arbiter_timeout_allocation: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} timeout allocation recorded`,
+      text: "The arbiter ruling period ended and the contract recorded the tenant allocation. Review the resulting balances in OpenEscrow.",
+    },
+    arbiter_replacement_proposed: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} arbiter change proposed`,
+      text: "An agreement party proposed replacing the optional arbiter. Review and confirm or decline the pending change in OpenEscrow.",
+    },
+    arbiter_replacement_confirmed: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} arbiter change confirmed`,
+      text: "Both agreement sides confirmed the optional-arbiter replacement. The nominee must still accept before access changes.",
+    },
+    arbiter_replacement_cancelled: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} arbiter change cancelled`,
+      text: "The pending optional-arbiter replacement was cancelled. Existing agreement access remains unchanged.",
+    },
+    arbiter_replacement_accepted: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} arbiter changed`,
+      text: "The mutually approved replacement arbiter accepted the role. Review the updated participant access in OpenEscrow.",
+    },
   }[eventType];
   if (!notification) return [];
 
   const appUrl = publicAppOriginForRequest(request, env);
   const results = [];
+  const seenEmails = new Set();
   for (const [recipientRole, email] of notification.recipients) {
     if (!email) continue;
+    const normalizedRecipient = normalizeEmail(email);
+    if (!normalizedRecipient || seenEmails.has(normalizedRecipient)) continue;
+    seenEmails.add(normalizedRecipient);
     const preferences = await env.DB
       .prepare(
         "SELECT agreement_activity FROM notification_preferences WHERE lower(email) = lower(?) AND consented_at IS NOT NULL",
@@ -6478,12 +7146,20 @@ async function sendOptedInAgreementActivityEmails(
         notificationType: `agreement_activity_${eventType}`,
         subject: notification.subject,
         text: `${notification.text}\n\nOpen your signed-in dashboard: ${appUrl}\n\nThis email intentionally omits evidence, tenancy details, and private notes.${unsubscribeUrl ? `\n\nTurn off optional OpenEscrow emails: ${unsubscribeUrl}` : ""}`,
-        idempotencyKey: `agreement-${row.id}-${eventType}-${recipientRole}-${recipientKey}-${row.updated_at}`,
+        idempotencyKey:
+          `agreement-${row.id}-${eventType}-${recipientRole}-${recipientKey}-` +
+          `${cleanText(activity.deliveryKey, 200) || row.updated_at}`,
       });
       if (delivered?.id) {
         results.push({ recipientRole, email, messageId: delivered.id });
+      } else if (strictDelivery) {
+        const suppressed = await isNotificationSuppressed(env.DB, email);
+        if (!suppressed) {
+          throw new Error("The agreement activity email could not be delivered.");
+        }
       }
-    } catch {
+    } catch (error) {
+      if (strictDelivery) throw error;
       // Continue delivering to other opted-in parties when one provider request fails.
     }
   }
@@ -6712,6 +7388,35 @@ async function sendScheduledNotification(env, row, notification, appUrl) {
     ),
   ]);
   return true;
+}
+
+async function recordScheduledInAppNotification(env, row, notification) {
+  const scheduledFor = notification.scheduledFor.toISOString();
+  const idempotencyKey = [
+    row.id,
+    notification.type,
+    notification.role,
+    scheduledFor,
+  ].join(":");
+  await env.DB
+    .prepare(
+      `INSERT OR IGNORE INTO negotiation_events
+       (negotiation_id, created_at, actor_role, action, summary, revision, metadata_json)
+       VALUES (?, ?, 'system', 'scheduled_notification_due', ?, ?, ?)`,
+    )
+    .bind(
+      row.id,
+      new Date().toISOString(),
+      notification.text,
+      Number(row.revision),
+      JSON.stringify({
+        idempotencyKey,
+        notificationType: notification.type,
+        recipientRole: notification.role,
+        scheduledFor,
+      }),
+    )
+    .run();
 }
 
 function deadlineCandidates(row, events, now, tenantRows = []) {
@@ -7051,7 +7756,7 @@ async function runScheduledNotifications(env, now = new Date()) {
     .all();
   const appUrl = publicAppOrigin(
     env,
-    "https://openescrow-demo.omrigross.chatgpt.site/",
+    "https://openescrow.io/",
   );
   for (const row of result.results || []) {
     let events = await eventsFor(env.DB, row.id);
@@ -7064,6 +7769,7 @@ async function runScheduledNotifications(env, now = new Date()) {
       ...withdrawalCandidates(row, events, now, tenantRows),
     ];
     for (const candidate of candidates) {
+      await recordScheduledInAppNotification(env, row, candidate);
       if (!emailProvider(env)) continue;
       await sendScheduledNotification(env, row, candidate, appUrl);
     }
@@ -9626,19 +10332,37 @@ async function applyAction(request, env, id) {
   }
   if (
     body.type === "finalize" ||
+    body.type === "cancel_proposal" ||
+    body.type === "onchain_proposal_cancelled" ||
     body.type === "tenant_share_funded" ||
     body.type === "agreement_funded" ||
     body.type === "claim_submitted" ||
     body.type === "claim_amended" ||
     body.type === "claim_response" ||
-    body.type === "arbiter_ruling"
+    body.type === "arbiter_ruling" ||
+    body.type === "withdrawal_completed" ||
+    body.type === "timeout_executed" ||
+    body.type === "arbiter_replacement_proposed" ||
+    body.type === "arbiter_replacement_confirmed" ||
+    body.type === "arbiter_replacement_cancelled" ||
+    body.type === "arbiter_replacement_accepted"
   ) {
     try {
+      const notificationEventType =
+        body.type === "claim_amended" && tokenMicros(body.amount) === 0n
+          ? "claim_retracted"
+          : body.type === "timeout_executed"
+            ? {
+                no_claim_refund: "no_claim_refund_available",
+                no_response_dispute: "response_timeout_escalated",
+                arbiter_timeout_refund: "arbiter_timeout_allocation",
+              }[body.timeout]
+            : body.type;
       const deliveries = await sendOptedInAgreementActivityEmails(
         request,
         env,
         updated,
-        body.type,
+        notificationEventType,
         body,
       );
       if (deliveries.length) {
@@ -9654,10 +10378,10 @@ async function applyAction(request, env, id) {
               notifiedAt,
               "system",
               "agreement_activity_notification_sent",
-              `Sent the ${body.type.replaceAll("_", " ")} notice to the opted-in ${delivery.recipientRole}.`,
+              `Sent the ${notificationEventType.replaceAll("_", " ")} notice to the opted-in ${delivery.recipientRole}.`,
               updated.revision,
               {
-                eventType: body.type,
+                eventType: notificationEventType,
                 recipientRole: delivery.recipientRole,
                 messageId: delivery.messageId,
               },
@@ -11354,6 +12078,7 @@ const worker = {
     context.waitUntil(
       Promise.all([
         runNotificationJob(env, scheduledAt),
+        runOnchainActivityIndexer(env, scheduledAt),
         runComplianceSourceAudit(env, scheduledAt),
         runApiRateLimitCleanup(env, scheduledAt),
       ]),

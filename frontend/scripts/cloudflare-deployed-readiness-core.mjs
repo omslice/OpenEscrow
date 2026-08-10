@@ -38,6 +38,11 @@ export function assertCloudflareDeployedReadiness(
   );
   collectFailure(
     failures,
+    readiness.recordIntegrity?.activityIndexer?.configured === true,
+    "The Base Sepolia activity indexer is not configured.",
+  );
+  collectFailure(
+    failures,
     readiness.complianceSources?.configured === true,
     "The compliance source monitor is not enabled.",
   );
@@ -70,6 +75,11 @@ export function assertCloudflareDeployedReadiness(
       failures,
       readiness.recordIntegrity?.activityRegistry?.ready === true,
       "The activity registry is not bound to the active escrow release.",
+    );
+    collectFailure(
+      failures,
+      readiness.recordIntegrity?.activityIndexer?.healthy === true,
+      "The Base Sepolia activity indexer is not healthy.",
     );
     collectFailure(
       failures,

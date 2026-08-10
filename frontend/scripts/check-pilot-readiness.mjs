@@ -210,6 +210,19 @@ const checks = [
       "readiness.recordIntegrity.activityRegistry.configured === true and readiness.recordIntegrity.activityRegistry.ready === true",
   },
   {
+    label: "Base Sepolia activity indexer",
+    ready: readiness.recordIntegrity?.activityIndexer?.healthy === true,
+    detail: readiness.recordIntegrity?.activityIndexer?.healthy
+      ? `caught up through finalized block ${readiness.recordIntegrity.activityIndexer.latestFinalizedBlock ?? "unknown"}`
+      : readiness.recordIntegrity?.activityIndexer?.error ||
+        "activity indexing has not completed successfully",
+    required: true,
+    action:
+      "Enable ONCHAIN_ACTIVITY_INDEXER_ENABLED for the active OpenEscrow deployment and verify a successful hosted cron run.",
+    validate:
+      "readiness.recordIntegrity.activityIndexer.configured === true and readiness.recordIntegrity.activityIndexer.healthy === true",
+  },
+  {
     label: "Server-attested property addresses",
     ready: readiness.addressValidation?.configured === true,
     detail: readiness.addressValidation?.configured

@@ -147,6 +147,18 @@ function readyServiceReadiness() {
         checkedAt: now,
         error: null,
       },
+      activityIndexer: {
+        configured: true,
+        healthy: true,
+        lastStartedAt: now,
+        lastSucceededAt: now,
+        nextBlock: 45_300_001,
+        latestFinalizedBlock: 45_300_000,
+        pendingEventCount: 0,
+        unmatchedEventCount: 0,
+        error: null,
+        confirmationBlocks: 20,
+      },
     },
     addressValidation: {
       configured: true,

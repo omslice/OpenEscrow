@@ -3351,6 +3351,10 @@ function AgreementForm({
           <div className="record-header">
             <div>
               <h3>Invite parties to review revision {draft.revision}</h3>
+              <p className="hint">
+                Saving never sends an invitation. Email is sent only when you choose
+                <strong> Send invite</strong>.
+              </p>
               <p className="hint">Each link is role-locked and opens this saved proposal—not the landlord’s creation tools.</p>
             </div>
           </div>

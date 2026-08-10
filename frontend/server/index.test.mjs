@@ -102,12 +102,14 @@ test("the packaged D1 migration applies cleanly", () => {
     "0019_api_rate_limits.sql",
     "0020_query_path_indexes.sql",
     "0021_notification_delivery_events.sql",
+    "0022_onchain_activity_indexer.sql",
   ]) {
     applyMigration(migrationName);
   }
   applyMigration("0001_negotiation_account_access.sql");
   applyMigration("0020_query_path_indexes.sql");
   applyMigration("0021_notification_delivery_events.sql");
+  applyMigration("0022_onchain_activity_indexer.sql");
   const tables = database
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
     .all()
@@ -130,6 +132,8 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.ok(tables.includes("arbiter_replacement_account_access"));
   assert.ok(tables.includes("negotiation_receipt_guards"));
   assert.ok(tables.includes("api_rate_limits"));
+  assert.ok(tables.includes("onchain_indexer_state"));
+  assert.ok(tables.includes("indexed_chain_events"));
   const deliveryIndexes = database
     .prepare("PRAGMA index_list(notification_deliveries)")
     .all()
@@ -7662,6 +7666,157 @@ test("signed Resend delivery events update status idempotently and suppress unsa
   );
 });
 
+test("the scheduled onchain indexer reconciles direct activity once and emails opted-in parties", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const consentedAt = "2026-08-10T12:00:00.000Z";
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("landlord-user", "landlord@example.com", consentedAt, consentedAt),
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("tenant-user", "tenant@example.com", consentedAt, consentedAt),
+  ]);
+
+  const deploymentBlock = 45_283_514;
+  const indexedBlock = deploymentBlock + 1;
+  const latestBlock = deploymentBlock + 30;
+  const directTransaction = transactionHash(91_001);
+  const directLog = {
+    address: RECEIPT_TEST_OPEN_ESCROW,
+    topics: [
+      WITHDRAWN_TOPIC,
+      receiptWord(42),
+      receiptAddressWord(RECEIPT_TEST_TENANT),
+    ],
+    data: receiptData(receiptWord(1_200_000_000n)),
+    transactionHash: directTransaction,
+    blockHash: transactionHash(91_002),
+    blockNumber: `0x${indexedBlock.toString(16)}`,
+    logIndex: "0x0",
+    removed: false,
+  };
+  const wrongContractLog = {
+    ...directLog,
+    address: "0x9999999999999999999999999999999999999999",
+    transactionHash: transactionHash(91_003),
+  };
+  const malformedLog = {
+    ...directLog,
+    blockHash: "0x1234",
+    transactionHash: transactionHash(91_004),
+  };
+  const providerCalls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, options = {}) => {
+    const url = String(input);
+    if (url.includes("api.resend.com/emails")) {
+      providerCalls.push(JSON.parse(options.body));
+      return Response.json({ id: `indexed-email-${providerCalls.length}` });
+    }
+    const payload = JSON.parse(options.body);
+    const result =
+      payload.method === "eth_chainId"
+        ? "0x14a34"
+        : payload.method === "eth_blockNumber"
+          ? `0x${latestBlock.toString(16)}`
+          : payload.method === "eth_getLogs"
+            ? [wrongContractLog, malformedLog, directLog]
+            : null;
+    return Response.json({ jsonrpc: "2.0", id: payload.id, result });
+  };
+  const env = {
+    DB: db,
+    ONCHAIN_ACTIVITY_INDEXER_ENABLED: "true",
+    OPEN_ESCROW_ADDRESS: RECEIPT_TEST_OPEN_ESCROW,
+    OPEN_ESCROW_DEPLOYMENT_BLOCK: String(deploymentBlock),
+    RESEND_API_KEY: "re_indexer_test",
+    RESEND_WEBHOOK_SECRET: "whsec_indexer_test",
+    NOTIFICATION_FROM_EMAIL: "OpenEscrow <notifications@updates.openescrow.io>",
+    PUBLIC_APP_URL: "https://openescrow.io/",
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  };
+  try {
+    const runScheduled = async (scheduledTime) => {
+      const waits = [];
+      await worker.scheduled(
+        { scheduledTime },
+        env,
+        { waitUntil(promise) { waits.push(promise); } },
+      );
+      await Promise.all(waits);
+    };
+    await runScheduled(Date.parse("2026-08-10T12:15:00.000Z"));
+    assert.equal(providerCalls.length, 2);
+    assert.deepEqual(
+      providerCalls.flatMap((call) => call.to).sort(),
+      ["landlord@example.com", "tenant@example.com"],
+    );
+    const indexed = db
+      .prepare(
+        `SELECT negotiation_id, event_type, processing_status
+         FROM indexed_chain_events WHERE transaction_hash = ?`,
+      )
+      .bind(directTransaction)
+      .first();
+    assert.deepEqual({ ...indexed }, {
+      negotiation_id: created.record.id,
+      event_type: "withdrawal_completed",
+      processing_status: "processed",
+    });
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS count FROM indexed_chain_events").first().count,
+      1,
+      "Malformed and wrong-contract RPC logs must not enter the durable index.",
+    );
+    const timelineEvent = db
+      .prepare(
+        `SELECT metadata_json FROM negotiation_events
+         WHERE negotiation_id = ? AND action = 'onchain_activity_indexed'`,
+      )
+      .bind(created.record.id)
+      .first();
+    assert.equal(JSON.parse(timelineEvent.metadata_json).transactionHash, directTransaction);
+    assert.equal(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM notification_deliveries
+           WHERE notification_type = 'agreement_activity_withdrawal_completed'`,
+        )
+        .first().count,
+      2,
+    );
+
+    await runScheduled(Date.parse("2026-08-10T12:30:00.000Z"));
+    assert.equal(providerCalls.length, 2, "A finalized indexed log must not resend.");
+    const originalDateNow = Date.now;
+    const readinessNow = originalDateNow() + 60_000;
+    Date.now = () => readinessNow;
+    try {
+      const readiness = await jsonResponse(
+        await worker.fetch(request("/api/system/readiness"), env),
+      );
+      assert.equal(readiness.recordIntegrity.activityIndexer.caughtUp, true);
+      assert.equal(readiness.recordIntegrity.activityIndexer.healthy, true);
+      assert.equal(readiness.recordIntegrity.activityIndexer.pendingEventCount, 0);
+    } finally {
+      Date.now = originalDateNow;
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("readiness tracks notification scheduler freshness against the 15-minute cadence", async () => {
   const now = Date.parse("2027-07-02T12:00:00.000Z");
   const freshDb = new TestD1();
@@ -9142,6 +9297,24 @@ test("scheduled claim-window reminders are opted-in and idempotent", async () =>
     assert.deepEqual(deliveries[0].to, ["landlord@example.com"]);
     assert.match(deliveries[0].subject, /claim period started/);
     assert.match(deliveries[0].text, /Turn off optional OpenEscrow emails/);
+    const inAppNoticeRows = db
+      .prepare(
+        `SELECT metadata_json FROM negotiation_events
+         WHERE negotiation_id = ? AND action = 'scheduled_notification_due'
+         ORDER BY id`,
+      )
+      .bind(created.record.id)
+      .all();
+    const inAppNotices = (inAppNoticeRows.results || []).map((row) =>
+      JSON.parse(row.metadata_json),
+    );
+    assert.deepEqual(
+      inAppNotices.map((notice) => notice.recipientRole).sort(),
+      ["landlord", `tenant-${created.record.tenants[0].id}`].sort(),
+    );
+    assert.ok(
+      inAppNotices.every((notice) => notice.notificationType === "claim_period_started"),
+    );
 
     const repeated = [];
     await worker.scheduled(controller, env, {
@@ -9151,6 +9324,16 @@ test("scheduled claim-window reminders are opted-in and idempotent", async () =>
     });
     await Promise.all(repeated);
     assert.equal(deliveries.length, 1);
+    assert.equal(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM negotiation_events
+           WHERE negotiation_id = ? AND action = 'scheduled_notification_due'`,
+        )
+        .bind(created.record.id)
+        .first().count,
+      2,
+    );
 
     const deliveryRow = db
       .prepare(
@@ -10183,6 +10366,60 @@ test("cancelling a proposal removes it from active work while preserving its rec
   );
   assert.equal(report.status, 200);
   assert.match(await report.text(), /status cancelled/);
+});
+
+test("proposal cancellation emails every opted-in party once", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const consentedAt = new Date().toISOString();
+  for (const [index, email] of ["landlord@example.com", "tenant@example.com"].entries()) {
+    await db
+      .prepare(
+        `INSERT INTO notification_preferences
+         (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind(`did:privy:cancel-${index}`, email, consentedAt, consentedAt)
+      .run();
+  }
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `cancel-email-${deliveries.length}` });
+  };
+  try {
+    const cancelled = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.landlord,
+        { type: "cancel_proposal" },
+        {
+          RESEND_API_KEY: "re_cancel_test",
+          NOTIFICATION_FROM_EMAIL: "OpenEscrow <notifications@updates.openescrow.io>",
+          PUBLIC_APP_URL: "https://openescrow.io/",
+        },
+      ),
+    );
+    assert.equal(cancelled.status, "cancelled");
+    assert.deepEqual(
+      deliveries.flatMap((delivery) => delivery.to).sort(),
+      ["landlord@example.com", "tenant@example.com"],
+    );
+    assert.ok(deliveries.every((delivery) => /cancelled/.test(delivery.subject)));
+    assert.equal(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM notification_deliveries
+           WHERE notification_type = 'agreement_activity_cancel_proposal'`,
+        )
+        .first().count,
+      2,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("onchain proposal cancellation is landlord-only, receipt-bound, idempotent, and preserves the Record", async () => {

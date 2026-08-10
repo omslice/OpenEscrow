@@ -47,6 +47,12 @@ single signed-in identity to simulate multiple parties.
 8. Confirm that claim notices go to tenants separately and that the landlord receives the saved
    tenant-response update. Email bodies intentionally omit the property address, deposit amount,
    evidence, and private agreement notes.
+9. Choose short test deadlines and confirm the intended participant sees the reminder in the
+   notification menu. If email reminders are enabled, confirm the same participant receives the
+   privacy-minimal email once and that another party does not receive it.
+10. For a direct-onchain check, submit one supported lifecycle transaction outside the app, wait
+    for confirmations and the hosted schedule, then confirm the indexed event appears once in the
+    matching Record and produces only the opted-in notices.
 
 The fresh bounded test-token cohort is deployed, independently checked against its recorded
 runtime bytes and immutable bindings, and active in the canonical app. Standard testUSDC remains

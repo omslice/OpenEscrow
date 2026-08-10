@@ -47,9 +47,9 @@ matching registry event in the referenced Base Sepolia transaction.
 
 ### Frontend
 
-The React frontend talks directly to Base Sepolia through wagmi and viem. It stores tracked agreement IDs in the browser and can discover agreements by scanning bounded event-log ranges from the deployment block. Saved proposal activity refreshes automatically, and notification read state is kept locally per connected wallet.
+The React frontend talks directly to Base Sepolia through wagmi and viem. It stores tracked agreement IDs in the browser and can discover agreements by scanning bounded event-log ranges from the deployment block. Saved proposal activity refreshes automatically, and notification read state is kept locally per connected account.
 
-This is acceptable for a small testnet demonstration. A pilot-ready version needs an indexer and notification service.
+The hosted Worker also runs a confirmation-delayed, bounded Base Sepolia indexer on the fifteen-minute schedule. It reconciles lifecycle events to one exact finalized D1 record, feeds both the shared activity timeline and opted-in email delivery, and exposes cursor/backlog health through readiness. It does not infer identity from public wallet activity.
 
 ## State machine
 

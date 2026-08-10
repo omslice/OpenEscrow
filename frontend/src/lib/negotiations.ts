@@ -139,6 +139,19 @@ export interface ServiceReadiness {
       checkedAt: string | null;
       error: string | null;
     };
+    activityIndexer: {
+      configured: boolean;
+      healthy: boolean;
+      caughtUp: boolean;
+      lastStartedAt: string | null;
+      lastSucceededAt: string | null;
+      nextBlock: number | null;
+      latestFinalizedBlock: number | null;
+      pendingEventCount: number;
+      unmatchedEventCount: number;
+      error: string | null;
+      confirmationBlocks: number;
+    };
   };
   addressValidation: {
     configured: boolean;

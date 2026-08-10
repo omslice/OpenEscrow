@@ -49,6 +49,14 @@ function readyResponse() {
         ready: true,
         expectedEscrowAddress: "0x0000000000000000000000000000000000000001",
       },
+      activityIndexer: {
+        configured: true,
+        healthy: true,
+        latestFinalizedBlock: 45_300_000,
+        pendingEventCount: 0,
+        unmatchedEventCount: 0,
+        error: null,
+      },
     },
     addressValidation: {
       configured: true,

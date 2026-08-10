@@ -91,16 +91,17 @@ evidence trail view. The optional account layer supports Google authentication, 
 provisioned embedded EVM wallets, linked external EVM wallets, active-wallet selection, and
 server-persisted email notification consent, deadline reminders, unsubscribe links,
 party-authorized evidence uploads, and multi-tenant proposal review. Saved proposal activity refreshes automatically, while
-the notification bell includes wallet-scoped Base Sepolia registry receipts and keeps read state
-locally per wallet.
+the notification bell includes role-scoped agreement deadlines and wallet-scoped Base Sepolia
+registry receipts and keeps read state locally per account.
 
 Agreement discovery has two paths: the signed-in account loads role-scoped records from D1, while
 the connected-wallet recovery path enumerates the contract's bounded current agreement IDs and
 checks the current landlord, arbiter, and tenant share directly (see
 `src/lib/agreementDiscovery.ts`). Manual add-by-id and shared `?id=` links remain available. This
 avoids a nearly thousand-request historical log walk on today's deployment and uses two public
-Base Sepolia providers with failover. It remains a testnet-scale recovery path, not a substitute
-for the authenticated indexer/subgraph a production version needs.
+Base Sepolia providers with failover. Separately, the hosted Worker indexes confirmed lifecycle
+events from the active deployment for D1 reconciliation and notification delivery; it binds only
+to an existing unique finalized record and never infers account ownership from a wallet address.
 
 The create form also collects optional jurisdiction context. That value travels in the shared
 agreement link and is stored in the browser for display on the dashboard; it is not stored or
@@ -121,6 +122,6 @@ record reads to six at a time; larger session sets are written in bounded D1 bat
 one remote batch per agreement.
 Participant wallet addresses are recorded when the invited parties approve the current revision.
 
-Not implemented: a production onchain event indexer, production evidence retention controls, or a
-fiat-to-USDC security-deposit onramp. See `../docs/open-questions.md` for the non-UI
+Not implemented: production evidence retention controls or a fiat-to-USDC security-deposit
+onramp. See `../docs/open-questions.md` for the non-UI
 (legal/product) gaps.

@@ -35,3 +35,32 @@ test("ordinary participant activity keeps its exact human-readable summary", () 
   assert.equal(friendlyActivitySummary(approved), approved.summary);
   assert.equal(activityHasVerificationDetails(approved), false);
 });
+
+test("scheduled agreement notices use concise consumer-facing language", () => {
+  const reminder = {
+    ...event("scheduled_notification_due", "Sent the response deadline notice."),
+    metadata: {
+      notificationType: "response_deadline_1_day",
+      recipientRole: "tenant-1",
+    },
+  };
+  assert.equal(
+    friendlyActivitySummary(reminder),
+    "Your response to the deduction claim is due tomorrow.",
+  );
+});
+
+test("direct onchain activity uses consumer-facing notification language", () => {
+  assert.equal(
+    friendlyActivitySummary({
+      id: 9,
+      createdAt: "2026-08-10T10:00:00.000Z",
+      actorRole: "system",
+      action: "onchain_activity_indexed",
+      summary: "Detected response_timeout_escalated directly on Base Sepolia.",
+      revision: 1,
+      metadata: { eventType: "response_timeout_escalated" },
+    }),
+    "An unanswered claim was escalated for resolution.",
+  );
+});

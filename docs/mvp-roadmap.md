@@ -333,6 +333,17 @@ production custody, or reliance on the compliance research as legal advice.
   provider acceptance and signed delivery webhook events recorded in canonical D1. SPF, DKIM,
   DMARC, default participant preferences, suppression handling, and the notification scheduler are
   configured and independently tested.
+- **Verified:** The hosted notification architecture now covers both action-triggered and
+  agreement-timeline notices. Claim-window, claim-response, arbiter-ruling, allocation, and
+  recorded-agreement deadline reminders are persisted once for the intended in-app role even when
+  email is disabled; opted-in email is a separate idempotent channel. Cancellation, claim
+  retraction, refund/allocation, withdrawal, and arbiter-replacement events have privacy-minimal
+  activity mappings. Proposal invitations remain an intentional **Send invite** action.
+- **Verified:** A confirmation-delayed Base Sepolia Worker indexer now scans bounded ranges from
+  the active deployment block, deduplicates logs by chain/transaction/log index, reconciles only a
+  unique finalized D1 agreement, and safely reuses the activity-email ledger for supported direct
+  onchain actions. Cursor, pending, unmatched, and error state are exposed in readiness; local
+  regressions prove one direct withdrawal is recorded and emailed once across repeated schedules.
 - **Verified:** The canonical Cloudflare app and both local readiness endpoints exposed the same
   exact release provenance on 2026-08-08. Cloudflare scheduler health, evidence
   encryption/keyring, address attestation, Google sign-in origin, private R2 storage, D1, static

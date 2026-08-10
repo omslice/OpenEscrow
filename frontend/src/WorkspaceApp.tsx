@@ -34,6 +34,7 @@ import {
   storeNegotiationAccess,
   updateRecordArchivePreference,
   type NegotiationAccess,
+  type NegotiationEvent,
   type NegotiationStatus,
 } from "./lib/negotiations";
 import { agreementReference, proposalReference } from "./lib/displayIds";
@@ -167,6 +168,16 @@ function panelForAgreementAction(action: string): AgreementPanel | null {
     return "funds";
   }
   return null;
+}
+
+function notificationIsForViewer(item: SavedProposal, event: NegotiationEvent) {
+  if (event.action === "scheduled_notification_sent") return false;
+  if (event.action !== "scheduled_notification_due") return true;
+  const recipientRole = String(event.metadata?.recipientRole || "");
+  if (!recipientRole) return true;
+  if (item.access.role === "landlord") return recipientRole === "landlord";
+  if (item.access.role === "arbiter") return recipientRole === "arbiter";
+  return recipientRole === `tenant-${item.record.viewerTenantId}`;
 }
 
 function isSameAgreementFamily(left: SavedProposal, right: SavedProposal): boolean {
@@ -920,7 +931,11 @@ function AppView({
   const notifications: AppNotification[] = [
     ...savedProposals.filter((item) => !item.access.archived).flatMap((item) =>
       item.record.events
-        .filter((event) => event.action !== "record_snapshot_anchored")
+        .filter(
+          (event) =>
+            event.action !== "record_snapshot_anchored" &&
+            notificationIsForViewer(item, event),
+        )
         .map((event) => ({
           id: `${item.record.id}-${event.id}`,
           createdAt: event.createdAt,
