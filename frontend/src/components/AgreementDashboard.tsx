@@ -177,10 +177,10 @@ export function AgreementDashboard({
           </strong>
         </div>
         <div className="amount-tile">
-          <span>{isYieldToken ? "Current modeled value" : "Current redeemable value"}</span>
+          <span>{isYieldToken ? "Current modeled value" : "Current deposit value"}</span>
           <strong>
             {agreement.depositAmount > 0n
-              ? `${formatUSDC(accounting.currentRedeemableValue)} ${isYieldToken ? "testUSDC" : tokenLabel}`
+              ? `${formatUSDC(accounting.currentRedeemableValue)} ${isYieldToken ? "testUSDC (modeled)" : tokenLabel}`
               : "Not funded"}
           </strong>
         </div>
@@ -189,7 +189,7 @@ export function AgreementDashboard({
           <strong>
             {isYieldToken && agreement.depositAmount > 0n
               ? `+${formatUSDC(accounting.accruedYield)} testUSDC`
-              : "Not enabled"}
+              : "Not selected"}
           </strong>
         </div>
       </div>
@@ -200,11 +200,15 @@ export function AgreementDashboard({
         </div>
         <div className="amount-tile">
           <span>Final distributed</span>
-          <strong>{formatUSDC(accounting.finalDistributed)} {tokenLabel}</strong>
+          <strong>
+            {accounting.finalDistributed > 0n
+              ? `${formatUSDC(accounting.finalDistributed)} ${amountUnit}`
+              : "Not distributed yet"}
+          </strong>
         </div>
         <div className="amount-tile">
-          <span>Settlement asset</span>
-          <strong>{depositAsset?.settlementAsset || "USDC"}</strong>
+          <span>{isYieldToken ? "Modeled settlement" : "Deposit asset"}</span>
+          <strong>{isYieldToken ? "USDC (simulation only)" : tokenLabel}</strong>
         </div>
       </div>
       {isYieldToken && (
@@ -217,7 +221,7 @@ export function AgreementDashboard({
       <div className="amount-grid secondary">
         <div className="amount-tile">
           <span>Custody status</span>
-          <strong>{agreement.depositAmount > 0n ? "Confirmed onchain" : "Awaiting deposit"}</strong>
+          <strong>{agreement.depositAmount > 0n ? "Deposit confirmed onchain" : "Awaiting deposit"}</strong>
         </div>
         <div className="amount-tile">
           <span>Available to you</span>

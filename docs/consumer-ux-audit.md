@@ -24,6 +24,7 @@ Each workspace was reviewed for:
 | Deposit list | Multiple agreements were compact but visually generic. | Added property-first active-deposit rows, finalized cues, clearer disclosure controls, and preserved one-at-a-time live mounting. |
 | Claims and resolution | Line items, evidence, response choices, and technical receipts created a dry, high-density form. | Refined with clearer sections, totals, next-action hierarchy, friendlier activity copy, and collapsed technical verification details. |
 | Asset amount language | Standard testUSDC reviewer flows and bounded taUSDC flows shared generic or incorrectly hard-coded “shares” labels. | Amounts now use asset-aware units throughout the deposit, claim, tenant-response, arbiter-decision, and notification surfaces; automatic email is primary and draft/copy actions are clearly labeled as backups. |
+| Mobile proposal editor | The stacked editor toolbar declared a full content width plus padding, creating page-level horizontal overflow when the form was open on a narrow phone. | The toolbar now uses border-box sizing, and the accessibility smoke test opens the editor at 390px before asserting that the document stays within the viewport. |
 | Record | Reports, encrypted backups, proof verification, archives, and multiple agreements lacked a strong scan hierarchy. | Refined into compact expandable records with summary metadata, grouped actions, progressive disclosure, and mobile-safe archive controls. |
 
 ## Automated protection

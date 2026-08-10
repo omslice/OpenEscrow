@@ -42,7 +42,7 @@ export function AgreementNoticeCenter({ id, agreement }: { id: bigint; agreement
     notices.push({
       level: "success",
       title: "Deposit confirmed",
-      body: `The escrow holds the tenant's ${amountUnit}. The landlord's claim window starts ${formatTimestamp(agreement.claimWindowStart)}.`,
+      body: `The agreement is funded with ${amountUnit}. The landlord's claim window starts ${formatTimestamp(agreement.claimWindowStart)}.`,
     });
   }
   if (agreement.phase === Phase.ClaimOpen) {
@@ -59,7 +59,7 @@ export function AgreementNoticeCenter({ id, agreement }: { id: bigint; agreement
       body:
         agreement.arbiter === ZERO_ADDRESS
           ? `Landlord and tenant can mutually appoint one before ${formatTimestamp(agreement.arbiterRulingDeadline)}. If they do not, the disputed balance defaults to the tenant.`
-          : `Only the disputed ${amountUnit} remain locked. The ruling deadline is ${formatTimestamp(agreement.arbiterRulingDeadline)} (${countdown(agreement.arbiterRulingDeadline, now)}).`,
+          : `Only the disputed balance (${amountUnit}) remains locked. The ruling deadline is ${formatTimestamp(agreement.arbiterRulingDeadline)} (${countdown(agreement.arbiterRulingDeadline, now)}).`,
     });
   }
   if (agreement.phase === Phase.Closed) {
