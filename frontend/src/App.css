@@ -328,18 +328,23 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px 16px;
+  gap: 12px 20px;
   flex-wrap: wrap;
-  padding: 14px 16px;
-  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--accent) 68%, var(--border));
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 34%),
+    color-mix(in srgb, var(--accent) 12%, var(--surface));
+  box-shadow: 0 12px 34px color-mix(in srgb, var(--accent) 13%, transparent);
   color: var(--muted);
   text-align: left;
 }
 
-.donation-message strong {
+.donation-message-copy {
   color: var(--text-h);
+  font-size: 16px;
+  line-height: 1.45;
 }
 
 .donation-address-control {
@@ -351,12 +356,12 @@
 .donation-address {
   display: inline-flex;
   align-items: center;
-  padding: 5px 10px;
+  padding: 8px 14px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 16%, var(--surface));
   color: var(--accent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
   letter-spacing: 0.02em;
   overflow-wrap: anywhere;
