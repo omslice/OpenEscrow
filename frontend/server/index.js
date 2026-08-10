@@ -74,6 +74,10 @@ const AGREEMENT_STATUS_UPDATED_INDEX = `
 CREATE INDEX IF NOT EXISTS agreement_negotiations_status_updated_idx
 ON agreement_negotiations (status, updated_at)`;
 
+const AGREEMENT_STATUS_ID_INDEX = `
+CREATE INDEX IF NOT EXISTS agreement_negotiations_status_id_idx
+ON agreement_negotiations (status, id)`;
+
 const EVENTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS negotiation_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -563,6 +567,13 @@ CREATE TABLE IF NOT EXISTS scheduled_job_runs (
   last_started_at TEXT NOT NULL
 )`;
 
+const SCHEDULED_JOB_CURSORS_SCHEMA = `
+CREATE TABLE IF NOT EXISTS scheduled_job_cursors (
+  name TEXT PRIMARY KEY,
+  cursor_id TEXT,
+  updated_at TEXT NOT NULL
+)`;
+
 const ONCHAIN_INDEXER_STATE_SCHEMA = `
 CREATE TABLE IF NOT EXISTS onchain_indexer_state (
   name TEXT PRIMARY KEY,
@@ -695,6 +706,7 @@ const HOSTED_NOTIFICATION_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000;
 const HOSTED_NOTIFICATION_SCHEDULER_GRACE_MS = 2 * HOSTED_NOTIFICATION_SCHEDULER_INTERVAL_MS;
 const DEFAULT_OPEN_ESCROW_DEPLOYMENT_BLOCK = 45_283_514;
 const ONCHAIN_INDEXER_CONFIRMATION_BLOCKS = 20;
+const ONCHAIN_INDEXER_REORG_LOOKBACK_BLOCKS = 128;
 const ONCHAIN_INDEXER_BLOCK_RANGE = 2_000;
 const ONCHAIN_INDEXER_MAX_RANGES_PER_RUN = 4;
 const ONCHAIN_INDEXER_HEALTH_GRACE_MS = 2 * HOSTED_NOTIFICATION_SCHEDULER_INTERVAL_MS;
@@ -721,8 +733,10 @@ const RECEIPT_EVENT_TOPICS = Object.freeze({
     "0x78ed2810f3e800697035ce152a2c6e2d92fe189711545693db5d97ac0b9f7eb9",
   tenantClaimResponse:
     "0x270cfb5d0a1ef7453b09614e7321e2bc1c39e82a0642070b4247c08452dca245",
-  legacyClaimResponse:
+  claimResponded:
     "0x0e3cd88697129d255d76bfa437dbf12aaeaef7601cf1c8d5f75ad2ba18e0cd4b",
+  disputeCreated:
+    "0xd486bd2762f0bd86f7e3d4ca20fc220ce40fe6ac09d773491515a417bd6aeba7",
   disputeResolved:
     "0x959dc01840aa516bf9407cffa45326c7b6821c48feff7b91eb0c743c8f460fd6",
   withdrawn:
@@ -775,6 +789,14 @@ const INDEXED_OPEN_ESCROW_EVENTS = Object.freeze({
   },
   [RECEIPT_EVENT_TOPICS.tenantClaimResponse]: {
     eventType: "claim_response",
+    recordedActions: ["claim_response_submitted"],
+  },
+  [RECEIPT_EVENT_TOPICS.claimResponded]: {
+    eventType: "claim_settled",
+    recordedActions: ["claim_response_submitted"],
+  },
+  [RECEIPT_EVENT_TOPICS.disputeCreated]: {
+    eventType: "dispute_created",
     recordedActions: ["claim_response_submitted"],
   },
   [RECEIPT_EVENT_TOPICS.disputeResolved]: {
@@ -3921,6 +3943,116 @@ async function reconcilePendingIndexedEvents(env) {
   }
 }
 
+function indexedEventKey(record) {
+  return `${record.transactionHash || record.transaction_hash}:${record.logIndex ?? record.log_index}`;
+}
+
+async function reconcileCanonicalIndexedRange(env, fromBlock, toBlock, records) {
+  const canonical = new Map(records.map((record) => [indexedEventKey(record), record]));
+  const existing = await env.DB
+    .prepare(
+      `SELECT * FROM indexed_chain_events
+       WHERE chain_id = 84532
+         AND contract_address = ?
+         AND block_number BETWEEN ? AND ?`,
+    )
+    .bind(records[0]?.contractAddress || cleanText(
+      env.OPEN_ESCROW_ADDRESS || DEFAULT_OPEN_ESCROW_ADDRESS,
+      80,
+    ).toLowerCase(), fromBlock, toBlock)
+    .all();
+
+  for (const record of existing.results || []) {
+    const candidate = canonical.get(indexedEventKey(record));
+    if (candidate) {
+      if (
+        record.block_hash !== candidate.blockHash ||
+        record.block_number !== candidate.blockNumber ||
+        record.processing_status === "orphaned"
+      ) {
+        await env.DB
+          .prepare(
+            `UPDATE indexed_chain_events
+             SET block_number = ?, block_hash = ?, event_type = ?,
+                 processing_status = CASE
+                   WHEN processing_status = 'orphaned' THEN 'pending'
+                   ELSE processing_status END,
+                 processed_at = CASE
+                   WHEN processing_status = 'orphaned' THEN NULL
+                   ELSE processed_at END
+             WHERE chain_id = ? AND transaction_hash = ? AND log_index = ?`,
+          )
+          .bind(
+            candidate.blockNumber,
+            candidate.blockHash,
+            candidate.eventType,
+            record.chain_id,
+            record.transaction_hash,
+            record.log_index,
+          )
+          .run();
+      }
+      continue;
+    }
+    if (record.processing_status === "orphaned") continue;
+
+    const detectedAt = new Date().toISOString();
+    const metadata = JSON.stringify({
+      eventType: record.event_type,
+      transactionHash: record.transaction_hash,
+      blockNumber: record.block_number,
+      blockHash: record.block_hash,
+      logIndex: record.log_index,
+      chainId: record.chain_id,
+    });
+    const statements = [
+      env.DB
+        .prepare(
+          `UPDATE indexed_chain_events
+           SET processing_status = 'orphaned', processed_at = ?
+           WHERE chain_id = ? AND transaction_hash = ? AND log_index = ?`,
+        )
+        .bind(
+          detectedAt,
+          record.chain_id,
+          record.transaction_hash,
+          record.log_index,
+        ),
+    ];
+    if (record.negotiation_id) {
+      statements.push(
+        env.DB
+          .prepare(
+            `INSERT INTO negotiation_events
+               (negotiation_id, created_at, actor_role, action, summary, revision, metadata_json)
+             SELECT ?, ?, 'system', 'onchain_activity_orphaned',
+                    'A previously indexed Base Sepolia event is no longer in the confirmed canonical log range. OpenEscrow retained the audit entry and stopped treating that event as current.',
+                    revision, ?
+             FROM agreement_negotiations
+             WHERE id = ?
+               AND NOT EXISTS (
+                 SELECT 1 FROM negotiation_events
+                 WHERE negotiation_id = ?
+                   AND action = 'onchain_activity_orphaned'
+                   AND lower(json_extract(metadata_json, '$.transactionHash')) = ?
+                   AND json_extract(metadata_json, '$.logIndex') = ?
+               )`,
+          )
+          .bind(
+            record.negotiation_id,
+            detectedAt,
+            metadata,
+            record.negotiation_id,
+            record.negotiation_id,
+            record.transaction_hash,
+            record.log_index,
+          ),
+      );
+    }
+    await env.DB.batch(statements);
+  }
+}
+
 async function runOnchainActivityIndexer(env, now = new Date()) {
   if (!env.DB || !onchainActivityIndexerEnabled(env)) return;
   await initialize(env.DB);
@@ -3949,6 +4081,9 @@ async function runOnchainActivityIndexer(env, now = new Date()) {
       .bind(stateName)
       .first();
     let nextBlock = Math.max(deploymentBlock, Number(state?.next_block || deploymentBlock));
+    let rangeStart = state?.last_succeeded_at
+      ? Math.max(deploymentBlock, nextBlock - ONCHAIN_INDEXER_REORG_LOOKBACK_BLOCKS)
+      : nextBlock;
     const address = cleanText(
       env.OPEN_ESCROW_ADDRESS || DEFAULT_OPEN_ESCROW_ADDRESS,
       80,
@@ -3959,12 +4094,12 @@ async function runOnchainActivityIndexer(env, now = new Date()) {
     const topicFilter = Object.keys(INDEXED_OPEN_ESCROW_EVENTS);
     for (
       let range = 0;
-      range < ONCHAIN_INDEXER_MAX_RANGES_PER_RUN && nextBlock <= finalizedBlock;
+      range < ONCHAIN_INDEXER_MAX_RANGES_PER_RUN && rangeStart <= finalizedBlock;
       range += 1
     ) {
       const toBlock = Math.min(
         finalizedBlock,
-        nextBlock + ONCHAIN_INDEXER_BLOCK_RANGE - 1,
+        rangeStart + ONCHAIN_INDEXER_BLOCK_RANGE - 1,
       );
       const result = await indexedRpcResult(
         rpcUrls,
@@ -3973,7 +4108,7 @@ async function runOnchainActivityIndexer(env, now = new Date()) {
           {
             address,
             topics: [topicFilter],
-            fromBlock: `0x${nextBlock.toString(16)}`,
+            fromBlock: `0x${rangeStart.toString(16)}`,
             toBlock: `0x${toBlock.toString(16)}`,
           },
         ],
@@ -3996,13 +4131,43 @@ async function runOnchainActivityIndexer(env, now = new Date()) {
             (record) => `${record.transactionHash}:${record.onchainAgreementId}`,
           ),
       );
-      records = records.filter(
-        (record) =>
-          record.eventType !== "tenant_share_funded" ||
-          !fullyFundedTransactions.has(
-            `${record.transactionHash}:${record.onchainAgreementId}`,
-          ),
+      const disputedTransactions = new Set(
+        records
+          .filter((record) => record.eventType === "dispute_created")
+          .map((record) => `${record.transactionHash}:${record.onchainAgreementId}`),
       );
+      const terminalClaimTransactions = new Set(
+        records
+          .filter(
+            (record) =>
+              record.eventType === "claim_settled" ||
+              record.eventType === "dispute_created",
+          )
+          .map((record) => `${record.transactionHash}:${record.onchainAgreementId}`),
+      );
+      records = records.filter(
+        (record) => {
+          const transactionKey =
+            `${record.transactionHash}:${record.onchainAgreementId}`;
+          if (
+            record.eventType === "tenant_share_funded" &&
+            fullyFundedTransactions.has(transactionKey)
+          ) {
+            return false;
+          }
+          if (
+            record.eventType === "claim_response" &&
+            terminalClaimTransactions.has(transactionKey)
+          ) {
+            return false;
+          }
+          return !(
+            record.eventType === "claim_settled" &&
+            disputedTransactions.has(transactionKey)
+          );
+        },
+      );
+      await reconcileCanonicalIndexedRange(env, rangeStart, toBlock, records);
       for (const record of records) {
         const inserted = await env.DB
           .prepare(
@@ -4040,7 +4205,8 @@ async function runOnchainActivityIndexer(env, now = new Date()) {
           });
         }
       }
-      nextBlock = toBlock + 1;
+      rangeStart = toBlock + 1;
+      nextBlock = Math.max(nextBlock, rangeStart);
       await env.DB
         .prepare(
           `UPDATE onchain_indexer_state
@@ -4218,6 +4384,7 @@ async function initialize(db) {
     db.prepare(AGREEMENT_LANDLORD_DISCOVERY_INDEX),
     db.prepare(AGREEMENT_ARBITER_DISCOVERY_INDEX),
     db.prepare(AGREEMENT_STATUS_UPDATED_INDEX),
+    db.prepare(AGREEMENT_STATUS_ID_INDEX),
     db.prepare(EVENTS_SCHEMA),
     db.prepare(EVENTS_INDEX),
     db.prepare(RECEIPT_GUARDS_SCHEMA),
@@ -4262,6 +4429,7 @@ async function initialize(db) {
     db.prepare(FUNDING_CHECKOUT_EVENTS_PROVENANCE_UPDATE_GUARD),
     db.prepare(BACKFILL_PRIMARY_TENANTS),
     db.prepare(SCHEDULED_JOB_RUNS_SCHEMA),
+    db.prepare(SCHEDULED_JOB_CURSORS_SCHEMA),
     db.prepare(ONCHAIN_INDEXER_STATE_SCHEMA),
     db.prepare(INDEXED_CHAIN_EVENTS_SCHEMA),
     db.prepare(INDEXED_CHAIN_EVENTS_RECONCILIATION_INDEX),
@@ -6197,6 +6365,11 @@ async function serialize(db, row) {
   const events = await eventsFor(db, row.id);
   const tenantRows = await tenantsFor(db, row.id);
   const arbiterReplacement = await arbiterReplacementFor(db, row.id);
+  const currentInvitationEvents = events.filter(
+    (event) =>
+      event.action === "invitation_sent" &&
+      Number(event.revision) === Number(row.revision),
+  );
   const storedShareTotal = tenantRows.reduce(
     (total, tenant) => total + Number(tenant.deposit_share_bps || 0),
     0,
@@ -6211,6 +6384,14 @@ async function serialize(db, row) {
     wallet: tenant.wallet || null,
     isFundingTenant: tenant.is_funding_tenant === 1,
     acceptedAt: tenant.accepted_at || null,
+    invitationSentAt:
+      [...currentInvitationEvents]
+        .reverse()
+        .find(
+          (event) =>
+            event.metadata?.invitedRole === "tenant" &&
+            event.metadata?.tenantId === tenant.id,
+        )?.createdAt || null,
     depositShareBps:
       storedShareTotal === 10000
         ? Number(tenant.deposit_share_bps)
@@ -6265,6 +6446,10 @@ async function serialize(db, row) {
     landlordEmail: row.landlord_email,
     tenantEmail: fundingTenant?.email || row.tenant_email,
     arbiterEmail: row.arbiter_email,
+    arbiterInvitationSentAt:
+      [...currentInvitationEvents]
+        .reverse()
+        .find((event) => event.metadata?.invitedRole === "arbiter")?.createdAt || null,
     tenants,
     terms: JSON.parse(row.terms_json),
     tenantApproved:
@@ -7072,6 +7257,16 @@ async function sendOptedInAgreementActivityEmails(
       ],
       ...claimResponseCopy,
     },
+    claim_settled: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} claim settled`,
+      text: "Every tenant response was recorded and the undisputed deduction allocation is now available to review in OpenEscrow.",
+    },
+    dispute_created: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} dispute opened`,
+      text: "Every tenant response was recorded and a deduction dispute is now awaiting resolution. Review the private agreement workspace for the next step.",
+    },
     arbiter_ruling: {
       recipients: [
         ["landlord", row.landlord_email],
@@ -7806,16 +8001,62 @@ function withdrawalCandidates(row, events, now, tenantRows = []) {
 async function runScheduledNotifications(env, now = new Date()) {
   if (!env.DB) return;
   await initialize(env.DB);
-  const result = await env.DB
-    .prepare(
-      "SELECT * FROM agreement_negotiations WHERE status = 'finalized' ORDER BY updated_at ASC LIMIT 250",
-    )
-    .all();
+  const cursorName = "notification-reminders-finalized-agreements";
+  const batchSize = 250;
+  const cursor = await env.DB
+    .prepare("SELECT cursor_id FROM scheduled_job_cursors WHERE name = ?")
+    .bind(cursorName)
+    .first();
+  const firstPass = cursor?.cursor_id
+    ? await env.DB
+        .prepare(
+          `SELECT * FROM agreement_negotiations
+           WHERE status = 'finalized' AND id > ?
+           ORDER BY id ASC
+           LIMIT ?`,
+        )
+        .bind(cursor.cursor_id, batchSize)
+        .all()
+    : await env.DB
+        .prepare(
+          `SELECT * FROM agreement_negotiations
+           WHERE status = 'finalized'
+           ORDER BY id ASC
+           LIMIT ?`,
+        )
+        .bind(batchSize)
+        .all();
+  const rows = [...(firstPass.results || [])];
+  if (cursor?.cursor_id && rows.length < batchSize) {
+    const wrapped = await env.DB
+      .prepare(
+        `SELECT * FROM agreement_negotiations
+         WHERE status = 'finalized' AND id <= ?
+         ORDER BY id ASC
+         LIMIT ?`,
+      )
+      .bind(cursor.cursor_id, batchSize - rows.length)
+      .all();
+    rows.push(...(wrapped.results || []));
+  }
+  if (rows.length) {
+    await env.DB
+      .prepare(
+        `INSERT INTO scheduled_job_cursors
+           (name, cursor_id, updated_at)
+         VALUES (?, ?, ?)
+         ON CONFLICT(name) DO UPDATE SET
+           cursor_id = excluded.cursor_id,
+           updated_at = excluded.updated_at`,
+      )
+      .bind(cursorName, rows.at(-1).id, now.toISOString())
+      .run();
+  }
   const appUrl = publicAppOrigin(
     env,
     "https://openescrow.io/",
   );
-  for (const row of result.results || []) {
+  for (const row of rows) {
     let events = await eventsFor(env.DB, row.id);
     await recordClaimPeriodTransitions(env, row, events, now);
     events = await eventsFor(env.DB, row.id);

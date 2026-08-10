@@ -103,6 +103,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0020_query_path_indexes.sql",
     "0021_notification_delivery_events.sql",
     "0022_onchain_activity_indexer.sql",
+    "0023_notification_scheduler_cursor.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -110,6 +111,7 @@ test("the packaged D1 migration applies cleanly", () => {
   applyMigration("0020_query_path_indexes.sql");
   applyMigration("0021_notification_delivery_events.sql");
   applyMigration("0022_onchain_activity_indexer.sql");
+  applyMigration("0023_notification_scheduler_cursor.sql");
   const tables = database
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
     .all()
@@ -134,6 +136,7 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.ok(tables.includes("api_rate_limits"));
   assert.ok(tables.includes("onchain_indexer_state"));
   assert.ok(tables.includes("indexed_chain_events"));
+  assert.ok(tables.includes("scheduled_job_cursors"));
   const deliveryIndexes = database
     .prepare("PRAGMA index_list(notification_deliveries)")
     .all()
@@ -247,11 +250,13 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.match(
     queryPlan(
       `SELECT * FROM agreement_negotiations
-       WHERE status = 'finalized'
-       ORDER BY updated_at ASC
-       LIMIT 250`,
+       WHERE status = 'finalized' AND id > ?
+       ORDER BY id ASC
+       LIMIT ?`,
+      "agreement-250",
+      250,
     ),
-    /USING (?:COVERING )?INDEX agreement_negotiations_status_updated_idx/,
+    /USING (?:COVERING )?INDEX agreement_negotiations_status_id_idx/,
   );
   assert.match(
     queryPlan(
@@ -2230,6 +2235,8 @@ const TENANT_CLAIM_RESPONSE_TOPIC =
   "0x270cfb5d0a1ef7453b09614e7321e2bc1c39e82a0642070b4247c08452dca245";
 const LEGACY_CLAIM_RESPONSE_TOPIC =
   "0x0e3cd88697129d255d76bfa437dbf12aaeaef7601cf1c8d5f75ad2ba18e0cd4b";
+const DISPUTE_CREATED_TOPIC =
+  "0xd486bd2762f0bd86f7e3d4ca20fc220ce40fe6ac09d773491515a417bd6aeba7";
 const DISPUTE_RESOLVED_TOPIC =
   "0x959dc01840aa516bf9407cffa45326c7b6821c48feff7b91eb0c743c8f460fd6";
 const WITHDRAWN_TOPIC =
@@ -7375,6 +7382,17 @@ test("proposal invitations are recipient-bound, canonical, tracked, and duplicat
         .get().count,
       2,
     );
+    const reloaded = await jsonResponse(
+      await worker.fetch(
+        negotiationReadRequest(
+          `/api/negotiations/${created.record.id}`,
+          created.access.landlord,
+        ),
+        { DB: db },
+      ),
+    );
+    assert.ok(reloaded.tenants[0].invitationSentAt);
+    assert.ok(reloaded.arbiterInvitationSentAt);
     const storedInvitationState = JSON.stringify({
       deliveries: db.database
         .prepare(
@@ -7903,6 +7921,157 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
     } finally {
       Date.now = originalDateNow;
     }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("the onchain indexer emits one terminal claim notice and audits a confirmed-log reorg", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const consentedAt = "2026-08-10T12:00:00.000Z";
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("reorg-landlord", "landlord@example.com", consentedAt, consentedAt),
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("reorg-tenant", "tenant@example.com", consentedAt, consentedAt),
+  ]);
+
+  const deploymentBlock = 45_283_514;
+  const indexedBlock = deploymentBlock + 1;
+  const latestBlock = deploymentBlock + 30;
+  const transaction = transactionHash(91_101);
+  const blockHash = transactionHash(91_102);
+  const baseLog = {
+    address: RECEIPT_TEST_OPEN_ESCROW,
+    transactionHash: transaction,
+    blockHash,
+    blockNumber: `0x${indexedBlock.toString(16)}`,
+    removed: false,
+  };
+  const sameTransactionLogs = [
+    {
+      ...baseLog,
+      topics: [
+        TENANT_CLAIM_RESPONSE_TOPIC,
+        receiptWord(42),
+        receiptAddressWord(RECEIPT_TEST_TENANT),
+      ],
+      data: receiptData(receiptWord(0), receiptWord(1), receiptWord(1)),
+      logIndex: "0x0",
+    },
+    {
+      ...baseLog,
+      topics: [LEGACY_CLAIM_RESPONSE_TOPIC, receiptWord(42)],
+      data: receiptData(receiptWord(0), receiptWord(300)),
+      logIndex: "0x1",
+    },
+    {
+      ...baseLog,
+      topics: [DISPUTE_CREATED_TOPIC, receiptWord(42)],
+      data: receiptData(receiptWord(300), receiptWord(1_800_000_000)),
+      logIndex: "0x2",
+    },
+  ];
+  const providerCalls = [];
+  let logReads = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, options = {}) => {
+    if (String(input).includes("api.resend.com/emails")) {
+      providerCalls.push(JSON.parse(options.body));
+      return Response.json({ id: `terminal-claim-${providerCalls.length}` });
+    }
+    const payload = JSON.parse(options.body);
+    const result =
+      payload.method === "eth_chainId"
+        ? "0x14a34"
+        : payload.method === "eth_blockNumber"
+          ? `0x${latestBlock.toString(16)}`
+          : payload.method === "eth_getLogs"
+            ? logReads++ === 0
+              ? sameTransactionLogs
+              : []
+            : null;
+    return Response.json({ jsonrpc: "2.0", id: payload.id, result });
+  };
+  const env = {
+    DB: db,
+    ONCHAIN_ACTIVITY_INDEXER_ENABLED: "true",
+    OPEN_ESCROW_ADDRESS: RECEIPT_TEST_OPEN_ESCROW,
+    OPEN_ESCROW_DEPLOYMENT_BLOCK: String(deploymentBlock),
+    RESEND_API_KEY: "re_terminal_claim_test",
+    RESEND_WEBHOOK_SECRET: "whsec_terminal_claim_test",
+    NOTIFICATION_FROM_EMAIL: "OpenEscrow <notifications@updates.openescrow.io>",
+    PUBLIC_APP_URL: "https://openescrow.io/",
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  };
+  const runScheduled = async (scheduledTime) => {
+    const waits = [];
+    await worker.scheduled(
+      { scheduledTime },
+      env,
+      { waitUntil(promise) { waits.push(promise); } },
+    );
+    await Promise.all(waits);
+  };
+  try {
+    await runScheduled(Date.parse("2026-08-10T12:15:00.000Z"));
+    assert.equal(providerCalls.length, 2);
+    assert.deepEqual(
+      providerCalls.map((call) => call.to[0]).sort(),
+      ["landlord@example.com", "tenant@example.com"],
+    );
+    assert.ok(providerCalls.every((call) => /dispute opened/.test(call.subject)));
+    const indexed = db
+      .prepare(
+        `SELECT event_type, processing_status, block_hash
+         FROM indexed_chain_events WHERE transaction_hash = ?`,
+      )
+      .bind(transaction)
+      .all();
+    assert.deepEqual(indexed.results.map((row) => row.event_type), ["dispute_created"]);
+    assert.equal(indexed.results[0].processing_status, "processed");
+    assert.equal(indexed.results[0].block_hash, blockHash);
+
+    await runScheduled(Date.parse("2026-08-10T12:30:00.000Z"));
+    assert.equal(providerCalls.length, 2, "A reorg audit must not send a second lifecycle email.");
+    assert.equal(
+      db
+        .prepare(
+          `SELECT processing_status FROM indexed_chain_events
+           WHERE transaction_hash = ? AND log_index = 2`,
+        )
+        .bind(transaction)
+        .first().processing_status,
+      "orphaned",
+    );
+    const orphanedAudit = db
+      .prepare(
+        `SELECT metadata_json FROM negotiation_events
+         WHERE negotiation_id = ? AND action = 'onchain_activity_orphaned'`,
+      )
+      .bind(created.record.id)
+      .all();
+    assert.equal(orphanedAudit.results.length, 1);
+    assert.deepEqual(JSON.parse(orphanedAudit.results[0].metadata_json), {
+      eventType: "dispute_created",
+      transactionHash: transaction,
+      blockNumber: indexedBlock,
+      blockHash,
+      logIndex: 2,
+      chainId: 84532,
+    });
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -9766,6 +9935,88 @@ test("scheduled claim-window reminders are opted-in and idempotent", async () =>
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("the deadline scheduler rotates fairly beyond its 250-agreement batch", async () => {
+  const db = new TestD1();
+  const readiness = await worker.fetch(request("/api/system/readiness"), {
+    DB: db,
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  });
+  assert.equal(readiness.status, 200);
+  const insert = db.database.prepare(
+    `INSERT INTO agreement_negotiations
+       (id, created_at, updated_at, status, revision, terms_json,
+        landlord_email, tenant_email, landlord_token_hash, tenant_token_hash,
+        onchain_agreement_id)
+     VALUES (?, ?, ?, 'finalized', 1, ?, ?, ?, ?, ?, ?)`,
+  );
+  const schedulerTerms = JSON.stringify({
+    ...terms,
+    claimWindowStart: "2027-07-01T12:00",
+  });
+  db.database.exec("BEGIN IMMEDIATE");
+  try {
+    for (let index = 0; index < 251; index += 1) {
+      const id = `scheduler-${String(index).padStart(3, "0")}`;
+      insert.run(
+        id,
+        "2026-08-10T12:00:00.000Z",
+        "2026-08-10T12:00:00.000Z",
+        schedulerTerms,
+        `landlord-${index}@example.com`,
+        `tenant-${index}@example.com`,
+        `landlord-token-${index}`,
+        `tenant-token-${index}`,
+        String(index),
+      );
+    }
+    db.database.exec("COMMIT");
+  } catch (error) {
+    db.database.exec("ROLLBACK");
+    throw error;
+  }
+
+  const runScheduled = async (scheduledTime) => {
+    const waits = [];
+    await worker.scheduled(
+      { scheduledTime },
+      { DB: db, VERIFY_ACTIVITY_REGISTRY_BINDING: "false" },
+      { waitUntil(promise) { waits.push(promise); } },
+    );
+    await Promise.all(waits);
+  };
+  const transitionCount = () =>
+    db.database
+      .prepare(
+        `SELECT COUNT(DISTINCT negotiation_id) AS count
+         FROM negotiation_events WHERE action = 'claim_period_started'`,
+      )
+      .get().count;
+
+  await runScheduled(Date.parse("2027-07-02T12:00:00.000Z"));
+  assert.equal(transitionCount(), 250);
+  assert.equal(
+    db.database
+      .prepare(
+        "SELECT cursor_id FROM scheduled_job_cursors WHERE name = ?",
+      )
+      .get("notification-reminders-finalized-agreements").cursor_id,
+    "scheduler-249",
+  );
+
+  await runScheduled(Date.parse("2027-07-02T12:15:00.000Z"));
+  assert.equal(transitionCount(), 251);
+  assert.equal(
+    db.database
+      .prepare(
+        `SELECT COUNT(*) AS count FROM negotiation_events
+         WHERE negotiation_id = 'scheduler-250'
+           AND action = 'claim_period_started'`,
+      )
+      .get().count,
+    1,
+  );
 });
 
 test("a delayed scheduler sends only the current no-claim lifecycle notice", async () => {

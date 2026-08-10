@@ -450,6 +450,15 @@ function AgreementForm({
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null);
   const [sendingInvite, setSendingInvite] = useState<string | null>(null);
   const [sentInvites, setSentInvites] = useState<Set<string>>(() => new Set());
+  const persistedSentInviteKeys = draft
+    ? [
+        ...draft.tenants
+          .filter((tenant) => Boolean(tenant.invitationSentAt))
+          .map((tenant) => tenant.id),
+        ...(draft.arbiterInvitationSentAt ? ["arbiter"] : []),
+      ]
+    : [];
+  const persistedSentInviteKey = persistedSentInviteKeys.join("|");
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isPreflightingFinalization, setIsPreflightingFinalization] =
     useState(false);
@@ -461,8 +470,12 @@ function AgreementForm({
   const pendingFinalizationStored = useRef(true);
 
   useEffect(() => {
-    setSentInvites(new Set());
-  }, [draft?.id, draft?.revision]);
+    setSentInvites(
+      new Set(
+        persistedSentInviteKey ? persistedSentInviteKey.split("|") : [],
+      ),
+    );
+  }, [draft?.id, draft?.revision, persistedSentInviteKey]);
 
   function confirmProposalChange(message: string) {
     setFormError(null);

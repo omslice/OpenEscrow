@@ -229,6 +229,7 @@ export interface NegotiationTenant {
   wallet: string | null;
   isFundingTenant: boolean;
   acceptedAt: string | null;
+  invitationSentAt?: string | null;
   depositShareBps: number;
 }
 
@@ -245,6 +246,7 @@ export interface NegotiationRecord {
   tenants: NegotiationTenant[];
   arbiterName: string | null;
   arbiterEmail: string | null;
+  arbiterInvitationSentAt?: string | null;
   terms: AgreementTerms;
   tenantApproved: boolean;
   arbiterApproved: boolean;
