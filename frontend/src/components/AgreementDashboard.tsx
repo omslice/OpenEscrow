@@ -26,6 +26,7 @@ import {
   calculateDepositAccounting,
   getDepositAssetForTerms,
 } from "../../shared/deposit-assets.js";
+import { agreementAmountUnit } from "../lib/agreementAmountDisplay";
 
 function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | null {
   switch (agreement.phase) {
@@ -146,6 +147,7 @@ export function AgreementDashboard({
     participantRecord?.terms || { tokenChoice: isYieldToken ? "yield" : "plain" },
   );
   const tokenLabel = depositAsset?.testnetSymbol || (isYieldToken ? "taUSDC" : "testUSDC");
+  const amountUnit = agreementAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
   const testValue = (currentValue.data as bigint | undefined) ?? agreement.depositAmount;
   const accounting = calculateDepositAccounting({
     originalPrincipal: agreement.depositAmount,
@@ -219,11 +221,11 @@ export function AgreementDashboard({
         </div>
         <div className="amount-tile">
           <span>Available to you</span>
-          <strong>{formatUSDC(availableToYou)} shares</strong>
+          <strong>{formatUSDC(availableToYou)} {amountUnit}</strong>
         </div>
         <div className="amount-tile">
           <span>Still unresolved</span>
-          <strong>{formatUSDC(agreement.locked)} shares</strong>
+          <strong>{formatUSDC(agreement.locked)} {amountUnit}</strong>
         </div>
       </div>
       {reserveRequired && (
@@ -342,7 +344,7 @@ export function AgreementDashboard({
       {agreement.claimedAmount > 0n && (
         <div className="dashboard-row">
           <span className="label">Claimed amount</span>
-          <span>{formatUSDC(agreement.claimedAmount)} shares</span>
+          <span>{formatUSDC(agreement.claimedAmount)} {amountUnit}</span>
         </div>
       )}
       {agreement.claimWindowStart > 0n && (

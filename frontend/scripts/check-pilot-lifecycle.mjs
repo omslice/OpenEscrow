@@ -512,7 +512,7 @@ try {
   entries.push(landlord);
   await waitForStage(landlord.page, "funded");
   await landlord.page.getByLabel("Description").fill("Damaged rendered entry door");
-  await landlord.page.getByLabel("Amount (shares)").fill("300");
+  await landlord.page.getByLabel("Amount (testUSDC)").fill("300");
   await landlord.page
     .getByRole("checkbox", {
       name: /Every test deduction is separately itemized and described/,
@@ -538,7 +538,9 @@ try {
     .click();
   await waitForStage(landlord.page, "claim-open");
   await landlord.page
-    .getByText("Every tenant receives a separate message with only their own private review link.")
+    .getByText("Send every tenant a separate message with only their own private review link.", {
+      exact: false,
+    })
     .waitFor({ state: "visible" });
   assert.equal(
     await landlord.page.locator(".claim-notice-recipient").count(),
@@ -546,7 +548,7 @@ try {
   );
   for (const tenantLabel of ["Rendered Tenant One", "Rendered Tenant Two"]) {
     const emailButton = landlord.page.getByRole("button", {
-      name: `Email ${tenantLabel}`,
+      name: `Open draft for ${tenantLabel}`,
     });
     const copyButton = landlord.page.getByRole("button", {
       name: `Copy notice for ${tenantLabel}`,
@@ -567,7 +569,7 @@ try {
   const tenantOne = await openRole(browser, "tenant-one");
   entries.push(tenantOne);
   await tenantOne.page
-    .getByText("The landlord claimed 300 USDC.", { exact: false })
+    .getByText("The landlord claimed 300 testUSDC.", { exact: false })
     .waitFor({ state: "visible" });
   const crossRoleStatus = await tenantOne.page.evaluate(
     async ({ currentProposalId, currentToken }) => {
@@ -603,7 +605,7 @@ try {
     .waitFor({ state: "visible" });
   await tenantTwo.page.getByLabel("Approve part").check();
   await tenantTwo.page
-    .getByLabel("Amount to approve (USDC; the rest becomes disputed)")
+    .getByLabel("Amount to approve (testUSDC; the rest becomes disputed)")
     .fill("150");
   await tenantTwo.page
     .getByLabel(/Decision explanation/)
@@ -615,7 +617,9 @@ try {
 
   const arbiter = await openRole(browser, "arbiter");
   entries.push(arbiter);
-  await arbiter.page.getByRole("heading", { name: "Resolve dispute" }).waitFor();
+  await arbiter.page
+    .getByRole("heading", { name: "Decide how the disputed balance is split" })
+    .waitFor();
   await arbiter.page.getByLabel(/Award to landlord/).fill("75");
   await arbiter.page
     .getByLabel("Ruling note")

@@ -10836,7 +10836,7 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
       }
       assert.match(sent.idempotencyKey, new RegExp(tenant.id));
       assert.match(sent.body.subject, /agreement #42/);
-      assert.match(sent.body.text, /claim of 100 shares/);
+      assert.match(sent.body.text, /claim of 100 testUSDC/);
       assert.doesNotMatch(sent.body.text, /999|Injected claim text/);
     }
     const delivered = await response.json();

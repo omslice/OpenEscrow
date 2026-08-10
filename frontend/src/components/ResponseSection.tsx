@@ -1,6 +1,13 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
-import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
+import {
+  OpenEscrowABI,
+  OPEN_ESCROW_ADDRESS,
+  Phase,
+  YIELD_USDC_ADDRESS,
+  ZERO_ADDRESS,
+} from "../contracts/config";
+import { agreementAmountUnit } from "../lib/agreementAmountDisplay";
 import { agreementReference } from "../lib/displayIds";
 import { formatUSDC, parseUSDC } from "../lib/format";
 import { publicAppOrigin } from "../lib/publicAppOrigin";
@@ -67,14 +74,14 @@ function responseFromEvent(
   };
 }
 
-function decisionText(action: ClaimResponseAction) {
+function decisionText(action: ClaimResponseAction, amountUnit: string) {
   if (action.decision === "approve") {
-    return `Approved the full deduction (${action.acceptedAmount} shares).`;
+    return `Approved the full deduction (${action.acceptedAmount} ${amountUnit}).`;
   }
   if (action.decision === "dispute") {
     return "Disputed the full deduction.";
   }
-  return `Approved ${action.acceptedAmount} shares and disputed the remainder.`;
+  return `Approved ${action.acceptedAmount} ${amountUnit} and disputed the remainder.`;
 }
 
 export function ResponseSection({
@@ -89,6 +96,7 @@ export function ResponseSection({
   negotiationAccess?: NegotiationAccess | null;
 }) {
   const { address } = useAccount();
+  const amountUnit = agreementAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
   const [mode, setMode] = useState<Mode>("accept");
   const [partialAmount, setPartialAmount] = useState("");
   const [note, setNote] = useState("");
@@ -327,7 +335,7 @@ export function ResponseSection({
     const body = [
       `${tenantName} submitted a deduction-claim response for ${agreementReference(id)}.`,
       "",
-      `Decision: ${decisionText(action)}`,
+      `Decision: ${decisionText(action, amountUnit)}`,
       action.note ? `Explanation: ${action.note}` : "",
       "",
       `Review the agreement record: ${landlordReviewUrl()}`,
@@ -478,7 +486,7 @@ export function ResponseSection({
     <div className="action-section" id={`agreement-${id.toString()}-response`} tabIndex={-1}>
       <h3>Review and answer the deduction claim</h3>
       <p className="hint">
-        The landlord claimed {formatUSDC(claimed)} USDC. Review the supporting document, then
+        The landlord claimed {formatUSDC(claimed)} {amountUnit}. Review the supporting document, then
         approve all, approve part, or dispute the deduction. Funds stay locked until the claim is
         settled or the dispute process finishes.
       </p>
@@ -565,7 +573,7 @@ export function ResponseSection({
             </fieldset>
             {mode === "partial" && (
               <label>
-                Amount to approve (USDC; the rest becomes disputed)
+                Amount to approve ({amountUnit}; the rest becomes disputed)
                 <input
                   value={partialAmount}
                   onChange={(event) => setPartialAmount(event.target.value)}
@@ -643,7 +651,7 @@ export function ResponseSection({
           <span className="eyebrow">Decision recorded</span>
           <p>
             {responseForNotice
-              ? decisionText(responseForNotice)
+              ? decisionText(responseForNotice, amountUnit)
               : "Your onchain decision is recorded."}
           </p>
           {agreement.phase === Phase.ClaimOpen && (
@@ -686,8 +694,9 @@ export function ResponseSection({
         <div className="claim-response-step">
           <span className="eyebrow">4. Notify the landlord</span>
           <p className="hint">
-            Open a ready-to-send Gmail draft or copy the same email. The explanation and onchain
-            receipt are included.
+            OpenEscrow emails the landlord automatically after your response is added to the
+            private Record. You can also open or copy this backup message; it includes your
+            explanation and the testnet receipt.
           </p>
           <div className="button-row">
             <button
@@ -696,7 +705,7 @@ export function ResponseSection({
               type="button"
               onClick={() => openLandlordEmail(email.gmailUrl)}
             >
-              Email decision to landlord
+              Open backup email draft
             </button>
             <button
               className="btn btn-ghost"

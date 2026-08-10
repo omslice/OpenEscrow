@@ -2772,6 +2772,11 @@ function depositAssetTestnetLabel(terms) {
   );
 }
 
+function depositAssetAmountUnit(terms) {
+  const symbol = depositAssetTestnetLabel(terms);
+  return symbol === "taUSDC" ? "taUSDC shares" : symbol;
+}
+
 async function validTerms(terms, env) {
   const deposit = tokenMicros(terms?.deposit);
   const commonTermsAreValid =
@@ -10138,6 +10143,7 @@ async function sendClaimNotification(request, env) {
     return json({ error: "The agreement must be finalized before a claim notice." }, 409);
   }
   const existingRecord = await serialize(env.DB, row);
+  const amountUnit = depositAssetAmountUnit(JSON.parse(row.terms_json));
   const claimEvent = latestClaimEvent(existingRecord.events);
   const agreementId = cleanText(row.onchain_agreement_id, 80);
   const amount = cleanText(claimEvent?.metadata?.amount, 80);
@@ -10230,7 +10236,7 @@ async function sendClaimNotification(request, env) {
   const itemSummary = items
     .map(
       (item, index) =>
-        `${index + 1}. ${item.category}: ${item.description} (${item.amount} shares)`,
+        `${index + 1}. ${item.category}: ${item.description} (${item.amount} ${amountUnit})`,
     )
     .join("\n");
   const deliveryKey = (
@@ -10268,7 +10274,7 @@ async function sendClaimNotification(request, env) {
   for (const reviewLink of reviewLinks) {
     const text = [
       reviewLink.name ? `Hello ${reviewLink.name},` : "Hello,",
-      `A deduction claim of ${amount} shares has been submitted for OpenEscrow agreement #${agreementId}.`,
+      `A deduction claim of ${amount} ${amountUnit} has been submitted for OpenEscrow agreement #${agreementId}.`,
       `Itemized deductions:\n${itemSummary}`,
       note ? `Landlord note: ${note}` : "",
       evidenceUri
@@ -10349,6 +10355,7 @@ async function sendClaimResponseNotification(request, env) {
   }
   const tenantRows = await tenantsFor(env.DB, proposalId);
   const existingRecord = await serialize(env.DB, row, tenant.id);
+  const amountUnit = depositAssetAmountUnit(JSON.parse(row.terms_json));
   const responseEvent = [...existingRecord.events]
     .reverse()
     .find(
@@ -10388,10 +10395,10 @@ async function sendClaimResponseNotification(request, env) {
 
   const decisionSummary =
     decision === "approve"
-      ? `approved the full deduction (${acceptedAmount} shares)`
+      ? `approved the full deduction (${acceptedAmount} ${amountUnit})`
       : decision === "dispute"
         ? "disputed the full deduction"
-        : `approved ${acceptedAmount} shares and disputed the remainder`;
+        : `approved ${acceptedAmount} ${amountUnit} and disputed the remainder`;
   const tenantLabel =
     cleanText(tenant.name, 160) || cleanText(tenant.email, 320) || "A tenant";
   const deliveryKey = (

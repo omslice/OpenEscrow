@@ -1,6 +1,12 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAccount } from "wagmi";
-import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
+import {
+  OpenEscrowABI,
+  OPEN_ESCROW_ADDRESS,
+  Phase,
+  YIELD_USDC_ADDRESS,
+} from "../contracts/config";
+import { agreementAmountUnit } from "../lib/agreementAmountDisplay";
 import { agreementReference } from "../lib/displayIds";
 import { formatUSDC, parseUSDC } from "../lib/format";
 import {
@@ -144,6 +150,7 @@ export function ClaimSection({
     () => createAsyncOperationScope(claimRecordScopeKey),
     [claimRecordScopeKey],
   );
+  const amountUnit = agreementAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
 
   useLayoutEffect(() => {
     tenantNotificationScope.open();
@@ -463,7 +470,7 @@ export function ClaimSection({
     const claimAmount = amount || formatUSDC(agreement.claimedAmount);
     const itemSummary = items.map(
       (item, index) =>
-        `${index + 1}. ${CATEGORY_LABEL[item.category] || "Other"} — ${item.description.trim()} (${item.amount || "0"} shares)`,
+        `${index + 1}. ${CATEGORY_LABEL[item.category] || "Other"} — ${item.description.trim()} (${item.amount || "0"} ${amountUnit})`,
     );
     const accessTenants = bundle.access.tenants || [];
     const notices = record.tenants.map((tenant, index) => {
@@ -481,7 +488,7 @@ export function ClaimSection({
       const body = [
         tenant.name?.trim() ? `Hello ${tenant.name.trim()},` : "Hello,",
         "",
-        `A deduction claim of ${claimAmount} shares has been submitted for ${agreementReference(id)}.`,
+        `A deduction claim of ${claimAmount} ${amountUnit} has been submitted for ${agreementReference(id)}.`,
         "",
         "Itemized deductions:",
         ...itemSummary,
@@ -591,7 +598,7 @@ export function ClaimSection({
             />
           </label>
           <label className="claim-field claim-field-amount">
-            Amount (shares)
+            Amount ({amountUnit})
             <input
               value={item.amount}
               onChange={(event) => updateItem(index, { amount: event.target.value })}
@@ -614,7 +621,7 @@ export function ClaimSection({
       ))}
       <div className="claim-total">
         <span>Claim total</span>
-        <strong>{amountRaw === null ? "Enter valid amounts" : `${amount} shares`}</strong>
+        <strong>{amountRaw === null ? "Enter valid amounts" : `${amount} ${amountUnit}`}</strong>
       </div>
       <fieldset className="california-claim-checklist">
         <legend>
@@ -864,7 +871,8 @@ export function ClaimSection({
     <div className="claim-notice-actions">
       <strong>Notify each tenant privately</strong>
       <p className="hint">
-        Every tenant receives a separate message with only their own private review link.
+        Send every tenant a separate message with only their own private review link. The draft and
+        copy controls below are backups for individual recipients.
       </p>
       {negotiationAccess && (
         <button
@@ -892,7 +900,7 @@ export function ClaimSection({
                 type="button"
                 onClick={() => openClaimNotice(notice)}
               >
-                Email {notice.label}
+                Open draft for {notice.label}
               </button>
               <button
                 className="btn btn-secondary"
@@ -962,7 +970,7 @@ export function ClaimSection({
         </p>
         {itemEditor}
         <p className="field-help">
-          Maximum total: {formatUSDC(agreement.depositAmount)} shares.
+          Maximum total: {formatUSDC(agreement.depositAmount)} {amountUnit}.
         </p>
         <label>
           Claim note
@@ -1004,7 +1012,7 @@ export function ClaimSection({
       <div className="action-section">
         <h3>Amend deduction claim (one time)</h3>
         <p className="hint">
-          You may only lower the current {formatUSDC(agreement.claimedAmount)}-share claim. The
+          You may only lower the current {formatUSDC(agreement.claimedAmount)} {amountUnit} claim. The
           original tenant response deadline does not move.
         </p>
         {itemEditor}
