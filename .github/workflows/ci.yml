@@ -46,4 +46,5 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
 
       - run: npm ci
+      - run: npx playwright install --with-deps chromium
       - run: npm run release:check:frontend
