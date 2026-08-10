@@ -54,8 +54,9 @@ saved response transaction; the Worker derives the decision and canonical landlo
 instead of accepting them from the browser. Users who explicitly enable agreement-activity
 email also receive privacy-minimal notices for finalization, funding, claim amendments, tenant
 responses, and arbiter rulings. These messages omit evidence pointers, tenancy details, amounts,
-and private notes. The hosted worker also has idempotent reminder checks for the landlord claim
-window, tenant response window, and optional arbiter ruling window. Checks run opportunistically
+and private notes. The hosted worker also has idempotent reminder checks seven days and one day
+before the agreed possession-return date, for the landlord claim window, tenant response window,
+and optional arbiter ruling window. Checks run opportunistically
 when the app is opened and through a scheduled-worker handler where that trigger is configured.
 It sends allocation-ready notices after recorded decisions or refund timeouts. Optional messages include a durable
 unsubscribe link that disables activity and deadline email. A scheduled Base Sepolia indexer now

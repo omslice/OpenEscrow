@@ -9256,6 +9256,114 @@ test("unsubscribe links turn off optional activity and deadline emails", async (
   assert.equal(preferences.consented_at, null);
 });
 
+test("agreed possession-return reminders reach every party in app and by opted-in email", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const preferenceTime = new Date("2027-06-01T00:00:00.000Z").toISOString();
+  for (const [index, email] of [
+    "landlord@example.com",
+    "tenant@example.com",
+  ].entries()) {
+    await db
+      .prepare(
+        `INSERT INTO notification_preferences
+         (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 0, 1, ?, ?)`,
+      )
+      .bind(`did:privy:possession-${index}`, email, preferenceTime, preferenceTime)
+      .run();
+  }
+
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `possession-${deliveries.length}` });
+  };
+  try {
+    const env = {
+      DB: db,
+      RESEND_API_KEY: "test-resend-key",
+      NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      PUBLIC_APP_URL: "https://openescrow.example/",
+    };
+    const runScheduler = async (scheduledTime) => {
+      const waits = [];
+      await worker.scheduled(
+        { scheduledTime: Date.parse(scheduledTime) },
+        env,
+        { waitUntil(promise) { waits.push(promise); } },
+      );
+      await Promise.all(waits);
+    };
+
+    const possessionReturn = new Date(terms.claimWindowStart).getTime();
+    await runScheduler(
+      new Date(possessionReturn - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    );
+    assert.deepEqual(
+      deliveries.map((delivery) => delivery.to[0]),
+      ["landlord@example.com", "tenant@example.com"],
+    );
+    for (const delivery of deliveries) {
+      assert.match(delivery.subject, /possession-return reminder/);
+      assert.match(delivery.text, /expected possession-return date is in seven days/);
+    }
+
+    const oneDayReminder = new Date(
+      possessionReturn - 24 * 60 * 60 * 1000,
+    ).toISOString();
+    await runScheduler(oneDayReminder);
+    assert.equal(deliveries.length, 4);
+    for (const delivery of deliveries.slice(2)) {
+      assert.match(delivery.text, /expected possession-return date is tomorrow/);
+    }
+
+    const inAppNoticeRows = db
+      .prepare(
+        `SELECT metadata_json FROM negotiation_events
+         WHERE negotiation_id = ? AND action = 'scheduled_notification_due'
+         ORDER BY id`,
+      )
+      .bind(created.record.id)
+      .all();
+    const notices = (inAppNoticeRows.results || []).map((row) =>
+      JSON.parse(row.metadata_json),
+    );
+    assert.deepEqual(
+      notices.map((notice) => notice.notificationType),
+      [
+        "possession_return_7_days",
+        "possession_return_7_days",
+        "possession_return_1_day",
+        "possession_return_1_day",
+      ],
+    );
+    assert.deepEqual(
+      [...new Set(notices.map((notice) => notice.recipientRole))].sort(),
+      ["landlord", `tenant-${created.record.tenants[0].id}`].sort(),
+    );
+
+    await runScheduler(
+      new Date(new Date(oneDayReminder).getTime() + 11 * 60 * 1000).toISOString(),
+    );
+    assert.equal(deliveries.length, 4);
+    assert.equal(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM negotiation_events
+           WHERE negotiation_id = ? AND action = 'scheduled_notification_due'`,
+        )
+        .bind(created.record.id)
+        .first().count,
+      4,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("scheduled claim-window reminders are opted-in and idempotent", async () => {
   const db = new TestD1();
   const created = await create(db);

@@ -120,7 +120,7 @@ export function PublicIntro({
           <h3 id="project-demo-video-title">Get to know OpenEscrow</h3>
           <p id="project-demo-video-description">
             A quick introduction to what OpenEscrow is, why it was created, and how it helps
-            landlords and tenants manage rental security deposits more clearly.
+            landlords and tenants manage rental security deposits more reliably.
           </p>
         </header>
         <video
