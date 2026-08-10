@@ -33,3 +33,17 @@ export function mergeSavedRecordRefresh(
     return prior ? [prior] : [];
   });
 }
+
+export function refreshOpenProposalAccess(
+  current: NegotiationAccess | null,
+  records: readonly SavedRecord[],
+): NegotiationAccess | null {
+  if (!current) return null;
+  return (
+    records.find(
+      (item) =>
+        item.access.proposalId === current.proposalId &&
+        item.access.role === current.role,
+    )?.access || current
+  );
+}

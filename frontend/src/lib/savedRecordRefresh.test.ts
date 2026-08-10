@@ -3,6 +3,7 @@ import test from "node:test";
 import type { NegotiationAccess, NegotiationRecord } from "./negotiations.ts";
 import {
   mergeSavedRecordRefresh,
+  refreshOpenProposalAccess,
   type SavedRecord,
 } from "./savedRecordRefresh.ts";
 
@@ -38,4 +39,16 @@ test("background record refresh omits an unavailable record with no trusted prio
     { status: "rejected", reason: new Error("temporary outage") },
   ];
   assert.deepEqual(mergeSavedRecordRefresh(requested, results, []), []);
+});
+
+test("background discovery replaces an open proposal's stale account session", () => {
+  const current = { ...access("one"), token: "stale-session", source: "account" as const };
+  const refreshed = {
+    access: { ...access("one"), token: "fresh-session", source: "account" as const },
+    record: { revision: 3 } as NegotiationRecord,
+  };
+
+  assert.equal(refreshOpenProposalAccess(current, [refreshed])?.token, "fresh-session");
+  assert.equal(refreshOpenProposalAccess(current, [saved("two", 1)])?.token, "stale-session");
+  assert.equal(refreshOpenProposalAccess(null, [refreshed]), null);
 });

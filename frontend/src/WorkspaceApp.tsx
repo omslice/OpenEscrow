@@ -58,6 +58,7 @@ import {
 import { mapSettledWithConcurrency } from "./lib/settledPool";
 import {
   mergeSavedRecordRefresh,
+  refreshOpenProposalAccess,
   type SavedRecord,
 } from "./lib/savedRecordRefresh";
 
@@ -632,6 +633,9 @@ function AppView({
         savedRecordsRef.current = records;
         setSavedRecords(records);
         setSavedProposals(compactActiveProposals(records));
+        setActiveLandlordAccess((current) =>
+          refreshOpenProposalAccess(current, records),
+        );
       } catch {
         // Manual search below presents discovery errors. Background refresh preserves the last
         // known records instead of turning a transient identity failure into persistent UI noise.
@@ -698,6 +702,9 @@ function AppView({
       const proposals = compactActiveProposals(records);
       setSavedRecords(records);
       setSavedProposals(proposals);
+      setActiveLandlordAccess((current) =>
+        refreshOpenProposalAccess(current, records),
+      );
 
       const accountAgreementIds = records.flatMap(({ record }) =>
         record.status === "finalized" && record.onchainAgreementId

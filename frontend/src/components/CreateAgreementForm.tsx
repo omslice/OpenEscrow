@@ -751,23 +751,40 @@ function AgreementForm({
         ? initialAccess
         : null;
     if (!access) return;
+    if (draft?.id === access.proposalId) {
+      setAccessBundle((current) =>
+        current
+          ? { ...current, landlord: access.token }
+          : {
+              landlord: access.token,
+              tenant: "",
+              tenants: [],
+              arbiter: null,
+            },
+      );
+      setFormError((current) =>
+        current === "This proposal link is invalid or no longer available." ? null : current,
+      );
+      return;
+    }
     loadNegotiation(access)
       .then((record) => {
         setDraft(record);
-        setAccessBundle(
-          saved?.access || {
-            landlord: access.token,
+        setAccessBundle({
+          ...(saved?.access || {
             tenant: "",
             tenants: [],
             arbiter: null,
-          },
-        );
+          }),
+          landlord: access.token,
+        });
+        setFormError(null);
         applyTerms(record);
       })
       .catch(() => {
         clearLandlordBundle(access.proposalId);
       });
-  }, [initialAccess]);
+  }, [draft?.id, initialAccess]);
 
   useEffect(() => {
     if (!receipt || handledReceipt.current === receipt.transactionHash) return;
