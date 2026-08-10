@@ -2936,12 +2936,7 @@ async function validTerms(terms, env) {
         profile,
         terms.addressResolution,
         { facts: terms.complianceFacts },
-      ) &&
-      terms.responseDays === "7" &&
-      (terms.arbiterDays === undefined ||
-        terms.arbiterDays === null ||
-        terms.arbiterDays === "" ||
-        terms.arbiterDays === "7"),
+      ),
   );
   return (
     profileTermsAreValid &&

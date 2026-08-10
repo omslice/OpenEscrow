@@ -3335,6 +3335,27 @@ test("address-routed compliance profiles require their exact version and deadlin
   assert.equal(created.record.terms.jurisdiction, "us-ny");
   assert.equal(created.record.terms.claimDays, "14");
 
+  const agreedTiming = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
+        tenantEmail: "tenant@example.com",
+        arbiterName: "",
+        arbiterEmail: null,
+        terms: {
+          ...newYorkResearchTerms,
+          responseDays: "10",
+          arbiterDays: "14",
+        },
+      }),
+      stateEnv,
+    ),
+  );
+  assert.equal(agreedTiming.record.terms.responseDays, "10");
+  assert.equal(agreedTiming.record.terms.arbiterDays, "14");
+
   const invalid = await worker.fetch(
     request("/api/negotiations", "POST", {
       landlordName: "Lena Landlord",
