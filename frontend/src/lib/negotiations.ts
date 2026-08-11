@@ -67,6 +67,7 @@ export interface AgreementTerms {
   claimDays: string;
   responseDays: string;
   arbiterDays: string;
+  testnetTimingProfile?: "accelerated-review-v1";
 }
 
 export interface DeductionLineItem {

@@ -33,6 +33,7 @@ import { getDepositAssetForTerms } from "../../shared/deposit-assets.js";
 import {
   dynamicComplianceFactsForProfile,
 } from "../../shared/us-compliance-facts.js";
+import { isAcceleratedReviewTiming } from "../../shared/testnet-review-timing.js";
 
 function approvalLabel(record: NegotiationRecord, role: "tenant" | "arbiter") {
   const approved = role === "tenant" ? record.tenantApproved : record.arbiterApproved;
@@ -58,6 +59,7 @@ function Terms({ record }: { record: NegotiationRecord }) {
   const researchProfile = storedComplianceSnapshot
     ? null
     : jurisdictionProfile(terms.jurisdiction);
+  const acceleratedReviewTiming = isAcceleratedReviewTiming(terms);
   return (
     <dl className="negotiation-terms">
       <div><dt>Rental property</dt><dd>{terms.propertyAddress || "Legacy proposal: not recorded"}</dd></div>
@@ -117,10 +119,20 @@ function Terms({ record }: { record: NegotiationRecord }) {
         </dd>
       </div>
       <div><dt>Expected possession returned</dt><dd>{new Date(terms.claimWindowStart).toLocaleString()}</dd></div>
-      <div><dt>{isLegacyCalifornia ? "California accounting/refund period" : researchProfile ? "Statewide onchain safeguard window" : "Test deduction window"}</dt><dd>{terms.claimDays} calendar days · {isLegacyCalifornia || researchProfile ? "profile default" : "agreed test value"}</dd></div>
-      <div><dt>Tenant response</dt><dd>{terms.responseDays} days · {isLegacyCalifornia || researchProfile ? "OpenEscrow test rule" : "agreed test value"}</dd></div>
+      {acceleratedReviewTiming ? (
+        <>
+          <div><dt>Reviewer claim period</dt><dd>30 minutes · accelerated Base Sepolia test timing</dd></div>
+          <div><dt>Recorded policy reference</dt><dd>{terms.claimDays} calendar days · not used for this accelerated test agreement</dd></div>
+          <div><dt>Tenant response</dt><dd>30 minutes · accelerated Base Sepolia test timing</dd></div>
+        </>
+      ) : (
+        <>
+          <div><dt>{isLegacyCalifornia ? "California accounting/refund period" : researchProfile ? "Statewide onchain safeguard window" : "Test deduction window"}</dt><dd>{terms.claimDays} calendar days · {isLegacyCalifornia || researchProfile ? "profile default" : "agreed test value"}</dd></div>
+          <div><dt>Tenant response</dt><dd>{terms.responseDays} days · {isLegacyCalifornia || researchProfile ? "OpenEscrow test rule" : "agreed test value"}</dd></div>
+        </>
+      )}
       {record.arbiterEmail && (
-        <div><dt>Arbiter ruling</dt><dd>{terms.arbiterDays} days · {isLegacyCalifornia || researchProfile ? "OpenEscrow test rule" : "agreed test value"}</dd></div>
+        <div><dt>Arbiter ruling</dt><dd>{acceleratedReviewTiming ? "30 minutes · accelerated Base Sepolia test timing" : `${terms.arbiterDays} days · ${isLegacyCalifornia || researchProfile ? "OpenEscrow test rule" : "agreed test value"}`}</dd></div>
       )}
       <div><dt>Jurisdiction</dt><dd>{jurisdictionLabel(terms.jurisdiction as JurisdictionCode)}</dd></div>
       <div><dt>Policy profile</dt><dd>{terms.policyVersion || "Legacy proposal"}</dd></div>

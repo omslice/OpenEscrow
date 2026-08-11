@@ -59,10 +59,19 @@ try {
   assert.equal(await page.getByTestId("live-deposit-detail").count(), 0);
   assert.equal(await first.getAttribute("aria-expanded"), "false");
   assert.equal(await second.getAttribute("aria-expanded"), "false");
-  assert.equal(await page.getByText("Active deposit").count(), 2);
-  assert.equal(await page.getByText("Finalized", { exact: true }).count(), 2);
+  assert.equal(await page.getByText("Needs funding", { exact: true }).count(), 1);
+  assert.equal(await page.getByText("Funding needed", { exact: true }).count(), 1);
+  assert.equal(await page.getByText("Active deposit").count(), 1);
+  assert.equal(await page.getByText("Finalized", { exact: true }).count(), 1);
   assert.match(await first.textContent(), /101 Test Street, Austin, TX/);
-  assert.match(await first.textContent(), /OE-A-000002 · Finalized security deposit/);
+  assert.match(await first.textContent(), /OE-A-000002 · Your approved share is ready to fund/);
+  assert.equal(
+    await first.evaluate((element) =>
+      element.closest(".deposit-list-item")?.classList.contains("needs-funding"),
+    ),
+    true,
+    "An unfunded tenant share should receive the green funding-attention treatment.",
+  );
 
   await first.click();
   await page.getByText("Deposit 1 live details are mounted.").waitFor();
@@ -113,7 +122,7 @@ try {
   );
 
   process.stdout.write(
-    "Deposit-list browser check passed: multi-agreement accounts start compact, mount one live deposit at a time, preserve keyboard focus, and fit mobile width.\n",
+    "Deposit-list browser check passed: funding attention is prominent, multi-agreement accounts stay compact, one live deposit mounts at a time, keyboard focus is preserved, and the list fits mobile width.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

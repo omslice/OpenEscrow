@@ -10144,6 +10144,116 @@ test("scheduled claim-window reminders are opted-in and idempotent", async () =>
   }
 });
 
+test("accelerated reviewer timing stays observable on the fifteen-minute scheduler", async () => {
+  const db = new TestD1();
+  const readiness = await worker.fetch(request("/api/system/readiness"), {
+    DB: db,
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  });
+  assert.equal(readiness.status, 200);
+  const acceleratedTerms = JSON.stringify({
+    ...terms,
+    testnetTimingProfile: "accelerated-review-v1",
+    claimWindowStart: "2027-07-01T12:00:00.000Z",
+  });
+  db.database
+    .prepare(
+      `INSERT INTO agreement_negotiations
+         (id, created_at, updated_at, status, revision, terms_json,
+          landlord_email, tenant_email, landlord_token_hash, tenant_token_hash,
+          onchain_agreement_id)
+       VALUES (?, ?, ?, 'finalized', 1, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      "accelerated-reviewer",
+      "2026-08-10T12:00:00.000Z",
+      "2026-08-10T12:00:00.000Z",
+      acceleratedTerms,
+      "landlord@example.com",
+      "tenant@example.com",
+      "accelerated-landlord-token",
+      "accelerated-tenant-token",
+      "99",
+    );
+  const preferenceTime = "2026-08-10T12:00:00.000Z";
+  for (const [index, email] of [
+    "landlord@example.com",
+    "tenant@example.com",
+  ].entries()) {
+    db.database
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .run(`did:privy:accelerated-${index}`, email, preferenceTime, preferenceTime);
+  }
+
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `accelerated-${deliveries.length}` });
+  };
+  try {
+    const env = {
+      DB: db,
+      RESEND_API_KEY: "test-resend-key",
+      NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      PUBLIC_APP_URL: "https://openescrow.example/",
+      VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+    };
+    const runScheduler = async (scheduledTime) => {
+      const waits = [];
+      await worker.scheduled(
+        { scheduledTime: Date.parse(scheduledTime) },
+        env,
+        { waitUntil(promise) { waits.push(promise); } },
+      );
+      await Promise.all(waits);
+    };
+
+    await runScheduler("2027-07-01T11:45:00.000Z");
+    assert.equal(deliveries.length, 2);
+    assert.ok(
+      deliveries.every((delivery) =>
+        delivery.text.includes("possession-return time in about fifteen minutes"),
+      ),
+    );
+
+    await runScheduler("2027-07-01T12:15:00.000Z");
+    assert.equal(deliveries.length, 5);
+    assert.equal(
+      deliveries.filter((delivery) =>
+        delivery.text.includes("claim deadline is about fifteen minutes away"),
+      ).length,
+      1,
+    );
+
+    await runScheduler("2027-07-01T12:31:00.000Z");
+    assert.equal(deliveries.length, 7);
+    const lifecycleEvents = db.database
+      .prepare(
+        `SELECT action, metadata_json
+         FROM negotiation_events
+         WHERE negotiation_id = ?
+           AND action IN ('claim_period_started', 'claim_period_ended')
+         ORDER BY id`,
+      )
+      .all("accelerated-reviewer");
+    assert.deepEqual(
+      lifecycleEvents.map((event) => event.action),
+      ["claim_period_started", "claim_period_ended"],
+    );
+    assert.equal(
+      JSON.parse(lifecycleEvents[1].metadata_json).scheduledFor,
+      "2027-07-01T12:30:00.000Z",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("the deadline scheduler rotates fairly beyond its 250-agreement batch", async () => {
   const db = new TestD1();
   const readiness = await worker.fetch(request("/api/system/readiness"), {

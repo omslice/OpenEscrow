@@ -100,6 +100,12 @@ import {
   getDepositAsset,
   type DepositAssetId,
 } from "../../shared/deposit-assets.js";
+import {
+  ACCELERATED_REVIEW_TIMING_PROFILE,
+  acceleratedReviewClaimWindowStart,
+  agreementTimingSeconds,
+  isAcceleratedReviewTiming,
+} from "../../shared/testnet-review-timing.js";
 import "./CreateAgreementFormTabs.css";
 
 const DAY = 24 * 60 * 60;
@@ -192,11 +198,20 @@ function hasFirstAndLastName(value: string): boolean {
   return value.trim().split(/\s+/).filter(Boolean).length >= 2;
 }
 
+function localDateTimeInputValue(date: Date): string {
+  const offsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function serializedDateTimeValue(value: string): string {
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : value;
+}
+
 function defaultClaimWindowStart(): string {
   const date = new Date();
   date.setFullYear(date.getFullYear() + 1);
-  const offsetMs = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+  return localDateTimeInputValue(date);
 }
 
 function equalSplitBps(count: number): number[] {
@@ -435,6 +450,8 @@ function AgreementForm({
   const [claimDays, setClaimDays] = useState<string>(GENERIC_TEST_POLICY.claimDays);
   const [responseDays, setResponseDays] = useState<string>(GENERIC_TEST_POLICY.responseDays);
   const [arbiterDays, setArbiterDays] = useState<string>(GENERIC_TEST_POLICY.arbiterDays);
+  const [testnetTimingProfile, setTestnetTimingProfile] =
+    useState<AgreementTerms["testnetTimingProfile"]>();
   const [draft, setDraft] = useState<NegotiationRecord | null>(null);
   const [accessBundle, setAccessBundle] = useState<CreatedNegotiation["access"] | null>(null);
   const [revisionSummary, setRevisionSummary] = useState("");
@@ -500,6 +517,9 @@ function AgreementForm({
   } = useWaitForTransactionReceipt({ hash });
   const claimWindowHasPassed =
     Boolean(claimWindowStart) && new Date(claimWindowStart).getTime() <= Date.now();
+  const acceleratedReviewTiming = isAcceleratedReviewTiming({
+    testnetTimingProfile,
+  });
   const approvedTermsLocked =
     Boolean(
       draft &&
@@ -725,7 +745,9 @@ function AgreementForm({
     setMonthlyRent(record.terms.monthlyRent || "");
     setDepositAssetId(depositAssetIdFromTerms(record.terms));
     setYieldConsent(record.terms.yieldConsent === true);
-    setClaimWindowStart(record.terms.claimWindowStart);
+    setClaimWindowStart(
+      localDateTimeInputValue(new Date(record.terms.claimWindowStart)),
+    );
     setClaimDays(
       isLegacyCalifornia ? GENERIC_TEST_POLICY.claimDays : record.terms.claimDays,
     );
@@ -735,6 +757,7 @@ function AgreementForm({
     setArbiterDays(
       isLegacyCalifornia ? GENERIC_TEST_POLICY.arbiterDays : record.terms.arbiterDays,
     );
+    setTestnetTimingProfile(record.terms.testnetTimingProfile);
     setProposalStep(
       record.status === "ready" || record.status === "finalized"
         ? "review"
@@ -837,10 +860,11 @@ function AgreementForm({
       smallLandlordException: false,
       tenantIsServiceMember: false,
       electronicDeliveryConsent: true,
-      claimWindowStart,
+      claimWindowStart: serializedDateTimeValue(claimWindowStart),
       claimDays: policy?.defaultClaimDays ?? claimDays,
       responseDays,
       arbiterDays,
+      testnetTimingProfile,
     };
   }
 
@@ -989,6 +1013,28 @@ function AgreementForm({
     setFormError(null);
   }
 
+  function applyAcceleratedReviewTiming() {
+    setTestnetTimingProfile(ACCELERATED_REVIEW_TIMING_PROFILE);
+    setClaimWindowStart(
+      localDateTimeInputValue(acceleratedReviewClaimWindowStart()),
+    );
+    clearFieldIssue("claimWindowStart");
+    setFormError(null);
+    setFormMessage(
+      "Accelerated reviewer timing applied. The claim window starts in about one hour, followed by 30-minute claim, response, and arbiter periods.",
+    );
+  }
+
+  function restoreStandardTiming() {
+    setTestnetTimingProfile(undefined);
+    setClaimWindowStart(defaultClaimWindowStart());
+    clearFieldIssue("claimWindowStart");
+    setFormError(null);
+    setFormMessage(
+      "Standard test timing restored. Review the possession-return date before publishing.",
+    );
+  }
+
   function reportIssue(issue: ProposalValidationIssue) {
     setFormMessage(null);
     setFormError(issue.message);
@@ -1106,6 +1152,7 @@ function AgreementForm({
     setPrimaryTenantShareBps(10000);
     setTenantShareDraft({});
     setClaimWindowStart(defaultClaimWindowStart());
+    setTestnetTimingProfile(undefined);
     setClaimDays(GENERIC_TEST_POLICY.claimDays);
     setRevisionSummary("");
     setIsEditingRevision(false);
@@ -1133,6 +1180,7 @@ function AgreementForm({
     setPrimaryTenantShareBps(10000);
     setTenantShareDraft({});
     setClaimWindowStart(defaultClaimWindowStart());
+    setTestnetTimingProfile(undefined);
     setClaimDays(GENERIC_TEST_POLICY.claimDays);
     setRevisionSummary("");
     setIsEditingRevision(false);
@@ -1495,6 +1543,7 @@ function AgreementForm({
       setPrimaryTenantShareBps(10000);
       setTenantShareDraft({});
       setClaimWindowStart(defaultClaimWindowStart());
+      setTestnetTimingProfile(undefined);
       setClaimDays(GENERIC_TEST_POLICY.claimDays);
       setFormMessage(
         "Proposal cancelled and removed from active workspaces. Its audit record was preserved.",
@@ -1836,6 +1885,7 @@ function AgreementForm({
 
     const nowSec = Math.floor(Date.now() / 1000);
     const startSec = Math.floor(new Date(draft.terms.claimWindowStart).getTime() / 1000);
+    const timingSeconds = agreementTimingSeconds(draft.terms);
     if (startSec < nowSec) return setFormError("The expected possession-return date must still be in the future.");
     if (startSec - nowSec > MAX_CLAIM_WINDOW_OFFSET_SECONDS) {
       return setFormError("The expected possession-return date is too far in the future.");
@@ -1902,9 +1952,9 @@ function AgreementForm({
             : ZERO_ADDRESS,
           agreedAmount: parseUSDC(draft.terms.deposit),
           claimWindowStart: BigInt(startSec),
-          claimPeriod: BigInt(Number(draft.terms.claimDays) * DAY),
-          responsePeriod: BigInt(Number(draft.terms.responseDays) * DAY),
-          arbiterRulingPeriod: BigInt(Number(draft.terms.arbiterDays) * DAY),
+          claimPeriod: BigInt(timingSeconds.claimPeriodSeconds),
+          responsePeriod: BigInt(timingSeconds.responsePeriodSeconds),
+          arbiterRulingPeriod: BigInt(timingSeconds.arbiterRulingPeriodSeconds),
         },
       );
       if (!finalizationScope.isCurrent(operationId)) return;
@@ -1945,9 +1995,9 @@ function AgreementForm({
         draft.terms.tokenChoice === "yield" ? YIELD_USDC_ADDRESS : USDC_ADDRESS,
         parseUSDC(draft.terms.deposit),
         BigInt(startSec),
-        BigInt(Number(draft.terms.claimDays) * DAY),
-        BigInt(Number(draft.terms.responseDays) * DAY),
-        BigInt(Number(draft.terms.arbiterDays) * DAY),
+        BigInt(timingSeconds.claimPeriodSeconds),
+        BigInt(timingSeconds.responsePeriodSeconds),
+        BigInt(timingSeconds.arbiterRulingPeriodSeconds),
       ],
     });
   }
@@ -3130,6 +3180,38 @@ function AgreementForm({
           determine the legal treatment of any real tenant-paid charge.
         </p>
       </section>
+      <section
+        className={`reviewer-timing-card${acceleratedReviewTiming ? " is-active" : ""}`}
+        aria-labelledby="reviewer-timing-title"
+      >
+        <div>
+          <span className="eyebrow">Base Sepolia reviewer tool</span>
+          <h3 id="reviewer-timing-title">Accelerated lifecycle timing</h3>
+          <p>
+            Use this only for an invented reviewer agreement. The possession-return time is set
+            about one hour ahead, followed by 30-minute claim, response, and arbiter periods.
+          </p>
+          <strong>
+            {acceleratedReviewTiming
+              ? "Accelerated timing is active for this revision."
+              : "Standard agreement timing is active."}
+          </strong>
+        </div>
+        <button
+          className={acceleratedReviewTiming ? "btn btn-ghost" : "btn btn-primary"}
+          type="button"
+          disabled={approvedTermsLocked}
+          onClick={
+            acceleratedReviewTiming
+              ? restoreStandardTiming
+              : applyAcceleratedReviewTiming
+          }
+        >
+          {acceleratedReviewTiming
+            ? "Restore standard timing"
+            : "Use accelerated reviewer timing"}
+        </button>
+      </section>
       <label>
         Expected date tenant vacates / possession is returned
         <input
@@ -3145,8 +3227,9 @@ function AgreementForm({
         />
       </label>
       <p className="field-help">
-        This is the test lifecycle start date. It is not calculated from or validated against any
-        jurisdiction&apos;s law.
+        {acceleratedReviewTiming
+          ? "This accelerated Base Sepolia date is for reviewer testing only and does not represent a legal deadline."
+          : "This is the test lifecycle start date. It is not calculated from or validated against any jurisdiction's law."}
       </p>
       {claimWindowHasPassed && (
         <p className="field-validation-error" role="alert">
@@ -3170,9 +3253,11 @@ function AgreementForm({
         />
       </label>
       <p className="field-help">
-        {selectedJurisdiction
-          ? `${selectedJurisdiction.defaultClaimDays} days is locked as the onchain safeguard. The agreement record also preserves the profile's conditional and multi-stage deadlines.`
-          : "Editable test timing. This value does not represent a legal deadline."}
+        {acceleratedReviewTiming
+          ? `${selectedJurisdiction?.defaultClaimDays || claimDays} days remains in the policy record, while this reviewer-only onchain agreement uses a 30-minute claim period.`
+          : selectedJurisdiction
+            ? `${selectedJurisdiction.defaultClaimDays} days is locked as the onchain safeguard. The agreement record also preserves the profile's conditional and multi-stage deadlines.`
+            : "Editable test timing. This value does not represent a legal deadline."}
       </p>
       <label>
         OpenEscrow tenant response period
@@ -3190,7 +3275,9 @@ function AgreementForm({
         />
       </label>
       <p className="field-help">
-        Editable test timing for the tenant&apos;s approve-or-dispute step.
+        {acceleratedReviewTiming
+          ? "Reviewer-only onchain response period: 30 minutes. The recorded standard value remains visible above."
+          : "Editable test timing for the tenant's approve-or-dispute step."}
       </p>
       {ARBITER_UI_ENABLED && (showArbiter || Boolean(draft?.arbiterEmail)) && (
         <>
@@ -3210,7 +3297,9 @@ function AgreementForm({
             />
           </label>
           <p className="field-help">
-            Editable test timing for the optional arbiter&apos;s ruling step.
+            {acceleratedReviewTiming
+              ? "Reviewer-only onchain arbiter period: 30 minutes. The recorded standard value remains visible above."
+              : "Editable test timing for the optional arbiter's ruling step."}
           </p>
         </>
       )}

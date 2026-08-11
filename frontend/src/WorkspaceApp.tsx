@@ -6,7 +6,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useIdentityToken, usePrivy } from "@privy-io/react-auth";
-import { useAccount } from "wagmi";
+import { useAccount, useReadContracts } from "wagmi";
 import { Layout, type AppNotification } from "./components/Layout";
 import type {
   AgreementFocusRequest,
@@ -61,6 +61,8 @@ import {
   refreshOpenProposalAccess,
   type SavedRecord,
 } from "./lib/savedRecordRefresh";
+import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "./contracts/config";
+import { tenantFundingAttentionIds } from "./lib/tenantFundingAttention";
 
 const ACCOUNT_DISCOVERY_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const ACCOUNT_DISCOVERY_RETRY_INTERVAL_MS = 60 * 1000;
@@ -364,6 +366,41 @@ function AppView({
   );
   const inviteRole = useInviteRole();
   const workspaceRole = useWorkspaceRole();
+  const tenantFundingContracts =
+    workspaceRole === "tenant" && address
+      ? displayedIds.flatMap((id) => [
+          {
+            address: OPEN_ESCROW_ADDRESS,
+            abi: OpenEscrowABI,
+            functionName: "getAgreement",
+            args: [id],
+          },
+          {
+            address: OPEN_ESCROW_ADDRESS,
+            abi: OpenEscrowABI,
+            functionName: "tenantShareBps",
+            args: [id, address],
+          },
+          {
+            address: OPEN_ESCROW_ADDRESS,
+            abi: OpenEscrowABI,
+            functionName: "tenantContribution",
+            args: [id, address],
+          },
+        ])
+      : [];
+  const tenantFundingReads = useReadContracts({
+    contracts: tenantFundingContracts,
+    query: {
+      enabled: tenantFundingContracts.length > 0,
+      refetchInterval: 5_000,
+    },
+  });
+  const tenantFundingAgreementIds = tenantFundingAttentionIds(
+    displayedIds,
+    tenantFundingReads.data,
+    Phase.ReadyToFund,
+  );
   const [proposalAccess, setProposalAccess] = useState<NegotiationAccess | null>(() => {
     if (initialCapturedAccess && initialCapturedAccess.role !== "landlord") {
       return initialCapturedAccess;
@@ -786,6 +823,29 @@ function AppView({
     setTab("proposals");
   }
 
+  function openTenantFundingAttention() {
+    const agreementId = tenantFundingAgreementIds[0]?.toString();
+    if (!agreementId) {
+      setTab("proposals");
+      return;
+    }
+    addId(BigInt(agreementId));
+    setProposalAccess(null);
+    setRequestedDepositId(agreementId);
+    setTab("agreements");
+    setAgreementPanels((current) => ({
+      ...current,
+      [agreementId]: "funds",
+    }));
+    setAgreementFocusRequests((current) => ({
+      ...current,
+      [agreementId]: {
+        targetId: `agreement-${agreementId}-panel-funds`,
+        nonce: (current[agreementId]?.nonce || 0) + 1,
+      },
+    }));
+  }
+
   function scrollToNotificationTarget(targetId: string, fallbackId: string) {
     window.setTimeout(() => {
       const target =
@@ -1007,6 +1067,7 @@ function AppView({
       (item.access.role === "landlord" && item.record.status === "ready") ||
       (item.access.role !== "landlord" && item.record.status === "draft"),
   );
+  const attentionCount = readyProposals.length + tenantFundingAgreementIds.length;
   const workspaceTabLabels =
     workspaceRole === "landlord"
       ? {
@@ -1267,6 +1328,9 @@ function AppView({
                   key={agreementKey}
                   id={id}
                   propertyAddress={proposal?.record.terms.propertyAddress}
+                  needsFunding={tenantFundingAgreementIds.some(
+                    (candidate) => candidate === id,
+                  )}
                   expanded={expanded}
                   onToggle={() =>
                     setRequestedDepositId(
@@ -1633,15 +1697,19 @@ function AppView({
         </section>
         <div className="workspace-stat-grid">
           <button
-            className={`workspace-stat${readyProposals.length > 0 ? " has-action" : ""}`}
-            onClick={() => setTab("proposals")}
+            className={`workspace-stat${attentionCount > 0 ? " has-action" : ""}`}
+            onClick={openTenantFundingAttention}
           >
             <span>Needs attention</span>
-            <strong>{readyProposals.length}</strong>
+            <strong>{attentionCount}</strong>
             <small>
-              {workspaceRole === "landlord"
-                ? "approved or updated proposals"
-                : "invitations or proposals to review"}
+              {tenantFundingAgreementIds.length > 0 && readyProposals.length > 0
+                ? "deposits to fund and proposals to review"
+                : tenantFundingAgreementIds.length > 0
+                  ? "finalized deposits ready for your funding"
+                  : workspaceRole === "landlord"
+                    ? "approved or updated proposals"
+                    : "invitations or proposals to review"}
             </small>
           </button>
           <button className="workspace-stat" onClick={() => setTab("proposals")}>
@@ -1733,6 +1801,21 @@ function AppView({
             </p>
             <button className="btn btn-primary" onClick={() => setTab("proposals")}>
               Review now
+            </button>
+          </section>
+        )}
+        {tenantFundingAgreementIds.length > 0 && (
+          <section className="card urgent-work tenant-funding-attention">
+            <span className="eyebrow">Funding needed</span>
+            <h2>
+              {tenantFundingAgreementIds.length} finalized deposit
+              {tenantFundingAgreementIds.length === 1 ? " needs" : "s need"} your funding
+            </h2>
+            <p className="hint">
+              Fund your approved tenant share to activate the security deposit for every party.
+            </p>
+            <button className="btn btn-primary" onClick={openTenantFundingAttention}>
+              Fund deposit now
             </button>
           </section>
         )}

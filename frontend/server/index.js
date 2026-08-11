@@ -24,6 +24,11 @@ import {
   validateDepositAssetTerms,
 } from "../shared/deposit-assets.js";
 import {
+  ACCELERATED_REVIEW_TIMING_PROFILE,
+  agreementTimingSeconds,
+  isAcceleratedReviewTiming,
+} from "../shared/testnet-review-timing.js";
+import {
   FUNDING_CHECKOUT_EVENT_SOURCES,
   FUNDING_CHECKOUT_EVENT_VERIFICATIONS,
   FUNDING_CHECKOUT_SCHEMA,
@@ -1421,9 +1426,10 @@ function receiptExpectation(body, row, env, context, recordedEvents) {
     const claimWindowStart = Math.floor(
       new Date(terms.claimWindowStart).getTime() / 1_000,
     );
-    const claimPeriod = Number(terms.claimDays) * 86_400;
-    const responsePeriod = Number(terms.responseDays) * 86_400;
-    const arbiterRulingPeriod = Number(terms.arbiterDays) * 86_400;
+    const timingSeconds = agreementTimingSeconds(terms);
+    const claimPeriod = timingSeconds.claimPeriodSeconds;
+    const responsePeriod = timingSeconds.responsePeriodSeconds;
+    const arbiterRulingPeriod = timingSeconds.arbiterRulingPeriodSeconds;
     const expectedTokenAddress = tokenAddressForTerms(terms, env);
     const dataWords = {
       0: addressTopic(arbiterAddress),
@@ -2932,6 +2938,8 @@ async function validTerms(terms, env) {
     deposit !== null &&
     deposit > 0n &&
     terms.operationsReserve === "5" &&
+    (terms.testnetTimingProfile === undefined ||
+      terms.testnetTimingProfile === ACCELERATED_REVIEW_TIMING_PROFILE) &&
     typeof terms.claimWindowStart === "string" &&
     !Number.isNaN(new Date(terms.claimWindowStart).getTime()) &&
     validPeriodDays(terms.claimDays) &&
@@ -7397,6 +7405,10 @@ function addDays(date, days) {
   return new Date(date.getTime() + Number(days) * 24 * 60 * 60 * 1000);
 }
 
+function addSeconds(date, seconds) {
+  return new Date(date.getTime() + Number(seconds) * 1_000);
+}
+
 function latestEvent(events, action) {
   return [...events].reverse().find((event) => event.action === action) || null;
 }
@@ -7650,7 +7662,12 @@ function deadlineCandidates(row, events, now, tenantRows = []) {
   const terms = JSON.parse(row.terms_json);
   const candidates = [];
   const claimWindowStart = new Date(terms.claimWindowStart);
-  const claimDeadline = addDays(claimWindowStart, terms.claimDays);
+  const timingSeconds = agreementTimingSeconds(terms);
+  const acceleratedReviewTiming = isAcceleratedReviewTiming(terms);
+  const claimDeadline = addSeconds(
+    claimWindowStart,
+    timingSeconds.claimPeriodSeconds,
+  );
   const lifecycleTenants = tenantRows.length
     ? tenantRows
     : [
@@ -7666,7 +7683,15 @@ function deadlineCandidates(row, events, now, tenantRows = []) {
   ];
   for (const [role, email] of lifecycleRecipients) {
     if (now < claimWindowStart) {
-      const possessionReminder = [
+      const possessionReminder = (acceleratedReviewTiming
+        ? [
+            {
+              type: "possession_return_15_minutes",
+              scheduledFor: addSeconds(claimWindowStart, -15 * 60),
+              text: "The accelerated reviewer agreement reaches its possession-return time in about fifteen minutes. Review the shared timeline now.",
+            },
+          ]
+        : [
         {
           type: "possession_return_7_days",
           scheduledFor: addDays(claimWindowStart, -7),
@@ -7677,7 +7702,7 @@ function deadlineCandidates(row, events, now, tenantRows = []) {
           scheduledFor: addDays(claimWindowStart, -1),
           text: "The agreement's expected possession-return date is tomorrow. Review the shared timeline and preserve any move-out documentation in OpenEscrow.",
         },
-      ]
+      ])
         .filter((candidate) => candidate.scheduledFor <= now)
         .at(-1);
       if (possessionReminder) {
@@ -7716,7 +7741,15 @@ function deadlineCandidates(row, events, now, tenantRows = []) {
     (event) => event.action === "deduction_claim_submitted",
   );
   if (!claimSubmitted) {
-    const reminder = [
+    const reminder = (acceleratedReviewTiming
+      ? [
+          {
+            type: "claim_deadline_15_minutes",
+            scheduledFor: addSeconds(claimDeadline, -15 * 60),
+            text: "The accelerated reviewer claim deadline is about fifteen minutes away. Submit any test claim now; otherwise the tenant can recover the full test deposit.",
+          },
+        ]
+      : [
       {
         type: "claim_deadline_3_days",
         scheduledFor: addDays(claimDeadline, -3),
@@ -7727,7 +7760,7 @@ function deadlineCandidates(row, events, now, tenantRows = []) {
         scheduledFor: addDays(claimDeadline, -1),
         text: "The landlord deduction-claim deadline is tomorrow. No timely claim means the tenant can recover the full deposit.",
       },
-    ].filter((candidate) => candidate.scheduledFor <= now && now < claimDeadline).at(-1);
+    ]).filter((candidate) => candidate.scheduledFor <= now && now < claimDeadline).at(-1);
     if (reminder) {
       candidates.push({
         ...reminder,
@@ -7740,12 +7773,20 @@ function deadlineCandidates(row, events, now, tenantRows = []) {
   } else {
     const responseState = claimResponseState(events, lifecycleTenants);
     if (!responseState.allResponded) {
-      const responseDeadline = addDays(
+      const responseDeadline = addSeconds(
         new Date(claimSubmitted.createdAt),
-        terms.responseDays,
+        timingSeconds.responsePeriodSeconds,
       );
       for (const tenant of responseState.pendingTenants) {
-        const reminder = [
+        const reminder = (acceleratedReviewTiming
+          ? [
+              {
+                type: "response_deadline_15_minutes",
+                scheduledFor: addSeconds(responseDeadline, -15 * 60),
+                text: "Your accelerated reviewer response deadline is about fifteen minutes away. Approve, partially accept, or dispute the test claim now.",
+              },
+            ]
+          : [
           {
             type: "response_deadline_3_days",
             scheduledFor: addDays(responseDeadline, -3),
@@ -7756,7 +7797,7 @@ function deadlineCandidates(row, events, now, tenantRows = []) {
             scheduledFor: addDays(responseDeadline, -1),
             text: "Your deduction-claim response deadline is tomorrow. Silence escalates the claim to a dispute; it never automatically pays the landlord.",
           },
-        ].filter((candidate) => candidate.scheduledFor <= now && now < responseDeadline).at(-1);
+        ]).filter((candidate) => candidate.scheduledFor <= now && now < responseDeadline).at(-1);
         if (reminder) {
           candidates.push({
             ...reminder,
@@ -7784,11 +7825,19 @@ function deadlineCandidates(row, events, now, tenantRows = []) {
             new Date(left.createdAt).getTime() -
             new Date(right.createdAt).getTime(),
         ).at(-1);
-        const rulingDeadline = addDays(
+        const rulingDeadline = addSeconds(
           new Date(lastTenantResponse.createdAt),
-          terms.arbiterDays,
+          timingSeconds.arbiterRulingPeriodSeconds,
         );
-        const reminder = [
+        const reminder = (acceleratedReviewTiming
+          ? [
+              {
+                type: "arbiter_deadline_15_minutes",
+                scheduledFor: addSeconds(rulingDeadline, -15 * 60),
+                text: "The accelerated reviewer ruling deadline is about fifteen minutes away. Submit the test allocation now or the disputed balance defaults to the tenant.",
+              },
+            ]
+          : [
           {
             type: "arbiter_deadline_3_days",
             scheduledFor: addDays(rulingDeadline, -3),
@@ -7799,7 +7848,7 @@ function deadlineCandidates(row, events, now, tenantRows = []) {
             scheduledFor: addDays(rulingDeadline, -1),
             text: "The OpenEscrow ruling deadline is tomorrow. If no ruling is submitted, the disputed balance defaults to the tenant.",
           },
-        ].filter((candidate) => candidate.scheduledFor <= now && now < rulingDeadline).at(-1);
+        ]).filter((candidate) => candidate.scheduledFor <= now && now < rulingDeadline).at(-1);
         if (reminder) {
           candidates.push({
             ...reminder,
@@ -7923,7 +7972,10 @@ function complianceDeadlineCandidates(row, events, now, tenantRows = []) {
 async function recordClaimPeriodTransitions(env, row, events, now) {
   const terms = JSON.parse(row.terms_json);
   const claimWindowStart = new Date(terms.claimWindowStart);
-  const claimDeadline = addDays(claimWindowStart, terms.claimDays);
+  const claimDeadline = addSeconds(
+    claimWindowStart,
+    agreementTimingSeconds(terms).claimPeriodSeconds,
+  );
   const revision = Number(row.revision);
   const statements = [];
   if (
@@ -11595,6 +11647,7 @@ async function report(db, id, token, download = false) {
   const record = await serialize(db, row);
   const terms = record.terms;
   const policyRows = (candidate) => {
+    const acceleratedReviewerTiming = isAcceleratedReviewTiming(candidate);
     const isCalifornia =
       candidate.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
       candidate.policyVersion === CALIFORNIA_POLICY.version;
@@ -11668,9 +11721,12 @@ async function report(db, id, token, download = false) {
     );
     return `
 ${isCalifornia ? `<tr><th>Monthly rent used for cap</th><td>${escapeHtml(candidate.monthlyRent || "Not recorded")}</td></tr>` : ""}
-<tr><th>${isCalifornia ? "California accounting/refund period" : researchProfile ? "Statewide onchain safeguard window" : "Test deduction window"}</th><td>${escapeHtml(candidate.claimDays)} calendar days (${isCalifornia || researchProfile ? "profile default" : "agreed test value"})</td></tr>
+${acceleratedReviewerTiming ? `<tr><th>Accelerated reviewer claim period</th><td>30 minutes (Base Sepolia reviewer timing)</td></tr>
+<tr><th>Accelerated reviewer response period</th><td>30 minutes (Base Sepolia reviewer timing)</td></tr>
+${record.arbiterEmail ? `<tr><th>Accelerated reviewer arbiter period</th><td>30 minutes (Base Sepolia reviewer timing)</td></tr>` : ""}
+<tr><th>Recorded policy timing reference</th><td>${escapeHtml(candidate.claimDays)} claim days, ${escapeHtml(candidate.responseDays)} response days${record.arbiterEmail ? `, and ${escapeHtml(candidate.arbiterDays)} arbiter days` : ""}. These reference values do not control this accelerated test agreement.</td></tr>` : `<tr><th>${isCalifornia ? "California accounting/refund period" : researchProfile ? "Statewide onchain safeguard window" : "Test deduction window"}</th><td>${escapeHtml(candidate.claimDays)} calendar days (${isCalifornia || researchProfile ? "profile default" : "agreed test value"})</td></tr>
 <tr><th>OpenEscrow response period</th><td>${escapeHtml(candidate.responseDays)} days (${isCalifornia || researchProfile ? "test rule" : "agreed test value"})</td></tr>
-${record.arbiterEmail ? `<tr><th>OpenEscrow arbiter period</th><td>${escapeHtml(candidate.arbiterDays)} days (${isCalifornia || researchProfile ? "test rule" : "agreed test value"})</td></tr>` : ""}
+${record.arbiterEmail ? `<tr><th>OpenEscrow arbiter period</th><td>${escapeHtml(candidate.arbiterDays)} days (${isCalifornia || researchProfile ? "test rule" : "agreed test value"})</td></tr>` : ""}`}
 <tr><th>Jurisdiction</th><td>${escapeHtml(jurisdiction)}</td></tr>
 <tr><th>Policy profile</th><td>${escapeHtml(candidate.policyVersion || "Legacy proposal")}</td></tr>
 ${resolvedLocation ? `<tr><th>Validated location</th><td>${escapeHtml([resolvedLocation.city, resolvedLocation.county, resolvedLocation.stateCode, resolvedLocation.postalCode].filter(Boolean).join(", "))}<br><small>Photon/OpenStreetMap feature ${escapeHtml(resolvedLocation.providerFeatureId)}</small></td></tr>` : ""}

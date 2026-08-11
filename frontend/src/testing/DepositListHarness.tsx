@@ -11,8 +11,8 @@ import "../index.css";
 import "../App.css";
 
 const DEPOSITS = [
-  { id: 1n, propertyAddress: "101 Test Street, Austin, TX" },
-  { id: 2n, propertyAddress: "202 Pilot Avenue, Seattle, WA" },
+  { id: 1n, propertyAddress: "101 Test Street, Austin, TX", needsFunding: true },
+  { id: 2n, propertyAddress: "202 Pilot Avenue, Seattle, WA", needsFunding: false },
 ];
 
 function DepositListHarness() {
@@ -36,6 +36,7 @@ function DepositListHarness() {
                 key={key}
                 id={deposit.id}
                 propertyAddress={deposit.propertyAddress}
+                needsFunding={deposit.needsFunding}
                 expanded={expanded}
                 onToggle={() =>
                   setRequestedId(toggleExpandedDepositId(expandedId, key))

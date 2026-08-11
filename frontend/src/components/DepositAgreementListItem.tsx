@@ -4,12 +4,14 @@ import { agreementReference } from "../lib/displayIds";
 export function DepositAgreementListItem({
   id,
   propertyAddress,
+  needsFunding = false,
   expanded,
   onToggle,
   children,
 }: {
   id: bigint;
   propertyAddress?: string | null;
+  needsFunding?: boolean;
   expanded: boolean;
   onToggle: () => void;
   children: ReactNode;
@@ -20,7 +22,7 @@ export function DepositAgreementListItem({
 
   return (
     <article
-      className={`deposit-list-item${expanded ? " is-expanded" : ""}`}
+      className={`deposit-list-item${needsFunding ? " needs-funding" : ""}${expanded ? " is-expanded" : ""}`}
       role="listitem"
       data-deposit-id={agreementKey}
     >
@@ -35,20 +37,26 @@ export function DepositAgreementListItem({
         >
           <span className="deposit-list-main">
             <span className="deposit-list-icon" aria-hidden="true">
-              ✓
+              {needsFunding ? "!" : "✓"}
             </span>
             <span className="record-list-identity">
-              <span className="eyebrow">Active deposit</span>
+              <span className="eyebrow">
+                {needsFunding ? "Needs funding" : "Active deposit"}
+              </span>
               <strong>{propertyAddress?.trim() || reference}</strong>
               <small>
                 {propertyAddress?.trim()
-                  ? `${reference} · Finalized security deposit`
-                  : "Finalized security deposit · open to view its current status"}
+                  ? `${reference} · ${needsFunding ? "Your approved share is ready to fund" : "Finalized security deposit"}`
+                  : needsFunding
+                    ? "Finalized security deposit · your approved share is ready to fund"
+                    : "Finalized security deposit · open to view its current status"}
               </small>
             </span>
           </span>
           <span className="deposit-list-actions" aria-hidden="true">
-            <span className="deposit-status-badge">Finalized</span>
+            <span className="deposit-status-badge">
+              {needsFunding ? "Funding needed" : "Finalized"}
+            </span>
             <span className="record-expand-label">
               {expanded ? "Hide details" : "Show details"}
               <span className="record-expand-chevron">⌄</span>
