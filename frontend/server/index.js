@@ -768,6 +768,10 @@ const RECEIPT_EVENT_TOPICS = Object.freeze({
     "0x2aca0841f18e301ab87df30a3dd50b022d848e0b1ee373dcbe9f914886b2eea7",
 });
 const INDEXED_OPEN_ESCROW_EVENTS = Object.freeze({
+  [RECEIPT_EVENT_TOPICS.agreementProposed]: {
+    eventType: "finalize",
+    recordedActions: ["posted_onchain"],
+  },
   [RECEIPT_EVENT_TOPICS.proposalCancelled]: {
     eventType: "onchain_proposal_cancelled",
     recordedActions: ["onchain_proposal_cancelled"],
@@ -4510,7 +4514,7 @@ async function unsubscribe(request, env) {
     .bind(now, row.user_id)
     .run();
   return new Response(
-    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>OpenEscrow notifications</title><body style="font-family:system-ui;max-width:42rem;margin:4rem auto;padding:0 1rem;color:#171923"><h1>Email notifications are off</h1><p>Optional agreement-activity and deadline-reminder emails have been disabled for this OpenEscrow account. Required invitation or deduction-claim notices may still be sent as part of an active agreement.</p><p><a href="/">Return to OpenEscrow</a></p></body></html>`,
+    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>OpenEscrow notifications</title><body style="font-family:system-ui;max-width:42rem;margin:4rem auto;padding:0 1rem;color:#171923"><h1>Email notifications are off</h1><p>Optional agreement-activity and deadline-reminder emails have been disabled for this OpenEscrow account. Required invitation, finalization, funding, or deduction-claim notices may still be sent as part of an active agreement.</p><p><a href="/">Return to OpenEscrow</a></p></body></html>`,
     {
       headers: {
         "content-type": "text/html; charset=utf-8",
@@ -7196,6 +7200,7 @@ async function sendOptedInAgreementActivityEmails(
     "tenant",
     tenant.email,
   ]);
+  const agreementNumber = String(row.onchain_agreement_id ?? "");
   const allAgreementRecipients = [
     ["landlord", row.landlord_email],
     ...tenantRecipients,
@@ -7204,19 +7209,19 @@ async function sendOptedInAgreementActivityEmails(
   const claimResponseCopy =
     {
       approve: {
-        subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} deduction approved`,
+        subject: `OpenEscrow agreement #${agreementNumber} deduction approved`,
         text: "The tenant approved the documented deduction claim. Review the recorded decision and resulting allocation in OpenEscrow.",
       },
       partial: {
-        subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} deduction partially disputed`,
+        subject: `OpenEscrow agreement #${agreementNumber} deduction partially disputed`,
         text: "The tenant approved part of the documented deduction and disputed the remainder. Review the recorded decision and next step in OpenEscrow.",
       },
       dispute: {
-        subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} deduction disputed`,
+        subject: `OpenEscrow agreement #${agreementNumber} deduction disputed`,
         text: "The tenant disputed the documented deduction claim. Review the recorded explanation and resolution status in OpenEscrow.",
       },
     }[activity.decision] || {
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} claim response`,
+      subject: `OpenEscrow agreement #${agreementNumber} claim response`,
       text: "The tenant responded to the deduction claim. Review the recorded decision and next step in OpenEscrow.",
     };
   const notification = {
@@ -7225,20 +7230,17 @@ async function sendOptedInAgreementActivityEmails(
         ...tenantRecipients,
         ["arbiter", row.arbiter_email],
       ],
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} finalized`,
+      subject: `OpenEscrow agreement #${agreementNumber} finalized`,
       text: "The approved proposal was finalized on Base Sepolia.",
     },
     agreement_funded: {
       recipients: [["landlord", row.landlord_email]],
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} funded`,
+      subject: `OpenEscrow agreement #${agreementNumber} funded`,
       text: "The tenant accepted the finalized terms and funded the refundable deposit.",
     },
     tenant_share_funded: {
-      recipients: [
-        ["landlord", row.landlord_email],
-        ...tenantRecipients,
-      ],
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} received a tenant contribution`,
+      recipients: [["landlord", row.landlord_email]],
+      subject: `OpenEscrow agreement #${agreementNumber} received a tenant contribution`,
       text: "A tenant funded their approved portion of the refundable deposit. The agreement becomes active only after every tenant contribution is received.",
     },
     claim_submitted: {
@@ -7246,7 +7248,7 @@ async function sendOptedInAgreementActivityEmails(
         ["landlord", row.landlord_email],
         ...tenantRecipients,
       ],
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} deduction claim submitted`,
+      subject: `OpenEscrow agreement #${agreementNumber} deduction claim submitted`,
       text: "A documented deduction claim was recorded. Review the private agreement workspace for the itemization and next action.",
     },
     claim_amended: {
@@ -7254,7 +7256,7 @@ async function sendOptedInAgreementActivityEmails(
         ["landlord", row.landlord_email],
         ...tenantRecipients,
       ],
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} claim amended`,
+      subject: `OpenEscrow agreement #${agreementNumber} claim amended`,
       text: "The landlord amended the deduction claim. Review the updated line items and documentation in OpenEscrow.",
     },
     claim_response: {
@@ -7267,12 +7269,12 @@ async function sendOptedInAgreementActivityEmails(
     },
     claim_settled: {
       recipients: allAgreementRecipients,
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} claim settled`,
+      subject: `OpenEscrow agreement #${agreementNumber} claim settled`,
       text: "Every tenant response was recorded and the undisputed deduction allocation is now available to review in OpenEscrow.",
     },
     dispute_created: {
       recipients: allAgreementRecipients,
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} dispute opened`,
+      subject: `OpenEscrow agreement #${agreementNumber} dispute opened`,
       text: "Every tenant response was recorded and a deduction dispute is now awaiting resolution. Review the private agreement workspace for the next step.",
     },
     arbiter_ruling: {
@@ -7280,7 +7282,7 @@ async function sendOptedInAgreementActivityEmails(
         ["landlord", row.landlord_email],
         ...tenantRecipients,
       ],
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} ruling recorded`,
+      subject: `OpenEscrow agreement #${agreementNumber} ruling recorded`,
       text: "The appointed arbiter recorded a ruling. Review the allocation and transaction receipt in OpenEscrow.",
     },
     cancel_proposal: {
@@ -7290,57 +7292,57 @@ async function sendOptedInAgreementActivityEmails(
     },
     onchain_proposal_cancelled: {
       recipients: allAgreementRecipients,
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} cancelled`,
+      subject: `OpenEscrow agreement #${agreementNumber} cancelled`,
       text: "The unfunded onchain agreement was cancelled on Base Sepolia. Review the recorded transaction in OpenEscrow.",
     },
     claim_retracted: {
       recipients: allAgreementRecipients,
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} claim withdrawn`,
+      subject: `OpenEscrow agreement #${agreementNumber} claim withdrawn`,
       text: "The landlord withdrew the deduction claim. Review the resulting refund allocation in OpenEscrow.",
     },
     withdrawal_completed: {
       recipients: allAgreementRecipients,
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} withdrawal completed`,
+      subject: `OpenEscrow agreement #${agreementNumber} withdrawal completed`,
       text: "An agreement party completed an available withdrawal. Review the participant-controlled record and transaction receipt in OpenEscrow.",
     },
     no_claim_refund_available: {
       recipients: allAgreementRecipients,
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} full refund recorded`,
+      subject: `OpenEscrow agreement #${agreementNumber} full refund recorded`,
       text: "The no-claim period ended and the full tenant refund was recorded on Base Sepolia. Review the resulting allocation in OpenEscrow.",
     },
     response_timeout_escalated: {
       recipients: allAgreementRecipients,
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} response period ended`,
+      subject: `OpenEscrow agreement #${agreementNumber} response period ended`,
       text: "A claim response deadline passed without every tenant response, so the contract escalated the disputed amount for resolution. Review the current status in OpenEscrow.",
     },
     arbiter_timeout_allocation: {
       recipients: allAgreementRecipients,
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} timeout allocation recorded`,
+      subject: `OpenEscrow agreement #${agreementNumber} timeout allocation recorded`,
       text: "The arbiter ruling period ended and the contract recorded the tenant allocation. Review the resulting balances in OpenEscrow.",
     },
     arbiter_replacement_proposed: {
       recipients: allAgreementRecipients,
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} arbiter change proposed`,
+      subject: `OpenEscrow agreement #${agreementNumber} arbiter change proposed`,
       text: "An agreement party proposed replacing the optional arbiter. Review and confirm or decline the pending change in OpenEscrow.",
     },
     arbiter_replacement_confirmed: {
       recipients: allAgreementRecipients,
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} arbiter change confirmed`,
+      subject: `OpenEscrow agreement #${agreementNumber} arbiter change confirmed`,
       text: "Both agreement sides confirmed the optional-arbiter replacement. The nominee must still accept before access changes.",
     },
     arbiter_replacement_cancelled: {
       recipients: allAgreementRecipients,
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} arbiter change cancelled`,
+      subject: `OpenEscrow agreement #${agreementNumber} arbiter change cancelled`,
       text: "The pending optional-arbiter replacement was cancelled. Existing agreement access remains unchanged.",
     },
     arbiter_replacement_accepted: {
       recipients: allAgreementRecipients,
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} arbiter changed`,
+      subject: `OpenEscrow agreement #${agreementNumber} arbiter changed`,
       text: "The mutually approved replacement arbiter accepted the role. Review the updated participant access in OpenEscrow.",
     },
     arbiter_resigned: {
       recipients: allAgreementRecipients,
-      subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""} arbiter resigned`,
+      subject: `OpenEscrow agreement #${agreementNumber} arbiter resigned`,
       text: "The optional arbiter resigned from this agreement. The landlord and tenants should review whether a mutually approved replacement is needed.",
     },
   }[eventType];
@@ -7354,13 +7356,19 @@ async function sendOptedInAgreementActivityEmails(
     const normalizedRecipient = normalizeEmail(email);
     if (!normalizedRecipient || seenEmails.has(normalizedRecipient)) continue;
     seenEmails.add(normalizedRecipient);
-    const preferences = await env.DB
-      .prepare(
-        "SELECT agreement_activity FROM notification_preferences WHERE lower(email) = lower(?) AND consented_at IS NOT NULL",
-      )
-      .bind(email)
-      .first();
-    if (Number(preferences?.agreement_activity) !== 1) continue;
+    const requiredWorkflowNotice =
+      (eventType === "finalize" && recipientRole === "tenant") ||
+      ((eventType === "tenant_share_funded" || eventType === "agreement_funded") &&
+        recipientRole === "landlord");
+    if (!requiredWorkflowNotice) {
+      const preferences = await env.DB
+        .prepare(
+          "SELECT agreement_activity FROM notification_preferences WHERE lower(email) = lower(?) AND consented_at IS NOT NULL",
+        )
+        .bind(email)
+        .first();
+      if (Number(preferences?.agreement_activity) !== 1) continue;
+    }
     try {
       const unsubscribeUrl = await unsubscribeUrlFor(env.DB, appUrl, email);
       const recipientKey = (await hashToken(email)).slice(0, 16);
@@ -7370,12 +7378,36 @@ async function sendOptedInAgreementActivityEmails(
         (/^0x[0-9a-f]{64}$/.test(transactionHash)
           ? transactionHash.slice(2)
           : row.updated_at);
+      const actionUrl = new URL(appUrl);
+      if (row.onchain_agreement_id !== null && row.onchain_agreement_id !== undefined) {
+        actionUrl.searchParams.set("id", String(row.onchain_agreement_id));
+      }
+      if (recipientRole === "tenant") {
+        actionUrl.searchParams.set("invite", "tenant");
+      } else if (recipientRole === "arbiter") {
+        actionUrl.searchParams.set("invite", "arbiter");
+      }
+      let subject = notification.subject;
+      let text = notification.text;
+      if (eventType === "finalize" && recipientRole === "tenant") {
+        subject = `OpenEscrow agreement #${agreementNumber} is ready to fund`;
+        text =
+          "The agreement you approved has been finalized on Base Sepolia. Your approved security-deposit share is now ready to fund. Sign in with this email address and open the deposit to complete the funding steps.";
+      } else if (eventType === "tenant_share_funded" && recipientRole === "landlord") {
+        subject = `Tenant funding received for OpenEscrow agreement #${agreementNumber}`;
+        text =
+          "A tenant funded their approved share of the refundable security deposit. Open the agreement to review current funding progress. OpenEscrow sends a separate confirmation as each tenant contribution is received.";
+      } else if (eventType === "agreement_funded" && recipientRole === "landlord") {
+        subject = `OpenEscrow agreement #${agreementNumber} is fully funded`;
+        text =
+          "The final tenant contribution was received. The approved security deposit is now fully funded and the agreement is active.";
+      }
       const delivered = await deliverTrackedEmail(env, {
         negotiationId: row.id,
         recipientEmail: email,
         notificationType: `agreement_activity_${eventType}`,
-        subject: notification.subject,
-        text: `${notification.text}\n\nOpen your signed-in dashboard: ${appUrl}\n\nThis email intentionally omits evidence, tenancy details, and private notes.${unsubscribeUrl ? `\n\nTurn off optional OpenEscrow emails: ${unsubscribeUrl}` : ""}`,
+        subject,
+        text: `${text}\n\nOpen your signed-in dashboard: ${actionUrl.toString()}\n\nThis email intentionally omits evidence, tenancy details, and private notes.${unsubscribeUrl && !requiredWorkflowNotice ? `\n\nTurn off optional OpenEscrow emails: ${unsubscribeUrl}` : ""}`,
         idempotencyKey:
           `agreement-${row.id}-${eventType}-${recipientRole}-${recipientKey}-` +
           stableDeliveryKey,

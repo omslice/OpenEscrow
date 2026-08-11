@@ -7949,6 +7949,7 @@ test("the onchain indexer covers every supported lifecycle event and recipient b
   ]);
 
   const cases = [
+    [AGREEMENT_PROPOSED_TOPIC, "finalize", ["tenant@example.com"]],
     [
       PROPOSAL_CANCELLED_TOPIC,
       "onchain_proposal_cancelled",
@@ -7957,7 +7958,7 @@ test("the onchain indexer covers every supported lifecycle event and recipient b
     [
       TENANT_SHARE_FUNDED_TOPIC,
       "tenant_share_funded",
-      ["landlord@example.com", "tenant@example.com"],
+      ["landlord@example.com"],
     ],
     [AGREEMENT_FUNDED_TOPIC, "agreement_funded", ["landlord@example.com"]],
     [
@@ -8365,9 +8366,9 @@ test("the onchain indexer retries failed in-app activity email without duplicati
            AND status = 'failed'`,
       )
       .first().count,
-    2,
+    1,
   );
-  assert.equal(failedKeys.length, 2);
+  assert.equal(failedKeys.length, 1);
 
   const indexedLog = {
     address: RECEIPT_TEST_OPEN_ESCROW,
@@ -8415,7 +8416,7 @@ test("the onchain indexer retries failed in-app activity email without duplicati
       await Promise.all(waits);
     };
     await runScheduled(Date.parse("2026-08-10T12:15:00.000Z"));
-    assert.equal(providerCalls.length, 2);
+    assert.equal(providerCalls.length, 1);
     assert.ok(
       providerCalls.every((call) =>
         call.idempotencyKey.endsWith(fundingTransaction.slice(2)),
@@ -8435,7 +8436,7 @@ test("the onchain indexer retries failed in-app activity email without duplicati
              AND status = 'sent'`,
         )
         .first().count,
-      2,
+      1,
     );
     const indexed = db
       .prepare(
@@ -8458,7 +8459,7 @@ test("the onchain indexer retries failed in-app activity email without duplicati
     );
 
     await runScheduled(Date.parse("2026-08-10T12:30:00.000Z"));
-    assert.equal(providerCalls.length, 2, "A recovered delivery must not resend.");
+    assert.equal(providerCalls.length, 1, "A recovered delivery must not resend.");
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -11559,6 +11560,120 @@ test("the landlord is notified when all required approvals make a proposal ready
         status: "sent",
         provider_message_id: "ready-message-1",
       },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("finalization sends the tenant a required ready-to-fund email with a direct agreement link", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "approve",
+      wallet: RECEIPT_TEST_TENANT,
+    }),
+  );
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `finalized-funding-${deliveries.length}` });
+  };
+  try {
+    const finalized = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.landlord,
+        {
+          type: "finalize",
+          agreementId: "42",
+          transactionHash: transactionHash(80_001),
+        },
+        {
+          RESEND_API_KEY: "re_finalization_test",
+          NOTIFICATION_FROM_EMAIL:
+            "OpenEscrow <notifications@updates.openescrow.io>",
+          PUBLIC_APP_URL: "https://openescrow.io/",
+        },
+      ),
+    );
+    assert.equal(finalized.status, "finalized");
+    assert.equal(deliveries.length, 1);
+    assert.deepEqual(deliveries[0].to, ["tenant@example.com"]);
+    assert.match(deliveries[0].subject, /agreement #42 is ready to fund/i);
+    assert.match(deliveries[0].text, /security-deposit share is now ready to fund/i);
+    assert.match(
+      deliveries[0].text,
+      /https:\/\/openescrow\.io\/\?id=42&invite=tenant/,
+    );
+    assert.doesNotMatch(deliveries[0].text, /Turn off optional OpenEscrow emails/i);
+    assert.deepEqual(
+      {
+        ...db
+          .prepare(
+            `SELECT recipient_email, notification_type, status, provider_message_id
+             FROM notification_deliveries
+             WHERE negotiation_id = ? AND notification_type = 'agreement_activity_finalize'`,
+          )
+          .bind(created.record.id)
+          .first(),
+      },
+      {
+        recipient_email: "tenant@example.com",
+        notification_type: "agreement_activity_finalize",
+        status: "sent",
+        provider_message_id: "finalized-funding-1",
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("each tenant contribution sends the landlord a required funding confirmation", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `tenant-funded-${deliveries.length}` });
+  };
+  try {
+    const funded = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.tenant,
+        {
+          type: "tenant_share_funded",
+          transactionHash: transactionHash(80_002),
+        },
+        {
+          RESEND_API_KEY: "re_tenant_funded_test",
+          NOTIFICATION_FROM_EMAIL:
+            "OpenEscrow <notifications@updates.openescrow.io>",
+          PUBLIC_APP_URL: "https://openescrow.io/",
+        },
+      ),
+    );
+    assert.equal(deliveries.length, 1);
+    assert.deepEqual(deliveries[0].to, ["landlord@example.com"]);
+    assert.match(deliveries[0].subject, /Tenant funding received.*agreement #42/i);
+    assert.match(deliveries[0].text, /separate confirmation as each tenant contribution/i);
+    assert.match(deliveries[0].text, /https:\/\/openescrow\.io\/\?id=42/);
+    assert.equal(
+      funded.events.filter(
+        (event) =>
+          event.action === "agreement_activity_notification_sent" &&
+          event.metadata?.eventType === "tenant_share_funded" &&
+          event.metadata?.recipientRole === "landlord",
+      ).length,
+      1,
     );
   } finally {
     globalThis.fetch = originalFetch;
