@@ -5343,7 +5343,7 @@ test("address suggestions validate same-origin queries, normalize Photon results
   }
 });
 
-test("address suggestions use a strict Census fallback for a complete U.S. address", async () => {
+test("address suggestions use Census fallback for a U.S. street with city/state or ZIP", async () => {
   const originalFetch = globalThis.fetch;
   const upstreamUrls = [];
   globalThis.fetch = async (input, init) => {
@@ -5426,6 +5426,87 @@ test("address suggestions use a strict Census fallback for a complete U.S. addre
     const cached = await worker.fetch(request(path), env);
     assert.equal(cached.headers.get("x-openescrow-cache"), "HIT");
     assert.equal(upstreamUrls.length, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("address suggestions do not require commas or a ZIP when city and state are present", async () => {
+  const originalFetch = globalThis.fetch;
+  const upstreamUrls = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(input);
+    upstreamUrls.push(url.toString());
+    if (url.origin === "https://geocoder.example") {
+      return Response.json({ type: "FeatureCollection", features: [] });
+    }
+    assert.equal(url.origin, "https://census.example");
+    assert.equal(
+      url.searchParams.get("address"),
+      "4243 W Bancroft St Apt 103E Ottawa Hills OH",
+    );
+    return Response.json({
+      result: {
+        addressMatches: [
+          {
+            matchedAddress: "4243 W BANCROFT ST, OTTAWA HILLS, OH, 43615",
+            coordinates: { x: -83.642754643433, y: 41.662524901584 },
+            tigerLine: { tigerLineId: "33934790", side: "L" },
+            addressComponents: {
+              city: "OTTAWA HILLS",
+              state: "OH",
+              zip: "43615",
+            },
+          },
+        ],
+      },
+    });
+  };
+  try {
+    const env = {
+      GEOCODER_BASE_URL: "https://geocoder.example/photon",
+      CENSUS_GEOCODER_BASE_URL: "https://census.example/geocoder",
+      ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+    };
+    const response = await worker.fetch(
+      request(
+        "/api/address-suggestions?q=4243%20W%20Bancroft%20St%20Apt%20103E%20Ottawa%20Hills%20OH",
+      ),
+      env,
+    );
+    const body = await jsonResponse(response);
+    assert.equal(response.status, 200);
+    assert.equal(upstreamUrls.length, 2);
+    assert.equal(body.suggestions.length, 1);
+    assert.equal(
+      body.suggestions[0].label,
+      "4243 W BANCROFT ST Apt 103E, OTTAWA HILLS, OH, 43615",
+    );
+    assert.equal(body.suggestions[0].stateCode, "OH");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("address suggestions do not call Census for ambiguous street-only input", async () => {
+  const originalFetch = globalThis.fetch;
+  const upstreamUrls = [];
+  globalThis.fetch = async (input) => {
+    upstreamUrls.push(new URL(input).toString());
+    return Response.json({ type: "FeatureCollection", features: [] });
+  };
+  try {
+    const response = await worker.fetch(
+      request("/api/address-suggestions?q=4243%20W%20Bancroft%20St"),
+      {
+        GEOCODER_BASE_URL: "https://geocoder.example/photon",
+        CENSUS_GEOCODER_BASE_URL: "https://census.example/geocoder",
+      },
+    );
+    const body = await jsonResponse(response);
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.suggestions, []);
+    assert.equal(upstreamUrls.length, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }

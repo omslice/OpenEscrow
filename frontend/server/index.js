@@ -12307,8 +12307,20 @@ function normalizeCensusAddressSuggestions(value, query) {
   return suggestions;
 }
 
-function isCompleteUsAddressQuery(query) {
-  return /^\s*\d+[a-z]?\b/i.test(query) && /\b\d{5}(?:-\d{4})?\s*$/.test(query);
+function isSearchableUsAddressQuery(query) {
+  if (!/^\s*\d+[a-z]?\b/i.test(query)) return false;
+  const searchText = query.replace(
+    /\b(?:apt(?:artment)?|unit|suite|ste)\.?\s*[a-z0-9-]+\b|#\s*[a-z0-9-]+\b/gi,
+    " ",
+  );
+  const addressParts = searchText.match(/[a-z0-9]+/gi) || [];
+  if (addressParts.length < 3) return false;
+  const hasPostalCode = /\b\d{5}(?:-\d{4})?\b/.test(searchText);
+  const hasStateCode = (searchText.toUpperCase().match(/\b[A-Z]{2}\b/g) || []).some(
+    (stateCode) =>
+      Boolean(US_JURISDICTION_PROFILE_BY_CODE[`us-${stateCode.toLowerCase()}`]),
+  );
+  return hasPostalCode || hasStateCode;
 }
 
 async function fetchAddressJson(url) {
@@ -12371,7 +12383,7 @@ async function addressSuggestions(request, env) {
 
   try {
     let suggestions = normalizeAddressSuggestions(await fetchAddressJson(geocoderUrl));
-    if (suggestions.length === 0 && isCompleteUsAddressQuery(query)) {
+    if (suggestions.length === 0 && isSearchableUsAddressQuery(query)) {
       const censusBaseUrl = new URL(
         cleanText(env.CENSUS_GEOCODER_BASE_URL, 1000) ||
           DEFAULT_CENSUS_GEOCODER_BASE_URL,

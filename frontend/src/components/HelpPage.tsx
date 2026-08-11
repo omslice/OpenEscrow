@@ -10,33 +10,21 @@ const roleGuides = [
     id: "landlord-guide",
     label: "Landlord",
     steps: [
-      "Use invented test information. Create a proposal with the deposit amount, tenant shares, deadlines, and an optional arbiter.",
-      "Send each private invitation only to its intended participant. The public blockchain does not contain the private proposal or evidence file.",
-      "Wait for every participant to accept the final terms and, if named, for the arbiter to accept before asking tenants to fund.",
-      "Before the claim deadline, either release the deposit or submit one documented deduction claim. A claim may be amended once only to keep or reduce the amount.",
-      "If the tenant disputes any amount, provide the accepted arbiter with the private record and follow the fixed ruling deadline.",
+      "Use invented test information. Create a proposal with the deposit amount, tenant shares, and deadlines.",
+      "Wait for every tenant to accept the final terms before asking them to fund.",
+      "After the lease term expires, either release the deposit or submit a documented deduction claim.",
+      "If a tenant disputes a deduction, work with the tenant to resolve it if possible. OpenEscrow preserves the shared record of the claim and response.",
     ],
   },
   {
     id: "tenant-guide",
     label: "Tenant",
     steps: [
-      "Open your role-specific invitation and verify the property, deposit amount, your ownership share, deadlines, token, and proposed arbiter.",
-      "Accept only terms you understand. On this public prototype, fund only with valueless Base Sepolia test tokens.",
-      "Keep your private record export and transaction receipts. Do not place sensitive evidence or personal information onchain.",
-      "Review a deduction claim before the response deadline. You may accept it, counter with a lower landlord amount, or reject it.",
-      "After closure, withdraw the amount credited to you. If a deadline expires, a person still has to submit the applicable transaction; the contract does not act automatically.",
-    ],
-  },
-  {
-    id: "arbiter-guide",
-    label: "Arbiter",
-    steps: [
-      "Accept the role only after reviewing the scope, deadlines, neutrality expectations, and your ability to evaluate the parties' private evidence.",
-      "You do not hold the deposit and OpenEscrow does not verify your identity, credentials, neutrality, or legal authority.",
-      "If a dispute opens, review the private record and allocate the disputed test-token amount between landlord and tenant before the fixed ruling deadline.",
-      "Record the decision through the designated workspace. There is no appeal or decentralized arbitration layer in this prototype.",
-      "If you cannot serve, resign promptly. A replacement needs mutual party consent and the replacement's acceptance; replacement never extends the ruling deadline.",
+      "Open your role-specific invitation and verify the property, deposit amount, your share, deadlines, and selected test token.",
+      "Accept the terms.",
+      "Fund your portion of the deposit with valueless Base Sepolia test tokens.",
+      "After the lease period expires, review any deduction claims your landlord submits and indicate whether you approve or dispute them.",
+      "After the claim period expires, receive your refund.",
     ],
   },
 ];
@@ -135,6 +123,10 @@ export function HelpPage() {
               </article>
             ))}
           </div>
+          <p className="field-help">
+            In-app arbitration is planned for a future release. The current reviewer flow focuses
+            on a shared, timestamped record for landlords and tenants.
+          </p>
         </section>
 
         <section id="lifecycles" aria-labelledby="lifecycles-title">

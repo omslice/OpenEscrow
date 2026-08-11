@@ -629,6 +629,11 @@
   text-underline-offset: 3px;
 }
 
+.help-page a.btn-primary {
+  color: var(--accent-on);
+  text-decoration: none;
+}
+
 .help-section-nav,
 .help-actions,
 .project-demo-links {
@@ -694,7 +699,7 @@
 
 .role-guide-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
 }
 

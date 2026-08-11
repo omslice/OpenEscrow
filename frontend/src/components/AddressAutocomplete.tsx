@@ -336,9 +336,10 @@ export function AddressAutocomplete({
           >
             U.S. Census Bureau geocoder
           </a>
-          . Use a complete U.S. street address, including the building number.
-          A “Validated” result locks the matching state profile; a manually
-          entered address does not.
+          . Start with the building number and street, then add either the city
+          and state or the ZIP code. Commas are optional, and you can include an
+          apartment or unit number. Choose a suggestion to apply the matching
+          state requirements; a manually entered address does not.
         </small>
       )}
     </div>

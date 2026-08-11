@@ -2700,8 +2700,11 @@ function AgreementForm({
           </label>
           <label>
             <span>
-              <strong>Assistance-animal accommodation affects deposit treatment</strong>
-              <small>No diagnosis or medical documentation is stored here.</small>
+              <strong>Do special deposit rules apply because of an assistance animal?</strong>
+              <small>
+                Choose Yes only if an approved accommodation changes how this deposit
+                should be handled. Do not enter medical details.
+              </small>
             </span>
             <select
               value={String(complianceFacts.assistanceAnimalAccommodation)}
@@ -2718,15 +2721,20 @@ function AgreementForm({
                 }))
               }
             >
-              <option value="unknown">Unknown / not answered</option>
+              <option value="unknown">Not sure</option>
               <option value="true">Yes</option>
               <option value="false">No</option>
             </select>
           </label>
           <label>
             <span>
-              <strong>Qualifying SCRA lease termination asserted</strong>
-              <small>Orders and military details stay outside the general agreement record.</small>
+              <strong>
+                Is a tenant ending the lease early because of qualifying military orders?
+              </strong>
+              <small>
+                Federal protections under the Servicemembers Civil Relief Act (SCRA) may
+                apply. Do not upload military orders here.
+              </small>
             </span>
             <select
               value={String(complianceFacts.scraQualifiedTermination)}
@@ -2743,14 +2751,15 @@ function AgreementForm({
                 }))
               }
             >
-              <option value="unknown">Unknown / not asserted</option>
-              <option value="true">Yes, asserted</option>
+              <option value="unknown">Not sure</option>
+              <option value="true">Yes</option>
               <option value="false">No</option>
             </select>
           </label>
           <p className="field-help">
-            OpenEscrow never infers these facts from an address. VAWA survivor details and
-            emergency-transfer information must not be entered or uploaded here.
+            These answers are not inferred from the address. Do not enter or upload medical
+            details, military orders, survivor information, or confidential relocation
+            details.
           </p>
         </fieldset>
       )}
