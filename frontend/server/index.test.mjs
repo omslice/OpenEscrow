@@ -7234,6 +7234,13 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     assert.equal(deliveries.length, 1);
     assert.equal(deliveries[0].url, "https://api.resend.com/emails");
     assert.deepEqual(deliveries[0].body.to, ["tenant@example.com"]);
+    assert.match(deliveries[0].body.text, /Open OpenEscrow: https:\/\/openescrow\.io\/?/);
+    assert.match(
+      deliveries[0].body.html,
+      /openescrow-logo-tapered-dark\.png/,
+    );
+    assert.match(deliveries[0].body.html, />Open OpenEscrow<\/a>/);
+    assert.match(deliveries[0].body.html, /alt="OpenEscrow"/);
 
     const landlordInviteRequest = () =>
       new Request("https://openescrow.example/api/profile/landlord-invite", {
@@ -7257,6 +7264,11 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     assert.deepEqual(deliveries[1].body.to, ["landlord@example.com"]);
     assert.match(deliveries[1].body.subject, /tenant invited you/i);
     assert.match(deliveries[1].body.text, /https:\/\/openescrow\.example/);
+    assert.match(deliveries[1].body.html, /https:\/\/openescrow\.io\/?/);
+    assert.match(
+      deliveries[1].body.html,
+      /openescrow-logo-tapered-dark\.png/,
+    );
     assert.deepEqual(
       {
         ...db.database
@@ -8216,6 +8228,16 @@ test("the onchain indexer covers every supported lifecycle event and recipient b
         call.text,
         /This email intentionally omits evidence, tenancy details, and private notes\./,
         `${call.subject} must remain privacy-minimal.`,
+      );
+      assert.match(
+        call.html,
+        /openescrow-logo-tapered-dark\.png/,
+        `${call.subject} must include the OpenEscrow wordmark.`,
+      );
+      assert.match(
+        call.html,
+        />Open OpenEscrow<\/a>/,
+        `${call.subject} must include an app action button.`,
       );
     }
   } finally {

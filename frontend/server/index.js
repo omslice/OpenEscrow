@@ -2467,6 +2467,116 @@ async function resendDeliveryWebhook(request, env) {
   });
 }
 
+function escapeEmailHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function notificationAppUrl(env, text = "") {
+  const appUrl = new URL(publicAppOrigin(env, "https://openescrow.io/"));
+  const candidates = String(text).match(/https:\/\/[^\s<>"']+/g) || [];
+  for (const rawCandidate of candidates) {
+    try {
+      const candidate = new URL(rawCandidate.replace(/[),.;]+$/, ""));
+      if (
+        candidate.origin === appUrl.origin &&
+        candidate.pathname !== "/api/notifications/unsubscribe"
+      ) {
+        return candidate.toString();
+      }
+    } catch {
+      // Ignore malformed text fragments and fall back to the configured app.
+    }
+  }
+  return appUrl.toString();
+}
+
+function textWithOpenEscrowLink(env, text) {
+  const appUrl = new URL(publicAppOrigin(env, "https://openescrow.io/"));
+  const body = String(text ?? "").trim();
+  const alreadyLinksToApp = (body.match(/https:\/\/[^\s<>"']+/g) || []).some(
+    (candidate) => {
+      try {
+        return new URL(candidate.replace(/[),.;]+$/, "")).origin === appUrl.origin;
+      } catch {
+        return false;
+      }
+    },
+  );
+  return alreadyLinksToApp
+    ? body
+    : `${body}${body ? "\n\n" : ""}Open OpenEscrow: ${appUrl.toString()}`;
+}
+
+function linkifyEmailText(value) {
+  const raw = String(value ?? "");
+  const urlPattern = /https:\/\/[^\s<>"']+/g;
+  let cursor = 0;
+  let html = "";
+  for (const match of raw.matchAll(urlPattern)) {
+    const index = match.index ?? 0;
+    html += escapeEmailHtml(raw.slice(cursor, index));
+    const url = match[0].replace(/[),.;]+$/, "");
+    const suffix = match[0].slice(url.length);
+    html += `<a href="${escapeEmailHtml(url)}" style="color:#c982ff;text-decoration:underline;word-break:break-all;">${escapeEmailHtml(url)}</a>${escapeEmailHtml(suffix)}`;
+    cursor = index + match[0].length;
+  }
+  return `${html}${escapeEmailHtml(raw.slice(cursor))}`.replaceAll("\n", "<br>");
+}
+
+function notificationEmailHtml(env, { subject, text }) {
+  const appUrl = new URL(publicAppOrigin(env, "https://openescrow.io/"));
+  const actionUrl = notificationAppUrl(env, text);
+  const logoUrl = new URL("/openescrow-logo-tapered-dark.png", appUrl).toString();
+  const paragraphs = String(text ?? "")
+    .split(/\n{2,}/)
+    .map((paragraph) => paragraph.trim())
+    .filter(Boolean)
+    .map(
+      (paragraph) =>
+        `<p style="margin:0 0 18px;color:#e8e6ec;font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.55;">${linkifyEmailText(paragraph)}</p>`,
+    )
+    .join("");
+  return `<!doctype html>
+<html lang="en">
+  <body style="margin:0;padding:0;background:#08060d;color:#e8e6ec;">
+    <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#08060d;">
+      <tr>
+        <td align="center" style="padding:28px 16px;">
+          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:600px;background:#15141b;border:1px solid #3b3346;border-radius:18px;">
+            <tr>
+              <td style="padding:28px 30px 8px;">
+                <a href="${escapeEmailHtml(appUrl.toString())}" style="text-decoration:none;">
+                  <img src="${escapeEmailHtml(logoUrl)}" width="180" alt="OpenEscrow" style="display:block;width:180px;max-width:100%;height:auto;border:0;">
+                </a>
+              </td>
+            </tr>
+            <tr>
+              <td style="padding:16px 30px 30px;">
+                <h1 style="margin:0 0 20px;color:#ffffff;font-family:Arial,Helvetica,sans-serif;font-size:25px;line-height:1.25;">${escapeEmailHtml(subject)}</h1>
+                ${paragraphs}
+                <table role="presentation" cellspacing="0" cellpadding="0" border="0" style="margin-top:24px;">
+                  <tr>
+                    <td bgcolor="#a85de8" style="border-radius:10px;">
+                      <a href="${escapeEmailHtml(actionUrl)}" style="display:inline-block;padding:13px 22px;color:#08060d;font-family:Arial,Helvetica,sans-serif;font-size:16px;font-weight:700;text-decoration:none;">Open OpenEscrow</a>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+          <p style="max-width:600px;margin:16px auto 0;color:#9f9aa9;font-family:Arial,Helvetica,sans-serif;font-size:12px;line-height:1.5;">OpenEscrow is free, open-source software. This message intentionally avoids private agreement details.</p>
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`;
+}
+
 async function deliverEmail(
   env,
   { to, subject, text, idempotencyKey },
@@ -2483,6 +2593,8 @@ async function deliverEmail(
   for (const recipient of recipients) {
     if (await isNotificationSuppressed(env.DB, recipient)) return null;
   }
+  const linkedText = textWithOpenEscrowLink(env, text);
+  const html = notificationEmailHtml(env, { subject, text: linkedText });
 
   try {
     if (provider === "resend") {
@@ -2498,7 +2610,8 @@ async function deliverEmail(
           from: env.NOTIFICATION_FROM_EMAIL,
           to: recipients,
           subject,
-          text,
+          text: linkedText,
+          html,
         }),
       });
       const result = await sent.json().catch(() => ({}));
@@ -2519,7 +2632,8 @@ async function deliverEmail(
         from: env.NOTIFICATION_FROM_EMAIL,
         to: recipients,
         subject,
-        text,
+        text: linkedText,
+        html,
         idempotencyKey: idempotencyKey || null,
       }),
     });
