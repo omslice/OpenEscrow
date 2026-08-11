@@ -4,6 +4,7 @@ import type { NegotiationAccess, NegotiationRecord } from "./negotiations.ts";
 import {
   mergeSavedRecordRefresh,
   refreshOpenProposalAccess,
+  shouldClearDetachedInviteAccess,
   type SavedRecord,
 } from "./savedRecordRefresh.ts";
 
@@ -51,4 +52,21 @@ test("background discovery replaces an open proposal's stale account session", (
   assert.equal(refreshOpenProposalAccess(current, [refreshed])?.token, "fresh-session");
   assert.equal(refreshOpenProposalAccess(current, [saved("two", 1)])?.token, "stale-session");
   assert.equal(refreshOpenProposalAccess(null, [refreshed]), null);
+});
+
+test("only a detached invitation credential is cleared after leaving invitation mode", () => {
+  const accountTenant = {
+    ...access("one"),
+    role: "tenant" as const,
+    source: "account" as const,
+  };
+  const inviteTenant = {
+    ...accountTenant,
+    source: "invite" as const,
+  };
+
+  assert.equal(shouldClearDetachedInviteAccess(accountTenant, null, false), false);
+  assert.equal(shouldClearDetachedInviteAccess(inviteTenant, "tenant", true), false);
+  assert.equal(shouldClearDetachedInviteAccess(inviteTenant, null, false), true);
+  assert.equal(shouldClearDetachedInviteAccess(null, null, false), false);
 });

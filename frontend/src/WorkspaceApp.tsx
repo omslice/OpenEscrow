@@ -20,6 +20,7 @@ import { DepositAgreementListItem } from "./components/DepositAgreementListItem"
 import { RecordListItem } from "./components/RecordListItem";
 import { DeferredLoadBoundary } from "./components/DeferredLoadBoundary";
 import {
+  reconcileWorkspaceRoleIdentity,
   roleLabel,
   selectWorkspaceRole,
   useInviteRole,
@@ -59,6 +60,7 @@ import { mapSettledWithConcurrency } from "./lib/settledPool";
 import {
   mergeSavedRecordRefresh,
   refreshOpenProposalAccess,
+  shouldClearDetachedInviteAccess,
   type SavedRecord,
 } from "./lib/savedRecordRefresh";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "./contracts/config";
@@ -366,6 +368,10 @@ function AppView({
   );
   const inviteRole = useInviteRole();
   const workspaceRole = useWorkspaceRole();
+
+  useEffect(() => {
+    reconcileWorkspaceRoleIdentity(accountIdentity);
+  }, [accountIdentity]);
   const tenantFundingContracts =
     workspaceRole === "tenant" && address
       ? displayedIds.flatMap((id) => [
@@ -579,12 +585,11 @@ function AppView({
   }, [accountIdentity]);
 
   useEffect(() => {
-    if (
-      !inviteRole &&
-      proposalAccess &&
-      proposalAccess.role !== "landlord" &&
-      !new URLSearchParams(window.location.search).has("invite")
-    ) {
+    if (shouldClearDetachedInviteAccess(
+      proposalAccess,
+      inviteRole,
+      new URLSearchParams(window.location.search).has("invite"),
+    )) {
       setProposalAccess(null);
     }
   }, [inviteRole, proposalAccess]);

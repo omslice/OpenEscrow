@@ -47,3 +47,16 @@ export function refreshOpenProposalAccess(
     )?.access || current
   );
 }
+
+export function shouldClearDetachedInviteAccess(
+  access: NegotiationAccess | null,
+  inviteRole: string | null,
+  hasInviteParameter: boolean,
+): boolean {
+  return Boolean(
+    access?.source === "invite" &&
+      access.role !== "landlord" &&
+      !inviteRole &&
+      !hasInviteParameter,
+  );
+}
