@@ -3,6 +3,7 @@ import "./AddressAutocomplete.css";
 
 export type AddressSuggestion = {
   id: string;
+  provider: "photon-openstreetmap" | "census-geocoder";
   label: string;
   countryCode: string | null;
   stateCode: string | null;
@@ -31,6 +32,7 @@ function normalizeSuggestions(payload: unknown): AddressSuggestion[] {
       if (typeof value === "string" && value.trim()) {
         return {
           id: `${index}-${value}`,
+          provider: "photon-openstreetmap",
           label: value.trim(),
           countryCode: null,
           stateCode: null,
@@ -45,6 +47,7 @@ function normalizeSuggestions(payload: unknown): AddressSuggestion[] {
       if (!value || typeof value !== "object") return null;
       const item = value as {
         id?: unknown;
+        provider?: unknown;
         label?: unknown;
         address?: unknown;
         formattedAddress?: unknown;
@@ -64,6 +67,10 @@ function normalizeSuggestions(payload: unknown): AddressSuggestion[] {
       if (!label) return null;
       return {
         id: typeof item.id === "string" ? item.id : `${index}-${label}`,
+        provider:
+          item.provider === "census-geocoder"
+            ? "census-geocoder"
+            : "photon-openstreetmap",
         label: label.trim(),
         countryCode:
           typeof item.countryCode === "string"
@@ -313,13 +320,21 @@ export function AddressAutocomplete({
       )}
       {!disabled && (
         <small className="address-attribution">
-          Address suggestions ©{" "}
+          Address suggestions use{" "}
           <a
             href="https://www.openstreetmap.org/copyright"
             target="_blank"
             rel="noreferrer"
           >
-            OpenStreetMap contributors
+            OpenStreetMap data
+          </a>
+          {" and the "}
+          <a
+            href="https://www.census.gov/data/developers/data-sets/Geocoding-services.html"
+            target="_blank"
+            rel="noreferrer"
+          >
+            U.S. Census Bureau geocoder
           </a>
           . Use a complete U.S. street address, including the building number.
           A “Validated” result locks the matching state profile; a manually

@@ -2426,7 +2426,7 @@ function AgreementForm({
         onVerifiedSuggestion={(suggestion: AddressSuggestion) => {
           const resolution = normalizeAddressResolution({
             ...suggestion,
-            provider: "photon-openstreetmap",
+            provider: suggestion.provider,
             providerFeatureId: suggestion.id,
           });
           const profile =

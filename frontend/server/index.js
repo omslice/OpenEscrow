@@ -681,6 +681,7 @@ const ACCOUNT_ACCESS_LIFETIME_MS = 24 * 60 * 60 * 1000;
 const ACCOUNT_ACCESS_SESSION_LIMIT = 5;
 const ACCOUNT_DISCOVERY_ROWS_PER_BATCH = 20;
 const DEFAULT_GEOCODER_BASE_URL = "https://photon.komoot.io";
+const DEFAULT_CENSUS_GEOCODER_BASE_URL = "https://geocoding.geo.census.gov/geocoder";
 const ADDRESS_SUGGESTION_CACHE_TTL_MS = 10 * 60 * 1000;
 const ADDRESS_SUGGESTION_CACHE_LIMIT = 200;
 const ADDRESS_GEOCODER_TIMEOUT_MS = 3_000;
@@ -11761,7 +11762,7 @@ ${record.arbiterEmail ? `<tr><th>Accelerated reviewer arbiter period</th><td>30 
 ${record.arbiterEmail ? `<tr><th>OpenEscrow arbiter period</th><td>${escapeHtml(candidate.arbiterDays)} days (${isCalifornia || researchProfile ? "test rule" : "agreed test value"})</td></tr>` : ""}`}
 <tr><th>Jurisdiction</th><td>${escapeHtml(jurisdiction)}</td></tr>
 <tr><th>Policy profile</th><td>${escapeHtml(candidate.policyVersion || "Legacy proposal")}</td></tr>
-${resolvedLocation ? `<tr><th>Validated location</th><td>${escapeHtml([resolvedLocation.city, resolvedLocation.county, resolvedLocation.stateCode, resolvedLocation.postalCode].filter(Boolean).join(", "))}<br><small>Photon/OpenStreetMap feature ${escapeHtml(resolvedLocation.providerFeatureId)}</small></td></tr>` : ""}
+${resolvedLocation ? `<tr><th>Validated location</th><td>${escapeHtml([resolvedLocation.city, resolvedLocation.county, resolvedLocation.stateCode, resolvedLocation.postalCode].filter(Boolean).join(", "))}<br><small>Address provider ${escapeHtml(resolvedLocation.provider)} · feature ${escapeHtml(resolvedLocation.providerFeatureId)}</small></td></tr>` : ""}
 ${complianceSnapshotInvalid ? `<tr><th>Compliance requirements</th><td><strong>Recorded compliance details need review.</strong><br>OpenEscrow did not substitute today's rules for the agreement's saved version. Preserve the record and reconcile the saved snapshot before relying on its checklist or deadlines.</td></tr>` : ""}
 ${claimPacket ? `<tr><th>Versioned claim packet</th><td>${claimPacket}</td></tr>` : ""}
 ${deadlineRules.length ? `<tr><th>Compliance deadline paths</th><td>${deadlinePaths}</td></tr><tr><th>Applied statewide requirements</th><td>${requirements}</td></tr>${overlayRequirements ? `<tr><th>Federal and program overlays</th><td>${overlayRequirements}</td></tr>` : ""}<tr><th>Unresolved coverage</th><td>${(complianceSnapshot?.unresolvedOverlays || ["Confirm local, federal, housing-program, and fact-specific overlays."]).map((warning) => `<p>${escapeHtml(warning)}</p>`).join("")}<small>Software output is not legal advice.</small></td></tr>` : ""}
@@ -12003,7 +12004,7 @@ async function addressSuggestionResponse(
   const signedSuggestions = await Promise.all(
     suggestions.map(async (suggestion) => {
       const resolved = {
-        provider: "photon-openstreetmap",
+        provider: suggestion.provider || "photon-openstreetmap",
         providerFeatureId: suggestion.id,
         ...suggestion,
       };
@@ -12116,6 +12117,7 @@ function normalizeAddressSuggestions(value) {
     providerIds.add(suggestionId);
     suggestions.push({
       id: suggestionId,
+      provider: "photon-openstreetmap",
       label,
       latitude,
       longitude,
@@ -12128,6 +12130,91 @@ function normalizeAddressSuggestions(value) {
     if (suggestions.length === 5) break;
   }
   return suggestions;
+}
+
+function normalizeCensusAddressSuggestions(value, query) {
+  if (!Array.isArray(value?.result?.addressMatches)) return [];
+  const suggestions = [];
+  const providerIds = new Set();
+  const unitMatch = query.match(/\b(?:apt(?:artment)?|unit|suite|ste|#)\s*[a-z0-9-]+\b/i);
+  for (const candidate of value.result.addressMatches) {
+    const components = candidate?.addressComponents;
+    const coordinates = candidate?.coordinates;
+    const matchedAddress = cleanText(candidate?.matchedAddress, 300);
+    const stateCode = cleanText(components?.state, 2).toUpperCase();
+    const postalCode = cleanText(components?.zip, 20);
+    const city = cleanText(components?.city, 120);
+    const longitude = Number(coordinates?.x);
+    const latitude = Number(coordinates?.y);
+    const tigerLineId = cleanText(candidate?.tigerLine?.tigerLineId, 80);
+    if (
+      !matchedAddress ||
+      !/^[A-Z]{2}$/.test(stateCode) ||
+      !US_JURISDICTION_PROFILE_BY_CODE[`us-${stateCode.toLowerCase()}`] ||
+      !postalCode ||
+      !city ||
+      !Number.isFinite(latitude) ||
+      !Number.isFinite(longitude) ||
+      latitude < -90 ||
+      latitude > 90 ||
+      longitude < -180 ||
+      longitude > 180
+    ) {
+      continue;
+    }
+    const suggestionId = `census:${tigerLineId || `${latitude},${longitude}`}`;
+    if (providerIds.has(suggestionId)) continue;
+    providerIds.add(suggestionId);
+    const addressParts = matchedAddress
+      .split(",")
+      .map((part) => part.trim())
+      .filter(Boolean);
+    if (
+      unitMatch &&
+      addressParts.length > 0 &&
+      !addressParts[0].toLowerCase().includes(unitMatch[0].toLowerCase())
+    ) {
+      addressParts[0] = `${addressParts[0]} ${unitMatch[0]}`;
+    }
+    suggestions.push({
+      id: suggestionId,
+      provider: "census-geocoder",
+      label: addressParts.join(", ").slice(0, 300),
+      latitude,
+      longitude,
+      countryCode: "US",
+      stateCode,
+      city,
+      county: null,
+      postalCode,
+    });
+    if (suggestions.length === 5) break;
+  }
+  return suggestions;
+}
+
+function isCompleteUsAddressQuery(query) {
+  return /^\s*\d+[a-z]?\b/i.test(query) && /\b\d{5}(?:-\d{4})?\s*$/.test(query);
+}
+
+async function fetchAddressJson(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), ADDRESS_GEOCODER_TIMEOUT_MS);
+  try {
+    const upstream = await fetch(url.toString(), {
+      headers: {
+        accept: "application/json",
+        "accept-language": "en",
+        "user-agent": "OpenEscrow address lookup (https://openescrow.io)",
+      },
+      signal: controller.signal,
+    });
+    return upstream.ok ? await upstream.json() : null;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 async function addressSuggestions(request, env) {
@@ -12168,19 +12255,28 @@ async function addressSuggestions(request, env) {
   geocoderUrl.searchParams.set("limit", "5");
   geocoderUrl.searchParams.set("lang", "en");
 
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), ADDRESS_GEOCODER_TIMEOUT_MS);
   try {
-    const upstream = await fetch(geocoderUrl.toString(), {
-      headers: {
-        accept: "application/json",
-        "accept-language": "en",
-        "user-agent": "OpenEscrow address lookup (open-source testnet app)",
-      },
-      signal: controller.signal,
-    });
-    if (!upstream.ok) return addressSuggestionResponse([], env);
-    const suggestions = normalizeAddressSuggestions(await upstream.json());
+    let suggestions = normalizeAddressSuggestions(await fetchAddressJson(geocoderUrl));
+    if (suggestions.length === 0 && isCompleteUsAddressQuery(query)) {
+      const censusBaseUrl = new URL(
+        cleanText(env.CENSUS_GEOCODER_BASE_URL, 1000) ||
+          DEFAULT_CENSUS_GEOCODER_BASE_URL,
+      );
+      if (censusBaseUrl.protocol === "https:" || censusBaseUrl.protocol === "http:") {
+        const censusPath = censusBaseUrl.pathname.replace(/\/+$/, "");
+        const censusUrl = new URL(
+          `${censusPath}/locations/onelineaddress`,
+          censusBaseUrl.origin,
+        );
+        censusUrl.searchParams.set("address", query);
+        censusUrl.searchParams.set("benchmark", "Public_AR_Current");
+        censusUrl.searchParams.set("format", "json");
+        suggestions = normalizeCensusAddressSuggestions(
+          await fetchAddressJson(censusUrl),
+          query,
+        );
+      }
+    }
     if (addressSuggestionCache.size >= ADDRESS_SUGGESTION_CACHE_LIMIT) {
       addressSuggestionCache.delete(addressSuggestionCache.keys().next().value);
     }
@@ -12191,8 +12287,6 @@ async function addressSuggestions(request, env) {
     return addressSuggestionResponse(suggestions, env);
   } catch {
     return addressSuggestionResponse([], env);
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

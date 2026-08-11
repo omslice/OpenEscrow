@@ -25,7 +25,7 @@ import {
 export type ComplianceFactValue = string | number | boolean | null;
 
 export type AddressResolution = {
-  provider: "photon-openstreetmap";
+  provider: "photon-openstreetmap" | "census-geocoder";
   providerFeatureId: string;
   label: string;
   countryCode: "US";

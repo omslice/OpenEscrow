@@ -5289,6 +5289,7 @@ test("address suggestions validate same-origin queries, normalize Photon results
     const { attestation, ...suggestion } = firstBody.suggestions[0];
     assert.deepEqual(suggestion, {
       id: "W:123",
+      provider: "photon-openstreetmap",
       label: "123 Main Street, Los Angeles, California, 90001, United States",
       latitude: 34.0522,
       longitude: -118.2437,
@@ -5337,6 +5338,94 @@ test("address suggestions validate same-origin queries, normalize Photon results
     );
     assert.equal(crossOrigin.status, 403);
     assert.equal(upstreamCalls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("address suggestions use a strict Census fallback for a complete U.S. address", async () => {
+  const originalFetch = globalThis.fetch;
+  const upstreamUrls = [];
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(input);
+    upstreamUrls.push(url.toString());
+    assert.equal(init.headers.accept, "application/json");
+    assert.match(init.headers["user-agent"], /openescrow\.io/i);
+    if (url.origin === "https://geocoder.example") {
+      return Response.json({ type: "FeatureCollection", features: [] });
+    }
+    assert.equal(url.origin, "https://census.example");
+    assert.equal(url.pathname, "/geocoder/locations/onelineaddress");
+    assert.equal(
+      url.searchParams.get("address"),
+      "4243 W Bancroft St APT 103E, Ottawa Hills, OH 43615",
+    );
+    assert.equal(url.searchParams.get("benchmark"), "Public_AR_Current");
+    assert.equal(url.searchParams.get("format"), "json");
+    return Response.json({
+      result: {
+        addressMatches: [
+          {
+            matchedAddress: "4243 W BANCROFT ST, OTTAWA HILLS, OH, 43615",
+            coordinates: { x: -83.642754643433, y: 41.662524901584 },
+            tigerLine: { tigerLineId: "33934790", side: "L" },
+            addressComponents: {
+              city: "OTTAWA HILLS",
+              state: "OH",
+              zip: "43615",
+            },
+          },
+          {
+            matchedAddress: "INVALID STATE",
+            coordinates: { x: -83.64, y: 41.66 },
+            tigerLine: { tigerLineId: "invalid" },
+            addressComponents: { city: "NOWHERE", state: "ZZ", zip: "00000" },
+          },
+        ],
+      },
+    });
+  };
+  try {
+    const env = {
+      GEOCODER_BASE_URL: "https://geocoder.example/photon",
+      CENSUS_GEOCODER_BASE_URL: "https://census.example/geocoder",
+      ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+    };
+    const path =
+      "/api/address-suggestions?q=4243%20W%20Bancroft%20St%20APT%20103E%2C%20Ottawa%20Hills%2C%20OH%2043615";
+    const first = await worker.fetch(request(path), env);
+    const firstBody = await jsonResponse(first);
+    assert.equal(firstBody.suggestions.length, 1);
+    const { attestation, ...suggestion } = firstBody.suggestions[0];
+    assert.deepEqual(suggestion, {
+      id: "census:33934790",
+      provider: "census-geocoder",
+      label: "4243 W BANCROFT ST APT 103E, OTTAWA HILLS, OH, 43615",
+      latitude: 41.662524901584,
+      longitude: -83.642754643433,
+      countryCode: "US",
+      stateCode: "OH",
+      city: "OTTAWA HILLS",
+      county: null,
+      postalCode: "43615",
+    });
+    assert.match(attestation, /^oeaddr1\.\d+\.[A-Za-z0-9_-]{43}$/);
+    assert.equal(
+      await verifyAddressAttestation(
+        {
+          ...suggestion,
+          providerFeatureId: suggestion.id,
+          attestation,
+        },
+        TEST_ADDRESS_ATTESTATION_SECRET,
+      ),
+      true,
+    );
+    assert.equal(upstreamUrls.length, 2);
+
+    const cached = await worker.fetch(request(path), env);
+    assert.equal(cached.headers.get("x-openescrow-cache"), "HIT");
+    assert.equal(upstreamUrls.length, 2);
   } finally {
     globalThis.fetch = originalFetch;
   }

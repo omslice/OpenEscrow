@@ -39,7 +39,7 @@ export interface AgreementTerms {
   policyVersion?: string;
   propertyAddress: string;
   addressResolution?: {
-    provider: "photon-openstreetmap";
+    provider: "photon-openstreetmap" | "census-geocoder";
     providerFeatureId: string;
     label: string;
     countryCode: "US";
