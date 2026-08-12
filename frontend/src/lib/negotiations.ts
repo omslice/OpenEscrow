@@ -1439,9 +1439,16 @@ export async function sendClaimNotification(
       email: string;
       reviewUrl: string;
     }>;
+    resend?: boolean;
+    resendRequestId?: string;
   },
 ) {
-  return request<{ messageId: string }>("/api/notifications/claim", {
+  return request<{
+    messageId: string;
+    messageIds: string[];
+    recipientEmails: string[];
+    duplicate: boolean;
+  }>("/api/notifications/claim", {
     method: "POST",
     body: JSON.stringify({ proposalId: access.proposalId, token: access.token, ...input }),
   });

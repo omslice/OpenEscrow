@@ -5337,6 +5337,11 @@ a.btn.disabled {
   color: var(--muted);
 }
 
+.claim-notice-recipient .claim-email-sent {
+  color: var(--success);
+  font-weight: 800;
+}
+
 .claim-notice-recipient .button-row {
   justify-content: flex-end;
   margin: 0;
@@ -5349,6 +5354,45 @@ a.btn.disabled {
 .claim-notice-actions > .btn {
   justify-self: start;
   min-height: 44px;
+}
+
+.participant-balance-summary {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 1rem;
+}
+
+.participant-balance-tile {
+  background: color-mix(in srgb, var(--surface) 88%, var(--accent-bg));
+  border: 1px solid color-mix(in srgb, var(--border) 72%, var(--accent) 28%);
+  border-radius: 14px;
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem;
+}
+
+.participant-balance-tile > span,
+.participant-balance-tile > small,
+.participant-balance-tile strong small {
+  color: var(--muted);
+}
+
+.participant-balance-tile strong {
+  font-size: clamp(1.35rem, 2.4vw, 2rem);
+  line-height: 1.1;
+}
+
+.participant-balance-tile strong small {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.participant-balance-summary > p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .claim-line-items {
@@ -5516,6 +5560,10 @@ a.btn.disabled {
 }
 
 @media (max-width: 680px) {
+  .participant-balance-summary {
+    grid-template-columns: 1fr;
+  }
+
   .reviewer-timing-card {
     grid-template-columns: 1fr;
   }

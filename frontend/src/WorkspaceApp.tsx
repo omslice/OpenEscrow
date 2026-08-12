@@ -296,7 +296,7 @@ function AppView({
     {},
   );
   const proposalOpenerRef = useRef<HTMLElement | null>(null);
-  const { ids, addId, removeId } = useTrackedAgreements(
+  const { ids, archivedIds, addId, removeId, archiveId, restoreId } = useTrackedAgreements(
     ACCOUNT_AUTH_ENABLED ? accountIdentity : null,
   );
   const activeAccountIdentity = useRef(accountIdentity);
@@ -350,7 +350,9 @@ function AppView({
       : []
     : ids;
   const displayedIds = discoveredAgreementIds.filter(
-    (id) => !unavailableAgreementIds.has(id.toString()),
+    (id) =>
+      !unavailableAgreementIds.has(id.toString()) &&
+      !archivedIds.some((archivedId) => archivedId === id),
   );
   const expandedDepositId = resolveExpandedDepositId(
     requestedDepositId,
@@ -1429,6 +1431,9 @@ function AppView({
     const unlinkedAgreementIds = displayedIds.filter(
       (id) => !linkedAgreementIds.has(id.toString()),
     );
+    const archivedOnchainAgreementIds = archivedIds.filter(
+      (id) => !linkedAgreementIds.has(id.toString()),
+    );
     const sortedRecords = [...savedRecords].sort(
       (left, right) =>
         new Date(right.record.updatedAt).getTime() -
@@ -1562,7 +1567,7 @@ function AppView({
       );
     }
 
-    function renderOnchainRecordCard(id: bigint) {
+    function renderOnchainRecordCard(id: bigint, archived = false) {
       const key = onchainRecordKey(id);
       const expanded = Boolean(expandedRecordKeys[key]);
       const contentId = `record-content-onchain-${id.toString()}`;
@@ -1575,11 +1580,29 @@ function AppView({
           eyebrow="Onchain-only record"
           reference={agreementReference(id)}
           meta={`Onchain agreement ID ${id.toString()}`}
+          className={archived ? "is-archived" : undefined}
           onToggle={() =>
             setExpandedRecordKeys((current) => ({
               ...current,
               [key]: !current[key],
             }))
+          }
+          actions={
+            <button
+              className="btn btn-ghost small"
+              type="button"
+              onClick={() => {
+                if (archived) {
+                  restoreId(id);
+                  setRecordArchiveAnnouncement(`${agreementReference(id)} restored.`);
+                } else {
+                  archiveId(id);
+                  setRecordArchiveAnnouncement(`${agreementReference(id)} archived.`);
+                }
+              }}
+            >
+              {archived ? "Restore" : "Archive"}
+            </button>
           }
         >
           <DeferredLoadBoundary
@@ -1605,12 +1628,12 @@ function AppView({
         {currentRecords.length === 0 && unlinkedAgreementIds.length === 0 && (
           <div className="workspace-empty">
             <strong>
-              {archivedRecords.length
+              {archivedRecords.length || archivedOnchainAgreementIds.length
                 ? "All account records are archived."
                 : "No account records found."}
             </strong>
             <span>
-              {archivedRecords.length
+              {archivedRecords.length || archivedOnchainAgreementIds.length
                 ? "Open Archived records below to review or restore them."
                 : "Proposal history and finalized agreement activity will appear here."}
             </span>
@@ -1647,16 +1670,16 @@ function AppView({
         )}
         <div className="record-list" role="list">
           {currentRecords.map((item) => renderSavedRecordCard(item, false))}
-          {unlinkedAgreementIds.map(renderOnchainRecordCard)}
+          {unlinkedAgreementIds.map((id) => renderOnchainRecordCard(id, false))}
         </div>
-        {archivedRecords.length > 0 && (
+        {(archivedRecords.length > 0 || archivedOnchainAgreementIds.length > 0) && (
           <details
             className="record-archive-section"
             open={isRecordArchiveOpen}
             onToggle={(event) => setIsRecordArchiveOpen(event.currentTarget.open)}
           >
             <summary id="record-archive-summary">
-              Archived records ({archivedRecords.length})
+              Archived records ({archivedRecords.length + archivedOnchainAgreementIds.length})
             </summary>
             <p>
               Archiving only removes a record from your current list. It does not delete
@@ -1664,6 +1687,7 @@ function AppView({
             </p>
             <div className="record-list" role="list">
               {archivedRecords.map((item) => renderSavedRecordCard(item, true))}
+              {archivedOnchainAgreementIds.map((id) => renderOnchainRecordCard(id, true))}
             </div>
           </details>
         )}

@@ -27,6 +27,7 @@ import {
   getDepositAssetForTerms,
 } from "../../shared/deposit-assets.js";
 import { agreementAmountUnit } from "../lib/agreementAmountDisplay";
+import { participantDepositTokenBalance } from "../lib/participantBalances";
 
 function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | null {
   switch (agreement.phase) {
@@ -96,6 +97,20 @@ export function AgreementDashboard({
     args: address ? [id, address] : undefined,
     query: { enabled: !!address, refetchInterval: 5000 },
   });
+  const tenantContribution = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "tenantContribution",
+    args: address ? [id, address] : undefined,
+    query: { enabled: !!address, refetchInterval: 5000 },
+  });
+  const walletBalance = useReadContract({
+    address: agreement.token,
+    abi: TestAaveUSDCABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: { enabled: !!address, refetchInterval: 5000 },
+  });
   const isTenant =
     (typeof tenantShare.data === "bigint" && tenantShare.data > 0n) ||
     (typeof tenantShare.data === "number" && tenantShare.data > 0);
@@ -115,6 +130,13 @@ export function AgreementDashboard({
       : normalized === agreement.landlord.toLowerCase()
         ? agreement.landlordWithdrawable
         : 0n;
+  const participantDepositBalance = participantDepositTokenBalance({
+    agreement,
+    role: actualRole,
+    tenantContribution:
+      typeof tenantContribution.data === "bigint" ? tenantContribution.data : 0n,
+    tenantCredit: typeof tenantCredit.data === "bigint" ? tenantCredit.data : 0n,
+  });
   const jurisdiction =
     participantRecord && isJurisdictionCode(participantRecord.terms.jurisdiction)
       ? participantRecord.terms.jurisdiction
@@ -142,6 +164,35 @@ export function AgreementDashboard({
       refetchInterval: 5000,
     },
   });
+  const walletModeledValue = useReadContract({
+    address: agreement.token,
+    abi: TestAaveUSDCABI,
+    functionName: "previewAssetsSince",
+    args: [
+      typeof walletBalance.data === "bigint" ? walletBalance.data : 0n,
+      agreement.fundedAt,
+    ],
+    query: {
+      enabled:
+        typeof walletBalance.data === "bigint" &&
+        agreement.fundedAt > 0n &&
+        agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase(),
+      refetchInterval: 5000,
+    },
+  });
+  const participantDepositModeledValue = useReadContract({
+    address: agreement.token,
+    abi: TestAaveUSDCABI,
+    functionName: "previewAssetsSince",
+    args: [participantDepositBalance, agreement.fundedAt],
+    query: {
+      enabled:
+        participantDepositBalance > 0n &&
+        agreement.fundedAt > 0n &&
+        agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase(),
+      refetchInterval: 5000,
+    },
+  });
   const isYieldToken = agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase();
   const depositAsset = getDepositAssetForTerms(
     participantRecord?.terms || { tokenChoice: isYieldToken ? "yield" : "plain" },
@@ -155,6 +206,15 @@ export function AgreementDashboard({
     feesAndSlippage: 0n,
     finalDistributed: agreement.withdrawn,
   });
+  const walletTokens =
+    typeof walletBalance.data === "bigint" ? walletBalance.data : 0n;
+  const walletTestUsd = isYieldToken
+    ? ((walletModeledValue.data as bigint | undefined) ?? walletTokens)
+    : walletTokens;
+  const participantDepositTestUsd = isYieldToken
+    ? ((participantDepositModeledValue.data as bigint | undefined) ??
+      participantDepositBalance)
+    : participantDepositBalance;
 
   return (
     <div className="dashboard">
@@ -167,6 +227,26 @@ export function AgreementDashboard({
         </div>
         <span className={`phase-badge phase-${agreement.phase}`}>{phaseLabel[agreement.phase]}</span>
       </div>
+      {address && actualRole && (
+        <section className="participant-balance-summary" aria-label="Your balances">
+          <div className="participant-balance-tile">
+            <span>In your wallet</span>
+            <strong>${formatUSDC(walletTestUsd)} <small>test USD</small></strong>
+            <small>{formatUSDC(walletTokens)} {tokenLabel}</small>
+          </div>
+          <div className="participant-balance-tile">
+            <span>{actualRole === "tenant" ? "Your balance in this deposit" : "Remaining in this funded deposit"}</span>
+            <strong>${formatUSDC(participantDepositTestUsd)} <small>test USD</small></strong>
+            <small>{formatUSDC(participantDepositBalance)} {tokenLabel}</small>
+          </div>
+          {isYieldToken && (
+            <p>
+              Test-USD values use this agreement&apos;s bounded demo-yield clock. Tokens and test
+              dollars have no real monetary value.
+            </p>
+          )}
+        </section>
+      )}
       <div className="amount-grid">
         <div className="amount-tile">
           <span>Original principal</span>

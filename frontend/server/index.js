@@ -1787,8 +1787,7 @@ function receiptExpectation(body, row, env, context, recordedEvents) {
     if (context.role !== "landlord" && !actorTopic) {
       return requireKnownActor(context.role);
     }
-    variants = [
-      variant({
+    const exactPartyVariant = variant({
         address: registryAddress,
         topic0: RECEIPT_EVENT_TOPICS.recordSnapshotAnchored,
         agreementTopic,
@@ -1801,8 +1800,26 @@ function receiptExpectation(body, row, env, context, recordedEvents) {
         ...(context.role === "landlord" ? landlordActor : { exactSender }),
         senderTopicIndex: 3,
         captureActorTopicIndex: 3,
-      }),
-    ];
+      });
+    variants = [exactPartyVariant];
+    if (context.role === "landlord") {
+      // The registry contract itself rejects non-parties. Keep legacy landlord
+      // records repairable when their original finalization wallet was not
+      // captured correctly, while still binding the exact agreement, snapshot,
+      // registry, successful receipt sender, and emitted party topic.
+      variants.push(
+        variant({
+          address: registryAddress,
+          topic0: RECEIPT_EVENT_TOPICS.recordSnapshotAnchored,
+          agreementTopic,
+          topicWords: { 2: normalizedReceiptWord(body.snapshotHash) },
+          dataWordCount: 1,
+          topicCount: 4,
+          senderTopicIndex: 3,
+          captureActorTopicIndex: 3,
+        }),
+      );
+    }
   } else if (body.type === "activity_hash_published") {
     if (context.role !== "landlord" && !actorTopic) {
       return requireKnownActor(context.role);
@@ -1954,6 +1971,7 @@ async function verifiedBaseSepoliaReceipt(
   if (
     recoverLegacyLandlord &&
     body.type !== "finalize" &&
+    body.type !== "record_snapshot_anchored" &&
     role === "landlord" &&
     !context.landlordWallet
   ) {
@@ -2820,6 +2838,38 @@ function tokenMicros(value) {
   } catch {
     return null;
   }
+}
+
+function formatTokenMicros(micros) {
+  const safe = typeof micros === "bigint" && micros >= 0n ? micros : 0n;
+  const whole = safe / 1_000_000n;
+  const fraction = (safe % 1_000_000n).toString().padStart(6, "0");
+  const trimmedFraction = fraction.replace(/0+$/, "");
+  return trimmedFraction ? `${whole}.${trimmedFraction}` : whole.toString();
+}
+
+function formatTestUsd(micros) {
+  const safe = typeof micros === "bigint" && micros >= 0n ? micros : 0n;
+  const cents = (safe + 5_000n) / 10_000n;
+  return `$${cents / 100n}.${(cents % 100n).toString().padStart(2, "0")}`;
+}
+
+function previewYieldTestUsdAt(shares, fundedAt, valuedAt) {
+  if (
+    typeof shares !== "bigint" ||
+    shares <= 0n ||
+    !Number.isFinite(fundedAt) ||
+    !Number.isFinite(valuedAt) ||
+    valuedAt <= fundedAt
+  ) {
+    return shares;
+  }
+  const elapsedSeconds = Math.floor((valuedAt - fundedAt) / 1000);
+  const accruedRatePartsPerMillion = Math.min(
+    50_000,
+    Math.floor((elapsedSeconds * 10_000) / 3600),
+  );
+  return shares + (shares * BigInt(accruedRatePartsPerMillion)) / 1_000_000n;
 }
 
 function cleanDeductionItems(value) {
@@ -10880,6 +10930,7 @@ async function applyAction(request, env, id) {
               {
                 eventType: notificationEventType,
                 recipientRole: delivery.recipientRole,
+                recipientEmail: delivery.email,
                 messageId: delivery.messageId,
               },
             ),
@@ -11477,10 +11528,18 @@ async function sendClaimNotification(request, env) {
       }),
     )
   ).slice(0, 32);
+  const resend = body.resend === true;
+  const resendRequestId = cleanText(body.resendRequestId, 80);
+  if (resend && !/^[a-fA-F0-9-]{16,80}$/.test(resendRequestId)) {
+    return json({ error: "Start the resend again from the agreement workspace." }, 400);
+  }
+  const attemptDeliveryKey = resend
+    ? `${deliveryKey}-r-${(await hashToken(resendRequestId)).slice(0, 16)}`
+    : deliveryKey;
   const existingDelivery = existingRecord.events.find(
     (event) =>
       event.action === "claim_notification_sent" &&
-      event.metadata?.deliveryKey === deliveryKey,
+      event.metadata?.deliveryKey === attemptDeliveryKey,
   );
   if (existingDelivery) {
     return json({
@@ -11488,6 +11547,8 @@ async function sendClaimNotification(request, env) {
       messageIds: existingDelivery.metadata.messageIds || [
         existingDelivery.metadata.messageId,
       ],
+      recipientEmails:
+        existingDelivery.metadata.recipientEmails || reviewLinks.map((link) => link.email),
       duplicate: true,
     });
   }
@@ -11515,7 +11576,7 @@ async function sendClaimNotification(request, env) {
       subject,
       text,
       idempotencyKey:
-        `claim-${proposalId}-${reviewLink.tenantId}-${deliveryKey}-` +
+        `claim-${proposalId}-${reviewLink.tenantId}-${attemptDeliveryKey}-` +
         reviewLink.credentialHash.slice(0, 12),
     });
     if (!delivered?.id) {
@@ -11540,7 +11601,10 @@ async function sendClaimNotification(request, env) {
       {
         messageId: deliveries[0].id,
         messageIds: deliveries.map((delivery) => delivery.id),
-        deliveryKey,
+        deliveryKey: attemptDeliveryKey,
+        claimDeliveryKey: deliveryKey,
+        resend,
+        recipientEmails: reviewLinks.map((link) => link.email),
         recipientCount: reviewLinks.length,
         claimTransactionHash,
       },
@@ -11549,6 +11613,7 @@ async function sendClaimNotification(request, env) {
   return json({
     messageId: deliveries[0].id,
     messageIds: deliveries.map((delivery) => delivery.id),
+    recipientEmails: reviewLinks.map((link) => link.email),
     duplicate: false,
   });
 }
@@ -11898,6 +11963,26 @@ ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordExc
       ...(reportComplianceSnapshot?.claimPolicy?.stateAttestations || []),
     ].map((attestation) => [attestation.id, attestation.label]),
   );
+  const fundingEvents = record.events.filter(
+    (event) =>
+      event.action === "tenant_share_funded" ||
+      event.action === "agreement_funded",
+  );
+  const fundedAt = Date.parse(
+    (fundingEvents.find((event) => event.action === "agreement_funded") ||
+      fundingEvents.at(-1))?.createdAt || "",
+  );
+  const claimTokenSymbol = depositAssetTestnetLabel(terms);
+  const claimAmountCell = (amount, valuedAt) => {
+    const tokenAmount = tokenMicros(amount);
+    if (tokenAmount === null) return escapeHtml(amount);
+    const testUsdValue =
+      terms.tokenChoice === "yield"
+        ? previewYieldTestUsdAt(tokenAmount, fundedAt, Date.parse(valuedAt))
+        : tokenAmount;
+    const qualifier = terms.tokenChoice === "yield" ? "modeled test USD" : "test USD";
+    return `<strong>${escapeHtml(formatTestUsd(testUsdValue))}</strong> <small>${qualifier}</small><br><small>${escapeHtml(formatTokenMicros(tokenAmount))} ${escapeHtml(claimTokenSymbol)}</small>`;
+  };
   const claimBreakdowns = record.events
     .filter(
       (event) =>
@@ -11909,7 +11994,7 @@ ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordExc
       const rows = event.metadata.items
         .map(
           (item) =>
-            `<tr><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.description)}</td><td>${escapeHtml(item.amount)} shares</td></tr>`,
+            `<tr><td>${escapeHtml(item.category)}</td><td>${escapeHtml(item.description)}</td><td>${claimAmountCell(item.amount, event.createdAt)}</td></tr>`,
         )
         .join("");
       const evidenceStatus = event.metadata.evidenceUri
@@ -11928,7 +12013,7 @@ ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordExc
         );
       return `<h3>${event.action === "deduction_claim_amended" ? "Amended claim" : "Original claim"} · ${escapeHtml(event.createdAt)}</h3>
 <table><thead><tr><th>Category</th><th>Description</th><th>Amount</th></tr></thead><tbody>${rows}</tbody>
-<tfoot><tr><th colspan="2">Total</th><th>${escapeHtml(event.metadata.amount)} shares</th></tr></tfoot></table>
+<tfoot><tr><th colspan="2">Total</th><th>${claimAmountCell(event.metadata.amount, event.createdAt)}</th></tr></tfoot></table>
 ${recordedAttestations.length ? `<p><strong>Recorded claim attestations</strong></p><ul>${recordedAttestations.map((attestation) => `<li>${escapeHtml(attestation)}</li>`).join("")}</ul>` : ""}
 <p class="meta">Supporting file: ${escapeHtml(evidenceStatus)} · Transaction: ${escapeHtml(event.metadata.transactionHash || "Not recorded")}</p>`;
     })
@@ -11937,13 +12022,13 @@ ${recordedAttestations.length ? `<p><strong>Recorded claim attestations</strong>
     .filter((event) => event.metadata?.terms)
     .map((event) => {
       const snapshot = event.metadata.terms;
-      return `<h3>Revision ${event.revision}</h3><p class="meta">${escapeHtml(event.createdAt)}</p><table>
+      return `<details class="revision-snapshot"><summary><strong>Revision ${event.revision}</strong><span>${escapeHtml(event.createdAt)}</span></summary><table>
 <tr><th>Rental property</th><td>${escapeHtml(snapshot.propertyAddress || "Legacy proposal: not recorded")}</td></tr>
 <tr><th>Refundable deposit</th><td>${escapeHtml(snapshot.deposit)} ${escapeHtml(depositAssetTestnetLabel(snapshot))}${snapshot.depositAssetSnapshot ? ` · ${escapeHtml(snapshot.depositAssetSnapshot.displayName)}` : ""}</td></tr>
 <tr><th>Tenant-paid platform fee</th><td>$0</td></tr>
 <tr><th>Expected possession returned</th><td>${escapeHtml(snapshot.claimWindowStart)}</td></tr>
 ${policyRows(snapshot)}
-</table>`;
+</table></details>`;
     })
     .join("");
   const onchainEvidence = record.events
@@ -11995,7 +12080,7 @@ ${policyRows(snapshot)}
   const html = `<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width">
 <title>OpenEscrow proposal ${escapeHtml(record.id)} record</title>
-<style>body{font:15px/1.5 system-ui,sans-serif;color:#191826;max-width:900px;margin:40px auto;padding:0 24px}h1{margin-bottom:0}.meta{color:#666}.hash{font:12px/1.45 ui-monospace,monospace;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;margin:20px 0}th,td{text-align:left;vertical-align:top;border:1px solid #ddd;padding:9px}th{background:#f5f3fb}a{color:#5637a8}@media print{button{display:none}body{margin:0}}</style>
+<style>body{font:15px/1.5 system-ui,sans-serif;color:#191826;max-width:900px;margin:40px auto;padding:0 24px}h1{margin-bottom:0}.meta{color:#666}.hash{font:12px/1.45 ui-monospace,monospace;overflow-wrap:anywhere}table{border-collapse:collapse;width:100%;margin:20px 0}th,td{text-align:left;vertical-align:top;border:1px solid #ddd;padding:9px}th{background:#f5f3fb}a{color:#5637a8}.revision-snapshot{border:1px solid #ddd;border-radius:8px;margin:12px 0;padding:0 16px}.revision-snapshot summary{align-items:center;cursor:pointer;display:flex;gap:16px;justify-content:space-between;padding:14px 0}.revision-snapshot summary span{color:#666;font-size:13px}.revision-snapshot table{margin-top:0}@media print{button{display:none}body{margin:0}.revision-snapshot{break-inside:avoid}.revision-snapshot:not([open])>*:not(summary){display:block}}</style>
 </head><body>
 <button onclick="window.print()">Print or save as PDF</button>
 <h1>OpenEscrow agreement record</h1>

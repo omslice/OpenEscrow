@@ -30,6 +30,7 @@ import {
   sameClaimReceipt,
   type ClaimReceiptAction,
 } from "../lib/claimReceiptRecovery";
+import { tenantClaimEmailStatus } from "../lib/claimNotificationStatus";
 import {
   buildNegotiationInviteUrl,
   loadNegotiation,
@@ -780,6 +781,7 @@ export function ClaimSection({
   }
 
   const notices = tenantNotices();
+  const tenantEmailStatus = tenantClaimEmailStatus(record);
   async function sendTenantClaimNotification() {
     if (
       notices.length === 0 ||
@@ -797,12 +799,17 @@ export function ClaimSection({
     });
     try {
       try {
+        const resendRequestId = tenantEmailStatus.allSent
+          ? crypto.randomUUID()
+          : undefined;
         await sendClaimNotification(negotiationAccess, {
           reviewLinks: notices.map((notice) => ({
             tenantId: notice.tenantId,
             email: notice.email,
             reviewUrl: notice.reviewUrl,
           })),
+          resend: tenantEmailStatus.allSent,
+          resendRequestId,
         });
       } catch (emailError) {
         if (!tenantNotificationScope.isCurrent(operationId)) return;
@@ -819,7 +826,9 @@ export function ClaimSection({
       if (!tenantNotificationScope.isCurrent(operationId)) return;
       setNoticeFeedback({
         kind: "success",
-        message: "Tenant claim email sent and added to the record.",
+        message: tenantEmailStatus.allSent
+          ? "Tenant claim emails resent and added to the record."
+          : "Tenant claim emails sent and added to the record.",
       });
       try {
         const updatedRecord = await loadNegotiation(negotiationAccess);
@@ -869,10 +878,10 @@ export function ClaimSection({
   }
   const noticeActions = notices.length > 0 && (
     <div className="claim-notice-actions">
-      <strong>Notify each tenant privately</strong>
+      <strong>Tenant claim emails</strong>
       <p className="hint">
-        Send every tenant a separate message with only their own private review link. The draft and
-        copy controls below are backups for individual recipients.
+        OpenEscrow sends each tenant a separate notice. The draft and copy controls are manual
+        backups for individual recipients.
       </p>
       {negotiationAccess && (
         <button
@@ -883,8 +892,16 @@ export function ClaimSection({
           onClick={() => void sendTenantClaimNotification()}
         >
           {isSendingTenantNotification
-            ? "Sending tenant email(s)..."
-            : "Send tenant email(s)"}
+            ? tenantEmailStatus.allSent
+              ? "Resending tenant emails..."
+              : "Sending tenant emails..."
+            : tenantEmailStatus.allSent
+              ? notices.length === 2
+                ? "Resend to both tenants"
+                : notices.length === 1
+                  ? "Resend tenant email"
+                  : `Resend to all ${notices.length} tenants`
+              : "Send tenant emails"}
         </button>
       )}
       <div className="claim-notice-recipient-list">
@@ -893,6 +910,11 @@ export function ClaimSection({
             <span>
               <strong>{notice.label}</strong>
               {notice.label !== notice.email && <small>{notice.email}</small>}
+              {tenantEmailStatus.statusByTenantId[notice.tenantId] ? (
+                <small className="claim-email-sent">✓ Email sent</small>
+              ) : (
+                <small>Email delivery not yet confirmed</small>
+              )}
             </span>
             <div className="button-row">
               <button

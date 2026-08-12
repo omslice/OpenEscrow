@@ -12382,6 +12382,7 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
         "multi-tenant-claim-message-1",
         "multi-tenant-claim-message-2",
       ],
+      recipientEmails: ["tenant@example.com", "casey@example.com"],
       duplicate: true,
     });
     assert.equal(sentEmails.length, 2);
@@ -12395,6 +12396,46 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
       JSON.parse(recordedDelivery.metadata_json).claimTransactionHash,
       `0x${"c".repeat(64)}`,
     );
+    assert.deepEqual(
+      JSON.parse(recordedDelivery.metadata_json).recipientEmails,
+      ["tenant@example.com", "casey@example.com"],
+    );
+
+    const resendRequestId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    const resendResponse = await worker.fetch(
+      request("/api/notifications/claim", "POST", {
+        ...notificationInput,
+        reviewLinks: validReviewLinks,
+        resend: true,
+        resendRequestId,
+      }),
+      {
+        DB: db,
+        RESEND_API_KEY: "test-resend-key",
+        NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+        PUBLIC_APP_URL: "https://openescrow.io/",
+      },
+    );
+    assert.equal(resendResponse.status, 200);
+    assert.equal((await resendResponse.json()).duplicate, false);
+    assert.equal(sentEmails.length, 4);
+
+    const duplicateResend = await worker.fetch(
+      request("/api/notifications/claim", "POST", {
+        ...notificationInput,
+        reviewLinks: validReviewLinks,
+        resend: true,
+        resendRequestId,
+      }),
+      {
+        DB: db,
+        RESEND_API_KEY: "test-resend-key",
+        NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+        PUBLIC_APP_URL: "https://openescrow.io/",
+      },
+    );
+    assert.equal((await duplicateResend.json()).duplicate, true);
+    assert.equal(sentEmails.length, 4);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -13761,6 +13802,9 @@ test("pilot rehearsal: an accepted claim resolves allocations, withdrawals, and 
   assert.match(reportHtml, /approved the deduction in full/);
   assert.match(reportHtml, /Landlord withdrew 300 shares/);
   assert.match(reportHtml, /Terry Tenant withdrew 900 shares/);
+  assert.match(reportHtml, /<details class="revision-snapshot">/);
+  assert.match(reportHtml, /\$300\.00<\/strong> <small>test USD<\/small>/);
+  assert.match(reportHtml, /300 testUSDC/);
 
   const firstSnapshot = await jsonResponse(
     await worker.fetch(
@@ -16297,7 +16341,7 @@ test("receipt verification binds private record anchors to the submitted hash, t
       await act(
         db,
         created.record.id,
-        created.access.tenant,
+        created.access.landlord,
         {
           type: "record_snapshot_anchored",
           snapshotHash,
@@ -16311,6 +16355,14 @@ test("receipt verification binds private record anchors to the submitted hash, t
         (event) => event.action === "record_snapshot_anchored",
       ).length,
       1,
+    );
+    assert.equal(
+      anchored.events.find(
+        (event) =>
+          event.action === "transaction_receipt_verified" &&
+          event.metadata.eventType === "record_snapshot_anchored",
+      ).metadata.actorAddress,
+      RECEIPT_TEST_TENANT.toLowerCase(),
     );
 
     for (const [activityMode, hashIndex] of [

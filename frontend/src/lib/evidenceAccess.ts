@@ -21,3 +21,28 @@ export function publicEvidenceUrl(uri: string) {
     .map((segment) => encodeURIComponent(segment))
     .join("/")}`;
 }
+
+export async function loadPrivateEvidenceDocument(path: string, token: string) {
+  const form = new FormData();
+  form.set("token", token);
+  const response = await fetch(path, {
+    method: "POST",
+    body: form,
+    credentials: "same-origin",
+    headers: { accept: "application/pdf,image/*,application/octet-stream" },
+  });
+  if (!response.ok) {
+    let message = "The supporting file could not be opened.";
+    try {
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const body = (await response.json()) as { error?: string };
+        if (body.error) message = body.error;
+      }
+    } catch {
+      // Keep the consistent consumer-facing fallback above.
+    }
+    throw new Error(message);
+  }
+  return response.blob();
+}
