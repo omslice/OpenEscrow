@@ -66,6 +66,7 @@ server.stderr.on("data", (chunk) => {
 
 let requestCount = 0;
 let finishDelayedUpload;
+let documentRequestCount = 0;
 let browser;
 
 try {
@@ -106,6 +107,26 @@ try {
         sha256: `0x${String(requestCount).padStart(64, "0")}`,
         storageKind: "private",
       }),
+    });
+  });
+  await page.route("**/api/evidence/018f4f6a-3f9d-7a21-a48d-123456789abc", async (route) => {
+    documentRequestCount += 1;
+    const request = route.request();
+    assert.equal(request.method(), "POST");
+    assert.equal(
+      new URL(request.url()).search,
+      "",
+      "Agreement access must not be embedded in the supporting-file URL.",
+    );
+    assert.match(
+      request.postDataBuffer()?.toString("utf8") || "",
+      /access-b/,
+      "The same-origin supporting-file request must carry the active agreement access in its body.",
+    );
+    await route.fulfill({
+      status: 200,
+      contentType: "application/pdf",
+      body: Buffer.from("%PDF-1.7\nprivate supporting file"),
     });
   });
 
@@ -216,18 +237,12 @@ try {
   });
   const privateFileButtonBox = await privateFileButton.boundingBox();
   assert.equal(Boolean(privateFileButtonBox && privateFileButtonBox.height >= 44), true);
-  const privateForm = firstEvidence.locator("form.evidence-document-form");
-  assert.equal(await privateForm.getAttribute("method"), "post");
-  assert.equal(await privateForm.getAttribute("rel"), "noreferrer");
-  assert.equal(
-    (await privateForm.getAttribute("action"))?.includes("access-b"),
-    false,
-    "Agreement access must not be embedded in the supporting-file URL.",
+  await privateFileButton.click();
+  await page.waitForFunction(() =>
+    document.querySelector(".evidence-document-link")?.textContent ===
+    "View supporting file",
   );
-  assert.equal(
-    await privateForm.locator('input[name="token"]').inputValue(),
-    "access-b",
-  );
+  assert.equal(documentRequestCount, 1);
 
   const mobileWidth = await page.evaluate(() => ({
     viewport: window.innerWidth,

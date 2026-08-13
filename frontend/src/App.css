@@ -1667,9 +1667,17 @@ html.demo-route #root {
 
 .card {
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 20px;
   margin-bottom: 20px;
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--accent) 4%, transparent),
+      transparent 42%
+    ),
+    var(--surface);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--text-h) 9%, transparent);
   text-align: left;
 }
 
@@ -1690,14 +1698,39 @@ html.demo-route #root {
   display: block;
   width: 100%;
   margin-top: 4px;
-  padding: 8px 10px;
-  border-radius: 6px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--input-bg);
   color: var(--text-h);
   font-size: 14px;
   box-sizing: border-box;
   font-family: inherit;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+
+.card textarea {
+  min-height: 112px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.card input:hover:not(:disabled),
+.card textarea:hover:not(:disabled),
+.card select:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+}
+
+.card input:focus-visible,
+.card textarea:focus-visible,
+.card select:focus-visible {
+  border-color: var(--accent);
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--accent-bg);
 }
 
 .card input::placeholder,
@@ -1730,17 +1763,46 @@ html.demo-route #root {
 }
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 42px;
   padding: 8px 16px;
-  border-radius: 8px;
+  border-radius: 11px;
   border: 1px solid transparent;
   cursor: pointer;
   font-size: 14px;
+  font-weight: 750;
+  line-height: 1.2;
   font-family: inherit;
+  touch-action: manipulation;
+  transition:
+    transform 120ms ease,
+    filter 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 3px;
 }
 
 .btn-primary {
   background: var(--accent);
   color: var(--accent-on);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
 .btn-primary:disabled {
@@ -1753,11 +1815,16 @@ html.demo-route #root {
   color: var(--text-h);
 }
 
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
 .btn-secondary {
   background: var(--accent-bg);
   border-color: var(--accent-border);
   color: var(--accent);
-  font-weight: 650;
+  font-weight: 750;
 }
 
 .btn:disabled {
@@ -1770,8 +1837,9 @@ html.demo-route #root {
 }
 
 .btn-ghost.small {
+  min-height: 36px;
   font-size: 12px;
-  padding: 4px 10px;
+  padding: 7px 10px;
   color: var(--text);
 }
 
@@ -5512,6 +5580,166 @@ a.btn.disabled {
   margin: 12px 0 0;
 }
 
+/* Shared, scannable presentation for compact facts and statuses. Variants keep
+   their existing semantic colors; this only standardizes shape and rhythm. */
+.network-badge,
+.test-example-badge,
+.chain-badge,
+.address-badge,
+.account-role-badge,
+.account-status,
+.settings-status,
+.active-wallet,
+.policy-test,
+.implementation-badge,
+.phase-badge,
+.deposit-status-badge,
+.party-role-badge,
+.record-count-pill,
+.negotiation-status,
+.tab-count {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+/* Give dense groups one consistent surface hierarchy without changing their
+   DOM, order, labels, or interaction model. */
+.account-info-card,
+.account-security-option,
+.additional-tenant,
+.optional-arbiter,
+.deposit-split,
+.proposal-metadata-grid > div,
+.proposal-status-overview > div,
+.participant-grid > div,
+.approval,
+.amount-tile,
+.participant-balance-tile,
+.claim-line-item,
+.tenant-invite-row {
+  border-radius: 13px;
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--accent) 5%, transparent),
+      transparent 46%
+    ),
+    var(--surface);
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--text-h) 7%, transparent);
+}
+
+.amount-tile,
+.participant-balance-tile,
+.proposal-status-overview > div,
+.proposal-metadata-grid > div {
+  border: 1px solid color-mix(in srgb, var(--border) 76%, var(--accent) 24%);
+}
+
+.tenant-invite-row.awaiting,
+.participant-grid > .participant-awaiting {
+  box-shadow:
+    inset 4px 0 0 color-mix(in srgb, var(--danger) 72%, transparent),
+    0 7px 18px color-mix(in srgb, var(--text-h) 7%, transparent);
+}
+
+.tenant-invite-row.approved,
+.participant-grid > .participant-approved,
+.approval.approved {
+  box-shadow:
+    inset 4px 0 0 color-mix(in srgb, var(--success) 72%, transparent),
+    0 7px 18px color-mix(in srgb, var(--text-h) 7%, transparent);
+}
+
+.claim-line-item {
+  border-left: 3px solid color-mix(in srgb, var(--accent) 72%, var(--border));
+}
+
+.notification-preferences .notification-choice:has(input:checked),
+.california-deposit-exception label:has(input:checked),
+.california-claim-checklist label:has(input:checked),
+.deposit-asset-option.selected,
+.role-choice.selected {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  box-shadow: inset 4px 0 0 var(--accent);
+}
+
+.notification-preferences .notification-choice:has(input:focus-visible),
+.california-deposit-exception label:has(input:focus-visible),
+.california-claim-checklist label:has(input:focus-visible),
+.deposit-asset-option:has(input:focus-visible) {
+  outline: 3px solid color-mix(in srgb, var(--accent) 68%, transparent);
+  outline-offset: 3px;
+}
+
+.technical-details > summary,
+.asset-disclosures > summary,
+.notification-technical-details > summary,
+.activity-verification-details > summary,
+.record-archive-section > summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  border-radius: 9px;
+  padding: 9px 11px;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.technical-details > summary:hover,
+.asset-disclosures > summary:hover,
+.notification-technical-details > summary:hover,
+.activity-verification-details > summary:hover,
+.record-archive-section > summary:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.technical-details > summary:focus-visible,
+.asset-disclosures > summary:focus-visible,
+.notification-technical-details > summary:focus-visible,
+.activity-verification-details > summary:focus-visible,
+.record-archive-section > summary:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 68%, transparent);
+  outline-offset: 3px;
+}
+
+.funding-table,
+.help-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.funding-table tbody tr,
+.help-table tbody tr {
+  transition: background 120ms ease;
+}
+
+.funding-table tbody tr:nth-child(even),
+.help-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--accent) 3%, var(--surface));
+}
+
+.funding-table tbody tr:hover,
+.help-table tbody tr:hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.button-row,
+.proposal-step-actions,
+.settings-actions,
+.invite-actions {
+  gap: 10px;
+}
+
 .agreement-activity {
   margin-top: 20px;
   border-top: 1px solid var(--border);
@@ -5560,6 +5788,31 @@ a.btn.disabled {
 }
 
 @media (max-width: 680px) {
+  .card {
+    padding: 16px;
+  }
+
+  .btn.small,
+  .btn-ghost.small {
+    min-height: 44px;
+    padding-block: 8px;
+  }
+
+  .button-row,
+  .proposal-step-actions,
+  .settings-actions,
+  .invite-actions {
+    align-items: stretch;
+  }
+
+  .proposal-step-actions .btn,
+  .tenant-invite-row .btn,
+  .claim-line-item .btn,
+  .notification-choice-list + .button-row .btn {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
   .participant-balance-summary {
     grid-template-columns: 1fr;
   }
@@ -6054,6 +6307,17 @@ a.btn.disabled {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .btn,
+  .card input,
+  .card textarea,
+  .card select,
+  .technical-details > summary,
+  .asset-disclosures > summary,
+  .notification-technical-details > summary,
+  .activity-verification-details > summary,
+  .record-archive-section > summary,
+  .funding-table tbody tr,
+  .help-table tbody tr,
   .how-it-works li,
   .record-list-item,
   .record-list-item::before,
@@ -6063,6 +6327,10 @@ a.btn.disabled {
   .california-deposit-exception label,
   .california-claim-checklist label {
     transition: none;
+  }
+
+  .btn:hover:not(:disabled) {
+    transform: none;
   }
 
   .how-it-works li:hover,

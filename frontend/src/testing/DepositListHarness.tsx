@@ -1,14 +1,25 @@
 /* oxlint-disable react/only-export-components -- This test-only entry mounts one deterministic browser harness. */
 import { useState } from "react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { createRoot } from "react-dom/client";
+import { WagmiProvider } from "wagmi";
 import { DepositAgreementListItem } from "../components/DepositAgreementListItem";
 import {
   resolveExpandedDepositId,
   toggleExpandedDepositId,
   type RequestedDepositId,
 } from "../lib/depositListSelection";
+import { fallbackWagmiConfig } from "../wagmiConfig";
 import "../index.css";
 import "../App.css";
+
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      retry: false,
+    },
+  },
+});
 
 const DEPOSITS = [
   { id: 1n, propertyAddress: "101 Test Street, Austin, TX", needsFunding: true },
@@ -61,4 +72,10 @@ function DepositListHarness() {
   );
 }
 
-createRoot(document.getElementById("root")!).render(<DepositListHarness />);
+createRoot(document.getElementById("root")!).render(
+  <WagmiProvider config={fallbackWagmiConfig}>
+    <QueryClientProvider client={queryClient}>
+      <DepositListHarness />
+    </QueryClientProvider>
+  </WagmiProvider>,
+);

@@ -907,7 +907,7 @@ try {
   );
 
   const sendClaimEmail = claimPage.getByRole("button", {
-    name: "Send tenant email(s)",
+    name: "Send tenant emails",
   });
   await sendClaimEmail.click();
   const claimNotificationFailure = claimPage.getByRole("alert").filter({
@@ -934,7 +934,7 @@ try {
   );
   await sendClaimEmail.press("Enter");
   const sendingClaimEmail = claimPage.getByRole("button", {
-    name: "Sending tenant email(s)...",
+    name: "Sending tenant emails...",
   });
   await sendingClaimEmail.waitFor({ state: "visible" });
   assert.equal(
@@ -945,7 +945,7 @@ try {
   releaseClaimNotification();
   releaseClaimNotification = undefined;
   await claimPage
-    .getByText("Tenant claim email sent and added to the record.")
+    .getByText("Tenant claim emails sent and added to the record.")
     .waitFor({ state: "visible" });
   await claimAlert.waitFor({ state: "visible" });
   assert.match(

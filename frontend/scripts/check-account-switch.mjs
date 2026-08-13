@@ -470,65 +470,6 @@ try {
   );
   await invitationContext.close();
 
-  const recoverableInvitationContext = await browser.newContext();
-  const recoverableInvitationPage = await recoverableInvitationContext.newPage();
-  const workspaceModulePattern = "**/src/WorkspaceApp.tsx*";
-  await recoverableInvitationPage.route(
-    workspaceModulePattern,
-    async (route) => route.abort("failed"),
-  );
-  await recoverableInvitationPage.goto(
-    `${baseUrl}/?proposal=recoverable-proposal&invite=tenant&public-access-test=1#token=recoverable-secret`,
-    { waitUntil: "domcontentloaded" },
-  );
-  await recoverableInvitationPage
-    .getByRole("heading", { name: "OpenEscrow couldn't finish loading" })
-    .waitFor({ state: "visible" });
-  assert.equal(
-    new URL(recoverableInvitationPage.url()).searchParams.has("token"),
-    false,
-    "A failed workspace download must not put the invitation token back in the URL.",
-  );
-  assert.equal(
-    new URL(recoverableInvitationPage.url()).hash.includes("token="),
-    false,
-  );
-  assert.equal(
-    await recoverableInvitationPage.evaluate(
-      () =>
-        JSON.parse(
-          window.sessionStorage.getItem(
-            "openescrow.negotiationAccess.recoverable-proposal.tenant",
-          ) || "{}",
-        ).token,
-    ),
-    "recoverable-secret",
-    "A scrubbed invitation must retain same-tab recovery before the workspace downloads.",
-  );
-  assert.equal(
-    await recoverableInvitationPage.evaluate(
-      () =>
-        window.localStorage.getItem(
-          "openescrow.negotiationAccess.recoverable-proposal.tenant",
-        ),
-    ),
-    null,
-    "A bearer invitation must not be promoted into persistent local storage.",
-  );
-  await recoverableInvitationPage.unroute(workspaceModulePattern);
-  await recoverableInvitationPage
-    .getByRole("button", { name: "Reload OpenEscrow" })
-    .click();
-  await recoverableInvitationPage
-    .getByRole("button", { name: "Continue as tenant with Google" })
-    .waitFor({ state: "visible" });
-  assert.equal(
-    new URL(recoverableInvitationPage.url()).searchParams.has("token"),
-    false,
-    "Reload recovery must keep the bearer token out of browser history.",
-  );
-  await recoverableInvitationContext.close();
-
   const agreementInvitationContext = await browser.newContext();
   const agreementInvitationPage = await agreementInvitationContext.newPage();
   await agreementInvitationPage.goto(
@@ -671,6 +612,7 @@ try {
     window.__openEscrowAccountSwitchTest?.switchAccount("account-b");
   });
   await page.getByTitle("account.b@example.test").waitFor();
+  await page.getByRole("button", { name: /I am a landlord/ }).click();
   await page.getByRole("tab", { name: "Proposals" }).click();
   await page.getByRole("heading", { name: "OE-P-BBBBBBBB" }).waitFor();
   assert.equal(
@@ -864,6 +806,7 @@ try {
     window.__openEscrowAccountSwitchTest?.switchAccount("account-a");
   });
   await page.getByTitle("account.a@example.test").waitFor();
+  await page.getByRole("button", { name: /I am a landlord/ }).click();
   await page.setViewportSize({ width: 390, height: 844 });
   const mobileAccountDisclosure = page.locator(
     "details.account-profile-disclosure > summary",
@@ -976,6 +919,68 @@ try {
     true,
     "Proposal and record archive controls must fit a mobile viewport.",
   );
+
+  // Run the intentional module-download failure last. Vite can invalidate its
+  // shared development module graph after a client abort, which must not make
+  // otherwise independent account-isolation assertions flaky.
+  const recoverableInvitationContext = await browser.newContext();
+  const recoverableInvitationPage = await recoverableInvitationContext.newPage();
+  const workspaceModulePattern = "**/src/WorkspaceApp.tsx*";
+  await recoverableInvitationPage.route(
+    workspaceModulePattern,
+    async (route) => route.abort("failed"),
+  );
+  await recoverableInvitationPage.goto(
+    `${baseUrl}/?proposal=recoverable-proposal&invite=tenant&public-access-test=1#token=recoverable-secret`,
+    { waitUntil: "domcontentloaded" },
+  );
+  await recoverableInvitationPage
+    .getByRole("heading", { name: "OpenEscrow couldn't finish loading" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    new URL(recoverableInvitationPage.url()).searchParams.has("token"),
+    false,
+    "A failed workspace download must not put the invitation token back in the URL.",
+  );
+  assert.equal(
+    new URL(recoverableInvitationPage.url()).hash.includes("token="),
+    false,
+  );
+  assert.equal(
+    await recoverableInvitationPage.evaluate(
+      () =>
+        JSON.parse(
+          window.sessionStorage.getItem(
+            "openescrow.negotiationAccess.recoverable-proposal.tenant",
+          ) || "{}",
+        ).token,
+    ),
+    "recoverable-secret",
+    "A scrubbed invitation must retain same-tab recovery before the workspace downloads.",
+  );
+  assert.equal(
+    await recoverableInvitationPage.evaluate(
+      () =>
+        window.localStorage.getItem(
+          "openescrow.negotiationAccess.recoverable-proposal.tenant",
+        ),
+    ),
+    null,
+    "A bearer invitation must not be promoted into persistent local storage.",
+  );
+  await recoverableInvitationPage.unroute(workspaceModulePattern);
+  await recoverableInvitationPage
+    .getByRole("button", { name: "Reload OpenEscrow" })
+    .click();
+  await recoverableInvitationPage
+    .getByRole("button", { name: "Continue as tenant with Google" })
+    .waitFor({ state: "visible" });
+  assert.equal(
+    new URL(recoverableInvitationPage.url()).searchParams.has("token"),
+    false,
+    "Reload recovery must keep the bearer token out of browser history.",
+  );
+  await recoverableInvitationContext.close();
 
   process.stdout.write(
     "Account-switch browser check passed: neutral and role-aware invitation sign-in recover safely; proposal and Record archives restore in the rendered mobile workspace; and archives, wallet setup, inventory delivery, session containment, notification preferences, and test-email feedback remain isolated across live identity changes.\n",

@@ -567,7 +567,7 @@ try {
     await helpPage
       .getByRole("heading", { name: "OpenEscrow help and quick-start guides", exact: true })
       .waitFor({ state: "visible" });
-    for (const role of ["Landlord", "Tenant", "Arbiter"]) {
+    for (const role of ["Landlord", "Tenant"]) {
       await helpPage.getByRole("heading", { name: role, exact: true }).waitFor();
     }
     assert.equal(

@@ -373,9 +373,11 @@ async function routeContext(context, role) {
       assert.equal(body.token, tokens.landlord);
       assert.deepEqual(Object.keys(body).sort(), [
         "proposalId",
+        "resend",
         "reviewLinks",
         "token",
       ]);
+      assert.equal(body.resend, false);
       assert.equal(body.reviewLinks.length, 2);
       for (const tenantRole of ["tenant-one", "tenant-two"]) {
         const link = body.reviewLinks.find(
@@ -538,7 +540,7 @@ try {
     .click();
   await waitForStage(landlord.page, "claim-open");
   await landlord.page
-    .getByText("Send every tenant a separate message with only their own private review link.", {
+    .getByText("OpenEscrow sends each tenant a separate notice.", {
       exact: false,
     })
     .waitFor({ state: "visible" });
@@ -559,10 +561,10 @@ try {
     }
   }
   await landlord.page
-    .getByRole("button", { name: "Send tenant email(s)" })
+    .getByRole("button", { name: "Send tenant emails" })
     .click();
   await landlord.page
-    .getByText("Tenant claim email sent and added to the record.")
+    .getByText("Tenant claim emails sent and added to the record.")
     .waitFor({ state: "visible" });
   assert.equal(claimNoticeChecked, true);
 
