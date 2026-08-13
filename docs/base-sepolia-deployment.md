@@ -154,3 +154,21 @@ candidate manifest for verification. After the exact onchain code and bindings p
 Codex can apply one reviewed configuration switch, retain the current cohort as the
 explicit rollback target, regenerate/check the frontend ABIs, and produce an undeployed
 Sites candidate for separate approval.
+
+The reviewed post-verification switch is automated and fail-closed:
+
+```powershell
+$env:OPENESCROW_DEPLOYMENT_SOURCE_COMMIT = (
+  Get-Content .\deployments\base-sepolia-candidate.json -Raw | ConvertFrom-Json
+).sourceCommit
+Push-Location .\frontend
+npm.cmd run deploy:apply-candidate
+Pop-Location
+Remove-Item Env:OPENESCROW_DEPLOYMENT_SOURCE_COMMIT
+```
+
+It requires the public manifest's live-binding verification, rehearses an exact and reversible
+switch, updates client/server and both Cloudflare configuration scopes together, promotes the
+candidate manifest, and saves the prior active manifest as
+`deployments/base-sepolia-rollback-prior.json`. Do not deploy if this operation or the complete
+release candidate gate fails.

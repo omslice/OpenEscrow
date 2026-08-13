@@ -6,6 +6,7 @@ export const DEPLOYMENT_MANIFEST_SCHEMA = "openescrow.deployment-manifest/v2";
 const CONFIG_FILE = "frontend/src/contracts/config.ts";
 const REGISTRY_FILE = "frontend/src/contracts/activityRegistryConfig.ts";
 const SERVER_FILE = "frontend/server/index.js";
+const WRANGLER_FILE = "frontend/wrangler.jsonc";
 const ADDRESS_PATTERN = /^0x[0-9a-fA-F]{40}$/;
 const TRANSACTION_HASH_PATTERN = /^0x[0-9a-fA-F]{64}$/;
 const ZERO_ADDRESS = `0x${"0".repeat(40)}`;
@@ -145,7 +146,7 @@ export function validateDeploymentManifest(manifest, expectedCommit) {
 
 export function loadDeploymentConfiguration(repositoryRoot) {
   return Object.fromEntries(
-    [CONFIG_FILE, REGISTRY_FILE, SERVER_FILE].map((relative) => [
+    [CONFIG_FILE, REGISTRY_FILE, SERVER_FILE, WRANGLER_FILE].map((relative) => [
       relative,
       readFileSync(path.join(repositoryRoot, relative), "utf8"),
     ]),
@@ -156,7 +157,13 @@ export function parseDeploymentConfiguration(files) {
   const config = files[CONFIG_FILE];
   const registry = files[REGISTRY_FILE];
   const server = files[SERVER_FILE];
-  if (typeof config !== "string" || typeof registry !== "string" || typeof server !== "string") {
+  const wrangler = files[WRANGLER_FILE];
+  if (
+    typeof config !== "string" ||
+    typeof registry !== "string" ||
+    typeof server !== "string" ||
+    typeof wrangler !== "string"
+  ) {
     throw new Error("Deployment configuration file set is incomplete.");
   }
 
@@ -252,6 +259,22 @@ export function parseDeploymentConfiguration(files) {
       throw new Error(`Client/server deployment configuration mismatch for ${key}.`);
     }
   }
+
+  const wranglerPatterns = {
+    openEscrow: /"OPEN_ESCROW_ADDRESS"\s*:\s*"(0x[0-9a-fA-F]{40})"/g,
+    activityRegistry: /"ACTIVITY_REGISTRY_ADDRESS"\s*:\s*"(0x[0-9a-fA-F]{40})"/g,
+    deploymentBlock: /"OPEN_ESCROW_DEPLOYMENT_BLOCK"\s*:\s*"(\d+)"/g,
+  };
+  for (const [key, pattern] of Object.entries(wranglerPatterns)) {
+    const matches = [...wrangler.matchAll(pattern)].map((match) => match[1]);
+    if (matches.length !== 2) {
+      throw new Error(`Expected exactly two Cloudflare ${key} values.`);
+    }
+    const expected = key === "deploymentBlock" ? values[key].toString() : values[key];
+    if (matches.some((value) => value.toLowerCase() !== expected.toLowerCase())) {
+      throw new Error(`Client/Cloudflare deployment configuration mismatch for ${key}.`);
+    }
+  }
   return values;
 }
 
@@ -265,6 +288,28 @@ function replaceExactlyOnce(source, before, after, label) {
   return {
     source: `${source.slice(0, first)}${after}${source.slice(first + needle.length)}`,
     original: source.slice(first, first + needle.length),
+  };
+}
+
+function replaceExactlyCount(source, before, after, expectedCount, label) {
+  const address = ADDRESS_PATTERN.test(before);
+  const searchable = address ? source.toLowerCase() : source;
+  const needle = address ? before.toLowerCase() : before;
+  let count = 0;
+  let cursor = 0;
+  while (true) {
+    const index = searchable.indexOf(needle, cursor);
+    if (index < 0) break;
+    count += 1;
+    cursor = index + needle.length;
+  }
+  if (count !== expectedCount) {
+    throw new Error(`${label} replacement target must appear exactly ${expectedCount} times.`);
+  }
+  const escaped = before.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return {
+    source: source.replace(new RegExp(escaped, address ? "gi" : "g"), after),
+    original: before,
   };
 }
 
@@ -292,6 +337,21 @@ function replacements(current, candidate) {
     [SERVER_FILE, current.activityRegistry, candidate.activityRegistry, "server registry"],
     [SERVER_FILE, current.usdc, candidate.usdc, "server plain token"],
     [SERVER_FILE, current.yieldUsdc, candidate.yieldUsdc, "server yield token"],
+    [WRANGLER_FILE, current.openEscrow, candidate.openEscrow, "Cloudflare escrow", 2],
+    [
+      WRANGLER_FILE,
+      current.activityRegistry,
+      candidate.activityRegistry,
+      "Cloudflare registry",
+      2,
+    ],
+    [
+      WRANGLER_FILE,
+      `"OPEN_ESCROW_DEPLOYMENT_BLOCK": "${current.deploymentBlock}"`,
+      `"OPEN_ESCROW_DEPLOYMENT_BLOCK": "${candidate.deploymentBlock}"`,
+      "Cloudflare escrow deployment block",
+      2,
+    ],
   ];
 }
 
@@ -299,10 +359,12 @@ export function rehearseConfigurationSwitch(files, candidate) {
   const current = parseDeploymentConfiguration(files);
   const switched = { ...files };
   const executed = [];
-  for (const [file, before, after, label] of replacements(current, candidate)) {
-    const result = replaceExactlyOnce(switched[file], before, after, label);
+  for (const [file, before, after, label, count = 1] of replacements(current, candidate)) {
+    const result = count === 1
+      ? replaceExactlyOnce(switched[file], before, after, label)
+      : replaceExactlyCount(switched[file], before, after, count, label);
     switched[file] = result.source;
-    executed.push([file, result.original, after, label]);
+    executed.push([file, result.original, after, label, count]);
   }
   const switchedValues = parseDeploymentConfiguration(switched);
   for (const key of Object.keys(candidate).filter((key) => key !== "sourceCommit")) {
@@ -312,12 +374,10 @@ export function rehearseConfigurationSwitch(files, candidate) {
   }
 
   const rolledBack = { ...switched };
-  for (const [file, original, after, label] of executed.reverse()) {
-    rolledBack[file] = replaceExactlyOnce(
-      rolledBack[file],
-      after,
-      original,
-      `${label} rollback`,
+  for (const [file, original, after, label, count] of executed.reverse()) {
+    rolledBack[file] = (count === 1
+      ? replaceExactlyOnce(rolledBack[file], after, original, `${label} rollback`)
+      : replaceExactlyCount(rolledBack[file], after, original, count, `${label} rollback`)
     ).source;
   }
   for (const file of Object.keys(files)) {
@@ -332,5 +392,6 @@ export function rehearseConfigurationSwitch(files, candidate) {
     switchVerified: true,
     rollbackVerified: true,
     files: Object.keys(files),
+    switchedFiles: switched,
   };
 }

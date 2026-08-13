@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -8,9 +9,14 @@ import { chromium } from "playwright";
 const host = "127.0.0.1";
 const port = 4179;
 const baseUrl = `http://${host}:${port}`;
-const OPEN_ESCROW_ADDRESS = "0x9f8c9555f28c10347c58fc71f430f4cbc3724b10";
-const ACTIVITY_REGISTRY_ADDRESS = "0x88b53d6c35020e82b97462e8a1cbcdc8d6d50f53";
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url));
+const repositoryRoot = path.resolve(frontendRoot, "..");
+const deploymentManifest = JSON.parse(
+  readFileSync(path.join(repositoryRoot, "deployments", "base-sepolia-latest.json"), "utf8"),
+);
+const OPEN_ESCROW_ADDRESS = deploymentManifest.openEscrow.address;
+const ACTIVITY_REGISTRY_ADDRESS =
+  deploymentManifest.agreementActivityRegistry.address;
 const assetsRoot = path.join(frontendRoot, "dist", "assets");
 const viteEntrypoint = fileURLToPath(
   new URL("../node_modules/vite/bin/vite.js", import.meta.url),

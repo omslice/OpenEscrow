@@ -1,7 +1,8 @@
 import { Layout } from "./Layout";
-
-const OPEN_ESCROW_ADDRESS = "0x9f8c9555f28c10347c58fc71f430f4cbc3724b10";
-const ACTIVITY_REGISTRY_ADDRESS = "0x88b53d6c35020e82b97462e8a1cbcdc8d6d50f53";
+import {
+  AGREEMENT_ACTIVITY_REGISTRY_ADDRESS as ACTIVITY_REGISTRY_ADDRESS,
+  OPEN_ESCROW_ADDRESS,
+} from "../contracts/config";
 const SELF_HOST_RELEASE =
   "https://github.com/omslice/OpenEscrow/releases/tag/selfhost-v0.1.0-testnet";
 
