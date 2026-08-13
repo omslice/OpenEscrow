@@ -8,6 +8,7 @@ import { formatUSDC, shortAddr } from "../lib/format";
 import type { NegotiationRecord } from "../lib/negotiations";
 import type { Agreement } from "../lib/useAgreement";
 import { getDepositAssetForTerms } from "../../shared/deposit-assets.js";
+import { claimAmountUnit, payoutAmountUnit } from "../lib/agreementAmountDisplay";
 
 type TenantParticipants =
   | readonly [
@@ -37,10 +38,24 @@ export function FundingLedger({
   const data = participants.data as TenantParticipants;
   const isYieldToken =
     agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase();
+  const yieldSettlement = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "yieldSettled",
+    args: [id],
+    query: { enabled: isYieldToken, refetchInterval: 4_000 },
+  });
+  const isYieldSettled = isYieldToken && yieldSettlement.data === true;
   const tokenLabel =
     getDepositAssetForTerms(
       participantRecord?.terms || { tokenChoice: isYieldToken ? "yield" : "plain" },
     )?.testnetSymbol || (isYieldToken ? "taUSDC" : "testUSDC");
+  const payoutUnit = payoutAmountUnit({
+    tokenAddress: agreement.token,
+    yieldTokenAddress: YIELD_USDC_ADDRESS,
+    yieldSettled: isYieldSettled,
+  });
+  const claimUnit = claimAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
 
   function tenantIdentity(wallet: string) {
     const tenant = participantRecord?.tenants.find(
@@ -76,7 +91,10 @@ export function FundingLedger({
                 <dl>
                   <div>
                     <dt>Funded</dt>
-                    <dd>{formatUSDC(contribution)} {tokenLabel}</dd>
+                    <dd>
+                      ${formatUSDC(contribution)} test USD
+                      <small>{formatUSDC(contribution)} {tokenLabel}</small>
+                    </dd>
                   </div>
                   <div>
                     <dt>Deposit ownership</dt>
@@ -84,7 +102,7 @@ export function FundingLedger({
                   </div>
                   <div>
                     <dt>Available now</dt>
-                    <dd>{formatUSDC(withdrawable)} {tokenLabel}</dd>
+                    <dd>{formatUSDC(withdrawable)} {payoutUnit}</dd>
                   </div>
                 </dl>
               </article>
@@ -108,11 +126,11 @@ export function FundingLedger({
               </div>
               <div>
                 <dt>Deduction claimed</dt>
-                <dd>{formatUSDC(agreement.claimedAmount)} {tokenLabel}</dd>
+                <dd>{formatUSDC(agreement.claimedAmount)} {claimUnit}</dd>
               </div>
               <div>
                 <dt>Available now</dt>
-                <dd>{formatUSDC(agreement.landlordWithdrawable)} {tokenLabel}</dd>
+                <dd>{formatUSDC(agreement.landlordWithdrawable)} {payoutUnit}</dd>
               </div>
             </dl>
           </article>

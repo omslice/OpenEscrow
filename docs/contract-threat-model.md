@@ -14,8 +14,9 @@ exact escrow address.
 
 The principal asset is each agreement's refundable deposit held by `OpenEscrow`.
 The separately disclosed operations reserve is held by `OperationsReserve` and is
-not refundable principal. The registry holds no funds; it records only hashes,
-callers, agreement identifiers, activity types, and timestamps.
+not security-deposit principal. The current MVP does not meter costs, so the full
+reserve remains a refundable tenant liability. The registry holds no funds; it
+records only hashes, callers, agreement identifiers, activity types, and timestamps.
 
 Raw evidence, private notes, invitation links, account sessions, compliance
 snapshots, and human-readable records are hosted assets outside these contracts.
@@ -29,7 +30,7 @@ and operational controls described in the hosted-system threat model.
 | Landlord | Propose/cancel before funding, submit or reduce a claim, retract a claim, participate in arbiter replacement, withdraw a finalized award | Spend tenant principal outside the agreed claim process or increase an amended claim |
 | Tenant or co-tenant | Fund only their exact share, answer a claim once, participate in arbiter replacement, withdraw their finalized share | Fund or answer for another tenant, allocate more than their approved share, or block another tenant's withdrawal |
 | Accepted current arbiter | Rule only on the locked disputed amount before the fixed ruling deadline; publish registry hashes | Act before acceptance, after decline/resignation/replacement, rewrite terms, or withdraw funds directly |
-| Reserve treasury | Configure its matching escrow once and withdraw only recorded operations-reserve balances | Withdraw refundable principal from `OpenEscrow`, change the bound escrow, or record a tenant payment |
+| Reserve treasury | Configure its matching escrow once and withdraw only non-liability balances | Withdraw tenant reserve liabilities or refundable principal from `OpenEscrow`, change the bound escrow, or record a tenant payment |
 | Token contract | Execute balance and transfer calls required by funding/withdrawal | Reenter another lifecycle mutation, silently short-transfer, or cause recorded balances to exceed received balances |
 | Any address | Read public chain state and call public entry points | Mutate an agreement without satisfying its role, phase, amount, and deadline checks |
 
@@ -75,8 +76,8 @@ finalized again.
 
 For the operations reserve, each tenant can pay only the exact deterministic share
 once, agreement-level recorded payment cannot exceed the fixed reserve amount, the
-payment token must equal the agreement token, and token balances must equal recorded
-payments less treasury withdrawals when no unsolicited transfer occurs.
+payment token must equal the agreement token, refundable liabilities cannot be spent
+by treasury, and a terminal tenant withdrawal returns each share exactly once.
 
 Deployment invariants are equally important: the escrow and reserve must point to
 each other, share both token addresses, and the registry must point to that exact
@@ -92,7 +93,7 @@ or reserve receipts.
 | Reentrant or nonstandard token | `SafeERC20`, balance-delta checks, state-first atomic funding, reentrancy regression tests | A production token still requires independent code/issuer review |
 | Principal insolvency | Per-agreement and aggregate accounting invariants; pull withdrawals | Stablecoin issuer freeze or chain failure is outside contract control |
 | Claim/award inflation | Claim bounded by deposit; one downward amendment; award bounded by locked dispute; tenant-favoring timeouts | Contract cannot judge evidence quality or local-law compliance |
-| Reserve confusion with deposit | Separate contract/balance, reciprocal immutable binding, exact share and phase validation, treasury-only reserve withdrawal | The direct standalone reserve path is testnet compatibility surface and should be removed or given a reviewed refund policy before production |
+| Reserve confusion with deposit | Separate contract/balance, reciprocal immutable binding, exact share and phase validation, protected refund liabilities, terminal one-time refund | The direct standalone reserve path is testnet compatibility surface and should be removed before production; real cost metering remains unimplemented |
 | Registry impersonation or stale arbiter | Escrow-derived landlord/tenant ownership; accepted current arbiter only | Hash publication can still be misleading and costs the caller gas |
 | Misconfigured release | Forced offline compile, ABI/selector/storage/bytecode evidence, dependency hashes, cohort tests, manifest/runbook gates | Human signer, explorer verification, RPC, and frontend switch remain operational controls |
 | Vulnerability after deployment | No hidden admin or upgrade path; explicit retire-and-redeploy procedure | Active agreements cannot be migrated or patched; incident response may require waiting for their existing timeout paths |

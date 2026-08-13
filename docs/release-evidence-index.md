@@ -77,7 +77,7 @@ Update this section whenever a clean, exact later candidate passes or a deployme
 
 Repository release documentation records:
 
-- 238 passing Foundry tests across 23 suites;
+- 251 passing Foundry tests across 24 suites;
 - one opt-in live Base Sepolia Aave fork test skipped without an RPC URL;
 - nine stateful accounting properties exercised for 32,768 calls each; and
 - five ABI/runtime/storage-layout checks and two pinned dependency-tree checks; and

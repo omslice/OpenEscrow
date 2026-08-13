@@ -1013,6 +1013,23 @@ function AgreementForm({
     setFormError(null);
   }
 
+  function proposalFieldErrorId(field: ProposalField) {
+    return `proposal-${field}-error`;
+  }
+
+  function renderFieldIssue(field: ProposalField) {
+    if (invalidField !== field || !formError) return null;
+    return (
+      <p
+        className="field-validation-error"
+        id={proposalFieldErrorId(field)}
+        role="alert"
+      >
+        {formError}
+      </p>
+    );
+  }
+
   function applyAcceleratedReviewTiming() {
     setTestnetTimingProfile(ACCELERATED_REVIEW_TIMING_PROFILE);
     setClaimWindowStart(
@@ -2138,7 +2155,11 @@ function AgreementForm({
           disabled={Boolean(draft)}
           data-proposal-field="tenantName"
           aria-invalid={invalidField === "tenantName"}
+          aria-errormessage={
+            invalidField === "tenantName" ? proposalFieldErrorId("tenantName") : undefined
+          }
         />
+        {renderFieldIssue("tenantName")}
       </div>
       <label>
         Tenant email address
@@ -2155,8 +2176,12 @@ function AgreementForm({
           disabled={Boolean(draft)}
           data-proposal-field="tenantEmail"
           aria-invalid={invalidField === "tenantEmail"}
+          aria-errormessage={
+            invalidField === "tenantEmail" ? proposalFieldErrorId("tenantEmail") : undefined
+          }
         />
       </label>
+      {renderFieldIssue("tenantEmail")}
       <p className="field-help">
         Use a complete address in the format tenant@example.com. The server validates it again
         before saving or changing an invitation.
@@ -2240,8 +2265,14 @@ function AgreementForm({
                 disabled={Boolean(draft)}
                 data-proposal-field="arbiterEmail"
                 aria-invalid={invalidField === "arbiterEmail"}
+                aria-errormessage={
+                  invalidField === "arbiterEmail"
+                    ? proposalFieldErrorId("arbiterEmail")
+                    : undefined
+                }
               />
             </label>
+            {renderFieldIssue("arbiterEmail")}
           </div>
         </section>
       )}
@@ -2441,7 +2472,13 @@ function AgreementForm({
         }}
         disabled={approvedTermsLocked}
         invalid={invalidField === "propertyAddress"}
+        errorMessageId={
+          invalidField === "propertyAddress"
+            ? proposalFieldErrorId("propertyAddress")
+            : undefined
+        }
       />
+      {renderFieldIssue("propertyAddress")}
       <p className="field-help">
         This identifies which rental and security deposit the proposal covers. It remains in the
         private agreement record and is not written directly to the public blockchain.
@@ -2792,6 +2829,10 @@ function AgreementForm({
         aria-labelledby="deposit-split-title"
         data-proposal-field="depositShares"
         tabIndex={-1}
+        aria-invalid={invalidField === "depositShares"}
+        aria-errormessage={
+          invalidField === "depositShares" ? proposalFieldErrorId("depositShares") : undefined
+        }
       >
         <div className="record-header">
           <div>
@@ -3119,8 +3160,16 @@ function AgreementForm({
           </>
         )}
       </section>
+      {renderFieldIssue("depositShares")}
 
-      <div data-proposal-field="depositAsset" tabIndex={-1}>
+      <div
+        data-proposal-field="depositAsset"
+        tabIndex={-1}
+        aria-invalid={invalidField === "depositAsset"}
+        aria-errormessage={
+          invalidField === "depositAsset" ? proposalFieldErrorId("depositAsset") : undefined
+        }
+      >
         <DepositAssetSelector
           selectedAssetId={depositAssetId}
           yieldConsent={yieldConsent}
@@ -3130,6 +3179,7 @@ function AgreementForm({
           onYieldConsentChange={setYieldConsent}
         />
       </div>
+      {renderFieldIssue("depositAsset")}
       <label>
         Monthly rent
         <input
@@ -3144,11 +3194,15 @@ function AgreementForm({
           disabled={approvedTermsLocked}
           data-proposal-field="monthlyRent"
           aria-invalid={invalidField === "monthlyRent"}
+          aria-errormessage={
+            invalidField === "monthlyRent" ? proposalFieldErrorId("monthlyRent") : undefined
+          }
         />
         <small>
           Used to evaluate deposit caps. It remains in the private agreement record.
         </small>
       </label>
+      {renderFieldIssue("monthlyRent")}
       <label>
         Deposit amount ({tokenChoice === "yield" ? "taUSDC shares" : "testUSDC"})
         <input
@@ -3163,8 +3217,12 @@ function AgreementForm({
           disabled={approvedTermsLocked}
           data-proposal-field="deposit"
           aria-invalid={invalidField === "deposit"}
+          aria-errormessage={
+            invalidField === "deposit" ? proposalFieldErrorId("deposit") : undefined
+          }
         />
       </label>
+      {renderFieldIssue("deposit")}
       <section className="cost-breakdown" aria-label="Agreement funding breakdown">
         <div>
           <span>Refundable security deposit</span>
@@ -3185,8 +3243,9 @@ function AgreementForm({
         <p>
           Each tenant pays the approved deposit percentage shown above plus an equal share of the
           separate {operationsReserve} {tokenLabel(tokenChoice)} testnet reserve. The reserve uses
-          the selected token but is not refundable deposit principal. This test profile does not
-          determine the legal treatment of any real tenant-paid charge.
+          the selected token, remains separate from deposit principal, and is returned when the
+          agreement closes. This test profile does not determine the legal treatment of any real
+          tenant-paid charge.
         </p>
       </section>
       <section
@@ -3233,6 +3292,11 @@ function AgreementForm({
           disabled={approvedTermsLocked}
           data-proposal-field="claimWindowStart"
           aria-invalid={invalidField === "claimWindowStart" || claimWindowHasPassed}
+          aria-errormessage={
+            invalidField === "claimWindowStart"
+              ? proposalFieldErrorId("claimWindowStart")
+              : undefined
+          }
         />
       </label>
       <p className="field-help">
@@ -3240,12 +3304,13 @@ function AgreementForm({
           ? "This accelerated Base Sepolia date is for reviewer testing only and does not represent a legal deadline."
           : "This is the test lifecycle start date. It is not calculated from or validated against any jurisdiction's law."}
       </p>
-      {claimWindowHasPassed && (
+      {claimWindowHasPassed && invalidField !== "claimWindowStart" && (
         <p className="field-validation-error" role="alert">
           This saved date has passed. Select a future possession-return date before publishing a
           revision or finalizing onchain.
         </p>
       )}
+      {renderFieldIssue("claimWindowStart")}
       <label>
         {selectedJurisdiction ? "Statewide onchain safeguard window" : "Test deduction window"}
         <input
@@ -3259,6 +3324,9 @@ function AgreementForm({
           disabled={approvedTermsLocked || Boolean(selectedJurisdiction)}
           data-proposal-field="claimDays"
           aria-invalid={invalidField === "claimDays"}
+          aria-errormessage={
+            invalidField === "claimDays" ? proposalFieldErrorId("claimDays") : undefined
+          }
         />
       </label>
       <p className="field-help">
@@ -3268,6 +3336,7 @@ function AgreementForm({
             ? `${selectedJurisdiction.defaultClaimDays} days is locked as the onchain safeguard. The agreement record also preserves the profile's conditional and multi-stage deadlines.`
             : "Editable test timing. This value does not represent a legal deadline."}
       </p>
+      {renderFieldIssue("claimDays")}
       <label>
         OpenEscrow tenant response period
         <input
@@ -3281,6 +3350,9 @@ function AgreementForm({
           disabled={approvedTermsLocked}
           data-proposal-field="responseDays"
           aria-invalid={invalidField === "responseDays"}
+          aria-errormessage={
+            invalidField === "responseDays" ? proposalFieldErrorId("responseDays") : undefined
+          }
         />
       </label>
       <p className="field-help">
@@ -3288,6 +3360,7 @@ function AgreementForm({
           ? "Reviewer-only onchain response period: 30 minutes. The recorded standard value remains visible above."
           : "Editable test timing for the tenant's approve-or-dispute step."}
       </p>
+      {renderFieldIssue("responseDays")}
       {ARBITER_UI_ENABLED && (showArbiter || Boolean(draft?.arbiterEmail)) && (
         <>
           <label>
@@ -3303,6 +3376,9 @@ function AgreementForm({
               disabled={approvedTermsLocked}
               data-proposal-field="arbiterDays"
               aria-invalid={invalidField === "arbiterDays"}
+              aria-errormessage={
+                invalidField === "arbiterDays" ? proposalFieldErrorId("arbiterDays") : undefined
+              }
             />
           </label>
           <p className="field-help">
@@ -3310,6 +3386,7 @@ function AgreementForm({
               ? "Reviewer-only onchain arbiter period: 30 minutes. The recorded standard value remains visible above."
               : "Editable test timing for the optional arbiter's ruling step."}
           </p>
+          {renderFieldIssue("arbiterDays")}
         </>
       )}
 
@@ -3443,9 +3520,15 @@ function AgreementForm({
               minLength={8}
               data-proposal-field="revisionSummary"
               aria-invalid={invalidField === "revisionSummary"}
+              aria-errormessage={
+                invalidField === "revisionSummary"
+                  ? proposalFieldErrorId("revisionSummary")
+                  : undefined
+              }
             />
           </label>
           <p className="field-help">At least 8 characters. This note becomes part of the running record.</p>
+          {renderFieldIssue("revisionSummary")}
           <div className="button-row">
             <button
               className="btn btn-primary"
@@ -3511,7 +3594,7 @@ function AgreementForm({
         tabIndex={-1}
       >
         {formMessage && <p className="tx-success">{formMessage}</p>}
-        {formError && <p className="tx-error">{formError}</p>}
+        {formError && !invalidField && <p className="tx-error">{formError}</p>}
       </div>
       {draft && draft.status !== "finalized" && (
         <div className="proposal-danger-zone">

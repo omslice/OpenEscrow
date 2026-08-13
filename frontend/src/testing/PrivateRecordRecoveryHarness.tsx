@@ -73,7 +73,7 @@ function agreementPhase() {
     return timeoutTransactionWrites === 0 ? Phase.Active : Phase.Closed;
   }
   if (flow === "no-response-timeout-receipt") {
-    return timeoutTransactionWrites === 0 ? Phase.ClaimOpen : Phase.Disputed;
+    return timeoutTransactionWrites === 0 ? Phase.ClaimOpen : Phase.Closed;
   }
   if (flow === "arbiter-timeout-receipt") {
     return timeoutTransactionWrites === 0 ? Phase.Disputed : Phase.Closed;

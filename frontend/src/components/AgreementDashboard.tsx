@@ -5,6 +5,7 @@ import {
   OPERATIONS_RESERVE_ADDRESS,
   OperationsReserveABI,
   Phase,
+  USDC_ADDRESS,
   YIELD_USDC_ADDRESS,
   ZERO_ADDRESS,
   closeReasonLabel,
@@ -26,7 +27,11 @@ import {
   calculateDepositAccounting,
   getDepositAssetForTerms,
 } from "../../shared/deposit-assets.js";
-import { agreementAmountUnit } from "../lib/agreementAmountDisplay";
+import {
+  agreementAmountUnit,
+  claimAmountUnit,
+  payoutAmountUnit,
+} from "../lib/agreementAmountDisplay";
 import { participantDepositTokenBalance } from "../lib/participantBalances";
 
 function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | null {
@@ -34,7 +39,13 @@ function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | nul
     case Phase.Active:
       return { label: "Claim submission deadline (tenant can withdraw in full after)", ts: agreement.claimSubmissionDeadline };
     case Phase.ClaimOpen:
-      return { label: "Tenant response deadline (becomes a dispute after, never auto-approved)", ts: agreement.responseDeadline };
+      return {
+        label:
+          agreement.arbiter === ZERO_ADDRESS
+            ? "Tenant response deadline (no response is recorded after)"
+            : "Tenant response deadline (unanswered amount moves to dispute after)",
+        ts: agreement.responseDeadline,
+      };
     case Phase.Disputed:
       return { label: "Arbiter ruling deadline (disputed funds default to tenant after)", ts: agreement.arbiterRulingDeadline };
     default:
@@ -83,6 +94,7 @@ export function AgreementDashboard({
   const { address } = useAccount();
   const normalized = address?.toLowerCase();
   const inviteRole = useInviteRole();
+  const isYieldToken = agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase();
   const tenantShare = useReadContract({
     address: OPEN_ESCROW_ADDRESS,
     abi: OpenEscrowABI,
@@ -104,8 +116,33 @@ export function AgreementDashboard({
     args: address ? [id, address] : undefined,
     query: { enabled: !!address, refetchInterval: 5000 },
   });
+  const yieldSettlement = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "yieldSettled",
+    args: [id],
+    query: { enabled: isYieldToken, refetchInterval: 5000 },
+  });
+  const settledValue = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "settledValue",
+    args: [id],
+    query: { enabled: isYieldToken, refetchInterval: 5000 },
+  });
+  const payoutToken = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "payoutToken",
+    args: [id],
+    query: { refetchInterval: 5000 },
+  });
+  const isYieldSettled = isYieldToken && yieldSettlement.data === true;
+  const payoutTokenAddress =
+    (payoutToken.data as `0x${string}` | undefined) ||
+    (isYieldSettled ? USDC_ADDRESS : agreement.token);
   const walletBalance = useReadContract({
-    address: agreement.token,
+    address: payoutTokenAddress,
     abi: TestAaveUSDCABI,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
@@ -160,7 +197,7 @@ export function AgreementDashboard({
     query: {
       enabled:
         agreement.depositAmount > 0n &&
-        agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase(),
+        isYieldToken && !isYieldSettled,
       refetchInterval: 5000,
     },
   });
@@ -176,7 +213,7 @@ export function AgreementDashboard({
       enabled:
         typeof walletBalance.data === "bigint" &&
         agreement.fundedAt > 0n &&
-        agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase(),
+        isYieldToken && !isYieldSettled,
       refetchInterval: 5000,
     },
   });
@@ -189,17 +226,25 @@ export function AgreementDashboard({
       enabled:
         participantDepositBalance > 0n &&
         agreement.fundedAt > 0n &&
-        agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase(),
+        isYieldToken && !isYieldSettled,
       refetchInterval: 5000,
     },
   });
-  const isYieldToken = agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase();
   const depositAsset = getDepositAssetForTerms(
     participantRecord?.terms || { tokenChoice: isYieldToken ? "yield" : "plain" },
   );
   const tokenLabel = depositAsset?.testnetSymbol || (isYieldToken ? "taUSDC" : "testUSDC");
   const amountUnit = agreementAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
-  const testValue = (currentValue.data as bigint | undefined) ?? agreement.depositAmount;
+  const payoutUnit = payoutAmountUnit({
+    tokenAddress: agreement.token,
+    yieldTokenAddress: YIELD_USDC_ADDRESS,
+    yieldSettled: isYieldSettled,
+  });
+  const claimUnit = claimAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
+  const payoutTokenLabel = isYieldSettled ? "testUSDC" : tokenLabel;
+  const testValue = isYieldSettled
+    ? ((settledValue.data as bigint | undefined) ?? agreement.depositAmount)
+    : ((currentValue.data as bigint | undefined) ?? agreement.depositAmount);
   const accounting = calculateDepositAccounting({
     originalPrincipal: agreement.depositAmount,
     currentRedeemableValue: testValue,
@@ -208,10 +253,10 @@ export function AgreementDashboard({
   });
   const walletTokens =
     typeof walletBalance.data === "bigint" ? walletBalance.data : 0n;
-  const walletTestUsd = isYieldToken
+  const walletTestUsd = isYieldToken && !isYieldSettled
     ? ((walletModeledValue.data as bigint | undefined) ?? walletTokens)
     : walletTokens;
-  const participantDepositTestUsd = isYieldToken
+  const participantDepositTestUsd = isYieldToken && !isYieldSettled
     ? ((participantDepositModeledValue.data as bigint | undefined) ??
       participantDepositBalance)
     : participantDepositBalance;
@@ -232,12 +277,12 @@ export function AgreementDashboard({
           <div className="participant-balance-tile">
             <span>In your wallet</span>
             <strong>${formatUSDC(walletTestUsd)} <small>test USD</small></strong>
-            <small>{formatUSDC(walletTokens)} {tokenLabel}</small>
+            <small>{formatUSDC(walletTokens)} {payoutTokenLabel}</small>
           </div>
           <div className="participant-balance-tile">
             <span>{actualRole === "tenant" ? "Your balance in this deposit" : "Remaining in this funded deposit"}</span>
             <strong>${formatUSDC(participantDepositTestUsd)} <small>test USD</small></strong>
-            <small>{formatUSDC(participantDepositBalance)} {tokenLabel}</small>
+            <small>{formatUSDC(participantDepositBalance)} {payoutTokenLabel}</small>
           </div>
           {isYieldToken && (
             <p>
@@ -257,10 +302,22 @@ export function AgreementDashboard({
           </strong>
         </div>
         <div className="amount-tile">
-          <span>{isYieldToken ? "Current modeled value" : "Current deposit value"}</span>
+          <span>
+            {isYieldToken
+              ? isYieldSettled
+                ? "Settled deposit value"
+                : "Current modeled value"
+              : "Current deposit value"}
+          </span>
           <strong>
             {agreement.depositAmount > 0n
-              ? `${formatUSDC(accounting.currentRedeemableValue)} ${isYieldToken ? "testUSDC (modeled)" : tokenLabel}`
+              ? `${formatUSDC(accounting.currentRedeemableValue)} ${
+                  isYieldToken
+                    ? isYieldSettled
+                      ? "testUSDC"
+                      : "testUSDC (modeled)"
+                    : tokenLabel
+                }`
               : "Not funded"}
           </strong>
         </div>
@@ -282,20 +339,21 @@ export function AgreementDashboard({
           <span>Final distributed</span>
           <strong>
             {accounting.finalDistributed > 0n
-              ? `${formatUSDC(accounting.finalDistributed)} ${amountUnit}`
+              ? `${formatUSDC(accounting.finalDistributed)} ${payoutUnit}`
               : "Not distributed yet"}
           </strong>
         </div>
         <div className="amount-tile">
-          <span>{isYieldToken ? "Modeled settlement" : "Deposit asset"}</span>
-          <strong>{isYieldToken ? "USDC (simulation only)" : tokenLabel}</strong>
+          <span>{isYieldToken ? "Settlement asset" : "Deposit asset"}</span>
+          <strong>{isYieldToken ? (isYieldSettled ? "testUSDC (settled)" : "testUSDC (modeled)") : tokenLabel}</strong>
         </div>
       </div>
       {isYieldToken && (
         <p className="yield-disclaimer">
-          Simulated Aave-style path only: demo value grows from the agreement funding time at 1%
-          per hour and stops at 5%. The escrow holds fixed taUSDC shares; there is no aUSDC,
-          underlying USDC, redemption, live APY, or real yield.
+          Demonstration-only Aave-style path: value grows from the agreement funding time at 1%
+          per hour and stops at 5%. At settlement, fixed taUSDC shares are redeemed into valueless
+          testUSDC so the landlord receives no more than the documented principal deduction and all
+          simulated yield stays with the tenants. There is no real aUSDC, USDC, APY, or yield.
         </p>
       )}
       <div className="amount-grid secondary">
@@ -305,7 +363,7 @@ export function AgreementDashboard({
         </div>
         <div className="amount-tile">
           <span>Available to you</span>
-          <strong>{formatUSDC(availableToYou)} {amountUnit}</strong>
+          <strong>{formatUSDC(availableToYou)} {payoutUnit}</strong>
         </div>
         <div className="amount-tile">
           <span>Still unresolved</span>
@@ -428,7 +486,7 @@ export function AgreementDashboard({
       {agreement.claimedAmount > 0n && (
         <div className="dashboard-row">
           <span className="label">Claimed amount</span>
-          <span>{formatUSDC(agreement.claimedAmount)} {amountUnit}</span>
+          <span>{formatUSDC(agreement.claimedAmount)} {claimUnit}</span>
         </div>
       )}
       {agreement.claimWindowStart > 0n && (
@@ -449,15 +507,15 @@ export function AgreementDashboard({
         <summary>Accounting details</summary>
         <div className="dashboard-row">
           <span className="label">Tenant withdrawable</span>
-          <span>{formatUSDC(agreement.tenantWithdrawable)} {tokenLabel}</span>
+          <span>{formatUSDC(agreement.tenantWithdrawable)} {payoutTokenLabel}</span>
         </div>
         <div className="dashboard-row">
           <span className="label">Landlord withdrawable</span>
-          <span>{formatUSDC(agreement.landlordWithdrawable)} {tokenLabel}</span>
+          <span>{formatUSDC(agreement.landlordWithdrawable)} {payoutTokenLabel}</span>
         </div>
         <div className="dashboard-row">
           <span className="label">Already withdrawn</span>
-          <span>{formatUSDC(agreement.withdrawn)} {tokenLabel}</span>
+          <span>{formatUSDC(agreement.withdrawn)} {payoutTokenLabel}</span>
         </div>
       </details>
     </div>

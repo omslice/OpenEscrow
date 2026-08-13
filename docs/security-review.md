@@ -371,22 +371,23 @@ not an independent audit.
 | --- | --- | --- |
 | Low / defense in depth | Atomic funding called the reserve before recording the tenant contribution. The entry point was guarded, but a malicious allowlisted token that was itself an agreement party could enter a different, previously unguarded lifecycle function during its transfer callback. | Every externally callable lifecycle mutation now shares the same reentrancy guard, and funding records all agreement effects before token or reserve interactions. A malicious-token regression proves a cross-function arbiter-replacement callback reverts and leaves no contribution, pending replacement, or token balance. Slither no longer reports the funding reentrancy path. |
 | Low | The reserve's one-time `configureEscrow` check matched token addresses but did not require the candidate escrow to point back to that exact reserve. A deployment mistake could therefore bind the reserve permanently to a matching-token escrow that would never call it. | Configuration now requires the reciprocal immutable `OPERATIONS_RESERVE` address. |
-| Low | Standalone reserve payment and the escrow-only record path did not require a fundable agreement phase, so a tenant could send the expressly non-refundable test reserve before arbiter acceptance or after cancellation. | Standalone payments require `ReadyToFund`. The atomic record path accepts `ReadyToFund` for earlier co-tenants or `Active` for the final contribution because escrow effects are now recorded before the external call. Cancelled, proposed, closed, claim, and dispute phases fail closed. |
+| Low | Standalone reserve payment and the escrow-only record path did not require a fundable agreement phase, so a tenant could send the test reserve before arbiter acceptance or after cancellation. | Standalone payments require `ReadyToFund`. The atomic record path accepts `ReadyToFund` for earlier co-tenants or `Active` for the final contribution because escrow effects are now recorded before the external call. Cancelled, proposed, closed, claim, and dispute phases fail closed. |
 | Low | The activity registry treated a named arbiter as a party before acceptance and after decline or resignation. That actor could not move escrow funds but could publish misleading public activity hashes. | Registry authorization now requires the current arbiter to be accepted, not declined, and not resigned. Dedicated unaccepted, declined, and resigned regressions fail closed. |
 
-The reserve still has an immutable treasury that may withdraw only separately disclosed reserve
-balances; it has no path to withdraw refundable principal held by `OpenEscrow`. Direct standalone
-reserve payment remains a testnet compatibility surface and can precede a later landlord
-cancellation, so the current client uses only the atomic deposit-plus-reserve action. A production
-design should remove that unused surface or define an explicit reserve-refund policy after legal
-and provider review.
+The reserve still has an immutable treasury, but paid tenant shares are tracked as protected
+refund liabilities and are not treasury-withdrawable. When an agreement reaches a terminal phase,
+each tenant's pull withdrawal returns that share once in the original agreement token. The reserve
+has no path to withdraw security-deposit principal held by `OpenEscrow`. Direct standalone reserve
+payment remains a testnet compatibility surface, so the current client uses only the atomic
+deposit-plus-reserve action. A production design must remove that unused surface and replace the
+fully refundable model with reviewed, attributable cost metering before charging real users.
 
 The registry stores only hashes and events. Parties can spend their own gas publishing repeated
 activity hashes, but this does not grow escrow state or block another party. A hash proves content
 integrity relative to the holder's private bytes; it does not prove truth, authorship beyond the
 calling wallet, legal sufficiency, or confidentiality.
 
-After the fixes, the complete Foundry run passes 238 tests across 23 suites, including nine
+The complete local UAT-candidate Foundry run passes 251 tests across 24 suites, including nine
 32,768-call stateful accounting properties and the existing fuzz cases. One opt-in live Base
 Sepolia Aave adapter fork test remains skipped without an RPC URL. The current production
 dependency audit reports zero known advisories, and the full hosted application gate passes.
@@ -394,16 +395,18 @@ Remaining Slither results are reviewed design signals: day-scale timestamp deadl
 pragma ranges, constant naming, and intentionally ignored participant arrays. None is being
 treated as proof that the contracts are vulnerability-free.
 
-These fixes are present in the active Base Sepolia cohort compiled from exact source commit
-`200848d67f0865fa76484f3f2788122361c28dfe`: escrow
+The earlier secondary-contract hardening in this addendum is present in the active Base Sepolia
+cohort compiled from exact source commit `200848d67f0865fa76484f3f2788122361c28dfe`: escrow
 `0x9F8C9555f28C10347C58fc71F430F4cbc3724b10`, reserve
 `0xDB6637e5A858A8fd3A3Cd85C1625D9a0b022A626`, and activity registry
 `0x88b53D6c35020E82B97462e8a1CBDcd8D6D50f53`. The active deployment manifest records successful
 receipts, exact runtime-bytecode matches, reciprocal escrow/reserve bindings, and the exact
-registry binding confirmed through two Base Sepolia RPC providers. The older F18 cohort predates
-this complete addendum and remains retired; its agreements and balances were not migrated. Because
-each cohort is mutually bound and immutable, any future core fix will still require a new reviewed
-escrow/reserve pair and a registry deployed against that exact escrow.
+registry binding confirmed through two Base Sepolia RPC providers. The tenant-only-yield settlement
+and refundable-reserve changes described above are a locally verified release candidate and are not
+claimed as deployed until a new cohort is signed and independently verified. The older F18 cohort
+predates this complete addendum and remains retired; its agreements and balances were not migrated.
+Because each cohort is mutually bound and immutable, any future core fix still requires a new
+reviewed escrow/reserve pair and a registry deployed against that exact escrow.
 
 ## Deterministic contract-release assurance addendum — 2026-08-05
 

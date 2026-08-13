@@ -747,12 +747,16 @@ const RECEIPT_EVENT_TOPICS = Object.freeze({
     "0x959dc01840aa516bf9407cffa45326c7b6821c48feff7b91eb0c743c8f460fd6",
   withdrawn:
     "0xcf7d23a3cbe4e8b36ff82fd1b05b1b17373dc7804b4ebbd6e2356716ef202372",
+  withdrawalCompleted:
+    "0xd88f78449f08dea8008c468f4f93b91e77249c07a5327c0527377160ada9a0ad",
   noClaimWithdrawal:
     "0x845bd4e89218507974962580a9461fcb8f451ebd83d8c3b843d2c9032217d179",
   responseTimedOut:
     "0xfad75d47bd1a89b1c3f46dd58d38a0b9fe3c1b992a6077875a9ebb5432ba513a",
   arbiterTimedOut:
     "0xab22e8614f3457bfcf1e3c2852a4c49aceafbd8c37e6a3181f13c8472f916e3d",
+  yieldSettled:
+    "0xca1db10f7a762635b79fae345be066eed89e91d13d431b22abf4385f2d8f0f17",
   arbiterReplacementProposed:
     "0xeeb50d0c2e09bed6f700dae5147fb9dc20cbf64a51ae5598ff4bf3fef65bd899",
   arbiterReplacementConfirmed:
@@ -817,17 +821,25 @@ const INDEXED_OPEN_ESCROW_EVENTS = Object.freeze({
     eventType: "withdrawal_completed",
     recordedActions: ["withdrawal_completed"],
   },
+  [RECEIPT_EVENT_TOPICS.withdrawalCompleted]: {
+    eventType: "withdrawal_completed",
+    recordedActions: ["withdrawal_completed"],
+  },
   [RECEIPT_EVENT_TOPICS.noClaimWithdrawal]: {
     eventType: "no_claim_refund_available",
     recordedActions: ["timeout_executed"],
   },
   [RECEIPT_EVENT_TOPICS.responseTimedOut]: {
-    eventType: "response_timeout_escalated",
+    eventType: "response_timeout_recorded",
     recordedActions: ["timeout_executed"],
   },
   [RECEIPT_EVENT_TOPICS.arbiterTimedOut]: {
     eventType: "arbiter_timeout_allocation",
     recordedActions: ["timeout_executed"],
+  },
+  [RECEIPT_EVENT_TOPICS.yieldSettled]: {
+    eventType: "yield_settled",
+    recordedActions: ["yield_settled"],
   },
   [RECEIPT_EVENT_TOPICS.arbiterReplacementProposed]: {
     eventType: "arbiter_replacement_proposed",
@@ -1575,6 +1587,8 @@ function receiptExpectation(body, row, env, context, recordedEvents) {
     ];
   } else if (body.type === "claim_submitted") {
     const amount = tokenMicros(body.amount);
+    const unclaimedAllocated =
+      terms.tokenChoice === "yield" ? 0n : depositMicros - amount;
     variants = [
       variant({
         address: openEscrowAddress,
@@ -1582,7 +1596,7 @@ function receiptExpectation(body, row, env, context, recordedEvents) {
         agreementTopic,
         dataWords: {
           0: uint256Topic(amount),
-          1: uint256Topic(depositMicros - amount),
+          1: uint256Topic(unclaimedAllocated),
         },
         topicCount: 2,
         dataWordCount: 2,
@@ -1593,6 +1607,8 @@ function receiptExpectation(body, row, env, context, recordedEvents) {
     const priorClaim = latestClaimEvent(recordedEvents);
     const priorAmount = tokenMicros(priorClaim?.metadata?.amount);
     const amount = tokenMicros(body.amount);
+    const additionallyAllocated =
+      terms.tokenChoice === "yield" ? 0n : priorAmount - amount;
     variants = [
       amount === 0n
         ? variant({
@@ -1607,9 +1623,9 @@ function receiptExpectation(body, row, env, context, recordedEvents) {
             address: openEscrowAddress,
             topic0: RECEIPT_EVENT_TOPICS.claimAmended,
             agreementTopic,
-            dataWords: {
-              0: uint256Topic(amount),
-              1: uint256Topic(priorAmount - amount),
+          dataWords: {
+            0: uint256Topic(amount),
+            1: uint256Topic(additionallyAllocated),
             },
             topicCount: 2,
             dataWordCount: 2,
@@ -1661,26 +1677,73 @@ function receiptExpectation(body, row, env, context, recordedEvents) {
     if (context.role === "tenant" && !actorTopic) {
       return requireKnownActor("tenant");
     }
+    const payoutAmount = tokenMicros(body.amount);
+    const reserveRefundAmount = tokenMicros(body.reserveRefundAmount || "0");
+    const reportsReserveRefund = Object.prototype.hasOwnProperty.call(
+      body,
+      "reserveRefundAmount",
+    );
+    const agreementToken = tokenAddressForTerms(terms, env);
+    const payoutToken = cleanText(
+      env.USDC_ADDRESS || DEFAULT_USDC_ADDRESS,
+      80,
+    ).toLowerCase();
+    if (
+      payoutAmount === null ||
+      reserveRefundAmount === null ||
+      (payoutAmount === 0n && reserveRefundAmount === 0n) ||
+      !agreementToken ||
+      !WALLET_PATTERN.test(payoutToken)
+    ) {
+      return {
+        error: "The withdrawal and reserve-refund amounts required to verify this transaction are invalid.",
+        status: 400,
+      };
+    }
     variants = [
-      variant({
+      ...(reportsReserveRefund ? [variant({
+        address: openEscrowAddress,
+        topic0: RECEIPT_EVENT_TOPICS.withdrawalCompleted,
+        agreementTopic,
+        topicWords: actorTopic ? { 2: actorTopic } : {},
+        dataWords: {
+          0: addressTopic(payoutToken),
+          1: uint256Topic(payoutAmount),
+          2: addressTopic(
+            reserveRefundAmount > 0n
+              ? agreementToken
+              : "0x0000000000000000000000000000000000000000",
+          ),
+          3: uint256Topic(reserveRefundAmount),
+        },
+        topicCount: 3,
+        dataWordCount: 4,
+        ...(context.role === "landlord" ? landlordActor : { exactSender }),
+        senderTopicIndex: 2,
+        captureActorTopicIndex: 2,
+      })] : []),
+      ...(!reportsReserveRefund ? [variant({
         address: openEscrowAddress,
         topic0: RECEIPT_EVENT_TOPICS.withdrawn,
         agreementTopic,
         topicWords: actorTopic ? { 2: actorTopic } : {},
-        dataWords: { 0: uint256Topic(tokenMicros(body.amount)) },
+        dataWords: { 0: uint256Topic(payoutAmount) },
         topicCount: 3,
         dataWordCount: 1,
         ...(context.role === "landlord" ? landlordActor : { exactSender }),
         senderTopicIndex: 2,
         captureActorTopicIndex: 2,
-      }),
+      })] : []),
     ];
   } else if (body.type === "timeout_executed") {
     const dispute = claimDisputeState(recordedEvents, context.tenantRows);
+    const yieldNoClaimSettlement =
+      body.timeout === "no_claim_refund" && terms.tokenChoice === "yield";
     const amount =
       body.timeout === "no_claim_refund"
         ? depositMicros
-        : body.timeout === "no_response_dispute"
+        : body.timeout === "no_response_dispute" ||
+            body.timeout === "no_response_recorded"
           ? dispute.claimMicros
           : dispute.disputedMicros;
     if (body.timeout === "no_claim_refund" && !actorTopic) {
@@ -1692,11 +1755,16 @@ function receiptExpectation(body, row, env, context, recordedEvents) {
         topic0:
           body.timeout === "no_claim_refund"
             ? RECEIPT_EVENT_TOPICS.noClaimWithdrawal
-            : body.timeout === "no_response_dispute"
+            : body.timeout === "no_response_dispute" ||
+                body.timeout === "no_response_recorded"
               ? RECEIPT_EVENT_TOPICS.responseTimedOut
               : RECEIPT_EVENT_TOPICS.arbiterTimedOut,
         agreementTopic,
-        dataWords: { 0: uint256Topic(amount) },
+        // A yield agreement's trusted contract computes the exact terminal
+        // settlement value at this block. It can exceed principal, so the
+        // receipt must prove the event shape and agreement rather than a
+        // stale offchain principal prediction.
+        dataWords: yieldNoClaimSettlement ? {} : { 0: uint256Topic(amount) },
         topicCount: 2,
         dataWordCount: 1,
         exactSender:
@@ -2854,24 +2922,6 @@ function formatTestUsd(micros) {
   return `$${cents / 100n}.${(cents % 100n).toString().padStart(2, "0")}`;
 }
 
-function previewYieldTestUsdAt(shares, fundedAt, valuedAt) {
-  if (
-    typeof shares !== "bigint" ||
-    shares <= 0n ||
-    !Number.isFinite(fundedAt) ||
-    !Number.isFinite(valuedAt) ||
-    valuedAt <= fundedAt
-  ) {
-    return shares;
-  }
-  const elapsedSeconds = Math.floor((valuedAt - fundedAt) / 1000);
-  const accruedRatePartsPerMillion = Math.min(
-    50_000,
-    Math.floor((elapsedSeconds * 10_000) / 3600),
-  );
-  return shares + (shares * BigInt(accruedRatePartsPerMillion)) / 1_000_000n;
-}
-
 function cleanDeductionItems(value) {
   if (!Array.isArray(value) || value.length < 1 || value.length > 20) return null;
   const items = value.map((item) => ({
@@ -3990,6 +4040,15 @@ async function recordedAppEventForIndexedEvent(db, record) {
   return Boolean(existing?.id);
 }
 
+function effectiveIndexedEventType(record, row) {
+  if (record.event_type !== "response_timeout_recorded") {
+    return record.event_type;
+  }
+  return row.arbiter_email
+    ? "response_timeout_escalated"
+    : "response_timeout_recorded";
+}
+
 async function processIndexedChainEvent(env, record) {
   let negotiationId = cleanText(record.negotiation_id, 100);
   let row = negotiationId ? await rowFor(env.DB, negotiationId).catch(() => null) : null;
@@ -4014,6 +4073,7 @@ async function processIndexedChainEvent(env, record) {
 
   const boundRecord = { ...record, negotiation_id: negotiationId };
   const recordedInApp = await recordedAppEventForIndexedEvent(env.DB, boundRecord);
+  const eventType = effectiveIndexedEventType(record, row);
 
   const eventAlreadyRecorded = await env.DB
     .prepare(
@@ -4038,10 +4098,10 @@ async function processIndexedChainEvent(env, record) {
         now,
         "system",
         "onchain_activity_indexed",
-        `Detected ${record.event_type.replaceAll("_", " ")} directly on Base Sepolia and reconciled it with this agreement.`,
+        `Detected ${eventType.replaceAll("_", " ")} directly on Base Sepolia and reconciled it with this agreement.`,
         Number(row.revision),
         {
-          eventType: record.event_type,
+          eventType,
           transactionHash: record.transaction_hash,
           blockNumber: record.block_number,
           blockHash: record.block_hash,
@@ -4063,7 +4123,7 @@ async function processIndexedChainEvent(env, record) {
     canonicalRequest,
     env,
     row,
-    record.event_type,
+    eventType,
     { deliveryKey, indexedOnchain: true },
     true,
   );
@@ -4090,10 +4150,10 @@ async function processIndexedChainEvent(env, record) {
         processedAt,
         "system",
         "agreement_activity_notification_sent",
-        `Sent the indexed ${record.event_type.replaceAll("_", " ")} notice to the opted-in ${delivery.recipientRole}.`,
+        `Sent the indexed ${eventType.replaceAll("_", " ")} notice to the opted-in ${delivery.recipientRole}.`,
         Number(row.revision),
         {
-          eventType: record.event_type,
+          eventType,
           recipientRole: delivery.recipientRole,
           messageId: delivery.messageId,
           indexedOnchain: true,
@@ -7372,7 +7432,22 @@ async function sendOptedInAgreementActivityEmails(
     ["arbiter", row.arbiter_email],
   ];
   const claimResponseCopy =
-    {
+    (!row.arbiter_email
+      ? {
+          approve: {
+            subject: `OpenEscrow agreement #${agreementNumber} deduction approved`,
+            text: "The tenant approved the documented deduction claim. Review the recorded response and resulting allocation in OpenEscrow.",
+          },
+          partial: {
+            subject: `OpenEscrow agreement #${agreementNumber} claim response recorded`,
+            text: "The tenant approved part of the documented deduction and disputed the remainder. OpenEscrow preserved the response in the shared record; the documented claim allocation is ready to review.",
+          },
+          dispute: {
+            subject: `OpenEscrow agreement #${agreementNumber} claim response recorded`,
+            text: "The tenant disputed the documented deduction claim. OpenEscrow preserved the explanation in the shared record; the documented claim allocation is ready to review.",
+          },
+        }
+      : {
       approve: {
         subject: `OpenEscrow agreement #${agreementNumber} deduction approved`,
         text: "The tenant approved the documented deduction claim. Review the recorded decision and resulting allocation in OpenEscrow.",
@@ -7385,7 +7460,7 @@ async function sendOptedInAgreementActivityEmails(
         subject: `OpenEscrow agreement #${agreementNumber} deduction disputed`,
         text: "The tenant disputed the documented deduction claim. Review the recorded explanation and resolution status in OpenEscrow.",
       },
-    }[activity.decision] || {
+    })[activity.decision] || {
       subject: `OpenEscrow agreement #${agreementNumber} claim response`,
       text: "The tenant responded to the deduction claim. Review the recorded decision and next step in OpenEscrow.",
     };
@@ -7475,6 +7550,11 @@ async function sendOptedInAgreementActivityEmails(
       subject: `OpenEscrow agreement #${agreementNumber} full refund recorded`,
       text: "The no-claim period ended and the full tenant refund was recorded on Base Sepolia. Review the resulting allocation in OpenEscrow.",
     },
+    response_timeout_recorded: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${agreementNumber} response period ended`,
+      text: "A claim response deadline passed without every tenant response. OpenEscrow recorded the non-response and the contract finalized the documented claim. Review the shared record and resulting allocation in OpenEscrow.",
+    },
     response_timeout_escalated: {
       recipients: allAgreementRecipients,
       subject: `OpenEscrow agreement #${agreementNumber} response period ended`,
@@ -7484,6 +7564,11 @@ async function sendOptedInAgreementActivityEmails(
       recipients: allAgreementRecipients,
       subject: `OpenEscrow agreement #${agreementNumber} timeout allocation recorded`,
       text: "The arbiter ruling period ended and the contract recorded the tenant allocation. Review the resulting balances in OpenEscrow.",
+    },
+    yield_settled: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${agreementNumber} yield settlement recorded`,
+      text: "The demonstration yield position was settled into testUSDC. The landlord allocation is limited to the documented principal deduction, and all simulated yield remains allocated to the tenants. Review the final balances in OpenEscrow.",
     },
     arbiter_replacement_proposed: {
       recipients: allAgreementRecipients,
@@ -7735,7 +7820,7 @@ function claimDisputeState(events, tenantRows) {
   };
 }
 
-function resolutionEvent(events, tenantRows) {
+function resolutionEvent(events, tenantRows, hasArbiter = true) {
   const ruling = latestEvent(events, "arbiter_ruling_submitted");
   if (ruling) return ruling;
   const refundTimeout = [...events]
@@ -7744,6 +7829,7 @@ function resolutionEvent(events, tenantRows) {
       (event) =>
         event.action === "timeout_executed" &&
         (event.metadata?.timeout === "no_claim_refund" ||
+          event.metadata?.timeout === "no_response_recorded" ||
           event.metadata?.timeout === "arbiter_timeout_refund"),
     );
   if (refundTimeout) return refundTimeout;
@@ -7758,7 +7844,7 @@ function resolutionEvent(events, tenantRows) {
   if (
     dispute.claim &&
     dispute.responses.allResponded &&
-    !dispute.disputeOpened
+    (!hasArbiter || !dispute.disputeOpened)
   ) {
     return [...dispute.responses.responses].sort(
       (left, right) =>
@@ -7992,7 +8078,9 @@ function deadlineCandidates(row, events, now, tenantRows = []) {
           {
             type: "response_deadline_1_day",
             scheduledFor: addDays(responseDeadline, -1),
-            text: "Your deduction-claim response deadline is tomorrow. Silence escalates the claim to a dispute; it never automatically pays the landlord.",
+            text: row.arbiter_email
+              ? "Your deduction-claim response deadline is tomorrow. If you do not respond, the unanswered amount moves to the agreed dispute process."
+              : "Your deduction-claim response deadline is tomorrow. Your response becomes part of the shared record. If you do not respond, OpenEscrow records “No response,” and the documented claim can still be finalized.",
           },
         ]).filter((candidate) => candidate.scheduledFor <= now && now < responseDeadline).at(-1);
         if (reminder) {
@@ -8227,7 +8315,7 @@ function withdrawalCandidates(row, events, now, tenantRows = []) {
           is_funding_tenant: 1,
         },
       ];
-  const resolution = resolutionEvent(events, lifecycleTenants);
+  const resolution = resolutionEvent(events, lifecycleTenants, Boolean(row.arbiter_email));
   if (!resolution) return [];
   return [
     ["landlord", row.landlord_email],
@@ -10223,7 +10311,7 @@ async function applyAction(request, env, id) {
         now,
         role,
         "deduction_claim_submitted",
-        `Submitted an itemized ${amount}-share deduction claim with ${items.length} line item${items.length === 1 ? "" : "s"} (${category})${note ? `: ${note}` : "."}${evidenceUri ? " Supporting documentation attached." : ""}`,
+        `Submitted an itemized ${amount} testUSDC-value deduction claim with ${items.length} line item${items.length === 1 ? "" : "s"} (${category})${note ? `: ${note}` : "."}${evidenceUri ? " Supporting documentation attached." : ""}`,
         revision,
         {
           amount,
@@ -10322,7 +10410,7 @@ async function applyAction(request, env, id) {
         now,
         role,
         "deduction_claim_amended",
-        `Amended the itemized deduction claim to ${amount} shares across ${items.length} line item${items.length === 1 ? "" : "s"}${note ? `: ${note}` : "."}${evidenceUri ? " Supporting documentation attached." : ""}`,
+        `Amended the itemized deduction claim to ${amount} testUSDC value across ${items.length} line item${items.length === 1 ? "" : "s"}${note ? `: ${note}` : "."}${evidenceUri ? " Supporting documentation attached." : ""}`,
         revision,
         {
           amount,
@@ -10365,7 +10453,8 @@ async function applyAction(request, env, id) {
         (event) =>
           event.action === "arbiter_ruling_submitted" ||
           (event.action === "timeout_executed" &&
-            (event.metadata?.timeout === "no_response_dispute" ||
+            (event.metadata?.timeout === "no_response_recorded" ||
+              event.metadata?.timeout === "no_response_dispute" ||
               event.metadata?.timeout === "arbiter_timeout_refund")),
       )
     ) {
@@ -10396,7 +10485,7 @@ async function applyAction(request, env, id) {
         ? "approved the deduction in full"
         : body.decision === "dispute"
           ? "disputed the deduction in full"
-          : `accepted ${acceptedAmount} shares and disputed the remainder`;
+          : `accepted ${acceptedAmount} testUSDC value and disputed the remainder`;
     const stateAfterResponse = claimDisputeState(
       [
         ...recordedEvents,
@@ -10526,7 +10615,7 @@ async function applyAction(request, env, id) {
       return json({ error: "The agreement must be finalized before a withdrawal." }, 409);
     }
     const tenantRows = await tenantsFor(db, id);
-    if (!resolutionEvent(recordedEvents, tenantRows)) {
+    if (!resolutionEvent(recordedEvents, tenantRows, Boolean(row.arbiter_email))) {
       return json(
         { error: "A claim decision, ruling, or refund must be resolved before recording a withdrawal." },
         409,
@@ -10555,10 +10644,13 @@ async function applyAction(request, env, id) {
     }
     const amount = cleanText(body.amount, 80);
     const amountMicros = tokenMicros(amount);
+    const reserveRefundAmount = cleanText(body.reserveRefundAmount || "0", 80);
+    const reserveRefundMicros = tokenMicros(reserveRefundAmount);
     const transactionHash = cleanText(body.transactionHash, 100);
     if (
       amountMicros === null ||
-      amountMicros <= 0n ||
+      reserveRefundMicros === null ||
+      (amountMicros <= 0n && reserveRefundMicros <= 0n) ||
       !/^0x[a-fA-F0-9]{64}$/.test(transactionHash)
     ) {
       return json({ error: "The withdrawal receipt is incomplete." }, 400);
@@ -10571,10 +10663,11 @@ async function applyAction(request, env, id) {
         now,
         role,
         "withdrawal_completed",
-        `${role === "landlord" ? "Landlord" : cleanText(withdrawingTenant?.name, 160) || "Tenant"} withdrew ${amount} shares in transaction ${transactionHash}.`,
+        `${role === "landlord" ? "Landlord" : cleanText(withdrawingTenant?.name, 160) || "Tenant"} withdrew ${amount} payout units${reserveRefundMicros > 0n ? ` and received a ${reserveRefundAmount}-unit reserve refund` : ""} in transaction ${transactionHash}.`,
         revision,
         {
           amount,
+          reserveRefundAmount,
           transactionHash,
           tenantId: withdrawingTenant?.id || null,
         },
@@ -10583,6 +10676,7 @@ async function applyAction(request, env, id) {
   } else if (body.type === "timeout_executed") {
     const timeoutLabels = {
       no_claim_refund: "Executed the no-claim full tenant refund",
+      no_response_recorded: "Recorded the unanswered claim and finalized the documented allocation",
       no_response_dispute: "Escalated the unanswered deduction claim to a dispute",
       arbiter_timeout_refund: "Executed the arbiter-timeout tenant refund",
     };
@@ -10621,16 +10715,28 @@ async function applyAction(request, env, id) {
         );
       }
     }
-    if (timeout === "no_response_dispute") {
+    if (timeout === "no_response_recorded" || timeout === "no_response_dispute") {
       if (!dispute.claim || dispute.claimMicros === null || dispute.claimMicros <= 0n) {
         return json(
-          { error: "A positive deduction claim is required before recording a no-response dispute." },
+          { error: "A positive deduction claim is required before recording a missed response deadline." },
           409,
         );
       }
       if (dispute.responses.allResponded) {
         return json(
           { error: "Every tenant already responded, so the no-response action does not apply." },
+          409,
+        );
+      }
+      if (timeout === "no_response_recorded" && row.arbiter_email) {
+        return json(
+          { error: "This arbiter-backed agreement must use its agreed dispute process after a missed response deadline." },
+          409,
+        );
+      }
+      if (timeout === "no_response_dispute" && !row.arbiter_email) {
+        return json(
+          { error: "This no-arbiter agreement records the non-response without opening a dispute." },
           409,
         );
       }
@@ -10900,8 +11006,9 @@ async function applyAction(request, env, id) {
           ? "claim_retracted"
           : body.type === "timeout_executed"
             ? {
-                no_claim_refund: "no_claim_refund_available",
-                no_response_dispute: "response_timeout_escalated",
+              no_claim_refund: "no_claim_refund_available",
+              no_response_recorded: "response_timeout_recorded",
+              no_response_dispute: "response_timeout_escalated",
                 arbiter_timeout_refund: "arbiter_timeout_allocation",
               }[body.timeout]
             : body.type;
@@ -11963,25 +12070,14 @@ ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordExc
       ...(reportComplianceSnapshot?.claimPolicy?.stateAttestations || []),
     ].map((attestation) => [attestation.id, attestation.label]),
   );
-  const fundingEvents = record.events.filter(
-    (event) =>
-      event.action === "tenant_share_funded" ||
-      event.action === "agreement_funded",
-  );
-  const fundedAt = Date.parse(
-    (fundingEvents.find((event) => event.action === "agreement_funded") ||
-      fundingEvents.at(-1))?.createdAt || "",
-  );
   const claimTokenSymbol = depositAssetTestnetLabel(terms);
-  const claimAmountCell = (amount, valuedAt) => {
+  const claimAmountCell = (amount) => {
     const tokenAmount = tokenMicros(amount);
     if (tokenAmount === null) return escapeHtml(amount);
-    const testUsdValue =
-      terms.tokenChoice === "yield"
-        ? previewYieldTestUsdAt(tokenAmount, fundedAt, Date.parse(valuedAt))
-        : tokenAmount;
-    const qualifier = terms.tokenChoice === "yield" ? "modeled test USD" : "test USD";
-    return `<strong>${escapeHtml(formatTestUsd(testUsdValue))}</strong> <small>${qualifier}</small><br><small>${escapeHtml(formatTokenMicros(tokenAmount))} ${escapeHtml(claimTokenSymbol)}</small>`;
+    if (terms.tokenChoice === "yield") {
+      return `<strong>${escapeHtml(formatTestUsd(tokenAmount))}</strong> <small>test USD</small><br><small>Landlord payout: ${escapeHtml(formatTokenMicros(tokenAmount))} testUSDC after settlement</small>`;
+    }
+    return `<strong>${escapeHtml(formatTestUsd(tokenAmount))}</strong> <small>test USD</small><br><small>${escapeHtml(formatTokenMicros(tokenAmount))} ${escapeHtml(claimTokenSymbol)}</small>`;
   };
   const claimBreakdowns = record.events
     .filter(

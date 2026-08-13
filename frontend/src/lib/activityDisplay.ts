@@ -30,6 +30,8 @@ export function friendlyActivitySummary(event: NegotiationEvent): string {
       arbiter_ruling: "The dispute ruling was recorded on Base Sepolia.",
       withdrawal_completed: "An available agreement balance was withdrawn.",
       no_claim_refund_available: "The no-claim tenant refund was recorded.",
+      response_timeout_recorded:
+        "A missed response deadline was recorded and the documented claim was finalized.",
       response_timeout_escalated: "An unanswered claim was escalated for resolution.",
       arbiter_timeout_allocation: "The missed ruling deadline triggered the tenant allocation.",
       arbiter_replacement_proposed: "An arbiter change was proposed.",

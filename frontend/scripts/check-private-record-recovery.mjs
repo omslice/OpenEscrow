@@ -1441,7 +1441,7 @@ try {
     role: "tenant",
     actionType: "withdrawal_completed",
     transactionHash: `0x${"5".repeat(64)}`,
-    transactionButton: "Withdraw 0.5 USDC",
+    transactionButton: "Withdraw 0.5 testUSDC",
     retryButton: "Finish adding withdrawal to Record",
     confirmedHeading: "Withdrawal confirmed",
     recoveredText: /recovered a confirmed testnet withdrawal/i,
@@ -1648,10 +1648,10 @@ try {
     {
       flow: "no-response-timeout-receipt",
       role: "landlord",
-      timeout: "no_response_dispute",
+      timeout: "no_response_recorded",
       transactionHash: `0x${"2".repeat(64)}`,
-      transactionButton: "Escalate to dispute",
-      confirmedHeading: "Dispute escalation confirmed",
+      transactionButton: "Record no response and finalize claim",
+      confirmedHeading: "No response recorded",
     },
     {
       flow: "arbiter-timeout-receipt",

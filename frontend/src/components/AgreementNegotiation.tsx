@@ -115,7 +115,7 @@ function Terms({ record }: { record: NegotiationRecord }) {
         <dt>Testnet operations reserve</dt>
         <dd>
           $5 {assetSnapshot?.testnetSymbol || depositAsset?.testnetSymbol || "testUSDC"} total ·
-          split evenly between tenants · not refundable principal
+          split evenly between tenants · returned when the agreement closes
         </dd>
       </div>
       <div><dt>Expected possession returned</dt><dd>{new Date(terms.claimWindowStart).toLocaleString()}</dd></div>

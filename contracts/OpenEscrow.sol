@@ -10,6 +10,13 @@ interface IOperationsReserve {
     function YIELD_TOKEN() external view returns (IERC20);
     function requiredReserveShare(uint256 agreementId, address payer) external view returns (uint256);
     function recordReservePayment(uint256 agreementId, address payer, uint256 amount) external;
+    function refundReserve(uint256 agreementId, address payer, address recipient)
+        external
+        returns (address token, uint256 amount);
+}
+
+interface ITestYieldSettlementToken {
+    function redeemAssetsSince(uint256 shares, uint256 fundedAt, address receiver) external returns (uint256 assets);
 }
 
 /// @title OpenEscrow - shared rental security deposit escrow (Base Sepolia MVP)
@@ -117,6 +124,8 @@ contract OpenEscrow is ReentrancyGuard {
     mapping(uint256 => mapping(address => uint256)) public tenantAcceptedClaimAmount;
     mapping(uint256 => uint256) public claimResponseCount;
     mapping(uint256 => uint256) public minimumAcceptedClaimAmount;
+    mapping(uint256 => bool) public yieldSettled;
+    mapping(uint256 => uint256) public settledValue;
 
     uint64 public constant MIN_PERIOD = 5 minutes;
     uint64 public constant MAX_PERIOD = 365 days;
@@ -158,7 +167,7 @@ contract OpenEscrow is ReentrancyGuard {
         uint256 requiredResponseCount
     );
     event ClaimResponded(uint256 indexed id, uint256 acceptedAmount, uint256 disputedAmount);
-    event ResponseTimedOut(uint256 indexed id, uint256 disputedAmount);
+    event ResponseTimedOut(uint256 indexed id, uint256 claimedAmount);
     event DisputeCreated(uint256 indexed id, uint256 disputedAmount, uint64 arbiterRulingDeadline);
     event DisputeResolved(uint256 indexed id, uint256 awardedToLandlord, uint256 awardedToTenant);
     event ArbiterTimedOut(uint256 indexed id, uint256 awardedToTenant);
@@ -169,6 +178,25 @@ contract OpenEscrow is ReentrancyGuard {
     event ArbiterReplaced(uint256 indexed id, address indexed oldArbiter, address indexed newArbiter);
     event ArbiterResigned(uint256 indexed id, address indexed arbiter);
     event Withdrawn(uint256 indexed id, address indexed party, uint256 amount);
+    event OperationsReserveRefunded(
+        uint256 indexed id, address indexed recipient, address indexed token, uint256 amount
+    );
+    event WithdrawalCompleted(
+        uint256 indexed id,
+        address indexed party,
+        address payoutToken,
+        uint256 payoutAmount,
+        address reserveToken,
+        uint256 reserveAmount
+    );
+    event YieldSettled(
+        uint256 indexed id,
+        uint256 sharesBurned,
+        uint256 testAssetsReceived,
+        uint256 landlordPrincipal,
+        uint256 tenantAssets,
+        uint256 tenantYield
+    );
 
     // ---------------------------------------------------------------------
     // Errors
@@ -209,6 +237,7 @@ contract OpenEscrow is ReentrancyGuard {
     error TenantAlreadyFunded();
     error OperationsReserveNotConfigured();
     error InvalidOperationsReserve();
+    error YieldSettlementMismatch();
 
     // ---------------------------------------------------------------------
     // Constructor
@@ -542,15 +571,17 @@ contract OpenEscrow is ReentrancyGuard {
         if (amount == 0 || amount > a.depositAmount) revert InvalidClaimAmount();
 
         uint256 unclaimed = a.depositAmount - amount;
-        _creditTenants(id, a, unclaimed);
-        a.locked = amount;
+        if (!_isYieldAgreement(a)) {
+            _creditTenants(id, a, unclaimed);
+            a.locked = amount;
+        }
         a.claimedAmount = amount;
         minimumAcceptedClaimAmount[id] = amount;
         a.responseDeadline = uint64(block.timestamp) + a.responsePeriod;
         a.phase = Phase.ClaimOpen;
 
         _recordEvidence(id, contentHash, uri, evidenceType, msg.sender);
-        emit ClaimSubmitted(id, amount, unclaimed);
+        emit ClaimSubmitted(id, amount, _isYieldAgreement(a) ? 0 : unclaimed);
     }
 
     /// @dev At most one amendment per agreement (§decision 2). May only reduce the
@@ -570,8 +601,10 @@ contract OpenEscrow is ReentrancyGuard {
         if (newAmount > a.claimedAmount) revert AmendmentMustNotIncrease();
 
         uint256 delta = a.claimedAmount - newAmount;
-        _creditTenants(id, a, delta);
-        a.locked -= delta;
+        if (!_isYieldAgreement(a)) {
+            _creditTenants(id, a, delta);
+            a.locked -= delta;
+        }
         a.claimedAmount = newAmount;
         minimumAcceptedClaimAmount[id] = newAmount;
         a.claimAmended = true;
@@ -579,12 +612,16 @@ contract OpenEscrow is ReentrancyGuard {
         _recordEvidence(id, contentHash, uri, evidenceType, msg.sender);
 
         if (newAmount == 0) {
-            a.phase = Phase.Closed;
-            a.closeReason = CloseReason.ClaimRetracted;
-            _clearPendingReplacement(a);
+            if (_isYieldAgreement(a)) {
+                _finalizeYieldDistribution(id, a, 0, CloseReason.ClaimRetracted);
+            } else {
+                a.phase = Phase.Closed;
+                a.closeReason = CloseReason.ClaimRetracted;
+                _clearPendingReplacement(a);
+            }
             emit ClaimRetracted(id);
         } else {
-            emit ClaimAmended(id, newAmount, delta);
+            emit ClaimAmended(id, newAmount, _isYieldAgreement(a) ? 0 : delta);
         }
     }
 
@@ -605,9 +642,10 @@ contract OpenEscrow is ReentrancyGuard {
 
     /// @notice Unifies acceptance and disputing: acceptedAmount == claimedAmount is full
     ///         acceptance, 0 < acceptedAmount < claimedAmount is partial, 0 is full dispute.
-    ///         Every tenant records one response. The claim settles only after every tenant
-    ///         responds, using the lowest amount accepted by all tenants. Silence by any
-    ///         tenant at the deadline makes the full claim disputed.
+    ///         Every tenant records one response. When an arbiter was accepted before
+    ///         funding, the lowest amount accepted by all tenants controls the amount that
+    ///         settles without dispute. Without an arbiter, tenant responses are record-only:
+    ///         after every response, the landlord's documented claim is allocated in full.
     function respondToClaim(uint256 id, uint256 acceptedAmount) external nonReentrant {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.ClaimOpen) revert InvalidPhase();
@@ -630,14 +668,30 @@ contract OpenEscrow is ReentrancyGuard {
         }
     }
 
-    /// @notice Permissionless. Tenant silence past the deadline is treated as a full
-    ///         dispute requiring arbiter review - it never auto-awards the landlord.
+    /// @notice Permissionless. After the response deadline, records tenant non-response.
+    ///         When no arbiter was accepted, the documented claim is allocated to the
+    ///         landlord and silence is not characterized as consent or a dispute. When an
+    ///         arbiter was accepted, the existing dispute-resolution path remains active.
     function finalizeNoResponse(uint256 id) external nonReentrant {
         Agreement storage a = _agreement(id);
         if (a.phase != Phase.ClaimOpen) revert InvalidPhase();
         if (block.timestamp < a.responseDeadline) revert ResponseWindowStillOpen();
 
-        // A missing tenant response is never treated as consent.
+        if (a.arbiter == address(0)) {
+            uint256 claimed = a.claimedAmount;
+            if (_isYieldAgreement(a)) {
+                _finalizeYieldDistribution(id, a, claimed, CloseReason.Settled);
+            } else {
+                a.landlordWithdrawable += claimed;
+                a.locked -= claimed;
+                a.phase = Phase.Closed;
+                a.closeReason = CloseReason.Settled;
+                _clearPendingReplacement(a);
+            }
+            emit ResponseTimedOut(id, claimed);
+            return;
+        }
+
         _settleResponse(id, a, 0);
         emit ResponseTimedOut(id, a.claimedAmount);
     }
@@ -645,15 +699,31 @@ contract OpenEscrow is ReentrancyGuard {
     function _settleResponse(uint256 id, Agreement storage a, uint256 acceptedAmount) internal {
         uint256 disputed = a.claimedAmount - acceptedAmount;
 
-        if (acceptedAmount > 0) {
-            a.landlordWithdrawable += acceptedAmount;
+        if (a.arbiter == address(0)) {
+            if (_isYieldAgreement(a)) {
+                _finalizeYieldDistribution(id, a, a.claimedAmount, CloseReason.Settled);
+            } else {
+                a.landlordWithdrawable += a.claimedAmount;
+                a.locked -= a.claimedAmount;
+                a.phase = Phase.Closed;
+                a.closeReason = CloseReason.Settled;
+                _clearPendingReplacement(a);
+            }
+            emit ClaimResponded(id, acceptedAmount, disputed);
+            return;
         }
-        a.locked -= acceptedAmount;
+
+        if (acceptedAmount > 0) a.landlordWithdrawable += acceptedAmount;
+        if (!_isYieldAgreement(a)) a.locked -= acceptedAmount;
 
         if (disputed == 0) {
-            a.phase = Phase.Closed;
-            a.closeReason = CloseReason.Settled;
-            _clearPendingReplacement(a);
+            if (_isYieldAgreement(a)) {
+                _finalizeYieldDistribution(id, a, acceptedAmount, CloseReason.Settled);
+            } else {
+                a.phase = Phase.Closed;
+                a.closeReason = CloseReason.Settled;
+                _clearPendingReplacement(a);
+            }
             emit ClaimResponded(id, acceptedAmount, 0);
         } else {
             a.disputeCreatedAt = uint64(block.timestamp);
@@ -671,11 +741,16 @@ contract OpenEscrow is ReentrancyGuard {
         if (block.timestamp < a.claimSubmissionDeadline) revert ClaimWindowStillOpen();
 
         uint256 amount = a.locked;
-        _creditTenants(id, a, amount);
-        a.locked = 0;
-        a.phase = Phase.Closed;
-        a.closeReason = CloseReason.NoClaim;
-        _clearPendingReplacement(a);
+        if (_isYieldAgreement(a)) {
+            _finalizeYieldDistribution(id, a, 0, CloseReason.NoClaim);
+            amount = settledValue[id];
+        } else {
+            _creditTenants(id, a, amount);
+            a.locked = 0;
+            a.phase = Phase.Closed;
+            a.closeReason = CloseReason.NoClaim;
+            _clearPendingReplacement(a);
+        }
         emit NoClaimWithdrawal(id, amount);
     }
 
@@ -689,7 +764,15 @@ contract OpenEscrow is ReentrancyGuard {
         if (msg.sender != a.arbiter) revert NotAuthorized();
         if (a.arbiterResigned) revert ArbiterHasResigned();
         if (block.timestamp >= a.arbiterRulingDeadline) revert ArbiterRulingWindowClosed();
-        if (awardToLandlord > a.locked) revert InvalidAward();
+        uint256 accepted = a.landlordWithdrawable;
+        uint256 disputedPrincipal = a.claimedAmount - accepted;
+        if (awardToLandlord > (_isYieldAgreement(a) ? disputedPrincipal : a.locked)) revert InvalidAward();
+
+        if (_isYieldAgreement(a)) {
+            _finalizeYieldDistribution(id, a, accepted + awardToLandlord, CloseReason.ResolvedByArbiter);
+            emit DisputeResolved(id, awardToLandlord, disputedPrincipal - awardToLandlord);
+            return;
+        }
 
         uint256 disputed = a.locked;
         uint256 toTenant = disputed - awardToLandlord;
@@ -710,11 +793,18 @@ contract OpenEscrow is ReentrancyGuard {
         if (block.timestamp < a.arbiterRulingDeadline) revert ArbiterRulingWindowStillOpen();
 
         uint256 amount = a.locked;
-        _creditTenants(id, a, amount);
-        a.locked = 0;
-        a.phase = Phase.Closed;
-        a.closeReason = CloseReason.ResolvedByTimeout;
-        _clearPendingReplacement(a);
+        if (_isYieldAgreement(a)) {
+            uint256 accepted = a.landlordWithdrawable;
+            uint256 disputedPrincipal = a.claimedAmount - accepted;
+            _finalizeYieldDistribution(id, a, accepted, CloseReason.ResolvedByTimeout);
+            amount = disputedPrincipal;
+        } else {
+            _creditTenants(id, a, amount);
+            a.locked = 0;
+            a.phase = Phase.Closed;
+            a.closeReason = CloseReason.ResolvedByTimeout;
+            _clearPendingReplacement(a);
+        }
         emit ArbiterTimedOut(id, amount);
     }
 
@@ -782,7 +872,6 @@ contract OpenEscrow is ReentrancyGuard {
         uint256 amount;
         if (isTenant) {
             amount = tenantWithdrawableByAddress[id][msg.sender];
-            if (amount == 0) revert NothingToWithdraw();
             tenantWithdrawableByAddress[id][msg.sender] = 0;
             a.tenantWithdrawable -= amount;
         } else {
@@ -791,9 +880,24 @@ contract OpenEscrow is ReentrancyGuard {
             a.landlordWithdrawable = 0;
         }
 
-        a.withdrawn += amount;
-        IERC20(a.token).safeTransfer(msg.sender, amount);
-        emit Withdrawn(id, msg.sender, amount);
+        address payoutAsset = yieldSettled[id] ? address(TOKEN) : a.token;
+        if (amount != 0) {
+            a.withdrawn += amount;
+            IERC20(payoutAsset).safeTransfer(msg.sender, amount);
+            emit Withdrawn(id, msg.sender, amount);
+        }
+
+        uint256 reserveRefund;
+        address reserveToken;
+        if (isTenant && OPERATIONS_RESERVE != address(0)) {
+            (reserveToken, reserveRefund) =
+                IOperationsReserve(OPERATIONS_RESERVE).refundReserve(id, msg.sender, msg.sender);
+            if (reserveRefund != 0) {
+                emit OperationsReserveRefunded(id, msg.sender, reserveToken, reserveRefund);
+            }
+        }
+        if (amount == 0 && reserveRefund == 0) revert NothingToWithdraw();
+        emit WithdrawalCompleted(id, msg.sender, payoutAsset, amount, reserveToken, reserveRefund);
     }
 
     // ---------------------------------------------------------------------
@@ -852,6 +956,13 @@ contract OpenEscrow is ReentrancyGuard {
         return (a.agreedAmount * share) / 10_000;
     }
 
+    /// @notice Returns the token used for withdrawals after any yield position has
+    ///         been settled. Before settlement it remains the agreement's deposit token.
+    function payoutToken(uint256 id) external view returns (address) {
+        Agreement storage a = _agreement(id);
+        return yieldSettled[id] ? address(TOKEN) : a.token;
+    }
+
     // ---------------------------------------------------------------------
     // Internal helpers
     // ---------------------------------------------------------------------
@@ -863,6 +974,43 @@ contract OpenEscrow is ReentrancyGuard {
 
     function _checkPeriod(uint64 period) internal pure {
         if (period < MIN_PERIOD || period > MAX_PERIOD) revert InvalidPeriod();
+    }
+
+    function _isYieldAgreement(Agreement storage a) internal view returns (bool) {
+        return a.token == address(YIELD_TOKEN) && address(YIELD_TOKEN) != address(TOKEN);
+    }
+
+    function _finalizeYieldDistribution(
+        uint256 id,
+        Agreement storage a,
+        uint256 landlordPrincipal,
+        CloseReason closeReason
+    ) internal {
+        if (yieldSettled[id] || landlordPrincipal > a.depositAmount) {
+            revert YieldSettlementMismatch();
+        }
+
+        uint256 shares = a.depositAmount;
+        uint256 balanceBefore = TOKEN.balanceOf(address(this));
+        yieldSettled[id] = true;
+        uint256 reportedAssets = ITestYieldSettlementToken(a.token).redeemAssetsSince(shares, a.fundedAt, address(this));
+        uint256 receivedAssets = TOKEN.balanceOf(address(this)) - balanceBefore;
+        if (reportedAssets != receivedAssets || receivedAssets < landlordPrincipal) {
+            revert YieldSettlementMismatch();
+        }
+
+        uint256 tenantAssets = receivedAssets - landlordPrincipal;
+        uint256 tenantYield = receivedAssets > a.depositAmount ? receivedAssets - a.depositAmount : 0;
+        settledValue[id] = receivedAssets;
+        a.landlordWithdrawable = landlordPrincipal;
+        a.tenantWithdrawable = 0;
+        _creditTenants(id, a, tenantAssets);
+        a.locked = 0;
+        a.phase = Phase.Closed;
+        a.closeReason = closeReason;
+        _clearPendingReplacement(a);
+
+        emit YieldSettled(id, shares, receivedAssets, landlordPrincipal, tenantAssets, tenantYield);
     }
 
     function _requireReplaceablePhase(Phase phase) internal pure {

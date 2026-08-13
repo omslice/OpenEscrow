@@ -271,7 +271,7 @@ contract YieldEscrowV2PrototypeTest is Test {
         assertEq(agreement.tenantWithdrawable, PRINCIPAL);
     }
 
-    function test_noArbiterDisputeStillResolvesByTenantFavoringTimeout() public {
+    function test_noArbiterTenantDisputeIsRecordedWhileClaimPrincipalGoesToLandlord() public {
         uint256 id = _createAndFundSingle(PRINCIPAL, address(0));
         _settle(id, PRINCIPAL);
         vm.prank(landlord);
@@ -280,13 +280,57 @@ contract YieldEscrowV2PrototypeTest is Test {
         prototype.respondToClaim(id, 0);
 
         YieldEscrowV2Prototype.Agreement memory agreement = prototype.getAgreement(id);
-        vm.expectRevert(YieldEscrowV2Prototype.NotAuthorized.selector);
-        vm.prank(arbiter);
-        prototype.resolveDispute(id, 100e6);
+        assertEq(uint256(agreement.phase), uint256(YieldEscrowV2Prototype.Phase.Distributed));
+        assertEq(agreement.acceptedPrincipal, 0);
+        assertEq(agreement.landlordPrincipal, 400e6);
+        assertEq(agreement.landlordWithdrawable, 400e6);
+        assertEq(agreement.tenantWithdrawable, 600e6);
+        assertEq(prototype.tenantAcceptedClaimPrincipal(id, tenant), 0);
+        _assertDistributedConservation(id);
+    }
 
-        vm.warp(agreement.arbiterRulingDeadline);
-        prototype.claimArbiterTimeout(id);
-        assertEq(prototype.getAgreement(id).tenantWithdrawable, PRINCIPAL);
+    function test_noArbiterClaimCannotCapturePositiveTenantYield() public {
+        uint256 id = _createAndFundMulti(PRINCIPAL, address(0));
+        _setStrategyValue(1.1e18, PRINCIPAL);
+        _settle(id, 1_100e6);
+
+        vm.prank(landlord);
+        prototype.submitClaim(id, 400e6);
+        vm.prank(tenant);
+        prototype.respondToClaim(id, 0);
+        vm.prank(tenantTwo);
+        prototype.respondToClaim(id, 400e6);
+
+        YieldEscrowV2Prototype.Agreement memory agreement = prototype.getAgreement(id);
+        assertEq(uint256(agreement.phase), uint256(YieldEscrowV2Prototype.Phase.Distributed));
+        assertEq(agreement.acceptedPrincipal, 0);
+        assertEq(agreement.landlordPrincipal, 400e6);
+        assertEq(agreement.landlordWithdrawable, 400e6);
+        assertEq(agreement.tenantWithdrawable, 700e6);
+        assertEq(prototype.tenantWithdrawableByAddress(id, tenant), 420e6);
+        assertEq(prototype.tenantWithdrawableByAddress(id, tenantTwo), 280e6);
+        _assertDistributedConservation(id);
+    }
+
+    function test_noArbiterMissingResponseIsRecordedAndSettlesDocumentedClaim() public {
+        uint256 id = _createAndFundSingle(PRINCIPAL, address(0));
+        _settle(id, PRINCIPAL);
+        vm.prank(landlord);
+        prototype.submitClaim(id, 400e6);
+
+        vm.warp(prototype.getAgreement(id).responseDeadline);
+        vm.expectEmit(true, false, false, true, address(prototype));
+        emit YieldEscrowV2Prototype.NoResponseRecorded(id, 400e6);
+        prototype.finalizeNoResponse(id);
+
+        YieldEscrowV2Prototype.Agreement memory agreement = prototype.getAgreement(id);
+        assertFalse(prototype.tenantClaimResponded(id, tenant));
+        assertEq(uint256(agreement.phase), uint256(YieldEscrowV2Prototype.Phase.Distributed));
+        assertEq(agreement.acceptedPrincipal, 0);
+        assertEq(agreement.landlordPrincipal, 400e6);
+        assertEq(agreement.landlordWithdrawable, 400e6);
+        assertEq(agreement.tenantWithdrawable, 600e6);
+        _assertDistributedConservation(id);
     }
 
     function test_downwardClaimAmendmentDoesNotExtendResponseDeadline() public {

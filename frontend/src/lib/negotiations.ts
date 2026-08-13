@@ -822,7 +822,14 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
-  const data = (await response.json()) as T & { error?: string };
+  let data: T & { error?: string };
+  try {
+    data = (await response.json()) as T & { error?: string };
+  } catch {
+    throw new Error(
+      "OpenEscrow could not read the server response. Check your connection and try again.",
+    );
+  }
   if (!response.ok) throw new Error(data.error || "The agreement record could not be updated.");
   return data;
 }
@@ -1265,12 +1272,14 @@ export type NegotiationAction =
     | {
         type: "withdrawal_completed";
         amount: string;
+        reserveRefundAmount?: string;
         transactionHash: string;
       }
     | {
         type: "timeout_executed";
         timeout:
           | "no_claim_refund"
+          | "no_response_recorded"
           | "no_response_dispute"
           | "arbiter_timeout_refund";
         transactionHash: string;

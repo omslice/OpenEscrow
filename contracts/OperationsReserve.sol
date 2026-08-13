@@ -7,10 +7,10 @@ import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol
 import {OpenEscrow} from "./OpenEscrow.sol";
 
 /// @title OpenEscrow Operations Reserve
-/// @notice Collects a separately disclosed reserve for sponsored network transactions
+/// @notice Holds a separately disclosed reserve for sponsored network transactions
 ///         and document-storage costs. Each agreement pays in the same allowlisted token
-///         selected for its refundable deposit. The reserve is never part of the
-///         refundable security-deposit principal held by OpenEscrow.
+///         selected for its refundable deposit. Until actual costs can be attributed,
+///         the reserve remains a tenant liability and is returned when the agreement ends.
 contract OperationsReserve is ReentrancyGuard {
     using SafeERC20 for IERC20;
 
@@ -23,12 +23,18 @@ contract OperationsReserve is ReentrancyGuard {
 
     mapping(address escrow => mapping(uint256 agreementId => mapping(address payer => bool))) public paid;
     mapping(address escrow => mapping(uint256 agreementId => mapping(address payer => uint256))) public paidAmount;
+    mapping(address escrow => mapping(uint256 agreementId => mapping(address payer => bool))) public refunded;
     mapping(address escrow => mapping(uint256 agreementId => uint256)) public totalPaid;
+    mapping(address escrow => mapping(uint256 agreementId => uint256)) public totalRefunded;
     mapping(address escrow => mapping(uint256 agreementId => address)) public paymentToken;
     mapping(address token => uint256) public availableBalance;
+    mapping(address token => uint256) public refundableBalance;
 
     event EscrowConfigured(address indexed escrow);
     event OperationsReservePaid(
+        address indexed escrow, uint256 indexed agreementId, address indexed payer, address token, uint256 amount
+    );
+    event OperationsReserveRefunded(
         address indexed escrow, uint256 indexed agreementId, address indexed payer, address token, uint256 amount
     );
     event ReserveWithdrawn(address indexed token, address indexed recipient, uint256 amount);
@@ -77,7 +83,8 @@ contract OperationsReserve is ReentrancyGuard {
 
     /// @notice Pays one tenant's disclosed share of the agreement-level reserve.
     ///         OpenEscrow's signed proposal determines the amount; this contract
-    ///         records the exact transfer without treating it as refundable escrow.
+    ///         records the exact transfer as a separate refundable liability rather
+    ///         than security-deposit principal.
     function payReserveShare(address escrow, uint256 agreementId, uint256 amount) external nonReentrant {
         _payReserve(escrow, agreementId, amount);
     }
@@ -121,6 +128,7 @@ contract OperationsReserve is ReentrancyGuard {
         }
 
         availableBalance[selectedToken] += amount;
+        refundableBalance[selectedToken] += amount;
         _recordPayment(address(ESCROW), agreementId, payer, selectedToken, amount);
     }
 
@@ -146,6 +154,7 @@ contract OperationsReserve is ReentrancyGuard {
         }
 
         availableBalance[selectedToken] += amount;
+        refundableBalance[selectedToken] += amount;
         _recordPayment(escrow, agreementId, msg.sender, selectedToken, amount);
     }
 
@@ -160,6 +169,37 @@ contract OperationsReserve is ReentrancyGuard {
         emit OperationsReservePaid(escrow, agreementId, payer, token, amount);
     }
 
+    /// @notice Returns a tenant's unused reserve after the agreement reaches a terminal phase.
+    ///         The configured escrow calls this while processing the tenant's withdrawal.
+    ///         The current testnet MVP does not meter real costs, so the full share is refundable.
+    function refundReserve(uint256 agreementId, address payer, address recipient)
+        external
+        nonReentrant
+        returns (address token, uint256 amount)
+    {
+        if (msg.sender != address(ESCROW)) revert UnsupportedEscrow();
+        if (recipient == address(0)) revert ZeroAddress();
+        if (!paid[msg.sender][agreementId][payer] || refunded[msg.sender][agreementId][payer]) {
+            return (address(0), 0);
+        }
+
+        OpenEscrow.Agreement memory agreement = ESCROW.getAgreement(agreementId);
+        if (agreement.phase != OpenEscrow.Phase.Closed && agreement.phase != OpenEscrow.Phase.Cancelled) {
+            revert InvalidAgreementPhase();
+        }
+
+        token = paymentToken[msg.sender][agreementId];
+        amount = paidAmount[msg.sender][agreementId][payer];
+        if (token == address(0) || amount == 0 || refundableBalance[token] < amount) revert PaymentMismatch();
+
+        refunded[msg.sender][agreementId][payer] = true;
+        totalRefunded[msg.sender][agreementId] += amount;
+        refundableBalance[token] -= amount;
+        availableBalance[token] -= amount;
+        IERC20(token).safeTransfer(recipient, amount);
+        emit OperationsReserveRefunded(msg.sender, agreementId, payer, token, amount);
+    }
+
     function withdrawReserve(address recipient, uint256 amount) external nonReentrant {
         _withdrawReserve(TOKEN, recipient, amount);
     }
@@ -172,7 +212,9 @@ contract OperationsReserve is ReentrancyGuard {
     function _withdrawReserve(IERC20 token, address recipient, uint256 amount) internal {
         if (msg.sender != TREASURY) revert NotTreasury();
         if (recipient == address(0)) revert ZeroAddress();
-        if (amount > availableBalance[address(token)]) revert PaymentMismatch();
+        uint256 balance = availableBalance[address(token)];
+        uint256 liabilities = refundableBalance[address(token)];
+        if (liabilities > balance || amount > balance - liabilities) revert PaymentMismatch();
         availableBalance[address(token)] -= amount;
         token.safeTransfer(recipient, amount);
         emit ReserveWithdrawn(address(token), recipient, amount);

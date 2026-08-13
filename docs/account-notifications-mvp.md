@@ -99,7 +99,8 @@ Shares default evenly, must total exactly 100%, and any tenant or share change c
 revision that resets approvals. After finalization, each approved tenant wallet funds only its
 onchain share. The agreement remains in a partially funded state until the complete refundable
 deposit is received. The separate 5 testUSDC pilot operations reserve is divided equally among
-tenant wallets and is never counted as refundable deposit principal. The optional arbiter
+tenant wallets, is never counted as security-deposit principal, and is fully returned at terminal
+tenant withdrawal because the current MVP does not meter actual costs. The optional arbiter
 implementation remains in the codebase but its normal proposal UI is feature-flagged off for the
 tenant/landlord-only pilot.
 

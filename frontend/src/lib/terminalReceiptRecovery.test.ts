@@ -14,10 +14,20 @@ const withdrawal = {
   amount: "1200.000001",
   transactionHash,
 } as const;
+const reserveOnlyWithdrawal = {
+  type: "withdrawal_completed",
+  amount: "0",
+  reserveRefundAmount: "2.5",
+  transactionHash,
+} as const;
 const timeout = {
   type: "timeout_executed",
   timeout: "no_claim_refund",
   transactionHash: `0x${"cd".repeat(32)}`,
+} as const;
+const recordedNoResponse = {
+  ...timeout,
+  timeout: "no_response_recorded",
 } as const;
 const proposalCancellation = {
   type: "onchain_proposal_cancelled",
@@ -26,7 +36,9 @@ const proposalCancellation = {
 
 test("terminal receipt recovery accepts exact withdrawal, timeout, and cancellation payloads", () => {
   assert.equal(isWithdrawalReceiptAction(withdrawal), true);
+  assert.equal(isWithdrawalReceiptAction(reserveOnlyWithdrawal), true);
   assert.equal(isTimeoutReceiptAction(timeout), true);
+  assert.equal(isTimeoutReceiptAction(recordedNoResponse), true);
   assert.equal(isProposalCancellationReceiptAction(proposalCancellation), true);
   assert.equal(sameTerminalReceipt(withdrawal, withdrawal), true);
   assert.equal(sameTerminalReceipt(withdrawal, timeout), false);
@@ -38,6 +50,10 @@ test("terminal receipt recovery accepts exact withdrawal, timeout, and cancellat
 
 test("terminal receipt recovery rejects malformed and bearer-bearing data", () => {
   assert.equal(isWithdrawalReceiptAction({ ...withdrawal, amount: "0" }), false);
+  assert.equal(
+    isWithdrawalReceiptAction({ ...withdrawal, amount: "0", reserveRefundAmount: "0" }),
+    false,
+  );
   assert.equal(isWithdrawalReceiptAction({ ...withdrawal, amount: "1.0000001" }), false);
   assert.equal(
     isWithdrawalReceiptAction({ ...withdrawal, token: "must-not-persist" }),

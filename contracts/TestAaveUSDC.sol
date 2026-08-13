@@ -3,19 +3,29 @@ pragma solidity 0.8.26;
 
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
+import {TestUSDC} from "./TestUSDC.sol";
 
 /// @title OpenEscrow Test Aave-Style USDC
 /// @notice Test-only fixed shares with bounded, position-relative demo yield.
 /// @dev The accelerated display rate is 1% per hour and stops at 5% for each
-///      funded position. There is no underlying USDC, Aave position, redemption
-///      mechanism, guaranteed return, or monetary value. This contract is not
-///      issued, sponsored, or endorsed by Aave.
+///      funded position. Redemption mints equally valueless testUSDC so the MVP can
+///      demonstrate a principal-denominated settlement without implying that a real
+///      Aave position or reserve exists. This contract has no monetary value and is
+///      not issued, sponsored, or endorsed by Aave.
 contract TestAaveUSDC is ERC20 {
     uint256 public constant ONE = 1e18;
     uint256 public constant DEMO_YIELD_PER_HOUR = 0.01e18;
     uint256 public constant MAX_DEMO_YIELD = 0.05e18;
+    TestUSDC public immutable SETTLEMENT_ASSET;
 
-    constructor() ERC20("OpenEscrow Test Aave-Style USDC", "taUSDC") {}
+    event DemoPositionRedeemed(
+        address indexed account, address indexed receiver, uint256 sharesBurned, uint256 testAssetsMinted
+    );
+
+    constructor(address settlementAsset) ERC20("OpenEscrow Test Aave-Style USDC", "taUSDC") {
+        require(settlementAsset != address(0) && settlementAsset.code.length > 0, "invalid settlement asset");
+        SETTLEMENT_ASSET = TestUSDC(settlementAsset);
+    }
 
     function decimals() public pure override returns (uint8) {
         return 6;
@@ -27,8 +37,20 @@ contract TestAaveUSDC is ERC20 {
     }
 
     /// @notice Returns the bounded demo value of shares since a position was funded.
-    function previewAssetsSince(uint256 shares, uint256 fundedAt) external view returns (uint256) {
+    function previewAssetsSince(uint256 shares, uint256 fundedAt) public view returns (uint256) {
         return previewAssetsAt(shares, fundedAt, block.timestamp);
+    }
+
+    /// @notice Burns the caller's fixed demo shares and mints their bounded testUSDC
+    ///         value to `receiver`. OpenEscrow supplies its recorded funding time.
+    /// @dev Both assets are permissionlessly mintable Base Sepolia test tokens. This
+    ///      method is a deterministic demonstration mechanism, not a real redemption.
+    function redeemAssetsSince(uint256 shares, uint256 fundedAt, address receiver) external returns (uint256 assets) {
+        require(receiver != address(0), "zero receiver");
+        assets = previewAssetsSince(shares, fundedAt);
+        _burn(msg.sender, shares);
+        SETTLEMENT_ASSET.mint(receiver, assets);
+        emit DemoPositionRedeemed(msg.sender, receiver, shares, assets);
     }
 
     /// @notice Returns the bounded demo value at a supplied timestamp.

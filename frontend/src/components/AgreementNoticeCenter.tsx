@@ -6,7 +6,7 @@ import {
   YIELD_USDC_ADDRESS,
   ZERO_ADDRESS,
 } from "../contracts/config";
-import { agreementAmountUnit } from "../lib/agreementAmountDisplay";
+import { agreementAmountUnit, payoutAmountUnit } from "../lib/agreementAmountDisplay";
 import { countdown, formatTimestamp } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { useNow } from "../lib/useNow";
@@ -35,7 +35,20 @@ export function AgreementNoticeCenter({ id, agreement }: { id: bigint; agreement
     (typeof tenantShare === "bigint" && tenantShare > 0n) ||
     (typeof tenantShare === "number" && tenantShare > 0);
   const isLandlord = me === agreement.landlord.toLowerCase();
+  const isYieldToken = agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase();
+  const yieldSettlement = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "yieldSettled",
+    args: [id],
+    query: { enabled: isYieldToken, refetchInterval: 5000 },
+  });
   const amountUnit = agreementAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
+  const payoutUnit = payoutAmountUnit({
+    tokenAddress: agreement.token,
+    yieldTokenAddress: YIELD_USDC_ADDRESS,
+    yieldSettled: isYieldToken && yieldSettlement.data === true,
+  });
   const notices: Notice[] = [];
 
   if (agreement.phase === Phase.Active) {
@@ -46,10 +59,15 @@ export function AgreementNoticeCenter({ id, agreement }: { id: bigint; agreement
     });
   }
   if (agreement.phase === Phase.ClaimOpen) {
+    const hasArbiter = agreement.arbiter !== ZERO_ADDRESS;
     notices.push({
       level: isTenant ? "warning" : "info",
       title: isTenant ? "Deduction claim needs your response" : "Deduction claim delivered",
-      body: `Response deadline: ${formatTimestamp(agreement.responseDeadline)} (${countdown(agreement.responseDeadline, now)}). Silence creates a dispute; it never auto-pays the landlord.`,
+      body: hasArbiter
+        ? `Response deadline: ${formatTimestamp(agreement.responseDeadline)} (${countdown(agreement.responseDeadline, now)}). If a tenant does not respond, the unanswered amount moves to the agreed dispute process.`
+        : isTenant
+          ? `Respond by ${formatTimestamp(agreement.responseDeadline)} (${countdown(agreement.responseDeadline, now)}). Your response becomes part of the shared record. If you do not respond, the record will say “No response,” and the documented claim can still be finalized.`
+          : `Response deadline: ${formatTimestamp(agreement.responseDeadline)} (${countdown(agreement.responseDeadline, now)}). Tenant responses become part of the shared record. After the deadline, the documented claim can be finalized; silence is recorded as “No response.”`,
     });
   }
   if (agreement.phase === Phase.Disputed) {
@@ -70,7 +88,7 @@ export function AgreementNoticeCenter({ id, agreement }: { id: bigint; agreement
       level: "success",
       title: canWithdraw ? "Resolution complete—funds available" : "Agreement resolved",
       body: canWithdraw
-        ? `Your allocated balance (${amountUnit}) is ready to withdraw.`
+        ? `Your allocated balance (${payoutUnit}) is ready to withdraw.`
         : "The onchain allocation is final and no response is required from this wallet.",
     });
   }

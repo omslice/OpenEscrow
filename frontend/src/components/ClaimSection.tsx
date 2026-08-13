@@ -5,8 +5,9 @@ import {
   OPEN_ESCROW_ADDRESS,
   Phase,
   YIELD_USDC_ADDRESS,
+  ZERO_ADDRESS,
 } from "../contracts/config";
-import { agreementAmountUnit } from "../lib/agreementAmountDisplay";
+import { claimAmountUnit } from "../lib/agreementAmountDisplay";
 import { agreementReference } from "../lib/displayIds";
 import { formatUSDC, parseUSDC } from "../lib/format";
 import {
@@ -151,7 +152,7 @@ export function ClaimSection({
     () => createAsyncOperationScope(claimRecordScopeKey),
     [claimRecordScopeKey],
   );
-  const amountUnit = agreementAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
+  const amountUnit = claimAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
 
   useLayoutEffect(() => {
     tenantNotificationScope.open();
@@ -986,9 +987,9 @@ export function ClaimSection({
     <div className="action-section" id={`agreement-${id.toString()}-claim`} tabIndex={-1}>
         <h3>Submit a documented deduction claim</h3>
         <p className="hint">
-          Only the landlord can initiate a deduction. The claimed amount remains subject to the
-          tenant’s approve-or-dispute response and, if disputed, the appointed arbiter process.
-          All balances stay in escrow until the claim and any dispute are fully resolved.
+          {agreement.arbiter === ZERO_ADDRESS
+            ? "Only the landlord can initiate a deduction. Tenant responses—including a dispute or no response—are preserved in the shared record. In this no-arbiter version, the documented claim is allocated to the landlord and the remaining balance to the tenants once the response step is complete."
+            : "Only the landlord can initiate a deduction. The claimed amount remains subject to each tenant’s recorded response and, if disputed, the agreed arbiter process. Balances stay in escrow until the claim and any dispute are resolved."}
         </p>
         {itemEditor}
         <p className="field-help">

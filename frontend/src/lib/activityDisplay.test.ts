@@ -53,6 +53,18 @@ test("scheduled agreement notices use concise consumer-facing language", () => {
 test("direct onchain activity uses consumer-facing notification language", () => {
   assert.equal(
     friendlyActivitySummary({
+      id: 8,
+      createdAt: "2026-08-10T09:59:00.000Z",
+      actorRole: "system",
+      action: "onchain_activity_indexed",
+      summary: "Detected response_timeout_recorded directly on Base Sepolia.",
+      revision: 1,
+      metadata: { eventType: "response_timeout_recorded" },
+    }),
+    "A missed response deadline was recorded and the documented claim was finalized.",
+  );
+  assert.equal(
+    friendlyActivitySummary({
       id: 9,
       createdAt: "2026-08-10T10:00:00.000Z",
       actorRole: "system",

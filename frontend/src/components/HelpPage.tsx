@@ -132,7 +132,7 @@ export function HelpPage() {
         <section id="lifecycles" aria-labelledby="lifecycles-title">
           <div className="help-section-heading">
             <p className="eyebrow">Shared state, explicit actions</p>
-            <h3 id="lifecycles-title">Agreement, claim, and dispute lifecycles</h3>
+            <h3 id="lifecycles-title">Agreement and claim lifecycles</h3>
           </div>
           <p>
             All time windows are half-open: an action is timely before its displayed deadline and
@@ -155,7 +155,7 @@ export function HelpPage() {
                 <tr><th scope="row">Ready to fund</th><td>Required acceptances are complete; tenants have not all funded.</td><td>Each tenant funds their assigned share with test tokens.</td></tr>
                 <tr><th scope="row">Active</th><td>The agreed deposit is funded in the escrow contract.</td><td>Release it or submit a timely deduction claim.</td></tr>
                 <tr><th scope="row">Claim open</th><td>A landlord deduction claim awaits the tenant response.</td><td>Tenant accepts, counters, rejects, or the response deadline passes.</td></tr>
-                <tr><th scope="row">Disputed</th><td>The undisputed amount is allocated; only the disputed amount remains locked.</td><td>Accepted arbiter rules, or someone invokes the timeout after its deadline.</td></tr>
+                <tr><th scope="row">Disputed</th><td>An arbiter-backed agreement has entered its optional dispute workflow.</td><td>The accepted arbiter rules, or someone invokes the timeout after its deadline.</td></tr>
                 <tr><th scope="row">Closed / cancelled</th><td>Allocations are final for this agreement.</td><td>Each party withdraws its credited amount.</td></tr>
               </tbody>
             </table>
@@ -167,15 +167,15 @@ export function HelpPage() {
               <thead><tr><th scope="col">Event</th><th scope="col">Contract outcome</th></tr></thead>
               <tbody>
                 <tr><th scope="row">No claim before the claim deadline</th><td>The full deposit is allocated to the tenant side after someone triggers the no-claim transition.</td></tr>
-                <tr><th scope="row">Tenant accepts the claim</th><td>The accepted deduction goes to the landlord and the remainder to the tenant side.</td></tr>
-                <tr><th scope="row">Tenant counters or rejects</th><td>The agreed portion, if any, is allocated; the remainder becomes disputed.</td></tr>
-                <tr><th scope="row">Tenant does not respond</th><td>The claim is not automatically awarded to the landlord. The claimed amount becomes disputed.</td></tr>
+                <tr><th scope="row">Tenant accepts the claim</th><td>The response is preserved in the shared record. In a no-arbiter agreement, the documented claim goes to the landlord and the remaining deposit goes to the tenant side.</td></tr>
+                <tr><th scope="row">Tenant partially accepts or disputes</th><td>The response and explanation are preserved in the shared record. In a no-arbiter agreement, the response does not change the documented claim allocation.</td></tr>
+                <tr><th scope="row">Tenant does not respond</th><td>After the response deadline, OpenEscrow records “No response.” In a no-arbiter agreement, silence is neither approval nor a dispute; the documented claim is finalized and preserved alongside the non-response.</td></tr>
                 <tr><th scope="row">Landlord amends a claim</th><td>One amendment may keep or reduce the claim. The original response deadline does not move.</td></tr>
               </tbody>
             </table>
           </div>
 
-          <h4>Dispute outcomes</h4>
+          <h4>Optional arbiter-backed dispute outcomes</h4>
           <div className="help-table-scroll" tabIndex={0} aria-label="Scrollable dispute lifecycle">
             <table className="help-table">
               <thead><tr><th scope="col">Event</th><th scope="col">Contract outcome</th></tr></thead>
@@ -239,7 +239,8 @@ export function HelpPage() {
             <details>
               <summary>Does OpenEscrow provide arbitration?</summary>
               <p>
-                No. Parties may name and mutually accept an arbiter, but OpenEscrow does not select,
+                Not in the standard no-arbiter workflow. Optional arbiter-backed agreements remain
+                available for testing, but OpenEscrow does not select,
                 verify, train, supervise, or guarantee that person. There is no appeal or
                 decentralized arbitration layer. Local law and a separate agreement may impose
                 rights or requirements the prototype does not determine.
@@ -268,9 +269,10 @@ export function HelpPage() {
               <p>
                 The contract does not wake up or move funds by itself. At the exact deadline the
                 prior window is closed, and someone must submit the applicable transition. A missed
-                landlord claim deadline enables a full tenant-side allocation; tenant silence on a
-                claim creates a dispute; an arbiter timeout sends the disputed amount to the tenant
-                side.
+                landlord claim deadline enables a full tenant-side allocation. In a no-arbiter
+                agreement, a missed tenant response is recorded and the documented claim is
+                finalized. In an arbiter-backed agreement, the unanswered amount moves to the
+                agreed dispute process; an arbiter timeout sends that amount to the tenant side.
               </p>
             </details>
             <details>

@@ -2241,6 +2241,8 @@ const DISPUTE_RESOLVED_TOPIC =
   "0x959dc01840aa516bf9407cffa45326c7b6821c48feff7b91eb0c743c8f460fd6";
 const WITHDRAWN_TOPIC =
   "0xcf7d23a3cbe4e8b36ff82fd1b05b1b17373dc7804b4ebbd6e2356716ef202372";
+const WITHDRAWAL_COMPLETED_TOPIC =
+  "0xd88f78449f08dea8008c468f4f93b91e77249c07a5327c0527377160ada9a0ad";
 const NO_CLAIM_WITHDRAWAL_TOPIC =
   "0x845bd4e89218507974962580a9461fcb8f451ebd83d8c3b843d2c9032217d179";
 const RESPONSE_TIMED_OUT_TOPIC =
@@ -2377,12 +2379,18 @@ async function finalizeWithoutArbiter(db, created) {
 async function finalizeWithVerifiedReceipt(
   db,
   created,
-  { agreementId = 42, arbiterWallet = null } = {},
+  {
+    agreementId = 42,
+    arbiterWallet = null,
+    assetConsent = false,
+    tokenAddress = RECEIPT_TEST_USDC,
+  } = {},
 ) {
   await jsonResponse(
     await act(db, created.record.id, created.access.tenant, {
       type: "approve",
       wallet: RECEIPT_TEST_TENANT,
+      ...(assetConsent ? { assetConsent: true } : {}),
     }),
   );
   if (arbiterWallet) {
@@ -2401,7 +2409,7 @@ async function finalizeWithVerifiedReceipt(
       id: rpcRequest.id,
       result:
         rpcRequest.method === "eth_call"
-          ? agreementStateResult()
+          ? agreementStateResult(tokenAddress)
           : finalizationReceipt(
               agreementId,
               "valid",
@@ -8190,7 +8198,7 @@ test("the onchain indexer covers every supported lifecycle event and recipient b
     ],
     [
       RESPONSE_TIMED_OUT_TOPIC,
-      "response_timeout_escalated",
+      "response_timeout_recorded",
       ["landlord@example.com", "tenant@example.com"],
     ],
     [
@@ -12077,8 +12085,9 @@ test("claim-response activity emails name the outcome and stay within the agreem
       ["casey@example.com", "landlord@example.com", "tenant@example.com"],
     );
     for (const delivery of deliveries) {
-      assert.match(delivery.subject, /deduction disputed/);
-      assert.match(delivery.text, /recorded explanation and resolution status/);
+      assert.match(delivery.subject, /claim response recorded/);
+      assert.match(delivery.text, /preserved the explanation in the shared record/);
+      assert.match(delivery.text, /documented claim allocation is ready to review/);
       assert.doesNotMatch(delivery.text, /different unit|unrelated@example.com/);
     }
   } finally {
@@ -13724,7 +13733,7 @@ test("pilot rehearsal: a disputed claim completes funding, ruling, and withdrawa
   const reportHtml = await report.text();
   assert.match(reportHtml, /Casey Co-tenant/);
   assert.match(reportHtml, /The documentation supports half/);
-  assert.match(reportHtml, /withdrew 310 shares/);
+  assert.match(reportHtml, /withdrew 310 payout units/);
 });
 
 test("pilot rehearsal: an accepted claim resolves allocations, withdrawals, and record export", async () => {
@@ -13800,8 +13809,8 @@ test("pilot rehearsal: an accepted claim resolves allocations, withdrawals, and 
   );
   const reportHtml = await report.text();
   assert.match(reportHtml, /approved the deduction in full/);
-  assert.match(reportHtml, /Landlord withdrew 300 shares/);
-  assert.match(reportHtml, /Terry Tenant withdrew 900 shares/);
+  assert.match(reportHtml, /Landlord withdrew 300 payout units/);
+  assert.match(reportHtml, /Terry Tenant withdrew 900 payout units/);
   assert.match(reportHtml, /<details class="revision-snapshot">/);
   assert.match(reportHtml, /\$300\.00<\/strong> <small>test USD<\/small>/);
   assert.match(reportHtml, /300 testUSDC/);
@@ -14037,7 +14046,7 @@ test("pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-ti
     assert.equal(report.status, 200);
     const reportHtml = await report.text();
     assert.match(reportHtml, /no-claim full tenant refund/i);
-    assert.match(reportHtml, /Terry Tenant withdrew 1200 shares/);
+    assert.match(reportHtml, /Terry Tenant withdrew 1200 payout units/);
     assert.match(reportHtml, new RegExp(transactionHash(32)));
     assert.match(reportHtml, new RegExp(transactionHash(35)));
     assert.match(reportHtml, new RegExp(transactionHash(38)));
@@ -15639,6 +15648,121 @@ test("receipt verification binds deduction claims and amendments to exact values
   );
 });
 
+test("yield agreement receipt verification expects settlement-time allocation rather than premature share release", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const yieldTerms = {
+    ...created.record.terms,
+    tokenChoice: "yield",
+    depositAssetId: "aave-usdc",
+    depositAssetSnapshot: createDepositAssetSnapshot("aave-usdc"),
+    yieldConsent: true,
+  };
+  await db
+    .prepare("UPDATE agreement_negotiations SET terms_json = ? WHERE id = ?")
+    .bind(JSON.stringify(yieldTerms), created.record.id)
+    .run();
+  await finalizeWithVerifiedReceipt(db, created, {
+    assetConsent: true,
+    tokenAddress: RECEIPT_TEST_YIELD_USDC,
+  });
+
+  const action = {
+    type: "claim_submitted",
+    amount: "300",
+    category: "Damage beyond ordinary wear",
+    items: [{ category: "11", description: "Documented repair", amount: "300" }],
+    note: "",
+    evidenceUri: "openescrow://evidence/yield-receipt-claim",
+    evidenceHash: transactionHash(181),
+    californiaConfirmations: {
+      itemizedStatement: true,
+      supportingDocuments: true,
+    },
+    transactionHash: transactionHash(182),
+  };
+  const receipt = (unclaimedAllocated) => ({
+    status: "0x1",
+    blockNumber: "0x3e",
+    from: RECEIPT_TEST_LANDLORD,
+    logs: [{
+      address: RECEIPT_TEST_OPEN_ESCROW,
+      topics: [CLAIM_SUBMITTED_TOPIC, receiptWord(42)],
+      data: receiptData(receiptWord(300_000_000n), receiptWord(unclaimedAllocated)),
+    }],
+  });
+
+  const prematureRelease = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.landlord,
+    action,
+    receipt(900_000_000n),
+  );
+  assert.equal(prematureRelease.status, 400);
+
+  const claimed = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.landlord,
+      { ...action, transactionHash: transactionHash(183) },
+      receipt(0n),
+    ),
+  );
+  assert.equal(
+    claimed.events.filter((event) => event.action === "deduction_claim_submitted").length,
+    1,
+  );
+
+  const amendment = {
+    type: "claim_amended",
+    amount: "200",
+    items: [{ category: "11", description: "Reduced documented repair", amount: "200" }],
+    note: "Reduced after reviewing the invoice.",
+    evidenceUri: "openescrow://evidence/yield-receipt-amendment",
+    evidenceHash: transactionHash(184),
+    californiaConfirmations: {
+      itemizedStatement: true,
+      supportingDocuments: true,
+    },
+    transactionHash: transactionHash(185),
+  };
+  const amendmentReceipt = (additionallyAllocated) => ({
+    status: "0x1",
+    blockNumber: "0x3f",
+    from: RECEIPT_TEST_LANDLORD,
+    logs: [{
+      address: RECEIPT_TEST_OPEN_ESCROW,
+      topics: [CLAIM_AMENDED_TOPIC, receiptWord(42)],
+      data: receiptData(receiptWord(200_000_000n), receiptWord(additionallyAllocated)),
+    }],
+  });
+
+  const prematureAmendmentRelease = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.landlord,
+    amendment,
+    amendmentReceipt(100_000_000n),
+  );
+  assert.equal(prematureAmendmentRelease.status, 400);
+
+  const amended = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.landlord,
+      { ...amendment, transactionHash: transactionHash(186) },
+      amendmentReceipt(0n),
+    ),
+  );
+  assert.equal(
+    amended.events.filter((event) => event.action === "deduction_claim_amended").length,
+    1,
+  );
+});
+
 test("receipt verification binds tenant responses, rulings, and withdrawals to exact parties and values", async () => {
   const db = new TestD1();
   const created = await create(db, "arbiter@example.com");
@@ -15812,6 +15936,32 @@ test("receipt verification binds tenant responses, rulings, and withdrawals to e
       },
     ],
   });
+  const withdrawalCompletedReceipt = (
+    party,
+    payoutAmount,
+    reserveAmount,
+    from = party,
+  ) => ({
+    status: "0x1",
+    blockNumber: "0x33",
+    from,
+    logs: [
+      {
+        address: RECEIPT_TEST_OPEN_ESCROW,
+        topics: [
+          WITHDRAWAL_COMPLETED_TOPIC,
+          receiptWord(42),
+          receiptAddressWord(party),
+        ],
+        data: receiptData(
+          receiptAddressWord(RECEIPT_TEST_USDC),
+          receiptWord(payoutAmount),
+          receiptAddressWord(RECEIPT_TEST_USDC),
+          receiptWord(reserveAmount),
+        ),
+      },
+    ],
+  });
   const landlordWithdrawal = {
     type: "withdrawal_completed",
     amount: "75",
@@ -15838,6 +15988,7 @@ test("receipt verification binds tenant responses, rulings, and withdrawals to e
   const tenantWithdrawal = {
     type: "withdrawal_completed",
     amount: "1125",
+    reserveRefundAmount: "5",
     transactionHash: transactionHash(102),
   };
   const wrongTenantAmount = await actWithVerifiedReceipt(
@@ -15845,7 +15996,11 @@ test("receipt verification binds tenant responses, rulings, and withdrawals to e
     created,
     created.access.tenant,
     tenantWithdrawal,
-    withdrawalReceipt(RECEIPT_TEST_TENANT, 1_124_000_000n),
+    withdrawalCompletedReceipt(
+      RECEIPT_TEST_TENANT,
+      1_124_000_000n,
+      5_000_000n,
+    ),
   );
   assert.equal(wrongTenantAmount.status, 400);
   const withdrawn = await jsonResponse(
@@ -15854,7 +16009,11 @@ test("receipt verification binds tenant responses, rulings, and withdrawals to e
       created,
       created.access.tenant,
       { ...tenantWithdrawal, transactionHash: transactionHash(103) },
-      withdrawalReceipt(RECEIPT_TEST_TENANT, 1_125_000_000n),
+      withdrawalCompletedReceipt(
+        RECEIPT_TEST_TENANT,
+        1_125_000_000n,
+        5_000_000n,
+      ),
     ),
   );
   assert.equal(
@@ -16139,6 +16298,51 @@ test("receipt verification binds deadline actions to the exact outcome amount", 
     1,
   );
 
+  const yieldNoClaimDb = new TestD1();
+  const yieldNoClaimCreated = await create(yieldNoClaimDb);
+  const yieldTerms = {
+    ...yieldNoClaimCreated.record.terms,
+    tokenChoice: "yield",
+    depositAssetId: "aave-usdc",
+    depositAssetSnapshot: createDepositAssetSnapshot("aave-usdc"),
+    yieldConsent: true,
+  };
+  await yieldNoClaimDb
+    .prepare("UPDATE agreement_negotiations SET terms_json = ? WHERE id = ?")
+    .bind(JSON.stringify(yieldTerms), yieldNoClaimCreated.record.id)
+    .run();
+  await finalizeWithVerifiedReceipt(yieldNoClaimDb, yieldNoClaimCreated, {
+    agreementId: 144,
+    assetConsent: true,
+    tokenAddress: RECEIPT_TEST_YIELD_USDC,
+  });
+  const yieldNoClaimRefunded = await jsonResponse(
+    await actWithVerifiedReceipt(
+      yieldNoClaimDb,
+      yieldNoClaimCreated,
+      yieldNoClaimCreated.access.tenant,
+      {
+        type: "timeout_executed",
+        timeout: "no_claim_refund",
+        transactionHash: transactionHash(187),
+      },
+      timeoutReceipt({
+        agreementId: 144,
+        topic: NO_CLAIM_WITHDRAWAL_TOPIC,
+        amount: 1_275_000_000n,
+        from: RECEIPT_TEST_TENANT,
+      }),
+    ),
+  );
+  assert.equal(
+    yieldNoClaimRefunded.events.filter(
+      (event) =>
+        event.action === "timeout_executed" &&
+        event.metadata.timeout === "no_claim_refund",
+    ).length,
+    1,
+  );
+
   const noResponseDb = new TestD1();
   const noResponseCreated = await create(noResponseDb);
   await finalizeWithVerifiedReceipt(noResponseDb, noResponseCreated, {
@@ -16150,9 +16354,25 @@ test("receipt verification binds deadline actions to the exact outcome amount", 
   });
   const noResponseAction = {
     type: "timeout_executed",
-    timeout: "no_response_dispute",
+    timeout: "no_response_recorded",
     transactionHash: transactionHash(106),
   };
+  const legacyDisputeLabelRejected = await actWithVerifiedReceipt(
+    noResponseDb,
+    noResponseCreated,
+    noResponseCreated.access.landlord,
+    {
+      ...noResponseAction,
+      timeout: "no_response_dispute",
+      transactionHash: transactionHash(114),
+    },
+    timeoutReceipt({
+      agreementId: 45,
+      topic: RESPONSE_TIMED_OUT_TOPIC,
+      amount: 300_000_000n,
+    }),
+  );
+  assert.equal(legacyDisputeLabelRejected.status, 409);
   const wrongNoResponseAmount = await actWithVerifiedReceipt(
     noResponseDb,
     noResponseCreated,
@@ -16177,6 +16397,62 @@ test("receipt verification binds deadline actions to the exact outcome amount", 
         amount: 300_000_000n,
       }),
     ),
+  );
+
+  const arbiterNoResponseDb = new TestD1();
+  const arbiterNoResponseCreated = await create(
+    arbiterNoResponseDb,
+    "arbiter@example.com",
+  );
+  await finalizeWithVerifiedReceipt(
+    arbiterNoResponseDb,
+    arbiterNoResponseCreated,
+    { agreementId: 47, arbiterWallet: RECEIPT_TEST_ARBITER },
+  );
+  await submitStandardClaim(arbiterNoResponseDb, arbiterNoResponseCreated, {
+    amount: "300",
+    transactionByte: "e",
+  });
+  const arbiterRecordOnlyRejected = await actWithVerifiedReceipt(
+    arbiterNoResponseDb,
+    arbiterNoResponseCreated,
+    arbiterNoResponseCreated.access.landlord,
+    {
+      type: "timeout_executed",
+      timeout: "no_response_recorded",
+      transactionHash: transactionHash(115),
+    },
+    timeoutReceipt({
+      agreementId: 47,
+      topic: RESPONSE_TIMED_OUT_TOPIC,
+      amount: 300_000_000n,
+    }),
+  );
+  assert.equal(arbiterRecordOnlyRejected.status, 409);
+  const arbiterNoResponse = await jsonResponse(
+    await actWithVerifiedReceipt(
+      arbiterNoResponseDb,
+      arbiterNoResponseCreated,
+      arbiterNoResponseCreated.access.landlord,
+      {
+        type: "timeout_executed",
+        timeout: "no_response_dispute",
+        transactionHash: transactionHash(116),
+      },
+      timeoutReceipt({
+        agreementId: 47,
+        topic: RESPONSE_TIMED_OUT_TOPIC,
+        amount: 300_000_000n,
+      }),
+    ),
+  );
+  assert.equal(
+    arbiterNoResponse.events.filter(
+      (event) =>
+        event.action === "timeout_executed" &&
+        event.metadata.timeout === "no_response_dispute",
+    ).length,
+    1,
   );
 
   const arbiterTimeoutDb = new TestD1();

@@ -111,12 +111,14 @@ export function AddressAutocomplete({
   onVerifiedSuggestion,
   disabled,
   invalid,
+  errorMessageId,
 }: {
   value: string;
   onChange: (value: string) => void;
   onVerifiedSuggestion?: (suggestion: AddressSuggestion) => void;
   disabled?: boolean;
   invalid?: boolean;
+  errorMessageId?: string;
 }) {
   const inputId = useId();
   const listId = useId();
@@ -253,6 +255,7 @@ export function AddressAutocomplete({
           disabled={disabled}
           data-proposal-field="propertyAddress"
           aria-invalid={invalid}
+          aria-errormessage={errorMessageId}
           aria-autocomplete="list"
           aria-haspopup="listbox"
           aria-controls={listId}

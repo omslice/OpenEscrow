@@ -164,8 +164,9 @@ provider or hosting control that owns the secret.
 
 - [ ] **Retain qualified counsel** for the selected pilot jurisdictions,
   escrow/custody, money-transmission, consumer-finance, privacy, tax, sanctions,
-  and yield-product analysis. Software research is not a substitute for legal
-  advice.
+  and yield-product analysis. Start with [`legal-review-handoff.md`](./legal-review-handoff.md),
+  require the reviewer to name the exact commit and deployment, and preserve the written issue
+  matrix privately. Software research is not a substitute for legal advice.
 - [ ] **Commission an independent smart-contract and application security
   audit** for the exact release candidate and deployed configuration. Start with
   [`independent-audit-handoff.md`](./independent-audit-handoff.md) and require the reviewer to name

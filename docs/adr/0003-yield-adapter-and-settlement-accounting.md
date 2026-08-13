@@ -2,9 +2,12 @@
 
 ## Status
 
-Prototype and Base Sepolia Aave StataToken adapter implemented locally for post-MVP evaluation.
-The interface, allocation library, isolated `YieldEscrowV2Prototype`, adapter, and tests are not
-wired into or deployed with the current OpenEscrow contract.
+The production adapter design and Base Sepolia Aave StataToken spike remain local post-MVP
+prototypes and are not wired into the public application. The current UAT release candidate
+implements only a bounded testnet harness: fixed taUSDC test shares settle once to deterministic
+testUSDC value, landlord allocation stays principal-denominated, and all positive demo yield is
+allocated to tenants. That harness requires a fresh Base Sepolia cohort and is not a real Aave
+position, adapter integration, redemption, or investment product.
 
 ## Context
 
@@ -18,7 +21,7 @@ If a shared contract held a rebasing receipt token directly, its aggregate balan
 
 ## Decision
 
-The next yield-enabled escrow design will:
+Any production yield-enabled escrow design will:
 
 1. Accept and settle claims in USDC base units.
 2. Route yield strategies through `IDepositAssetAdapter`.
@@ -49,8 +52,9 @@ a claim within the fixed submission deadline. The V2 transition is:
    claim even if strategy redemption has not completed.
 4. Settle strategy: permissionlessly redeem all agreement shares to USDC once and record the actual
    balance delta. This may occur before, during, or after claim review.
-5. Resolve claims: require every tenant response, send unaccepted amounts to the arbiter, and default
-   unproven disputed principal to tenants at timeout.
+5. Resolve claims under the expressly selected policy. The public testnet's no-arbiter path keeps
+   tenant responses as shared-record evidence while allocating the documented claim; an optional
+   arbiter-backed path can send unaccepted principal through its bounded ruling and timeout flow.
 6. Distribute: after both the claim outcome and strategy redemption exist, apply the final principal
    award to actual redeemed USDC using `YieldEscrowAccounting`.
 
@@ -58,7 +62,8 @@ An automation may prompt or submit the settlement transaction, but correctness c
 
 ## Security requirements before integration
 
-- Do not connect the current deployed `OpenEscrow` contract to a real yield token.
+- Do not connect either the deployed contract or the testnet settlement candidate to a real yield
+  token.
 - Do not accept arbitrary adapters per agreement. Use an immutable or tightly allowlisted adapter in a new deployment.
 - Verify settlement and receipt token addresses, chain ID, and strategy identity in the constructor.
 - Reject fee-on-transfer settlement assets by checking actual balance deltas.
@@ -71,7 +76,8 @@ An automation may prompt or submit the settlement transaction, but correctness c
 
 ## Consequences
 
-- This requires a new escrow deployment; it is not a safe in-place modification of the MVP.
+- A production adapter requires a new escrow deployment; it is not a safe in-place modification of
+  either testnet cohort.
 - Existing testnet agreements remain on the current fixed-token contract.
 - Yield becomes a clearly separated strategy concern, while claims remain stable USDC accounting.
 - A fixed-share wrapper or vault is required when the underlying protocol exposes a rebasing position.

@@ -1,6 +1,6 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
-import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
+import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase, ZERO_ADDRESS } from "../contracts/config";
 import { createAsyncOperationScope } from "../lib/asyncOperationScope";
 import {
   clearRecoveryJsonIf,
@@ -28,6 +28,10 @@ const timeoutPresentation: Record<
   no_claim_refund: {
     heading: "Refund confirmed",
     transactionLabel: "Finalize tenant refund",
+  },
+  no_response_recorded: {
+    heading: "No response recorded",
+    transactionLabel: "Record no response and finalize claim",
   },
   no_response_dispute: {
     heading: "Dispute escalation confirmed",
@@ -271,22 +275,26 @@ export function TimeoutSection({
     agreement.phase === Phase.ClaimOpen &&
     now >= Number(agreement.responseDeadline)
   ) {
+    const hasArbiter = agreement.arbiter !== ZERO_ADDRESS;
+    const timeout: TimeoutKind = hasArbiter
+      ? "no_response_dispute"
+      : "no_response_recorded";
     return (
       <div className="action-section">
         <h3>Response window has closed</h3>
         <p className="hint">
-          A tenant did not respond. Any participant can move the claim into a
-          dispute; this does not pay the landlord automatically. If an arbiter
-          does not rule in time, the disputed balance defaults to the tenant.
+          {hasArbiter
+            ? "A tenant did not respond. Any participant can move the unanswered amount into the agreed dispute process."
+            : "A tenant did not respond. Any participant can record the non-response and finalize the landlord’s documented claim. The shared record will not treat silence as tenant approval or as a dispute."}
         </p>
         <TxButton
           address={OPEN_ESCROW_ADDRESS}
           abi={OpenEscrowABI}
           functionName="finalizeNoResponse"
           args={[id]}
-          label={timeoutPresentation.no_response_dispute.transactionLabel}
+          label={timeoutPresentation[timeout].transactionLabel}
           onSuccess={(transactionHash) =>
-            recordTimeout("no_response_dispute", transactionHash)
+            recordTimeout(timeout, transactionHash)
           }
         />
       </div>

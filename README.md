@@ -25,20 +25,23 @@ The Base Sepolia testnet MVP implements the complete technical lifecycle:
 - A landlord proposes an agreement.
 - Every tenant approves the same saved revision and owns an explicit deposit percentage; shares
   default evenly and any change resets the approval cycle.
-- An arbiter may be nominated up front and must explicitly accept; or the parties can create the
-  agreement without one and mutually appoint one later if a dispute occurs.
+- The public pilot defaults to a landlord-and-tenant agreement with no arbiter. The contract also
+  retains an optional, mutually accepted arbiter path for later evaluation.
 - Each tenant funds only their approved portion with allowlisted plain testUSDC or test-only
   taUSDC shares. The agreement activates only after the full deposit has been received.
 - The landlord may submit one timely claim with evidence commitments.
-- The tenant may accept all, accept part, or dispute the claim.
-- Tenant silence becomes a dispute; it never pays the landlord automatically.
-- Only the disputed amount remains locked.
-- The current arbiter may award no more than the disputed amount.
-- If the arbiter misses the deadline, the disputed balance defaults to the tenant.
-- The active taUSDC testnet option shows onchain custody and a deliberately accelerated
-  taUSDC preview that grows from funding at 1% per hour and stops at 5%, alongside
-  deduction/dispute alerts, deadlines, and resolution status. This is simulated testnet value,
-  not real yield.
+- Each tenant may approve or dispute the claim, and that response becomes part of the shared record.
+- In the default no-arbiter workflow, a missing response is recorded as **No response**, not as
+  approval or a dispute. After the response window, the documented claim is allocated to the
+  landlord and the remaining deposit is allocated to tenants.
+- Agreements that explicitly use the optional arbiter path keep only the disputed amount locked;
+  the arbiter cannot award more than that amount, and a missed ruling deadline defaults it to the
+  tenants.
+- The active taUSDC testnet option shows onchain custody and a deliberately accelerated preview
+  that grows from funding at 1% per hour and stops at 5%. At closure, the candidate converts the
+  test shares to deterministic testUSDC value, limits the landlord to the principal-equivalent
+  documented claim, and allocates all positive demo yield to tenants. This is simulated testnet
+  value, not real yield.
 - Agreement parties can download a complete timestamped report, preserve an AES-256-GCM encrypted
   canonical record with a separate verification key, anchor its SHA-256 hash in the Base Sepolia
   activity registry, and verify the encrypted record locally against current agreement parties.
@@ -63,6 +66,8 @@ The current source includes:
   evidence protection, recovery boundaries, and the privacy-deletion design gate
 - [`docs/usability-test-plan.md`](docs/usability-test-plan.md) — moderated research script and success gate
 - [`docs/pilot-readiness-brief.md`](docs/pilot-readiness-brief.md) — legal, partner, privacy, and audit handoff
+- [`docs/legal-review-handoff.md`](docs/legal-review-handoff.md) — exact candidate behavior and
+  questions for later qualified legal review
 - [`docs/pilot-services-setup.md`](docs/pilot-services-setup.md) — email, fiat sandbox, and encrypted evidence setup
 - [`docs/owner-actions.md`](docs/owner-actions.md) — running list of owner-only credentials, signatures, decisions, and external reviews
 - [`docs/mvp-roadmap.md`](docs/mvp-roadmap.md) — canonical high-level testnet MVP status, remaining work, and material unknowns
@@ -76,12 +81,13 @@ The current source includes:
 
 ### Verification snapshot
 
-- 238 passing Foundry tests across 23 suites, plus one opt-in live Base Sepolia fork test skipped
+- 251 passing Foundry tests across 24 suites, plus one opt-in live Base Sepolia fork test skipped
   when no RPC URL is supplied
 - 512 runs per fuzz test
 - Nine stateful accounting properties exercised for 32,768 calls each
 - Frontend lint, TypeScript compilation, and production build
-- Full landlord → arbiter → tenant → dispute → ruling → withdrawal demonstration
+- Full landlord → two-tenant → approval → funding → claim/no-claim → withdrawal coverage,
+  with the optional arbiter path tested separately
 
 These checks materially improve confidence, but OpenEscrow has not been independently audited and
 they do not replace an independent professional smart-contract audit.
@@ -93,14 +99,14 @@ The testnet MVP deliberately excludes the earlier factory/module design.
 | Concern | MVP decision |
 |---|---|
 | Deployment | One shared contract keyed by agreement ID |
-| Asset | One immutable token address |
-| Arbitration | One mutually accepted address per agreement |
-| Claims | Optimistic only when the tenant explicitly accepts |
-| Disputes | Disputed funds remain locked until ruling or timeout |
+| Asset | Two immutable allowlisted test-token addresses: testUSDC and taUSDC |
+| Arbitration | No arbiter by default; optional mutually accepted arbiter path retained |
+| Claims | Documented landlord allocation plus independently recorded tenant responses |
+| Disputes | Record-only by default; optional-arbiter agreements lock disputed funds until ruling or timeout |
 | Evidence | Public hash, opaque URI, type, timestamp, submitter |
 | Administration | No owner, pause key, upgrade proxy, or privileged resolver |
-| Yield | Funding-relative taUSDC demo accounting at 1%/hour, capped at 5%; no production strategy |
-| Fees | No escrow fee; separate fixed 5 testUSDC pilot operations reserve split evenly among tenants |
+| Yield | Funding-relative taUSDC demo accounting at 1%/hour, capped at 5%, settled to testUSDC with positive demo yield reserved for tenants |
+| Fees | No escrow fee; separate fixed test-token operations reserve split evenly among tenants and refundable at terminal withdrawal |
 
 See [`docs/technical-overview.md`](docs/technical-overview.md) and [`docs/protocol-flow.md`](docs/protocol-flow.md).
 

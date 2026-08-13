@@ -219,8 +219,8 @@ function FundingIntroduction({
           <strong>{formatUSDC(needed + reserveAmount)} {tokenLabel}</strong>
           <small>
             {reservePaid
-              ? "Reserve payment confirmed onchain. It uses the agreement token and is separate from refundable principal."
-              : "Your displayed total includes this evenly split, non-refundable pilot charge in the agreement token."}
+              ? "Reserve confirmed onchain. It remains separate from the deposit and is returned when the agreement closes."
+              : "Your displayed total includes this evenly split, fully refundable testnet reserve in the agreement token."}
           </small>
         </div>
       )}

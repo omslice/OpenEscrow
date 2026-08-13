@@ -260,6 +260,7 @@ contract OperationsReserveTest is Test {
         assertTrue(reserve.paid(address(escrow), id, tenant));
         assertEq(reserve.paidAmount(address(escrow), id, tenant), 5e6);
         assertEq(reserve.availableBalance(address(usdc)), 5e6);
+        assertEq(reserve.refundableBalance(address(usdc)), 5e6);
     }
 
     function test_atomicFundingRevertsWithoutAllowanceForCombinedTotal() public {
@@ -299,7 +300,7 @@ contract OperationsReserveTest is Test {
         assertEq(reserve.totalPaid(address(escrow), id), 5e6);
     }
 
-    function test_onlyTreasuryCanWithdrawPlainAndYieldReserves() public {
+    function test_treasuryCannotWithdrawTenantRefundLiabilities() public {
         uint256 plainId = _createSingleTenantAgreement(address(usdc));
         uint256 yieldId = _createSingleTenantAgreement(address(yieldToken));
         vm.prank(tenant);
@@ -311,10 +312,62 @@ contract OperationsReserveTest is Test {
         vm.expectRevert(OperationsReserve.NotTreasury.selector);
         reserve.withdrawReserve(recipient, 5e6);
 
-        reserve.withdrawReserve(recipient, 5e6);
-        reserve.withdrawReserveToken(address(yieldToken), recipient, 5e6);
-        assertEq(usdc.balanceOf(recipient), 5e6);
-        assertEq(yieldToken.balanceOf(recipient), 5e6);
+        vm.expectRevert(OperationsReserve.PaymentMismatch.selector);
+        reserve.withdrawReserve(recipient, 1);
+        vm.expectRevert(OperationsReserve.PaymentMismatch.selector);
+        reserve.withdrawReserveToken(address(yieldToken), recipient, 1);
+        assertEq(usdc.balanceOf(recipient), 0);
+        assertEq(yieldToken.balanceOf(recipient), 0);
+        assertEq(reserve.refundableBalance(address(usdc)), 5e6);
+        assertEq(reserve.refundableBalance(address(yieldToken)), 5e6);
+    }
+
+    function test_terminalTenantWithdrawalReturnsUnusedReserve() public {
+        uint256 id = _createSingleTenantAgreement(address(usdc));
+        usdc.mint(tenant, 1_000e6);
+        vm.startPrank(tenant);
+        usdc.approve(address(escrow), 1_005e6);
+        escrow.fundTenantShareWithReserve(id);
+        vm.warp(escrow.getAgreement(id).claimSubmissionDeadline);
+        escrow.withdrawNoClaim(id);
+
+        uint256 balanceBefore = usdc.balanceOf(tenant);
+        vm.expectEmit(true, true, true, true);
+        emit OperationsReserve.OperationsReserveRefunded(address(escrow), id, tenant, address(usdc), 5e6);
+        escrow.withdraw(id);
+        vm.stopPrank();
+
+        assertEq(usdc.balanceOf(tenant), balanceBefore + 1_005e6);
+        assertTrue(reserve.refunded(address(escrow), id, tenant));
+        assertEq(reserve.totalRefunded(address(escrow), id), 5e6);
+        assertEq(reserve.availableBalance(address(usdc)), 0);
+        assertEq(reserve.refundableBalance(address(usdc)), 0);
+
+        vm.prank(tenant);
+        vm.expectRevert(OpenEscrow.NothingToWithdraw.selector);
+        escrow.withdraw(id);
+    }
+
+    function test_tenantWithZeroDepositPayoutCanStillWithdrawReserveRefund() public {
+        uint256 id = _createSingleTenantAgreement(address(usdc));
+        usdc.mint(tenant, 1_000e6);
+        vm.startPrank(tenant);
+        usdc.approve(address(escrow), 1_005e6);
+        escrow.fundTenantShareWithReserve(id);
+        vm.stopPrank();
+
+        vm.warp(escrow.getAgreement(id).claimWindowStart);
+        escrow.submitClaim(id, 1_000e6, keccak256("full claim"), "openescrow://evidence/test", 11);
+        vm.prank(tenant);
+        escrow.respondToClaim(id, 1_000e6);
+
+        uint256 balanceBefore = usdc.balanceOf(tenant);
+        vm.prank(tenant);
+        escrow.withdraw(id);
+
+        assertEq(usdc.balanceOf(tenant), balanceBefore + 5e6);
+        assertTrue(reserve.refunded(address(escrow), id, tenant));
+        assertEq(escrow.tenantWithdrawableByAddress(id, tenant), 0);
     }
 
     function test_reentrantReservePaymentRevertsWithoutRecordingFunds() public {
@@ -332,20 +385,17 @@ contract OperationsReserveTest is Test {
         assertEq(reentrantToken.balanceOf(address(reentrantReserve)), 0);
     }
 
-    function test_reentrantReserveWithdrawalRevertsWithoutReducingAccounting() public {
+    function test_refundableReserveCannotBeWithdrawnThroughTreasuryPath() public {
         (ReentrantToken reentrantToken, OperationsReserve reentrantReserve,, uint256 id) =
             _createReentrantReserveAgreement();
         address escrowAddress = address(reentrantReserve.ESCROW());
         vm.prank(tenant);
         reentrantReserve.payReserve(escrowAddress, id);
-        reentrantToken.arm(
-            address(reentrantReserve), abi.encodeCall(reentrantReserve.withdrawReserve, (recipient, 5e6))
-        );
-
-        vm.expectRevert();
+        vm.expectRevert(OperationsReserve.PaymentMismatch.selector);
         reentrantReserve.withdrawReserve(recipient, 5e6);
 
         assertEq(reentrantReserve.availableBalance(address(reentrantToken)), 5e6);
+        assertEq(reentrantReserve.refundableBalance(address(reentrantToken)), 5e6);
         assertEq(reentrantToken.balanceOf(address(reentrantReserve)), 5e6);
         assertEq(reentrantToken.balanceOf(recipient), 0);
     }

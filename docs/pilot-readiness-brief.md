@@ -3,6 +3,20 @@
 This document is a handoff package for counsel, a housing-sector pilot partner, and an independent
 security auditor. It is not legal advice and does not authorize real-money use.
 
+## Candidate requiring later review
+
+The current grant-review UAT candidate defaults to a no-arbiter workflow: the landlord submits a
+documented deduction claim, tenants may record approval or dispute, a missed response is recorded
+as **No response**, and the contract allocates the documented claim after the response window.
+Tenant responses therefore create a standardized shared record but do not stop the test-token
+allocation. An optional arbiter-backed contract path remains implemented but is not part of the
+default pilot interface. The candidate also settles bounded taUSDC demo shares to testUSDC value,
+limits the landlord to principal-equivalent deductions, allocates positive demo yield to tenants,
+and returns the unspent test-token operations reserve.
+
+Counsel must review those exact rules rather than relying on older arbiter-first descriptions. A
+grant-review testnet release does not constitute approval for real deposits.
+
 ## Decision required from the project owner
 
 Choose exactly one initial jurisdiction and user segment:
@@ -29,7 +43,9 @@ Counsel should provide a written answer, with citations and effective dates, for
 4. Which deduction categories are permitted?
 5. What itemization, receipt, estimate, inspection, and move-in-baseline evidence is required?
 6. Can parties use mediation or binding arbitration, and what consent language is enforceable?
-7. Can the product apply a tenant-favoring default when the arbiter is unavailable?
+7. May a landlord-controlled documented deduction be released after a notice/response period when
+   a tenant disputes or does not respond, and what judicial, administrative, or escrow process must
+   remain available? If an optional arbiter is offered later, what consent and default rules apply?
 8. What notices, disclosures, records, accessibility, language, and privacy obligations apply?
 9. How should abandoned accounts, lost wallets, death, incapacity, court orders, and sanctions be
    handled?
@@ -45,7 +61,7 @@ The partner should nominate:
 
 - one operational owner;
 - a small participant cohort and recruitment criteria;
-- qualified or supervised arbiters/mediators;
+- any qualified reviewer or mediation support required for the selected jurisdiction;
 - a support and escalation channel;
 - a process for verifying off-chain events such as move-out;
 - a data-retention owner;
@@ -71,14 +87,15 @@ Commission a professional review of the exact intended deployment commit. The sc
 - accounting and solvency invariants;
 - ERC-20 assumptions and reentrancy;
 - deadline and timestamp boundaries;
-- arbiter resignation and replacement;
+- no-arbiter allocation behavior and, separately, the optional arbiter lifecycle;
 - denial-of-service and griefing;
 - deployment configuration and immutable token pinning;
 - frontend transaction construction;
 - a remediation review after fixes.
 
-The existing AI-assisted reviews, 221-test contract suite, and 90-test hosted-workflow suite are
-useful inputs, not substitutes for this engagement.
+The existing AI-assisted reviews, 251-test contract suite, server/client regressions, and hosted
+workflow checks are useful inputs, not substitutes for this engagement. The independent reviewer
+must regenerate evidence from the exact signed deployment commit.
 
 ## Go/no-go checklist
 

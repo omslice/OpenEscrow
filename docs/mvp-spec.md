@@ -5,35 +5,40 @@ Related: [ADR-0001 shared escrow contract](./adr/0001-shared-escrow-contract.md)
 
 This spec supersedes the flow described in `protocol-flow.md` and `technical-overview.md` for MVP purposes. Those documents describe a longer-term vision (multi-token, notice periods, non-blocking disputes); this MVP intentionally narrows and, in one important place, **corrects** that vision: disputes here block release of the disputed amount. They do not just get logged.
 
-**Approved decisions (2026-07-23), superseding the first draft of this spec:** the eight items below were reviewed and locked in before implementation. Each is normative wherever it conflicts with earlier wording elsewhere in this document; the sections below have been updated to match.
+**Approved decisions (updated 2026-08-12), superseding the first draft of this spec:** the items below are normative wherever they conflict with earlier wording. Sections below distinguish the default no-arbiter record workflow from the optional arbiter-backed workflow.
 
-1. Tenant non-response never automatically awards money to the landlord. Past the response deadline the claimed amount becomes disputed and requires arbiter review — this was already the design (§6), now confirmed as approved rather than a flagged default.
+1. In the default no-arbiter workflow, a tenant response is recorded but does not control the landlord's documented claim allocation. Tenant silence is recorded as **No response**—not consent and not a dispute—and, after the response deadline, the documented claim is allocated to the landlord while the remainder is allocated to tenants. In an explicitly arbiter-backed agreement, an unaccepted amount follows the agreed dispute process (§6).
 2. **Changed from the first draft:** at most **one** claim amendment is permitted (not three), and amendment **never resets or extends** `responseDeadline` (the first draft reset it on every amendment). See §5.
 3. Arbiter ruling timeout sends the disputed amount to the tenant via an explicit, permissionless transaction — already the design (§8), now confirmed.
 4. **Revised for the experiment:** an arbiter is optional at creation. A named arbiter must accept
-   before funding; a zero-address arbiter makes the agreement immediately ready to fund. If a
-   dispute occurs without an arbiter, landlord and tenant may mutually appoint one during the fixed
-   ruling period. Timeout still sends the entire disputed amount to the tenant.
+   before funding; a zero-address arbiter makes the agreement immediately ready to fund and selects
+   the record-only claim workflow. A no-arbiter agreement does not enter `Disputed`. Optional
+   arbiter-backed agreements retain the fixed dispute and timeout workflow.
 5. **Changed from the first draft:** arbiter replacement requires mutual consent (already the design) but `arbiterRulingDeadline` is now **never** reset by a replacement, even mid-dispute (the first draft reset it to give the incoming arbiter a fresh window). A fixed, replacement-proof deadline is the simplest way to guarantee neither party can use replacement to unilaterally extend a dispute. See §8.
 6. **New:** onchain evidence is a structured record — content hash, privacy-safe URI/opaque identifier, evidence type code, timestamp, submitting party — and nothing else. No names, physical addresses, lease documents, invoices, or photographs go onchain directly. Public IPFS (or any public pointer) is explicitly documented as not private storage. See §9 and the data model in §2.
 7. **Changed from the first draft:** there is no administrator role at all — not even the creation-only `pauseNewAgreements()` proposed in the first draft of §10. Every function is permissionless or role-gated to landlord/tenant/arbiter; nothing is gated to a deployer/owner address.
-8. Single immutable test-token address supplied at deployment; no generic ERC20, ETH, fees,
-   upgradeability, or multi-chain support. The candidate deployment uses static `taUSDC` shares whose
-   *displayed testUSDC value* grows from agreement funding at 1% per hour and stops at 5%. This is
-   experimental accounting only:
-   no underlying asset, redemption, real yield, or monetary value.
+8. Two immutable, allowlisted test-token addresses are supplied at deployment; no generic ERC20,
+   ETH, fees, upgradeability, or multi-chain support. The candidate deployment uses static `taUSDC`
+   shares whose testUSDC-equivalent demo value grows from agreement funding at 1% per hour and stops
+   at 5%. At terminal settlement, the contract burns the valueless `taUSDC` shares and the test token
+   mints the deterministic testUSDC-equivalent amount to escrow. The landlord can receive only the
+   principal-equivalent documented deduction; the remaining principal and all positive demo yield are
+   allocated to tenants. This is experimental test-token conversion, not an underlying asset,
+   real redemption, real yield, or monetary value.
 
 **Operations-reserve addendum (2026-07-25):** decision 8 still governs the core `OpenEscrow`
 contract: no fee is taken from deposit principal and the deposit invariant is unchanged. New
 email-negotiated proposals separately disclose a fixed 5 testUSDC pilot service reserve, paid to an
 independent `OperationsReserve` contract atomically with deposit funding. It covers the product's sponsored
 transactions and document-storage budget, has a separate onchain receipt, and is never deductible
-or refundable as part of the security deposit.
+as part of the security deposit. The current MVP does not meter actual costs, so the full reserve
+remains a refundable tenant liability and is returned in the original agreement token when the
+tenant withdraws after closure.
 
 ## 0. Scope lock (as given)
 
 Base Sepolia only · two allowlisted test tokens (plain and yield-test shares) · one shared contract · optional,
-mutually-accepted arbiter · testnet/demo use only. Explicitly out of scope: real yield, redemption,
+mutually-accepted arbiter · testnet/demo use only. Explicitly out of scope: real yield, real-asset redemption,
 fiat ramps, reputation, DAO governance, multi-chain, upgradeability, and decentralized arbitration.
 
 Because upgradeability is out of scope, bugs found post-deploy are fixed by deploying a new contract and starting new agreements there. Existing agreements on a superseded contract keep running to completion under the old code. This is acceptable for a testnet demo and should not be treated as acceptable for a mainnet deployment holding real deposits — flagged again in §12.
@@ -42,14 +47,14 @@ Because upgradeability is out of scope, bugs found post-deploy are fixed by depl
 
 ## 1. Product hypothesis and non-goals
 
-**Hypothesis:** A rental security deposit can be held in a shared, non-custodial escrow contract such that (a) the tenant can always recover the full deposit if the landlord raises no timely claim, (b) any amount the landlord claims but the tenant does not accept is resolved by a neutral party both sides agreed to in advance, and (c) neither party can unilaterally seize funds the other party has not agreed to release or that an arbiter has not awarded to them. If this holds under adversarial testing on testnet, it's worth taking to a legal/compliance review before considering real funds.
+**Hypothesis:** A rental security deposit can be held in a shared, non-custodial escrow contract such that (a) tenants recover the full deposit if the landlord raises no timely claim, (b) the landlord can submit and receive a documented claim while tenant responses and non-responses remain independently verifiable in a shared record, and (c) parties who explicitly choose an arbiter can use the contract's bounded dispute workflow. If this holds under adversarial testing on testnet, it is worth taking to legal, security, and compliance review before considering real funds.
 
 **Explicit non-goals for this MVP:**
 - Not a production custody system. Test USDC on a testnet, demo/pilot use only.
 - Not a source of legal truth about lease terms, move-out dates, or deduction legality — see §15 / `open-questions.md`.
 - Not decentralized dispute resolution. The arbiter is a single address the two parties pick and trust; there is no juror pool, staking, or appeal.
-- Not multi-token or multi-chain. The accelerated yield display is a test harness, not an investment
-  product or claim on underlying assets.
+- Not a generic multi-token or multi-chain product. The accelerated yield and terminal test-token
+  conversion are a test harness, not an investment product or claim on underlying assets.
 - Not upgradeable. No admin can change a live agreement's outcome.
 - Does not model lease renewal, month-to-month rollover, or early termination. One agreement = one fixed claim-window start date, set once at proposal.
 - Does not verify identity of landlord, tenant, or arbiter beyond wallet address control. No KYC.
@@ -108,9 +113,11 @@ ReadyToFund --landlord cancels--> Cancelled
 Active --landlord submits claim--> ClaimOpen
 Active --tenant withdraws, no claim, past claimSubmissionDeadline--> Closed (NoClaim)
 ClaimOpen --landlord amends to 0--> Closed (ClaimRetracted)
-ClaimOpen --tenant fully accepts (disputedAmount == 0)--> Closed (Settled)
-ClaimOpen --tenant partially accepts / disputes (disputedAmount > 0)--> Disputed
-ClaimOpen --responseDeadline passes, no tenant response--> Disputed (via finalizeNoResponse)
+ClaimOpen --no arbiter; every tenant responds--> Closed (Settled; responses recorded, documented claim allocated)
+ClaimOpen --no arbiter; responseDeadline passes--> Closed (Settled; non-response recorded, documented claim allocated)
+ClaimOpen --arbiter; tenant fully accepts (disputedAmount == 0)--> Closed (Settled)
+ClaimOpen --arbiter; tenant partially accepts / disputes (disputedAmount > 0)--> Disputed
+ClaimOpen --arbiter; responseDeadline passes, no tenant response--> Disputed (via finalizeNoResponse)
 Disputed --arbiter rules, before arbiterRulingDeadline--> Closed (ResolvedByArbiter)
 Disputed --arbiterRulingDeadline passes, no ruling--> Closed (ResolvedByTimeout)
 ```
@@ -132,8 +139,8 @@ Arbiter-replacement (§8) and arbiter-resignation are **not** phase transitions 
 | T7 | `Active` | `submitClaim(C, evidenceURI)` | `ClaimOpen` | landlord | `now < claimSubmissionDeadline`; `0 < C <= D` |
 | T8 | `Active` | `withdrawNoClaim` | `Closed(NoClaim)` | tenant | `now >= claimSubmissionDeadline`; no claim ever submitted |
 | T9 | `ClaimOpen` | `amendClaim(newC, newEvidence)` | `ClaimOpen` (or `Closed(ClaimRetracted)` if `newC == 0`) | landlord | tenant has not yet responded; `!claimAmended` (at most one amendment, ever); `now < responseDeadline`; `newC <= currentC` (never increases, see §5); `responseDeadline` is **not** touched |
-| T10 | `ClaimOpen` | `respondToClaim(A)` | `Closed(Settled)` if `A == C`, else `Disputed` | tenant | `now < responseDeadline`; `0 <= A <= C` |
-| T11 | `ClaimOpen` | `finalizeNoResponse` | `Disputed` | anyone | `now >= responseDeadline`; tenant never responded |
+| T10 | `ClaimOpen` | `respondToClaim(A)` | No arbiter: `Closed(Settled)` after every tenant responds; arbiter: `Closed(Settled)` if accepted in full, else `Disputed` | tenant | `now < responseDeadline`; `0 <= A <= C` |
+| T11 | `ClaimOpen` | `finalizeNoResponse` | No arbiter: `Closed(Settled)`; arbiter: `Disputed` | anyone | `now >= responseDeadline`; at least one tenant never responded |
 | T12 | `Disputed` | `resolveDispute(X)` | `Closed(ResolvedByArbiter)` | current arbiter, `!arbiterResigned` | `now < arbiterRulingDeadline`; `0 <= X <= disputedAmount` |
 | T13 | `Disputed` | `claimArbiterTimeout` | `Closed(ResolvedByTimeout)` | anyone | `now >= arbiterRulingDeadline`; no ruling made |
 | T14 | `ReadyToFund`/`Active`/`ClaimOpen`/`Disputed` | `proposeArbiterReplacement(newArbiter)` | same phase | landlord or tenant | `newArbiter` passes the role-disjointness check |
@@ -141,7 +148,7 @@ Arbiter-replacement (§8) and arbiter-resignation are **not** phase transitions 
 | T16 | (pending replacement) | `acceptArbiterRole` (new arbiter) | same phase | `pendingArbiter` | both parties confirmed; swaps `arbiter`, clears `arbiterResigned`; `arbiterRulingDeadline` is **never** touched, including mid-dispute — see §8 |
 | T17 | `ReadyToFund` / `Active` / `ClaimOpen` / `Disputed` | `cancelArbiterReplacementProposal` | same phase | original proposer of T14 | pending proposal exists and not yet accepted |
 | T18 | `ReadyToFund`/`Active`/`ClaimOpen`/`Disputed` | `resignAsArbiter` | same phase | current arbiter | sets `arbiterResigned = true`; blocks `resolveDispute` until replaced |
-| T19 | any | `withdraw` | unchanged | tenant or landlord | caller's balance (`T` or `Ld`) > 0 |
+| T19 | `Closed` / `Cancelled` | `withdraw` | unchanged | tenant or landlord | landlord has `Ld > 0`, or tenant has `T > 0` and/or a refundable operations reserve |
 
 ---
 
@@ -167,11 +174,11 @@ No function executes automatically at a deadline. Every transition in §3a that 
 ## 5. Claims: full, partial, absent, late, amended
 
 - **Full claim:** `C == D`. Handled identically to partial in all logic; `D - C == 0` unclaimed remainder, so no tenant-withdrawable amount is created at submission.
-- **Partial claim:** `0 < C < D`. `D - C` is allocated to the tenants immediately for accounting, but remains inside escrow and cannot be withdrawn until the claim reaches a terminal resolution (T7 accounting, §9).
+- **Partial claim:** `0 < C < D`. For a plain testUSDC agreement, `D - C` is allocated to tenants immediately for accounting, but remains inside escrow until terminal resolution (T7 accounting, §9). For a yield-test agreement, distribution is deferred until terminal settlement so the deterministic testUSDC conversion can allocate all positive demo yield to tenants.
 - **Absent claim:** no `submitClaim` before `claimSubmissionDeadline`. Tenant recovers everything via `withdrawNoClaim` (T8).
 - **Late claim:** `submitClaim` after `claimSubmissionDeadline` reverts (`ClaimWindowClosed`). There is no grace period. A landlord who misses the deadline has no further on-chain recourse in this agreement.
 - **Amended claim:** `amendClaim` is permitted **at most once** per agreement, only before the tenant has responded, and may only **decrease or hold** `C`, never increase it. It never touches `responseDeadline` — that deadline is fixed at the moment of the *original* `submitClaim` and nothing after that can move it, up or down.
-  - The non-increasing rule is a fund-safety requirement, not a stylistic choice: the moment a claim is submitted, `D - C` is allocated to the tenants. It remains locked from withdrawal until resolution, but increasing the claim later would still reverse an already-recorded allocation. Capping amendments to non-increasing values keeps the accounting monotonic and auditable.
+  - The non-increasing rule is a fund-safety requirement, not a stylistic choice. In a plain testUSDC agreement, `D - C` is allocated to tenants when the claim is submitted; in a yield-test agreement, the corresponding distribution is deferred but the landlord's principal claim is still fixed. Increasing the claim later would reverse an accepted accounting boundary. Capping amendments to non-increasing values keeps both paths monotonic and auditable.
   - The fixed-deadline rule eliminates a griefing vector present in an earlier draft of this spec, where a landlord could repeatedly amend right before `responseDeadline` to indefinitely reset the tenant's response window. With the deadline fixed at first submission and only one amendment ever permitted, there is nothing left to reset — the griefing vector doesn't just get bounded, it's structurally impossible. The tradeoff: if a landlord amends late in the original response window, the tenant may have very little time left to react to the amended figure before `finalizeNoResponse` becomes callable. This is accepted as intended behavior per the approved decision, not a bug — a tenant facing a shrinking claim close to the deadline is never worse off in dollar terms than facing the original (larger) claim, since amendment can only reduce what's at stake.
   - `newC == 0` is treated as claim retraction and closes the agreement in the tenant's favor immediately (§3a, T9) — this is also the only way for a landlord to voluntarily withdraw a claim in this MVP; there is no separate "cancel claim" function, and retraction consumes the single amendment allowance like any other amendment.
 
@@ -179,12 +186,11 @@ No function executes automatically at a deadline. Every transition in §3a that 
 
 ## 6. Tenant acceptance, partial acceptance, and disputes
 
-There is a single tenant-facing function, `respondToClaim(A)`, that unifies acceptance and disputing — there is no separate "dispute" action. Every tenant records one response. The amount accepted without dispute is the lowest amount approved by every tenant; settlement waits until every tenant responds:
+There is a single tenant-facing function, `respondToClaim(A)`, that records approval, partial approval, or dispute. Every tenant may record one response.
 
-- `A == C` — full acceptance. No dispute created. `Ld += C`, agreement closes `Settled`.
-- `0 < A < C` — partial acceptance. `Ld += A` immediately; the remainder `C - A` becomes `disputedAmount`, locked pending the arbiter.
-- `A == 0` — full dispute. Nothing moves to `Ld`; the entire `C` becomes `disputedAmount`.
-- **Any missing response** by `responseDeadline`: anyone may call `finalizeNoResponse`, which treats the full claimed amount as disputed. Tenant silence is never acceptance. This is a deliberate policy choice consistent with the project's stated "burden of proof is on the claimant" philosophy.
+**No-arbiter agreement (default public MVP):** responses are evidence in the shared record and do not control the documented claim allocation. After every tenant responds—or after anyone records a missed response deadline—`Ld += C`, tenants receive the remaining deposit, `locked` becomes zero, and the agreement closes `Settled`. `A` and the tenant's decision remain available in the event record. A missing response is expressly recorded as non-response; it is not treated as consent or a dispute.
+
+**Arbiter-backed agreement:** the lowest amount approved by every tenant is undisputed. `A == C` closes as full acceptance; `0 < A < C` allocates the accepted amount and disputes the remainder; `A == 0` disputes the full claim. A missing response moves the claimed amount into the agreed dispute workflow.
 
 ---
 
@@ -193,16 +199,22 @@ There is a single tenant-facing function, `respondToClaim(A)`, that unifies acce
 See §9 for the full transition-by-transition ledger. Summary of the required behaviors and how this design satisfies them:
 
 - Before any claim: nothing is withdrawable by either party; the full deposit sits in `locked`.
-- On claim submission: `D - C` becomes tenant-withdrawable *immediately*, without waiting for a response.
-- On any acceptance (explicit or via non-response-then-arbiter-award): the accepted/awarded amount becomes landlord-withdrawable.
+- On claim submission in a plain testUSDC agreement, `D - C` is credited to tenants for accounting. In a yield-test agreement, no payout is credited yet because the final testUSDC-equivalent value is calculated only at terminal settlement.
+- On terminal settlement, a plain agreement exposes its credited balances. A yield-test agreement first converts the complete taUSDC position to its deterministic testUSDC-equivalent value, credits the landlord no more than the principal-denominated claim, and allocates every remaining unit to tenants.
 - Only the actively disputed amount (`disputedAmount`, tracked as `locked` while `phase == Disputed`) is ever locked pending a third party. Nothing else waits on the arbiter.
-- `withdraw()` is available to either party at any time their respective balance is nonzero — it is not gated on the agreement reaching `Closed`. A tenant can pull their unclaimed remainder the moment a claim is submitted, well before the dispute over the rest is resolved.
+- `withdraw()` is available only after the agreement reaches `Closed` or `Cancelled`. This prevents either party from removing funds while a claim or optional dispute remains unresolved.
 
 ---
 
 ## 8. Arbiter appointment, acceptance, replacement, ruling limits
 
-- **Appointment:** the landlord nominates an arbiter at `createAgreement`. The nominee must explicitly `acceptArbiterRole` before the tenant is permitted to fund (T2 before T6 is enforced by the `ReadyToFund` phase gate). No funds ever enter the contract without a confirmed, consenting arbiter already attached to the agreement.
+- **Default no-arbiter path:** the landlord supplies the zero address at creation. The agreement
+  becomes `ReadyToFund` after participant approval without an arbiter action and uses the
+  record-only claim workflow in §6.
+- **Optional appointment:** the landlord may instead nominate an arbiter at creation. A nonzero
+  nominee must explicitly `acceptArbiterRole` before any tenant can fund (T2 before T6 is enforced
+  by the `ReadyToFund` phase gate). Funds therefore enter an arbiter-backed agreement only after
+  that person has accepted the role.
 - **Decline:** the nominee can `declineArbiterRole`; this decision is recorded and blocks that nomination from being accepted later. The landlord then either renominates (T4), which resets the decline state, or cancels (T5). Pre-funding, this is entirely the landlord's problem to solve — the tenant has not committed anything yet.
 - **Replacement (post-funding):** requires both parties' consent (T14 propose → T15 confirm by the other party) *and* the new arbiter's acceptance (T16). The old arbiter remains fully active and able to rule for the entire duration of this process — there is never a window with zero valid arbiter. `arbiterRulingDeadline` is **never** reset or extended by a replacement, including one that happens mid-dispute: it is fixed once, at the moment the dispute is created, and stays fixed regardless of how many times the arbiter changes afterward. This is a deliberate simplification over an earlier draft (which reset the deadline for an incoming arbiter) — a fixed, replacement-proof deadline is the simplest guarantee that neither party can use the mutual-consent replacement process to unilaterally (or even collusively) extend how long funds stay locked. The cost is that a very late replacement could leave the incoming arbiter little time to review before timeout; that's an accepted tradeoff, not an oversight — parties who want a working replacement should propose one early in the dispute window, and the permissionless `claimArbiterTimeout` remains the backstop regardless.
 - **Resignation:** the arbiter can unilaterally resign at any time (`resignAsArbiter`). This does not by itself change `phase` or move funds — it only blocks `resolveDispute` until either a replacement is accepted or the ruling deadline lapses.
@@ -215,7 +227,7 @@ See §9 for the full transition-by-transition ledger. Summary of the required be
 
 Note on terminology: `disputedAmount`, used throughout §6/§8/§12/§13, is not a separately stored field. It is defined as `locked` at any point where `phase == Disputed` (and, loosely, "the amount that *would become* disputed" for `locked` at the moment `respondToClaim`/`finalizeNoResponse` is evaluated, before the phase flips). There is exactly one mutable "amount not yet finalized" number per agreement (`locked`); `disputedAmount` is a name for what that number means during the `Disputed` phase specifically, not a second variable to keep in sync.
 
-Per-agreement invariant, must hold in every phase after funding:
+For a plain testUSDC agreement, this invariant holds in every phase after funding:
 
 ```
 depositAmount (D) == tenantWithdrawable (T) + landlordWithdrawable (Ld) + locked + withdrawn (W)
@@ -226,17 +238,29 @@ Before the first contribution, `D = T = Ld = locked = W = 0`. During partial fun
 remains `ReadyToFund`. Once contributions equal `agreedAmount`, the agreement becomes `Active`;
 no later action can increase `depositAmount`.
 
+For a yield-test agreement before terminal settlement, the same invariant applies to the fixed
+taUSDC shares. At terminal settlement all escrowed taUSDC is burned and `settledValue (S)` records
+the deterministic testUSDC-equivalent amount actually received. From that point forward:
+
+```
+settledValue (S) == tenantWithdrawable (T) + landlordWithdrawable (Ld) + withdrawn (W)
+```
+
+The landlord component is always bounded by the principal-denominated documented claim; therefore
+every positive difference `S - D` belongs to tenants.
+
 Contract-wide invariant (sum over all agreements `i`), useful for Foundry invariant tests against actual token balance:
 
 ```
-USDC.balanceOf(contract) >= Σ_i ( T_i + Ld_i + locked_i )
+testUSDC.balanceOf(contract) + taUSDC.balanceOf(contract)
+  >= Σ_i ( T_i + Ld_i + locked_i )
 ```
 
 The contract may hold harmless excess tokens because anyone can transfer the pinned ERC-20 directly
 to its address without creating an agreement. Such donations are not assigned to any party and do
 not weaken solvency. The required property is that the balance always covers liabilities.
 
-### 9a. Funds-accounting table
+### 9a. Plain-testUSDC funds-accounting table
 
 | Transition | Precondition | ΔT | ΔLd | Δlocked | ΔW | Resulting phase |
 |---|---|---|---|---|---|---|
@@ -244,18 +268,27 @@ not weaken solvency. The required property is that the balance always covers lia
 | `submitClaim(C)` | `locked == D` (no prior claim) | `+(D-C)` | 0 | `= C` (i.e. `-(D-C)`) | 0 | `ClaimOpen` |
 | `amendClaim(newC)`, `newC > 0` | tenant hasn't responded; `!claimAmended`; `now < responseDeadline` (unchanged by this call) | `-(newC-C)`* | 0 | `+(newC-C)`* | 0 | `ClaimOpen` |
 | `amendClaim(0)` | tenant hasn't responded; `!claimAmended`; `now < responseDeadline` (unchanged by this call) | `+C` | 0 | `-C` | 0 | `Closed(ClaimRetracted)` |
-| `respondToClaim(A)`, `A == C` | — | 0 | `+C` | `-C` | 0 | `Closed(Settled)` |
-| `respondToClaim(A)`, `A < C` | — | 0 | `+A` | `-A` | 0 | `Disputed` |
-| `finalizeNoResponse` | `now >= responseDeadline`, no response | 0 | 0 | 0 (relabeled `Disputed`, not moved) | 0 | `Disputed` |
+| `respondToClaim(A)`, no arbiter, final required response | — | 0 | `+C` | `-C` | 0 | `Closed(Settled)` |
+| `respondToClaim(A)`, arbiter, `A == C` | — | 0 | `+C` | `-C` | 0 | `Closed(Settled)` |
+| `respondToClaim(A)`, arbiter, `A < C` | — | 0 | `+A` | `-A` | 0 | `Disputed` |
+| `finalizeNoResponse`, no arbiter | `now >= responseDeadline`, missing response | 0 | `+C` | `-C` | 0 | `Closed(Settled)` |
+| `finalizeNoResponse`, arbiter | `now >= responseDeadline`, missing response | 0 | 0 | 0 (relabeled `Disputed`, not moved) | 0 | `Disputed` |
 | `resolveDispute(X)` | `0<=X<=locked` | `+(locked-X)` | `+X` | `= 0` | 0 | `Closed(ResolvedByArbiter)` |
 | `claimArbiterTimeout` | — | `+locked` | 0 | `= 0` | 0 | `Closed(ResolvedByTimeout)` |
 | `withdrawNoClaim` | `locked == D`, no claim ever | `+D` | 0 | `= 0` | 0 | `Closed(NoClaim)` |
-| `withdraw` (tenant) | `T > 0` | `= 0` | 0 | 0 | `+T` (old value) | unchanged |
-| `withdraw` (landlord) | `Ld > 0` | 0 | `= 0` | 0 | `+Ld` (old value) | unchanged |
+| `withdraw` (tenant) | terminal phase; `T > 0` or refundable reserve > 0 | `= 0` | 0 | 0 | `+T` (old value) | unchanged |
+| `withdraw` (landlord) | terminal phase; `Ld > 0` | 0 | `= 0` | 0 | `+Ld` (old value) | unchanged |
 
 \* `newC - C` is negative when amending downward (the only direction allowed, per §5), so `ΔT` is positive and `Δlocked` is negative in the actual (permitted) case. Table shown in general form for clarity of derivation.
 
 Every row's deltas sum to zero — no transition creates or destroys value, it only reclassifies it between the four buckets.
+
+For a yield-test agreement, claim submission and amendment do not release shares. The relevant
+terminal transition redeems the full taUSDC position, sets `S`, credits the landlord's bounded
+principal claim, and credits tenants with `S - landlord principal`. Later withdrawals reduce those
+testUSDC credits and increase `W`. The separate operations reserve is not part of `D` or `S`; until
+real cost metering exists, each tenant's complete reserve payment is a refundable liability returned
+in the original agreement token during terminal withdrawal.
 
 ---
 
@@ -285,8 +318,8 @@ Rationale: this is a testnet/demo contract with no upgrade path and no real fund
 | Threat | Mitigation | Residual risk |
 |---|---|---|
 | Reentrancy during funding, reserve transfer, or `withdraw` | Pull-payment withdrawals; all public lifecycle mutations share one `nonReentrant` guard; the shared funding path records effects before token and reserve calls; balance-delta checks cover incoming deposit/reserve transfers | Low |
-| Malicious/inflated landlord claim | Dispute + arbiter mechanism; amend-only-downward; burden of proof stays with landlord on tenant silence | Depends entirely on arbiter honesty (see below) |
-| Unresponsive tenant | `finalizeNoResponse` defaults to full dispute, not auto-accept | None — this is the corrected design |
+| Malicious/inflated landlord claim | Itemized documentation, shared response record, amend-only-downward; optional arbiter-backed agreements add dispute review | A no-arbiter agreement does not prevent a landlord from receiving an improper documented claim; legal remedies remain outside the prototype |
+| Unresponsive tenant | `finalizeNoResponse` records non-response; no-arbiter agreements settle the documented claim, while arbiter-backed agreements move it to dispute | The no-arbiter outcome is deterministic but does not decide legal validity |
 | Unresponsive/malicious arbiter | Timeout defaults disputed funds to tenant; mutual-consent replacement path | A colluding arbiter can still rule wrongly *within* their ruling period — there is no appeal in this MVP. This is the single biggest trust dependency in the system and is inherent to the "mutually accepted arbiter, no decentralized arbitration" scope decision, not a bug to fix here. |
 | Front-running / MEV on deadline-crossing calls (`finalizeNoResponse`, `claimArbiterTimeout`, `withdrawNoClaim`) | All are permissionless and produce the same deterministic outcome regardless of who calls them or when after the deadline — nothing to extract | None |
 | Integer over/underflow | Solidity ^0.8 checked arithmetic; explicit bound checks on all user-supplied amounts | Low |
@@ -304,11 +337,11 @@ Rationale: this is a testnet/demo contract with no upgrade path and no real fund
 
 Presented as name + parameters (not Solidity syntax — implementation detail for the coding phase).
 
-**Events:** `AgreementProposed(id, landlord, tenant, arbiter, agreedAmount, claimWindowStart, claimPeriod, responsePeriod, arbiterRulingPeriod)` · `ArbiterAccepted(id, arbiter)` · `ArbiterDeclined(id, arbiter)` · `ArbiterRenominated(id, oldArbiter, newArbiter)` · `ProposalCancelled(id)` · `AgreementFunded(id, amount)` · `ClaimSubmitted(id, amount, unclaimedReleased)` · `ClaimAmended(id, newAmount, additionalReleasedToTenant)` · `ClaimRetracted(id)` · `EvidenceSubmitted(id, index, submittedBy, contentHash, evidenceType)` · `ClaimResponded(id, acceptedAmount, disputedAmount)` · `ResponseTimedOut(id, disputedAmount)` · `DisputeCreated(id, disputedAmount, arbiterRulingDeadline)` · `DisputeResolved(id, awardedToLandlord, awardedToTenant)` · `ArbiterTimedOut(id, awardedToTenant)` · `NoClaimWithdrawal(id, amount)` · `ArbiterReplacementProposed(id, proposer, newArbiter)` · `ArbiterReplacementConfirmed(id, confirmer)` · `ArbiterReplacementCancelled(id)` · `ArbiterReplaced(id, oldArbiter, newArbiter)` · `ArbiterResigned(id, arbiter)` · `Withdrawn(id, party, amount)`
+**Events:** `AgreementProposed(id, landlord, tenant, arbiter, agreedAmount, claimWindowStart, claimPeriod, responsePeriod, arbiterRulingPeriod)` · `ArbiterAccepted(id, arbiter)` · `ArbiterDeclined(id, arbiter)` · `ArbiterRenominated(id, oldArbiter, newArbiter)` · `ProposalCancelled(id)` · `AgreementFunded(id, amount)` · `ClaimSubmitted(id, amount, unclaimedReleased)` · `ClaimAmended(id, newAmount, additionalReleasedToTenant)` · `ClaimRetracted(id)` · `EvidenceSubmitted(id, index, submittedBy, contentHash, evidenceType)` · `ClaimResponded(id, acceptedAmount, disputedAmount)` · `ResponseTimedOut(id, claimedAmount)` · `DisputeCreated(id, disputedAmount, arbiterRulingDeadline)` · `DisputeResolved(id, awardedToLandlord, awardedToTenant)` · `ArbiterTimedOut(id, awardedToTenant)` · `NoClaimWithdrawal(id, amount)` · `ArbiterReplacementProposed(id, proposer, newArbiter)` · `ArbiterReplacementConfirmed(id, confirmer)` · `ArbiterReplacementCancelled(id)` · `ArbiterReplaced(id, oldArbiter, newArbiter)` · `ArbiterResigned(id, arbiter)` · `YieldSettled(id, sharesBurned, testAssetsReceived, landlordPrincipal, tenantAssets, tenantYield)` · `OperationsReserveRefunded(id, recipient, token, amount)` · `Withdrawn(id, party, amount)` · `WithdrawalCompleted(id, party, payoutToken, payoutAmount, reserveToken, reserveAmount)`
 
 No admin/pause events exist (decision 7 — there is nothing to pause).
 
-**Custom errors:** `NotAuthorized()` · `InvalidPhase()` · `AgreementDoesNotExist()` · `ZeroAddress()` · `InvalidRoleAssignment()` · `ZeroDeposit()` · `InvalidPeriod()` · `InvalidClaimWindowStart()` · `DepositMismatch()` · `ClaimWindowNotOpen()` · `ClaimWindowClosed()` · `ClaimWindowStillOpen()` · `InvalidClaimAmount()` · `ClaimAlreadyAmended()` · `AmendmentMustNotIncrease()` · `ResponseWindowClosed()` · `ResponseWindowStillOpen()` · `InvalidResponseAmount()` · `ArbiterRulingWindowClosed()` · `ArbiterRulingWindowStillOpen()` · `InvalidAward()` · `ArbiterHasResigned()` · `ArbiterHasDeclined()` · `NoReplacementPending()` · `ReplacementAlreadyConfirmed()` · `CannotConfirmOwnProposal()` · `NothingToWithdraw()` · `InvalidEvidence()`
+**Custom errors:** `NotAuthorized()` · `InvalidPhase()` · `AgreementDoesNotExist()` · `ZeroAddress()` · `InvalidRoleAssignment()` · `ZeroDeposit()` · `InvalidPeriod()` · `InvalidClaimWindowStart()` · `DepositMismatch()` · `ClaimWindowNotOpen()` · `ClaimWindowClosed()` · `ClaimWindowStillOpen()` · `InvalidClaimAmount()` · `ClaimAlreadyAmended()` · `AmendmentMustNotIncrease()` · `ResponseWindowClosed()` · `ResponseWindowStillOpen()` · `InvalidResponseAmount()` · `ArbiterRulingWindowClosed()` · `ArbiterRulingWindowStillOpen()` · `InvalidAward()` · `ArbiterHasResigned()` · `ArbiterHasDeclined()` · `NoReplacementPending()` · `ReplacementAlreadyConfirmed()` · `CannotConfirmOwnProposal()` · `NothingToWithdraw()` · `InvalidEvidence()` · `YieldSettlementMismatch()`
 
 Naming convention: "...Closed"/"...StillOpen" pairs are deliberate opposites straddling the same deadline (e.g. `ClaimWindowClosed` on `submitClaim` vs `ClaimWindowStillOpen` on `withdrawNoClaim`), matching the half-open interval convention in §4 — at any given timestamp exactly one side of each pair is true, never both, never neither. Most "double action" cases (double funding, double ruling, double no-claim-withdrawal, etc.) are caught for free by `InvalidPhase()`, since a successful transition always moves `phase` away from the state that made the action valid — no separate one-time-use guard is needed for those. The two genuine exceptions are `claimAmended` (amendment is capped independently of phase, since phase stays `ClaimOpen` across the allowed amendment) and the arbiter-replacement handshake fields (`pendingArbiter`/`pendingArbiterConfirmed`), which are orthogonal to phase by design.
 
@@ -328,10 +361,10 @@ Legend: U = unit, F = fuzz, I = invariant.
 | §5 amendment cap | U | A second `amendClaim` attempt (any amount) reverts `ClaimAlreadyAmended`; confirm `responseDeadline` is bit-for-bit unchanged before vs. after the one permitted amendment |
 | §5 late claim | U | `submitClaim` at `claimSubmissionDeadline` and after reverts |
 | §6 respond bounds | U + F | Fuzz `A` in `[0, C]` succeeds and produces correct `Ld`/`disputedAmount` split; `A > C` reverts |
-| §6 non-response default | U | No response by `responseDeadline` + `finalizeNoResponse` produces identical ledger state to `respondToClaim(0)` |
+| §6 non-response modes | U | No arbiter: no response records `ResponseTimedOut(C)` and settles the documented claim; arbiter: no response opens a dispute. Neither path records silence as tenant approval. |
 | §7/§9 accounting table | U + F | For every transition row, assert exact `ΔT/ΔLd/Δlocked/ΔW` for both boundary and fuzzed amounts |
-| §9 per-agreement invariant | I | `D == T + Ld + locked + W` holds after every call, across randomized call sequences (Foundry `invariant_` handler contract driving all 19 actions with randomized valid and invalid args) |
-| §9 contract-wide invariant | I | `USDC.balanceOf(contract) >= Σ(T_i + Ld_i + locked_i)` across many concurrently-open agreements, including direct token donations |
+| §9 per-agreement invariant | I | Plain agreements preserve `D == T + Ld + locked + W`; focused yield suites preserve share conservation before settlement and `S == T + Ld + W` afterward, with `Ld` bounded by principal. |
+| §9 contract-wide invariant | I | The combined allowlisted test-token balances cover all live liabilities across concurrently-open agreements; direct token donations remain harmless excess. |
 | §11 cross-agreement isolation | F + I | Randomized interleaved actions across ≥3 concurrently open agreements; assert agreement B's state/balances never change from any action on agreement A |
 | §11 arbiter award bound | F | Fuzz `resolveDispute(X)` with `X > disputedAmount` reverts; `X` at exactly `disputedAmount` and `0` both succeed |
 | §11 landlord-receives-≤-claim | F | Across randomized amend/respond/resolve sequences, assert cumulative `Ld` never exceeds original submitted `C` |

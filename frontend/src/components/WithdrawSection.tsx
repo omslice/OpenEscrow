@@ -1,6 +1,14 @@
 import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAccount, useReadContract } from "wagmi";
-import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "../contracts/config";
+import {
+  OpenEscrowABI,
+  OPEN_ESCROW_ADDRESS,
+  OPERATIONS_RESERVE_ADDRESS,
+  OperationsReserveABI,
+  Phase,
+  YIELD_USDC_ADDRESS,
+} from "../contracts/config";
+import { payoutAmountUnit } from "../lib/agreementAmountDisplay";
 import { createAsyncOperationScope } from "../lib/asyncOperationScope";
 import {
   clearRecoveryJsonIf,
@@ -52,18 +60,49 @@ export function WithdrawSection({
     args: address ? [id, address] : undefined,
     query: { enabled: !!address },
   });
+  const isYieldToken = agreement.token.toLowerCase() === YIELD_USDC_ADDRESS.toLowerCase();
+  const { data: yieldSettled } = useReadContract({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "yieldSettled",
+    args: [id],
+    query: { enabled: isYieldToken, refetchInterval: 5000 },
+  });
+  const payoutUnit = payoutAmountUnit({
+    tokenAddress: agreement.token,
+    yieldTokenAddress: YIELD_USDC_ADDRESS,
+    yieldSettled: isYieldToken && yieldSettled === true,
+  });
   const isTenant =
     (typeof tenantShare === "bigint" && tenantShare > 0n) ||
     (typeof tenantShare === "number" && tenantShare > 0);
   const isLandlord = Boolean(
     address && address.toLowerCase() === agreement.landlord.toLowerCase(),
   );
+  const { data: reservePaidAmount } = useReadContract({
+    address: OPERATIONS_RESERVE_ADDRESS,
+    abi: OperationsReserveABI,
+    functionName: "paidAmount",
+    args: address ? [OPEN_ESCROW_ADDRESS, id, address] : undefined,
+    query: { enabled: Boolean(address && isTenant), refetchInterval: 5000 },
+  });
+  const { data: reserveAlreadyRefunded } = useReadContract({
+    address: OPERATIONS_RESERVE_ADDRESS,
+    abi: OperationsReserveABI,
+    functionName: "refunded",
+    args: address ? [OPEN_ESCROW_ADDRESS, id, address] : undefined,
+    query: { enabled: Boolean(address && isTenant), refetchInterval: 5000 },
+  });
   const credited = isTenant
     ? typeof tenantCredit === "bigint"
       ? tenantCredit
       : 0n
     : isLandlord
       ? agreement.landlordWithdrawable
+      : 0n;
+  const reserveRefund =
+    isTenant && reserveAlreadyRefunded !== true && typeof reservePaidAmount === "bigint"
+      ? reservePaidAmount
       : 0n;
   const matchingAccess =
     negotiationAccess &&
@@ -184,7 +223,7 @@ export function WithdrawSection({
 
   if (!address) return null;
   if (!isTenant && !isLandlord && !pendingRecord) return null;
-  if (credited === 0n && !pendingRecord) return null;
+  if (credited === 0n && reserveRefund === 0n && !pendingRecord) return null;
 
   const resolved =
     agreement.phase === Phase.Closed || agreement.phase === Phase.Cancelled;
@@ -205,7 +244,13 @@ export function WithdrawSection({
     <div className="action-section">
       <h3>Withdraw</h3>
       <p className="hint">
-        You have {formatUSDC(credited)} USDC allocated to you on this agreement.{" "}
+        You have {formatUSDC(credited)} {payoutUnit} allocated to you on this agreement.
+        {reserveRefund > 0n && (
+          <>
+            {" "}Your {formatUSDC(reserveRefund)} {isYieldToken ? "taUSDC" : "testUSDC"} testnet
+            reserve will be returned in the same transaction.
+          </>
+        )}{" "}
         {resolved
           ? "The claim process is complete, so this balance is available to withdraw."
           : "This balance remains protected in escrow until the deduction claim and any dispute are fully resolved."}
@@ -216,11 +261,16 @@ export function WithdrawSection({
           abi={OpenEscrowABI}
           functionName="withdraw"
           args={[id]}
-          label={`Withdraw ${formatUSDC(credited)} USDC`}
+          label={
+            reserveRefund > 0n
+              ? `Withdraw ${formatUSDC(credited)} ${payoutUnit} + refund ${formatUSDC(reserveRefund)} ${isYieldToken ? "taUSDC" : "testUSDC"} reserve`
+              : `Withdraw ${formatUSDC(credited)} ${payoutUnit}`
+          }
           onSuccess={(transactionHash) => {
             const action: WithdrawalReceiptAction = {
               type: "withdrawal_completed",
               amount: formatUSDC(credited),
+              reserveRefundAmount: formatUSDC(reserveRefund),
               transactionHash,
             };
             setWithdrawalRecorded(true);

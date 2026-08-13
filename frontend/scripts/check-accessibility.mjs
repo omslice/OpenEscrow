@@ -435,7 +435,40 @@ try {
     "Opening the proposal editor should move focus to its labeled region.",
   );
 
+  await page.getByRole("button", { name: "Continue to deposit terms" }).click();
+  await page.getByRole("button", { name: "Continue to review" }).click();
+  await page.getByRole("button", { name: "Save proposal for review" }).click();
+  const emptyTenantName = page.getByLabel("Tenant first and last name");
+  await emptyTenantName.waitFor({ state: "visible" });
+  await page.waitForFunction(
+    () => document.activeElement?.getAttribute("data-proposal-field") === "tenantName",
+  );
+  assert.equal(
+    await emptyTenantName.getAttribute("aria-invalid"),
+    "true",
+    "An incomplete proposal should identify the first invalid field.",
+  );
+  assert.equal(
+    await emptyTenantName.evaluate((element) => element === document.activeElement),
+    true,
+    "An incomplete proposal should focus the first invalid field.",
+  );
+  const tenantNameErrorId = await emptyTenantName.getAttribute("aria-errormessage");
+  assert.ok(tenantNameErrorId, "The invalid tenant name should identify its visible error message.");
+  const tenantNameError = page.locator(`[id="${tenantNameErrorId}"]`);
+  await tenantNameError.waitFor({ state: "visible" });
+  assert.match(
+    (await tenantNameError.textContent()) || "",
+    /first and last name/i,
+    "The validation message should explain how to correct the tenant name.",
+  );
+
   await page.getByLabel("Tenant first and last name").fill("Taylor Tenant");
+  assert.equal(
+    await tenantNameError.count(),
+    0,
+    "Correcting the invalid field should remove its stale error message.",
+  );
   await page.getByLabel("Tenant email address").fill("taylor.tenant@example.com");
   const address = page.getByRole("combobox", { name: "Rental property address" });
   const addressListId = await address.getAttribute("aria-controls");

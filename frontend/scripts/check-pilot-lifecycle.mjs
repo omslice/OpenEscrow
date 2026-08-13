@@ -649,7 +649,7 @@ try {
     [tenantTwo, "310"],
   ]) {
     const withdraw = entry.page.getByRole("button", {
-      name: `Withdraw ${amount} USDC`,
+      name: `Withdraw ${amount} testUSDC`,
     });
     await withdraw.waitFor({ state: "visible" });
     const box = await withdraw.boundingBox();
@@ -660,7 +660,7 @@ try {
     ]);
     await waitForStage(entry.page, "closed");
     assert.equal(
-      await entry.page.getByRole("button", { name: `Withdraw ${amount} USDC` }).count(),
+      await entry.page.getByRole("button", { name: `Withdraw ${amount} testUSDC` }).count(),
       0,
     );
   }

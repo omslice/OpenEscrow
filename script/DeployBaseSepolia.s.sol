@@ -28,7 +28,7 @@ contract DeployBaseSepolia is Script {
 
         vm.startBroadcast();
         token = new TestUSDC();
-        yieldToken = new TestAaveUSDC();
+        yieldToken = new TestAaveUSDC(address(token));
         reserve = new OperationsReserve(address(token), address(yieldToken));
         escrow = new OpenEscrow(address(token), address(yieldToken), address(reserve));
         reserve.configureEscrow(address(escrow));
@@ -37,6 +37,7 @@ contract DeployBaseSepolia is Script {
 
         require(address(escrow.TOKEN()) == address(token), "escrow token mismatch");
         require(address(escrow.YIELD_TOKEN()) == address(yieldToken), "escrow yield token mismatch");
+        require(address(yieldToken.SETTLEMENT_ASSET()) == address(token), "yield settlement asset mismatch");
         require(escrow.OPERATIONS_RESERVE() == address(reserve), "escrow reserve mismatch");
         require(address(reserve.ESCROW()) == address(escrow), "reserve escrow mismatch");
         require(address(reserve.TOKEN()) == address(token), "reserve token mismatch");

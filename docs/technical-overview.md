@@ -10,11 +10,11 @@ One non-upgradeable contract holds many independent agreements in a mapping keye
 
 The contract has:
 
-- One immutable ERC-20 token address
+- Two immutable, allowlisted test-token addresses: plain testUSDC and taUSDC yield-test shares
 - No owner or administrator
 - No proxy or upgrade path
 - No fee deducted from or accounted as part of the escrowed deposit
-- No external rules or yield module
+- No external rules module or production yield integration; deterministic test-yield settlement is built into the testnet contracts
 - Per-agreement landlord, tenant, and arbiter roles
 - Pull-based tenant and landlord withdrawals
 
@@ -22,9 +22,11 @@ The contract has:
 
 New proposals disclose a separate, fixed 5 testUSDC pilot reserve. The tenant pays it to the
 `OperationsReserve` contract before funding, and the payment produces its own onchain receipt.
-It is not held by `OpenEscrow`, is not refundable deposit principal, and can never become part of a
-landlord deduction claim. The testnet amount is intended to model sponsored Base transactions,
-retries, and encrypted document-storage costs; it is not a validated production price.
+It is not held by `OpenEscrow`, is not security-deposit principal, and can never become part of a
+landlord deduction claim. Because the current MVP does not meter actual costs, it remains a fully
+refundable tenant liability and is returned in the original agreement token at terminal withdrawal.
+The testnet amount models sponsored Base transactions, retries, and encrypted document-storage
+costs; it is not a validated production price.
 
 ### `AgreementActivityRegistry.sol`
 
@@ -56,7 +58,7 @@ The hosted Worker also runs a confirmation-delayed, bounded Base Sepolia indexer
 ```mermaid
 stateDiagram-v2
     [*] --> Proposed: landlord proposes
-    Proposed --> ReadyToFund: arbiter accepts
+    Proposed --> ReadyToFund: required parties accept
     Proposed --> Proposed: arbiter declines / landlord renominates
     Proposed --> Cancelled: landlord cancels
     ReadyToFund --> Proposed: landlord renominates
@@ -65,17 +67,19 @@ stateDiagram-v2
     Active --> ClaimOpen: landlord submits timely claim
     Active --> Closed: no claim; tenant finalizes refund
     ClaimOpen --> ClaimOpen: landlord reduces claim once
-    ClaimOpen --> Closed: claim retracted or fully accepted
-    ClaimOpen --> Disputed: partial/full dispute or tenant timeout
+    ClaimOpen --> Closed: no-arbiter responses complete or timeout recorded
+    ClaimOpen --> Closed: arbiter-backed claim retracted or fully accepted
+    ClaimOpen --> Disputed: arbiter-backed partial/full dispute or tenant timeout
     Disputed --> Closed: arbiter rules
     Disputed --> Closed: arbiter timeout
 ```
 
-`Closed` and `Cancelled` are terminal. Withdrawals remain available whenever a party has a nonzero credited balance.
+`Closed` and `Cancelled` are terminal. Withdrawals are available only in those terminal phases when
+a party has a credited balance or a tenant has a refundable operations reserve.
 
 ## Funds accounting
 
-For every funded agreement:
+For a plain testUSDC agreement:
 
 ```text
 depositAmount =
@@ -85,14 +89,24 @@ depositAmount =
     withdrawn
 ```
 
-For the whole contract:
+For a yield-test agreement, the same share-denominated invariant applies before settlement. Terminal
+settlement burns all escrowed taUSDC and records the actual deterministic testUSDC-equivalent value:
 
 ```text
-token.balanceOf(OpenEscrow) >=
+settledValue = tenantWithdrawable + landlordWithdrawable + withdrawn
+```
+
+The landlord allocation is bounded by the principal claim; every positive difference between
+`settledValue` and `depositAmount` is allocated only to tenants.
+
+For the whole contract, the combined allowlisted test-token balances cover all live liabilities:
+
+```text
+testUSDC.balanceOf(OpenEscrow) + taUSDC.balanceOf(OpenEscrow) >=
     sum(tenantWithdrawable + landlordWithdrawable + locked)
 ```
 
-The inequality is deliberate: anyone can send the token directly to the contract, creating harmless excess balance that is not assigned to an agreement.
+The inequality is deliberate: anyone can send either test token directly to the contract, creating harmless excess balance that is not assigned to an agreement.
 
 ## Claims and evidence
 
@@ -112,12 +126,12 @@ printable report. It validates that their total equals the aggregate onchain cla
 off-chain line items improve documentation but are not contract state and do not remove the need
 for privacy-safe, legally sufficient supporting evidence.
 
-The contract cannot determine whether evidence is truthful or legally sufficient. That remains the arbiter's responsibility and, ultimately, a jurisdiction-specific legal question.
+The contract cannot determine whether evidence is truthful or legally sufficient. In the default no-arbiter flow, it records the claim and tenant responses without adjudicating them. In an optional arbiter-backed agreement, evaluation remains that person's responsibility and, ultimately, a jurisdiction-specific legal question.
 
 ## Arbitration
 
-- A nominated initial arbiter must accept before funding. If the agreement is created without an
-  arbiter, it may fund immediately and the parties can mutually appoint one if a dispute occurs.
+- A nominated initial arbiter must accept before funding. An agreement created without an arbiter
+  uses the record-only claim flow and does not enter `Disputed`.
 - A declined nomination cannot later be accepted unless the landlord renominates.
 - Post-funding replacement requires one party to propose, the other to confirm, and the candidate to accept.
 - Replacement never extends a live ruling deadline.
@@ -126,9 +140,10 @@ The contract cannot determine whether evidence is truthful or legally sufficient
 
 ## Security model
 
-The contracts use OpenZeppelin `SafeERC20` and `ReentrancyGuard`. The core escrow token calls occur
-only during funding and withdrawal; the separate operations-reserve contract handles only reserve
-collection and treasury withdrawal.
+The contracts use OpenZeppelin `SafeERC20` and `ReentrancyGuard`. Escrow token calls occur during
+funding, deterministic test-yield settlement, and withdrawal; the separate operations-reserve
+contract holds and refunds the testnet reserve. Treasury withdrawal cannot consume the
+tenant-refund liability.
 
 The primary residual risks are:
 

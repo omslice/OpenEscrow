@@ -492,3 +492,27 @@ test("private agreement reads use an authorization header instead of a bearer UR
     );
   }
 });
+
+test("private agreement reads replace non-JSON server failures with recovery guidance", async () => {
+  const originalFetch = globalThis.fetch;
+  const access: NegotiationAccess = {
+    proposalId: "proposal-unreadable-response",
+    role: "tenant",
+    token: "tenant-private-read-secret",
+  };
+
+  globalThis.fetch = (async () =>
+    new Response("<!doctype html><title>Temporary upstream response</title>", {
+      status: 502,
+      headers: { "content-type": "text/html; charset=utf-8" },
+    })) as typeof fetch;
+
+  try {
+    await assert.rejects(
+      () => loadNegotiation(access),
+      /OpenEscrow could not read the server response\. Check your connection and try again\./,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
