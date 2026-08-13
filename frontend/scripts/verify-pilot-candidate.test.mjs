@@ -254,8 +254,8 @@ function writeDeploymentRehearsalFixture(frontendRoot) {
       configSwitch: {
         switchVerified: true,
         rollbackVerified: true,
-        replacementCount: 12,
-        files: ["client", "registry", "server"],
+        replacementCount: 15,
+        files: ["client", "registry", "server", "wrangler"],
       },
     })}\n`,
   );
