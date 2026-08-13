@@ -13,7 +13,12 @@ param(
 $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $foundryBin = Join-Path $env:USERPROFILE ".foundry\bin"
-$manifestFile = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $ManifestPath))
+$manifestFile = if ([System.IO.Path]::IsPathRooted($ManifestPath)) {
+  [System.IO.Path]::GetFullPath($ManifestPath)
+}
+else {
+  [System.IO.Path]::GetFullPath((Join-Path $repoRoot $ManifestPath))
+}
 $addressPattern = '^0x[0-9a-fA-F]{40}$'
 $hashPattern = '^0x[0-9a-fA-F]{64}$'
 
@@ -21,6 +26,7 @@ if (-not (Test-Path -LiteralPath $manifestFile -PathType Leaf)) {
   throw "Candidate manifest not found: $manifestFile"
 }
 $manifest = Get-Content -LiteralPath $manifestFile -Raw | ConvertFrom-Json
+$manifestSha256 = (Get-FileHash -LiteralPath $manifestFile -Algorithm SHA256).Hash.ToLowerInvariant()
 if (
   $manifest.schema -ne "openescrow.deployment-manifest/v2" -or
   [int64]$manifest.chainId -ne 84532 -or
@@ -92,7 +98,7 @@ foreach ($rpcUrl in $RpcUrls) {
     if ($LASTEXITCODE -ne 0 -or $code -notmatch '^0x[0-9a-f]+$' -or $code -eq '0x') {
       throw "$($entry.Key) has no readable code through an independent RPC endpoint."
     }
-    $hash = ([string](& "$foundryBin\cast.exe" keccak $code)).Trim().ToLowerInvariant()
+    $hash = ([string]($code | & "$foundryBin\cast.exe" keccak)).Trim().ToLowerInvariant()
     if ($hash -notmatch $hashPattern) {
       throw "Could not hash live $($entry.Key) runtime code."
     }
@@ -126,7 +132,7 @@ foreach ($rpcUrl in $RpcUrls) {
   foreach ($transactionHash in $transactionHashes) {
     $receipt = & "$foundryBin\cast.exe" receipt $transactionHash status --rpc-url $rpcUrl 2>$null
     $status = ([string]$receipt).Trim().ToLowerInvariant()
-    if ($LASTEXITCODE -ne 0 -or $status -notin @('1', '0x1', '0x01')) {
+    if ($LASTEXITCODE -ne 0 -or $status -notin @('true', '1', '0x1', '0x01')) {
       throw "A candidate transaction receipt is missing or unsuccessful: $transactionHash"
     }
   }
@@ -144,7 +150,8 @@ $evidence = [ordered]@{
   schema = "openescrow.base-sepolia-independent-verification/v1"
   verifiedAtUtc = (Get-Date).ToUniversalTime().ToString("o")
   sourceCommit = [string]$manifest.sourceCommit
-  candidateManifest = $ManifestPath.Replace('\', '/')
+  candidateManifest = "deployments/base-sepolia-candidate.json"
+  candidateManifestSha256 = $manifestSha256
   rpcAgreement = $rpcEvidence
   contractAddresses = $contracts
   transactionCount = $transactionHashes.Count

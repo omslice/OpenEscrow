@@ -83,11 +83,17 @@ test("independent verifier requires two-RPC code, receipt, and binding agreement
   assert.match(source, /base-sepolia-rpc\.publicnode\.com/);
   assert.match(source, /Parameter\(Mandatory = \$true\)/);
   assert.match(source, /source commit does not match the reviewed release candidate/);
+  assert.match(source, /IsPathRooted\(\$ManifestPath\)/);
   assert.match(source, /Independent RPC endpoints disagree/);
+  assert.match(source, /\$code \| & "\$foundryBin\\cast\.exe" keccak/);
   assert.match(source, /cast\.exe" receipt/);
+  assert.match(source, /'true', '1', '0x1', '0x01'/);
   assert.match(source, /SETTLEMENT_ASSET\(\)\(address\)/);
   assert.match(source, /OpenEscrow\.OPERATIONS_RESERVE\(\)/);
   assert.match(source, /OperationsReserve\.TREASURY\(\)/);
   assert.match(source, /AgreementActivityRegistry\.ESCROW\(\)/);
+  assert.match(source, /Get-FileHash[\s\S]*SHA256/);
+  assert.match(source, /candidateManifestSha256/);
+  assert.match(source, /candidateManifest = "deployments\/base-sepolia-candidate\.json"/);
   assert.match(source, /base-sepolia-candidate-verification\.json/);
 });
