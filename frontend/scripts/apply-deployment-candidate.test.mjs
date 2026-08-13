@@ -3,6 +3,7 @@ import test from "node:test";
 import { createHash } from "node:crypto";
 import {
   activateCandidateManifest,
+  parseJsonSource,
   validateIndependentVerification,
 } from "./apply-deployment-candidate.mjs";
 
@@ -17,10 +18,13 @@ test("activating a candidate preserves evidence and marks the exact cohort activ
     candidate,
     { cohortStatus: "active-testnet" },
     "2026-08-13T23:00:00.000Z",
+    { candidateManifestSha256: "b".repeat(64), rpcCount: 2, transactionCount: 6 },
   );
   assert.equal(result.cohortStatus, "active-testnet");
   assert.equal(result.sourceCommit, candidate.sourceCommit);
   assert.equal(result.verification.liveBindingsVerified, true);
+  assert.equal(result.verification.candidateManifestSha256, "b".repeat(64));
+  assert.equal(result.verification.rpcCount, 2);
   assert.equal(result.activatedAtUtc, "2026-08-13T23:00:00.000Z");
 });
 
@@ -29,6 +33,10 @@ test("activation refuses to overwrite a non-active rollback manifest", () => {
     () => activateCandidateManifest({}, { cohortStatus: "candidate-unconfigured" }, "now"),
     /not an active testnet rollback source/,
   );
+});
+
+test("generated PowerShell JSON evidence may include a UTF-8 byte-order marker", () => {
+  assert.deepEqual(parseJsonSource(`\uFEFF{"status":"passed"}`), { status: "passed" });
 });
 
 function verificationFixture() {

@@ -21,7 +21,11 @@ const activePath = path.join(repositoryRoot, "deployments", "base-sepolia-latest
 const rollbackPath = path.join(repositoryRoot, "deployments", "base-sepolia-rollback-prior.json");
 
 function readJson(file) {
-  return JSON.parse(readFileSync(file, "utf8"));
+  return parseJsonSource(readFileSync(file, "utf8"));
+}
+
+export function parseJsonSource(source) {
+  return JSON.parse(source.replace(/^\uFEFF/, ""));
 }
 
 function serializable(values) {
@@ -33,7 +37,12 @@ function serializable(values) {
   );
 }
 
-export function activateCandidateManifest(candidateManifest, activeManifest, activatedAtUtc) {
+export function activateCandidateManifest(
+  candidateManifest,
+  activeManifest,
+  activatedAtUtc,
+  independentVerification,
+) {
   if (activeManifest?.cohortStatus !== "active-testnet") {
     throw new Error("The current deployment manifest is not an active testnet rollback source.");
   }
@@ -44,6 +53,10 @@ export function activateCandidateManifest(candidateManifest, activeManifest, act
     verification: {
       ...(candidateManifest.verification || {}),
       liveBindingsVerified: true,
+      independentEvidence: "deployments/base-sepolia-candidate-verification.json",
+      candidateManifestSha256: independentVerification?.candidateManifestSha256,
+      rpcCount: independentVerification?.rpcCount,
+      transactionCount: independentVerification?.transactionCount,
     },
   };
 }
@@ -147,7 +160,7 @@ export function validateIndependentVerification(candidateManifest, evidence, can
 export function applyCandidate() {
   const currentCommit = process.env.OPENESCROW_DEPLOYMENT_SOURCE_COMMIT?.trim();
   const candidateSource = readFileSync(candidatePath, "utf8");
-  const candidateManifest = JSON.parse(candidateSource);
+  const candidateManifest = parseJsonSource(candidateSource);
   const candidate = validateDeploymentManifest(candidateManifest, currentCommit || undefined);
   const independentVerification = validateIndependentVerification(
     candidateManifest,
@@ -170,6 +183,7 @@ export function applyCandidate() {
       candidateManifest,
       activeManifest,
       new Date().toISOString(),
+      independentVerification,
     );
     const manifestTemp = `${activePath}.candidate-switch`;
     writeFileSync(manifestTemp, `${JSON.stringify(activatedManifest, null, 2)}\n`, "utf8");

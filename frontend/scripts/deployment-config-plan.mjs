@@ -295,22 +295,45 @@ function replaceExactlyCount(source, before, after, expectedCount, label) {
   const address = ADDRESS_PATTERN.test(before);
   const searchable = address ? source.toLowerCase() : source;
   const needle = address ? before.toLowerCase() : before;
-  let count = 0;
+  const offsets = [];
   let cursor = 0;
   while (true) {
     const index = searchable.indexOf(needle, cursor);
     if (index < 0) break;
-    count += 1;
+    offsets.push(index);
     cursor = index + needle.length;
   }
-  if (count !== expectedCount) {
+  if (offsets.length !== expectedCount) {
     throw new Error(`${label} replacement target must appear exactly ${expectedCount} times.`);
   }
-  const escaped = before.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const originals = offsets.map((index) => source.slice(index, index + needle.length));
   return {
-    source: source.replace(new RegExp(escaped, address ? "gi" : "g"), after),
-    original: before,
+    source: offsets.reduceRight(
+      (result, index) => `${result.slice(0, index)}${after}${result.slice(index + needle.length)}`,
+      source,
+    ),
+    original: originals,
   };
+}
+
+function restoreExactlyCount(source, after, originals, label) {
+  const offsets = [];
+  let cursor = 0;
+  while (true) {
+    const index = source.indexOf(after, cursor);
+    if (index < 0) break;
+    offsets.push(index);
+    cursor = index + after.length;
+  }
+  if (offsets.length !== originals.length) {
+    throw new Error(`${label} replacement target count changed before rollback.`);
+  }
+  return offsets.reduceRight(
+    (result, index, originalIndex) => {
+      return `${result.slice(0, index)}${originals[originalIndex]}${result.slice(index + after.length)}`;
+    },
+    source,
+  );
 }
 
 function replacements(current, candidate) {
@@ -375,10 +398,9 @@ export function rehearseConfigurationSwitch(files, candidate) {
 
   const rolledBack = { ...switched };
   for (const [file, original, after, label, count] of executed.reverse()) {
-    rolledBack[file] = (count === 1
-      ? replaceExactlyOnce(rolledBack[file], after, original, `${label} rollback`)
-      : replaceExactlyCount(rolledBack[file], after, original, count, `${label} rollback`)
-    ).source;
+    rolledBack[file] = count === 1
+      ? replaceExactlyOnce(rolledBack[file], after, original, `${label} rollback`).source
+      : restoreExactlyCount(rolledBack[file], after, original, `${label} rollback`);
   }
   for (const file of Object.keys(files)) {
     if (rolledBack[file] !== files[file]) {
