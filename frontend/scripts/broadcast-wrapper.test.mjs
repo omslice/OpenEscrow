@@ -9,6 +9,10 @@ const wrapper = readFileSync(
   path.join(frontendRoot, "..", "scripts", "Broadcast-BaseSepolia.ps1"),
   "utf8",
 );
+const rehearsal = readFileSync(
+  path.join(frontendRoot, "scripts", "rehearse-contract-deployment.mjs"),
+  "utf8",
+);
 
 test("Base Sepolia wrapper keeps exact-release assurance offline", () => {
   const rpcSelection = wrapper.indexOf(
@@ -35,4 +39,12 @@ test("credential-free preflight stops before wallet access", () => {
   assert.ok(preflightExit >= 0);
   assert.ok(walletNotice > preflightExit);
   assert.ok(forgeBroadcast > walletNotice);
+});
+
+test("deployment rehearsal binds the yield token to its settlement asset", () => {
+  assert.match(
+    rehearsal,
+    /compiled\.yieldToken,\s*\[\s*token\.address,?\s*\]/,
+    "the local rehearsal must pass the freshly deployed testUSDC address to TestAaveUSDC",
+  );
 });

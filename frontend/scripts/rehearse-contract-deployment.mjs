@@ -387,7 +387,9 @@ async function run() {
   try {
     await waitForRpc(publicClient, processState);
     const token = await deploy(deployerWallet, publicClient, compiled.token);
-    const yieldToken = await deploy(deployerWallet, publicClient, compiled.yieldToken);
+    const yieldToken = await deploy(deployerWallet, publicClient, compiled.yieldToken, [
+      token.address,
+    ]);
     const retired = await deployCohort({
       wallet: deployerWallet,
       publicClient,
