@@ -1,10 +1,9 @@
 import path from "node:path";
+import { ACTIVE_DEPLOYMENT } from "./active-deployment.mjs";
 
 export const BASE_SEPOLIA_CHAIN_ID = 84_532;
-export const ACTIVE_ESCROW_ADDRESS =
-  "0x9F8C9555f28C10347C58fc71F430F4cbc3724b10";
-export const ACTIVE_REGISTRY_ADDRESS =
-  "0x88b53d6C35020e82B97462E8a1cBCDc8D6d50f53";
+export const ACTIVE_ESCROW_ADDRESS = ACTIVE_DEPLOYMENT.escrow;
+export const ACTIVE_REGISTRY_ADDRESS = ACTIVE_DEPLOYMENT.activityRegistry;
 
 const OFFICIAL_ACCOUNT_ID = "ac83ad901f0f00358a9b59e81487d354";
 const OFFICIAL_RESOURCE_NAMES = new Set([
