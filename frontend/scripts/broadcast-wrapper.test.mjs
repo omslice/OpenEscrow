@@ -13,6 +13,10 @@ const rehearsal = readFileSync(
   path.join(frontendRoot, "scripts", "rehearse-contract-deployment.mjs"),
   "utf8",
 );
+const exporter = readFileSync(
+  path.join(frontendRoot, "..", "scripts", "Export-BaseSepoliaDeployment.ps1"),
+  "utf8",
+);
 
 test("Base Sepolia wrapper keeps exact-release assurance offline", () => {
   const rpcSelection = wrapper.indexOf(
@@ -47,4 +51,26 @@ test("deployment rehearsal binds the yield token to its settlement asset", () =>
     /compiled\.yieldToken,\s*\[\s*token\.address,?\s*\]/,
     "the local rehearsal must pass the freshly deployed testUSDC address to TestAaveUSDC",
   );
+});
+
+test("broadcast export reuses the verified Base Sepolia endpoint", () => {
+  assert.match(
+    wrapper,
+    /Export-BaseSepoliaDeployment\.ps1[\s\S]*-ExpectedCommit \$candidateCommit[\s\S]*-RpcUrl \$verifiedRpcUrl/,
+  );
+});
+
+test("deployment export verifies live code and every reciprocal cohort binding", () => {
+  assert.match(exporter, /cast\.exe" code/);
+  for (const signature of [
+    "SETTLEMENT_ASSET()(address)",
+    "TOKEN()(address)",
+    "YIELD_TOKEN()(address)",
+    "OPERATIONS_RESERVE()(address)",
+    "ESCROW()(address)",
+    "TREASURY()(address)",
+  ]) {
+    assert.ok(exporter.includes(signature), `missing live verification for ${signature}`);
+  }
+  assert.match(exporter, /liveBindingsVerified = \$true/);
 });

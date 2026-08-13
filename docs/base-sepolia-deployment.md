@@ -131,9 +131,11 @@ Get-Content .\deployments\base-sepolia-candidate.json
 ```
 
 The exporter verifies chain ID `84532`, one successful receipt for each of the five deployed
-contracts, reciprocal escrow/reserve construction and configuration, exact registry binding,
-matching token constructor arguments, deployment blocks, transaction hashes, and the exact source
-commit before writing a candidate manifest. It deliberately leaves
+contracts, readable live code at every deployed address, the yield token's live settlement-asset
+binding, every live escrow/reserve/registry binding (including the reserve treasury), matching
+constructor arguments, deployment blocks, transaction hashes, and the exact source commit before
+writing a candidate manifest. It retries briefly for RPC propagation and fails closed rather than
+exporting an unverified manifest. It deliberately leaves
 `base-sepolia-latest.json` unchanged so the active cohort remains the rollback target.
 
 Before releasing the site, confirm on a Base Sepolia explorer that:
