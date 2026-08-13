@@ -149,6 +149,20 @@ Before releasing the site, confirm on a Base Sepolia explorer that:
 - `OperationsReserve.TREASURY()` equals the intended deployer address;
 - `AgreementActivityRegistry.ESCROW()` equals the newly deployed escrow.
 
+Run the repository's independent two-RPC verification before promoting the candidate:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\Verify-BaseSepoliaCandidate.ps1 `
+  -ExpectedSourceCommit (Get-Content .\deployments\base-sepolia-candidate.json -Raw | ConvertFrom-Json).sourceCommit
+```
+
+This independently requires Base Sepolia chain identity, successful receipts for all six
+deployment/configuration transactions, nonempty and identical runtime code through both RPCs,
+the complete reciprocal binding set, and an exact match to the explicitly reviewed source
+commit. It writes public evidence to
+`deployments/base-sepolia-candidate-verification.json`.
+
 Do not edit the frontend addresses yet. Share only the public transaction hashes and
 candidate manifest for verification. After the exact onchain code and bindings pass,
 Codex can apply one reviewed configuration switch, retain the current cohort as the
