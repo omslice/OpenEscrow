@@ -66,6 +66,7 @@ const candidateManifest = {
     transactionHash: `0x${"4".repeat(64)}`,
     reserveAddress: "0x7777777777777777777777777777777777777777",
     escrowAddress: "0x6666666666666666666666666666666666666666",
+    liveBindingsVerified: true,
   },
   tokens: {
     plain: "0x9999999999999999999999999999999999999999",
@@ -120,6 +121,17 @@ test("public deployment manifests require transaction evidence", () => {
         },
       }),
     /transaction evidence/,
+  );
+  assert.throws(
+    () =>
+      validateDeploymentManifest({
+        ...publicManifest,
+        reciprocalConfiguration: {
+          ...publicManifest.reciprocalConfiguration,
+          liveBindingsVerified: false,
+        },
+      }),
+    /live-binding verification/,
   );
 });
 

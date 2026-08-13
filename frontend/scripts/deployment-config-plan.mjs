@@ -119,6 +119,14 @@ export function validateDeploymentManifest(manifest, expectedCommit) {
     manifest.cohortStatus === "candidate-unconfigured"
       ? "base-sepolia"
       : "local-anvil-base-sepolia-rehearsal";
+  if (
+    manifest.cohortStatus === "candidate-unconfigured" &&
+    reciprocalConfiguration?.liveBindingsVerified !== true
+  ) {
+    throw new Error(
+      "Public candidate manifest is missing independent live-binding verification.",
+    );
+  }
   const deploymentTransactions = [
     manifest.openEscrow?.transactionHash,
     manifest.operationsReserve?.transactionHash,
