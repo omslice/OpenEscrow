@@ -18,8 +18,10 @@ The retired `0xC004...1951` registry is bound to an earlier escrow and must not 
 `0x5ba6533811ee528f6802bb969ab01ff95d7f092e` at Base Sepolia block `45,247,418` in transaction
 `0xdc4b2b57623b8d5ad688dd97295e6f138ebbd9af41806672eb204d6daeca35db`. Its immutable `ESCROW()`
 binding is the historical `0xF18B...AE99` escrow. The pair is preserved in the rollback manifest;
-the active client/server configuration now uses the unified `0x9F8C...4b10` escrow and its
-atomically deployed `0x88b5...0f53` registry.
+the active client/server configuration now uses the 2026-08-13 UAT escrow
+`0x96fe...16e3` and its atomically deployed `0x1435...f952` registry. The intervening
+`0x9F8C...4b10` / `0x88b5...0f53` cohort is retained in the prior rollback manifest and is not the
+active application binding.
 
 The frontend now reads `ESCROW()` before loading, publishing, anchoring, verifying,
 or notifying on registry events. A mismatch fails closed with a service-unavailable

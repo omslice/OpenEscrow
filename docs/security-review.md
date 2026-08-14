@@ -5,7 +5,8 @@
 Base Sepolia deployment at `0x4365f7B9632d083F1a03D57AE56a0e6d239ef62F`. The reviewed and
 regression-tested source was previously deployed at the now-historical F18 address after the
 multi-tenant lifecycle changes. The currently configured bounded testnet cohort was compiled from
-exact source `200848d` and deployed at `0x9F8C9555f28C10347C58fc71F430F4cbc3724b10`. The separate
+exact source `d1d1eabd8497c10b3b5d99860f43b0f139bdd77e` and deployed at
+`0x96fe68b52c6ea79e7b035f768c85382a066116e3`. The separate
 `OperationsReserve`, mock-token, and `AgreementActivityRegistry` contracts have automated tests
 but are not covered by the original line-by-line review described below. They are covered by the
 2026-08-05 secondary-contract addendum near the end of this document.
@@ -281,9 +282,9 @@ rejects the wrong contract, escrow, agreement, tenant, token, transaction sender
 The candidate activity registry now authorizes every tenant through the escrow's immutable
 nonzero ownership share instead of recognizing only the primary tenant stored in the agreement
 struct. A secondary-tenant contract regression proves record anchoring and private-activity
-publication, while the existing stranger regression remains fail-closed. The fresh cohort's
-version-matched registry at `0x88b53d6C35020e82B97462E8a1cBCDc8D6d50f53` is deployed and
-validated against escrow `0x9F8C9555f28C10347C58fc71F430F4cbc3724b10`; this does not make the
+publication, while the existing stranger regression remains fail-closed. The active cohort's
+version-matched registry at `0x14351b9dd8b985964d926f844504b2236f14f952` is deployed and
+validated against escrow `0x96fe68b52c6ea79e7b035f768c85382a066116e3`; this does not make the
 internal review an independent audit.
 
 ### Residual hosted-workflow risks
@@ -395,16 +396,16 @@ Remaining Slither results are reviewed design signals: day-scale timestamp deadl
 pragma ranges, constant naming, and intentionally ignored participant arrays. None is being
 treated as proof that the contracts are vulnerability-free.
 
-The earlier secondary-contract hardening in this addendum is present in the active Base Sepolia
-cohort compiled from exact source commit `200848d67f0865fa76484f3f2788122361c28dfe`: escrow
-`0x9F8C9555f28C10347C58fc71F430F4cbc3724b10`, reserve
-`0xDB6637e5A858A8fd3A3Cd85C1625D9a0b022A626`, and activity registry
-`0x88b53D6c35020E82B97462e8a1CBDcd8D6D50f53`. The active deployment manifest records successful
+The secondary-contract hardening and tenant-only-yield settlement in this addendum are present in
+the active Base Sepolia cohort compiled from exact source commit
+`d1d1eabd8497c10b3b5d99860f43b0f139bdd77e`: escrow
+`0x96fe68b52c6ea79e7b035f768c85382a066116e3`, reserve
+`0xfb5a1ae5bae33b82625abe90e9634b4505f37374`, and activity registry
+`0x14351b9dd8b985964d926f844504b2236f14f952`. The active deployment manifest records successful
 receipts, exact runtime-bytecode matches, reciprocal escrow/reserve bindings, and the exact
-registry binding confirmed through two Base Sepolia RPC providers. The tenant-only-yield settlement
-and refundable-reserve changes described above are a locally verified release candidate and are not
-claimed as deployed until a new cohort is signed and independently verified. The older F18 cohort
-predates this complete addendum and remains retired; its agreements and balances were not migrated.
+registry binding confirmed through two Base Sepolia RPC providers. The cohort was signed,
+independently verified, and activated in the canonical application on 2026-08-13. The older F18 and
+intervening August 9 cohorts remain retired; their agreements and balances were not migrated.
 Because each cohort is mutually bound and immutable, any future core fix still requires a new
 reviewed escrow/reserve pair and a registry deployed against that exact escrow.
 

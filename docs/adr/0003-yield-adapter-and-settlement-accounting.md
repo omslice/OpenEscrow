@@ -3,11 +3,11 @@
 ## Status
 
 The production adapter design and Base Sepolia Aave StataToken spike remain local post-MVP
-prototypes and are not wired into the public application. The current UAT release candidate
-implements only a bounded testnet harness: fixed taUSDC test shares settle once to deterministic
-testUSDC value, landlord allocation stays principal-denominated, and all positive demo yield is
-allocated to tenants. That harness requires a fresh Base Sepolia cohort and is not a real Aave
-position, adapter integration, redemption, or investment product.
+prototypes and are not wired into the public application. The active public UAT cohort implements
+only a bounded testnet harness: fixed taUSDC test shares settle once to deterministic testUSDC
+value, landlord allocation stays principal-denominated, and all positive demo yield is allocated to
+tenants. That harness was deployed and independently verified on Base Sepolia on 2026-08-13; it is
+not a real Aave position, adapter integration, redemption, or investment product.
 
 ## Context
 

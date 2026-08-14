@@ -445,22 +445,19 @@ production custody, or reliance on the compliance research as legal advice.
   healthy 15-minute notification scheduler, encrypted private-R2 evidence with a ready keyring, and
   an activity registry immutably bound to the current F18 escrow. Cloudflare remote preflight also
   confirmed the expected D1/R2 bindings and current migrations without changing hosted state.
-- **Verified:** Exact contract source `200848d` deployed a fresh bounded Base Sepolia test-token,
-  reserve, escrow, and activity-registry cohort on 2026-08-09. Two independent public RPCs agreed
-  on all successful receipts, exact runtime bytes, the 1%-per-hour/5%-maximum taUSDC demo bounds,
-  and every reciprocal binding. Canonical release `b941a67` then switched the client and server to
-  escrow `0x9F8C...4b10` and registry `0x88b5...0f53` while preserving the existing D1, private R2,
-  secrets, migrations, and F18 rollback manifest. The live app and readiness endpoint returned 200;
-  release provenance was clean, registry binding ready, receipt verification enabled, participant
-  email ready, notification scheduler healthy, and the evidence keyring ready.
-- **Verified:** Exact application release `4281a1f` was pushed, built from clean source, and
-  deployed to both `openescrow.io` and the retained ChatGPT Sites mirror on 2026-08-10 without
-  replacing either host's D1/R2 bindings, secrets, migrations, or stored data. Both public sites
-  and readiness endpoints returned HTTP 200, reported the same clean 40-character commit, and
-  passed the dual-host canonical redirect check. The complete credential-free release envelope
-  passed on its immediate application predecessor `fca5f13`; `4281a1f` changes only the public
-  capitalization of “Project Funding” and separately passed lint, focused account/accessibility
-  regressions, both exact-source builds, hosted deployment verification, and the dual-host check.
+- **Verified:** Exact contract source `d1d1eabd8497c10b3b5d99860f43b0f139bdd77e` deployed the revised
+  bounded Base Sepolia test-token, reserve, escrow, and activity-registry cohort on 2026-08-13. Two
+  independent public RPCs agreed on successful receipts, exact runtime bytes, tenant-only-yield
+  settlement behavior, refundable reserve accounting, and every reciprocal binding. The active
+  escrow is `0x96fe...16e3` and registry is `0x1435...f952`; earlier cohorts remain historical
+  rollback evidence and their agreements and balances were not migrated.
+- **Verified:** Exact application release `356f76e` was pushed, built from clean source, and deployed
+  to both `openescrow.io` and the retained ChatGPT Sites mirror on 2026-08-13 without replacing the
+  canonical Cloudflare D1/R2 bindings, secrets, migrations, or stored data. Both public sites and
+  readiness endpoints returned HTTP 200, reported the same clean 40-character commit, and passed
+  the dual-host check. The complete credential-free release envelope passed with 136 server tests,
+  358 client/script checks, 251 contract tests with one opt-in external-RPC skip, and the documented
+  deployment, accessibility, UX, pilot, and incident rehearsals.
 
 ## Remaining
 
@@ -471,10 +468,10 @@ production custody, or reliance on the compliance research as legal advice.
 - **Planned:** Review and explicitly approve each newer saved candidate before deployment. The live
   site currently matches the last approved exact source; every future deployment must rerun the
   public readiness and release-provenance checks.
-- **Planned:** Run the separate-account synthetic lifecycle and incident/privacy rehearsal on the
-  activated cohort. The strict hosted pilot gate currently remains closed on three official-source
-  monitoring alerts; review Chicago and Arkansas changes and repair the New Hampshire external
-  attestation before calling the deployment pilot-ready.
+- **In progress:** Finish the hosted landlord/two-tenant synthetic lifecycle on proposal `69e2ba50`.
+  Both role-bound invitations have provider-confirmed delivery; participant link opening, approval,
+  finalization, funding, claim/refund, withdrawal, stale-link, wrong-account, and inbox placement
+  checks remain. The strict compliance-source baseline is deferred from this functionality milestone.
 - **Planned:** Keep verifying the version-matched activity registry after every public release,
   together with custom-domain notification delivery, scheduler freshness, private-R2 evidence
   encryption and retained-key recovery, and address attestation.
