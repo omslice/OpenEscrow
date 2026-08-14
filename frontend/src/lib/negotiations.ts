@@ -856,6 +856,8 @@ export function sendNegotiationInvitation(
     invitedRole: InviteRole;
     invitedTenantId?: string;
     invitationUrl: string;
+    resend?: boolean;
+    resendRequestId?: string;
   },
 ) {
   return request<ProposalInvitationResult>(

@@ -4735,24 +4735,6 @@ async function ensureUnsubscribeToken(db, userId) {
   return token;
 }
 
-async function unsubscribeUrlFor(db, origin, email) {
-  const preference = await db
-    .prepare(
-      `SELECT user_id
-       FROM notification_preferences
-       WHERE lower(email) = lower(?) AND consented_at IS NOT NULL
-       ORDER BY updated_at DESC
-       LIMIT 1`,
-    )
-    .bind(email)
-    .first();
-  if (!preference?.user_id) return null;
-  const token = await ensureUnsubscribeToken(db, preference.user_id);
-  const url = new URL("/api/notifications/unsubscribe", origin);
-  url.searchParams.set("token", token);
-  return url.toString();
-}
-
 async function unsubscribe(request, env) {
   const token = cleanText(new URL(request.url).searchParams.get("token"), 200);
   if (!token) return json({ error: "This unsubscribe link is incomplete." }, 400);
@@ -5419,10 +5401,15 @@ async function sendProposalInvitation(request, env, proposalId) {
   const deliveryKeyPrefix =
     `proposal-invitation:${proposalId}:${invitedRole}:${targetKey}:` +
     `${suppliedTokenHash.slice(0, 24)}:`;
+  const resend = body.resend === true;
+  const resendRequestId = cleanText(body.resendRequestId, 80);
+  if (resend && !/^[a-fA-F0-9-]{16,80}$/.test(resendRequestId)) {
+    return json({ error: "Start the resend again from the proposal workspace." }, 400);
+  }
   const cooldownStartedAt = new Date(Date.now() - 10 * 60 * 1000).toISOString();
   let recentDelivery;
   try {
-    const recentDeliveries = await env.DB
+    const recentDeliveries = resend ? { results: [] } : await env.DB
       .prepare(
         `SELECT idempotency_key, status, provider_message_id, sent_at
          FROM notification_deliveries
@@ -5455,6 +5442,9 @@ async function sendProposalInvitation(request, env, proposalId) {
     throw error;
   }
   const timeBucket = Math.floor(Date.now() / (10 * 60 * 1000));
+  const idempotencyKey = resend
+    ? `${deliveryKeyPrefix}r:${(await hashToken(resendRequestId)).slice(0, 16)}`
+    : `${deliveryKeyPrefix}${timeBucket}`;
   let delivered;
   try {
     delivered = recentDelivery
@@ -5484,7 +5474,7 @@ async function sendProposalInvitation(request, env, proposalId) {
             "Sign in using the invited email address. OpenEscrow will load only the proposals and deposits associated with that verified account.",
             "OpenEscrow is a Base Sepolia testnet prototype. Do not send real funds or upload real tenancy documents.",
           ].join("\n\n"),
-          idempotencyKey: `${deliveryKeyPrefix}${timeBucket}`,
+          idempotencyKey,
         });
   } catch (error) {
     console.error(
@@ -5518,6 +5508,7 @@ async function sendProposalInvitation(request, env, proposalId) {
     provider: delivered.provider,
     messageId: delivered.id,
     deliveryKey: delivered.idempotencyKey,
+    resend,
   };
   await env.DB
     .prepare(
@@ -7650,7 +7641,6 @@ async function sendOptedInAgreementActivityEmails(
       if (Number(preferences?.agreement_activity) !== 1) continue;
     }
     try {
-      const unsubscribeUrl = await unsubscribeUrlFor(env.DB, appUrl, email);
       const recipientKey = (await hashToken(email)).slice(0, 16);
       const transactionHash = cleanText(activity.transactionHash, 100).toLowerCase();
       const stableDeliveryKey =
@@ -7658,15 +7648,6 @@ async function sendOptedInAgreementActivityEmails(
         (/^0x[0-9a-f]{64}$/.test(transactionHash)
           ? transactionHash.slice(2)
           : row.updated_at);
-      const actionUrl = new URL(appUrl);
-      if (row.onchain_agreement_id !== null && row.onchain_agreement_id !== undefined) {
-        actionUrl.searchParams.set("id", String(row.onchain_agreement_id));
-      }
-      if (recipientRole === "tenant") {
-        actionUrl.searchParams.set("invite", "tenant");
-      } else if (recipientRole === "arbiter") {
-        actionUrl.searchParams.set("invite", "arbiter");
-      }
       let subject = notification.subject;
       let text = notification.text;
       if (eventType === "finalize" && recipientRole === "tenant") {
@@ -7687,7 +7668,7 @@ async function sendOptedInAgreementActivityEmails(
         recipientEmail: email,
         notificationType: `agreement_activity_${eventType}`,
         subject,
-        text: `${text}\n\nOpen your signed-in dashboard: ${actionUrl.toString()}\n\nThis email intentionally omits evidence, tenancy details, and private notes.${unsubscribeUrl && !requiredWorkflowNotice ? `\n\nTurn off optional OpenEscrow emails: ${unsubscribeUrl}` : ""}`,
+        text: `${text}\n\nOpen your signed-in dashboard: ${appUrl}\n\nThis email intentionally omits evidence, tenancy details, and private notes.${!requiredWorkflowNotice ? "\n\nYou can change optional email notifications in your OpenEscrow Account settings." : ""}`,
         idempotencyKey:
           `agreement-${row.id}-${eventType}-${recipientRole}-${recipientKey}-` +
           stableDeliveryKey,
@@ -7906,14 +7887,13 @@ async function sendScheduledNotification(env, row, notification, appUrl) {
     notification.role,
     notification.scheduledFor.toISOString(),
   ].join(":");
-  const unsubscribeUrl = await unsubscribeUrlFor(env.DB, appUrl, notification.email);
   const delivered = await deliverTrackedEmail(env, {
     negotiationId: row.id,
     recipientEmail: notification.email,
     notificationType: notification.type,
     scheduledFor: notification.scheduledFor.toISOString(),
     subject: notification.subject,
-    text: `${notification.text}\n\nOpen your signed-in dashboard: ${appUrl}\n\nThis reminder intentionally omits addresses, amounts, evidence, and private notes.${unsubscribeUrl ? `\n\nTurn off optional OpenEscrow emails: ${unsubscribeUrl}` : ""}`,
+    text: `${notification.text}\n\nOpen your signed-in dashboard: ${appUrl}\n\nThis reminder intentionally omits addresses, amounts, evidence, and private notes.\n\nYou can change reminder emails in your OpenEscrow Account settings.`,
     idempotencyKey,
   });
   if (!delivered?.id || delivered.duplicate) return false;
@@ -11986,12 +11966,20 @@ async function snapshot(db, id, token, env) {
   });
 }
 
-async function report(db, id, token, download = false) {
+async function report(db, id, token, env, download = false) {
   const row = await rowFor(db, id);
   const role = await authorize(db, row, token);
   if (!role) return new Response("Invalid report link.", { status: 403 });
   const record = await serialize(db, row);
   const terms = record.terms;
+  const claimDocumentUrl = record.onchainAgreementId
+    ? (() => {
+        const url = new URL(publicAppOrigin(env, "https://openescrow.io/"));
+        url.searchParams.set("id", String(record.onchainAgreementId));
+        url.searchParams.set("panel", "claims");
+        return url.toString();
+      })()
+    : null;
   const policyRows = (candidate) => {
     const acceleratedReviewerTiming = isAcceleratedReviewTiming(candidate);
     const isCalifornia =
@@ -12126,6 +12114,9 @@ ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordExc
           ? "Stored privately in OpenEscrow"
           : "External supporting documentation recorded"
         : "No supporting file recorded";
+      const evidenceLink = event.metadata.evidenceUri && claimDocumentUrl
+        ? `<br><a href="${escapeHtml(claimDocumentUrl)}" target="_blank" rel="noreferrer">Open the supporting document securely in OpenEscrow</a>`
+        : "";
       const recordedAttestations = Object.entries(
         event.metadata.claimConfirmations?.attestations || {},
       )
@@ -12138,7 +12129,7 @@ ${isCalifornia ? `<tr><th>Deposit-cap facts</th><td>${candidate.smallLandlordExc
 <table><thead><tr><th>Category</th><th>Description</th><th>Amount</th></tr></thead><tbody>${rows}</tbody>
 <tfoot><tr><th colspan="2">Total</th><th>${claimAmountCell(event.metadata.amount, event.createdAt)}</th></tr></tfoot></table>
 ${recordedAttestations.length ? `<p><strong>Recorded claim attestations</strong></p><ul>${recordedAttestations.map((attestation) => `<li>${escapeHtml(attestation)}</li>`).join("")}</ul>` : ""}
-<p class="meta">Supporting file: ${escapeHtml(evidenceStatus)} · Transaction: ${escapeHtml(event.metadata.transactionHash || "Not recorded")}</p>`;
+<p class="meta">Supporting file: ${escapeHtml(evidenceStatus)}${evidenceLink}<br>Transaction: ${escapeHtml(event.metadata.transactionHash || "Not recorded")}</p>`;
     })
     .join("");
   const revisionSnapshots = record.events
@@ -12844,6 +12835,7 @@ const worker = {
           env.DB,
           id,
           negotiationReadToken(request),
+          env,
           url.searchParams.get("download") === "1",
         );
       }

@@ -10277,7 +10277,11 @@ test("scheduled claim-window reminders are opted-in and idempotent", async () =>
     assert.equal(deliveries.length, 1);
     assert.deepEqual(deliveries[0].to, ["landlord@example.com"]);
     assert.match(deliveries[0].subject, /claim period started/);
-    assert.match(deliveries[0].text, /Turn off optional OpenEscrow emails/);
+    assert.match(
+      deliveries[0].text,
+      /change reminder emails in your OpenEscrow Account settings/,
+    );
+    assert.doesNotMatch(deliveries[0].text, /unsubscribe\?token=/i);
     const inAppNoticeRows = db
       .prepare(
         `SELECT metadata_json FROM negotiation_events
@@ -11791,7 +11795,7 @@ test("the landlord is notified when all required approvals make a proposal ready
   }
 });
 
-test("finalization sends the tenant a required ready-to-fund email with a direct agreement link", async () => {
+test("finalization sends the tenant a required ready-to-fund email with the canonical app link", async () => {
   const db = new TestD1();
   const created = await create(db);
   await jsonResponse(
@@ -11830,10 +11834,8 @@ test("finalization sends the tenant a required ready-to-fund email with a direct
     assert.deepEqual(deliveries[0].to, ["tenant@example.com"]);
     assert.match(deliveries[0].subject, /agreement #42 is ready to fund/i);
     assert.match(deliveries[0].text, /security-deposit share is now ready to fund/i);
-    assert.match(
-      deliveries[0].text,
-      /https:\/\/openescrow\.io\/\?id=42&invite=tenant/,
-    );
+    assert.match(deliveries[0].text, /Open your signed-in dashboard: https:\/\/openescrow\.io/);
+    assert.doesNotMatch(deliveries[0].text, /[?&](?:id|invite)=/);
     assert.doesNotMatch(deliveries[0].text, /Turn off optional OpenEscrow emails/i);
     assert.deepEqual(
       {
@@ -11890,7 +11892,8 @@ test("each tenant contribution sends the landlord a required funding confirmatio
     assert.deepEqual(deliveries[0].to, ["landlord@example.com"]);
     assert.match(deliveries[0].subject, /Tenant funding received.*agreement #42/i);
     assert.match(deliveries[0].text, /separate confirmation as each tenant contribution/i);
-    assert.match(deliveries[0].text, /https:\/\/openescrow\.io\/\?id=42/);
+    assert.match(deliveries[0].text, /Open your signed-in dashboard: https:\/\/openescrow\.io/);
+    assert.doesNotMatch(deliveries[0].text, /[?&](?:id|invite)=/);
     assert.equal(
       funded.events.filter(
         (event) =>
@@ -12906,6 +12909,10 @@ test("pilot rehearsal: record export and proof include claim, decision, and rece
   assert.match(claimReportHtml, /0x1111111111111111111111111111111111111111/);
   assert.match(claimReportHtml, /Recorded transaction receipts/);
   assert.match(claimReportHtml, /External supporting documentation recorded/);
+  assert.match(
+    claimReportHtml,
+    /href="https:\/\/openescrow\.io\/\?id=42&amp;panel=claims"/,
+  );
   assert.doesNotMatch(claimReportHtml, /ipfs:\/\/bafy-test-invoice/);
   assert.match(claimReportHtml, new RegExp(`0x${"9".repeat(64)}`));
   const downloadedReport = await worker.fetch(

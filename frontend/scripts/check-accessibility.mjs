@@ -578,12 +578,12 @@ try {
   );
   await page.getByRole("button", { name: "Save proposal for review" }).click();
   await page.getByText(
-    "Proposal saved. Invitations are now unlocked for this exact revision.",
+    "Proposal published and invitation email sent to every tenant.",
   ).waitFor({ state: "visible" });
   assert.equal(
-    await page.getByRole("button", { name: "Send invite", exact: true }).count(),
+    await page.getByRole("button", { name: "Resend", exact: true }).count(),
     1,
-    "A published proposal should expose one direct-send action for its tenant.",
+    "A published proposal should expose one resend action after automatic delivery.",
   );
   assert.equal(
     await page.getByRole("button", { name: "Send manually", exact: true }).count(),
@@ -595,22 +595,21 @@ try {
     0,
     "Participant links should rotate automatically instead of exposing a manual reset action.",
   );
-  await page.getByRole("button", { name: "Send invite", exact: true }).click();
-  await page.getByRole("button", { name: "✓ Sent", exact: true }).waitFor();
+  await page.getByText("✓ Email sent", { exact: true }).waitFor();
   assert.equal(
     sentProposalInvites,
     1,
-    "The invite action should show a checkmark only after the server confirms delivery.",
+    "Publishing should deliver the invitation exactly once.",
   );
   assert.equal(
     refreshedProposalInvites,
-    1,
-    "A stale locally held invitation should rotate once before the email is sent.",
+    0,
+    "A newly published proposal should use its newly issued invitation without rotating it again.",
   );
   assert.equal(
     validatedProposalInvites,
-    1,
-    "The direct-send action should validate its locally held link before delivery.",
+    0,
+    "Automatic delivery should not need a separate stale-link check for a newly issued invitation.",
   );
   await page.getByRole("button", { name: "Refresh account proposals" }).click();
   const savedProposalCard = page.locator(".saved-proposal-card", {
@@ -666,13 +665,13 @@ try {
   );
   assert.equal(
     await page.getByText(
-      "Proposal saved. Invitations are now unlocked for this exact revision.",
+      "Proposal published and invitation email sent to every tenant.",
     ).count(),
     0,
     "A stale success message should not remain beside a blocked-confirmation error.",
   );
 
-  await page.getByRole("button", { name: "Start another proposal" }).click();
+  await page.getByRole("button", { name: "Start replacement proposal" }).click();
   await page.waitForFunction(
     () => document.activeElement?.id === "proposal-panel-participants",
   );

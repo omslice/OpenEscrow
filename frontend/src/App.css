@@ -1472,7 +1472,7 @@ html.demo-route #root {
 .about-links a {
   display: inline-flex;
   align-items: center;
-  min-height: 42px;
+  min-height: 44px;
   padding: 9px 13px;
   border: 1px solid var(--accent-border);
   border-radius: 9px;
@@ -4533,6 +4533,21 @@ a.btn.disabled {
   margin: 24px 0;
 }
 
+.proposal-composer-inline {
+  margin: 0 0 24px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--success) 45%, var(--border));
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  background: color-mix(in srgb, var(--success) 4%, var(--surface));
+}
+
+.saved-proposal-card:has(+ .proposal-composer-inline) {
+  margin-bottom: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
 .proposal-composer-toolbar {
   display: flex;
   width: 100%;
@@ -4546,6 +4561,14 @@ a.btn.disabled {
   background: color-mix(in srgb, var(--accent) 6%, var(--surface));
   color: var(--text-h);
   font-weight: 700;
+}
+
+.invite-delivery-status {
+  align-self: center;
+  color: var(--success);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .workspace-empty {

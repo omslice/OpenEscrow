@@ -523,12 +523,12 @@ function AgreementForm({
   const acceleratedReviewTiming = isAcceleratedReviewTiming({
     testnetTimingProfile,
   });
-  const approvedTermsLocked =
-    Boolean(
-      draft &&
-        (draft.tenants.some((tenant) => tenant.approved) ||
-          (draft.arbiterEmail && draft.arbiterApproved)),
-    ) && !isEditingRevision;
+  const currentRevisionHasApproval = Boolean(
+    draft &&
+      (draft.tenants.some((tenant) => tenant.approved) ||
+        (draft.arbiterEmail && draft.arbiterApproved)),
+  );
+  const approvedTermsLocked = Boolean(draft) && !isEditingRevision;
   const compliancePreview =
     selectedJurisdiction && addressResolution
       ? buildComplianceSnapshot(
@@ -1119,7 +1119,15 @@ function AgreementForm({
             created.record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
           ),
         );
-        setFormMessage("Proposal saved. Invitations are now unlocked for this exact revision.");
+        const invitationDelivery = await sendPublishedInvitations(
+          created.record,
+          created.access,
+        );
+        setFormMessage(
+          invitationDelivery.failedRecipients.length === 0
+            ? "Proposal published and invitation email sent to every tenant."
+            : `Proposal published, but OpenEscrow could not email ${invitationDelivery.failedRecipients.join(", ")}. Use Resend or Send manually below.`,
+        );
         setProposalStep("review");
       } else {
         if (!landlordAccess) throw new Error("The landlord proposal access is unavailable.");
@@ -1143,8 +1151,14 @@ function AgreementForm({
         setAccessBundle(refreshed.access);
         setRevisionSummary("");
         setIsEditingRevision(false);
+        const invitationDelivery = await sendPublishedInvitations(
+          refreshed.record,
+          refreshed.access,
+        );
         setFormMessage(
-          `Revision ${updated.revision} published. Prior approvals and links were reset; fresh review links are ready to send to every tenant${updated.arbiterEmail ? " and the arbiter" : ""}.`,
+          invitationDelivery.failedRecipients.length === 0
+            ? `Revision ${updated.revision} published and fresh invitation email${updated.tenants.length === 1 && !updated.arbiterEmail ? "" : "s"} sent automatically.`
+            : `Revision ${updated.revision} published, but OpenEscrow could not email ${invitationDelivery.failedRecipients.join(", ")}. Use Resend or Send manually below.`,
         );
         setProposalStep("review");
       }
@@ -1641,6 +1655,61 @@ function AgreementForm({
     return { record: latestRecord, access: nextBundle };
   }
 
+  async function sendPublishedInvitations(
+    record: NegotiationRecord,
+    bundle: CreatedNegotiation["access"],
+  ) {
+    const access: NegotiationAccess = {
+      proposalId: record.id,
+      role: "landlord",
+      token: bundle.landlord,
+    };
+    const delivered = new Set<string>();
+    const failedRecipients: string[] = [];
+    for (const tenant of record.tenants) {
+      const token =
+        bundle.tenants.find((candidate) => candidate.id === tenant.id)?.token ||
+        (tenant.isFundingTenant ? bundle.tenant : null);
+      if (!token) {
+        failedRecipients.push(tenant.email);
+        continue;
+      }
+      try {
+        const invitation = inviteContent("tenant", record.id, token);
+        const result = await sendNegotiationInvitation(access, {
+          invitedRole: "tenant",
+          invitedTenantId: tenant.id,
+          invitationUrl: invitation.verificationUrl,
+        });
+        if (result.sent) delivered.add(tenant.id);
+        else failedRecipients.push(tenant.email);
+      } catch {
+        failedRecipients.push(tenant.email);
+      }
+    }
+    if (record.arbiterEmail && bundle.arbiter) {
+      try {
+        const invitation = inviteContent("arbiter", record.id, bundle.arbiter);
+        const result = await sendNegotiationInvitation(access, {
+          invitedRole: "arbiter",
+          invitationUrl: invitation.verificationUrl,
+        });
+        if (result.sent) delivered.add("arbiter");
+        else failedRecipients.push(record.arbiterEmail);
+      } catch {
+        failedRecipients.push(record.arbiterEmail);
+      }
+    }
+    setSentInvites(delivered);
+    try {
+      const refreshed = await loadNegotiation(access);
+      setDraft(refreshed);
+      return { record: refreshed, delivered, failedRecipients };
+    } catch {
+      return { record, delivered, failedRecipients };
+    }
+  }
+
   async function ensureTenantInvite(tenantId: string) {
     const existing = tenantInvite(tenantId);
     if (existing && landlordAccess) {
@@ -1753,12 +1822,15 @@ function AgreementForm({
     setFormMessage(null);
     setSendingInvite(tenantId);
     try {
+      const resend = sentInvites.has(tenantId);
       const invitation = await ensureTenantInvite(tenantId);
       if (!invitation) throw new Error("The current tenant invitation could not be prepared.");
       const result = await sendNegotiationInvitation(landlordAccess, {
         invitedRole: "tenant",
         invitedTenantId: tenantId,
         invitationUrl: invitation.verificationUrl,
+        resend,
+        resendRequestId: resend ? crypto.randomUUID() : undefined,
       });
       if (!result.sent) {
         setFormMessage(
@@ -1768,7 +1840,9 @@ function AgreementForm({
       }
       setSentInvites((current) => new Set(current).add(tenantId));
       setFormMessage(
-        result.duplicate
+        resend
+          ? `Resent the current invitation to ${result.recipientEmail}.`
+          : result.duplicate
           ? `The current invitation for ${result.recipientEmail} was already sent recently.`
           : `Sent the current invitation to ${result.recipientEmail}.`,
       );
@@ -1802,11 +1876,14 @@ function AgreementForm({
     setFormMessage(null);
     setSendingInvite("arbiter");
     try {
+      const resend = sentInvites.has("arbiter");
       const invitation = await ensureArbiterInvite();
       if (!invitation) throw new Error("The current arbiter invitation could not be prepared.");
       const result = await sendNegotiationInvitation(landlordAccess, {
         invitedRole: "arbiter",
         invitationUrl: invitation.verificationUrl,
+        resend,
+        resendRequestId: resend ? crypto.randomUUID() : undefined,
       });
       if (!result.sent) {
         setFormMessage(
@@ -1816,7 +1893,9 @@ function AgreementForm({
       }
       setSentInvites((current) => new Set(current).add("arbiter"));
       setFormMessage(
-        result.duplicate
+        resend
+          ? `Resent the current invitation to ${result.recipientEmail}.`
+          : result.duplicate
           ? `The current invitation for ${result.recipientEmail} was already sent recently.`
           : `Sent the current invitation to ${result.recipientEmail}.`,
       );
@@ -3466,10 +3545,13 @@ function AgreementForm({
           {approvedTermsLocked ? (
             <div className="revision-lock">
               <div>
-                <h3 id="revision-publisher-title">Approved terms are locked</h3>
+                <h3 id="revision-publisher-title">
+                  {currentRevisionHasApproval ? "Approved terms are locked" : "Proposal published"}
+                </h3>
                 <p className="hint">
-                  At least one invited party approved revision {draft.revision}. Unlocking edits
-                  does not change the record until you publish a new revision.
+                  {currentRevisionHasApproval
+                    ? `At least one invited party approved revision ${draft.revision}. Unlocking edits does not change the record until you publish a new revision.`
+                    : "The current proposal is ready to share. Its saved terms stay unchanged unless you choose to edit and publish a new revision."}
                 </p>
               </div>
               <div className="button-row">
@@ -3482,7 +3564,7 @@ function AgreementForm({
                     goToProposalStep("terms");
                   }}
                 >
-                  Edit terms ⓘ
+                  {currentRevisionHasApproval ? "Edit terms ⓘ" : "Edit proposal"}
                 </button>
                 <button
                   className="btn btn-ghost"
@@ -3501,7 +3583,7 @@ function AgreementForm({
             Update the terms above, then describe the change. Publishing creates a new timestamped
             revision and requires fresh approval from every invited reviewer.
           </p>
-          {(draft.tenantApproved || draft.arbiterApproved) && (
+          {currentRevisionHasApproval && (
             <div className="revision-impact">
               <strong>The current revision is already approved.</strong>
               <span>
@@ -3632,10 +3714,14 @@ function AgreementForm({
             <div>
               <h3>Invite parties to review revision {draft.revision}</h3>
               <p className="hint">
-                Saving never sends an invitation. Email is sent only when you choose
-                <strong> Send invite</strong>.
+                Publishing sends each participant a separate email automatically. Use
+                <strong> Resend</strong> if they need another copy, or
+                <strong> Send manually</strong> as a fallback.
               </p>
-              <p className="hint">Each link is role-locked and opens this saved proposal—not the landlord’s creation tools.</p>
+              <p className="hint">
+                After sign-in, OpenEscrow uses the recipient’s verified email to show only
+                proposals associated with that account.
+              </p>
             </div>
           </div>
           <div className="tenant-invite-list">
@@ -3649,7 +3735,7 @@ function AgreementForm({
                 <div>
                   <strong>{tenant.name || "Tenant"}</strong>
                   <span>{tenant.email}</span>
-                  <small>{sharePercent(tenant.depositShareBps)}% deposit ownership</small>
+                  <small>{sharePercent(tenant.depositShareBps)}% deposit share</small>
                   <TenantFundingDue
                     deposit={draft.terms.deposit}
                     reserve={draft.terms.operationsReserve}
@@ -3665,6 +3751,11 @@ function AgreementForm({
                   </strong>
                 </div>
                 <div className="invite-actions">
+                  {sentInvites.has(tenant.id) && (
+                    <span className="invite-delivery-status" role="status">
+                      ✓ Email sent
+                    </span>
+                  )}
                   <button
                     className="btn btn-primary"
                     type="button"
@@ -3672,9 +3763,11 @@ function AgreementForm({
                     onClick={() => void sendTenantInvite(tenant.id)}
                   >
                     {sendingInvite === tenant.id
-                      ? "Sending..."
+                      ? sentInvites.has(tenant.id)
+                        ? "Resending..."
+                        : "Sending..."
                       : sentInvites.has(tenant.id)
-                        ? "✓ Sent"
+                        ? "Resend"
                         : "Send invite"}
                   </button>
                   <button
@@ -3707,6 +3800,11 @@ function AgreementForm({
                   </strong>
                 </div>
                 <div className="invite-actions">
+                {sentInvites.has("arbiter") && (
+                  <span className="invite-delivery-status" role="status">
+                    ✓ Email sent
+                  </span>
+                )}
                 <button
                   className="btn btn-primary"
                   type="button"
@@ -3714,9 +3812,11 @@ function AgreementForm({
                   onClick={() => void sendArbiterInvite()}
                 >
                   {sendingInvite === "arbiter"
-                    ? "Sending..."
+                    ? sentInvites.has("arbiter")
+                      ? "Resending..."
+                      : "Sending..."
                     : sentInvites.has("arbiter")
-                      ? "✓ Sent"
+                      ? "Resend"
                       : "Send invite"}
                 </button>
                 <button

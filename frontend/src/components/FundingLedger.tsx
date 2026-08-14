@@ -97,7 +97,7 @@ export function FundingLedger({
                     </dd>
                   </div>
                   <div>
-                    <dt>Deposit ownership</dt>
+                    <dt>Deposit share</dt>
                     <dd>{share.toFixed(2).replace(/\.?0+$/, "")}%</dd>
                   </div>
                   <div>
@@ -120,10 +120,6 @@ export function FundingLedger({
               <small>{shortAddr(agreement.landlord)}</small>
             </div>
             <dl>
-              <div>
-                <dt>Funded</dt>
-                <dd>0 {tokenLabel}</dd>
-              </div>
               <div>
                 <dt>Deduction claimed</dt>
                 <dd>{formatUSDC(agreement.claimedAmount)} {claimUnit}</dd>

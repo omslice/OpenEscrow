@@ -627,7 +627,11 @@ export function ClaimSection({
         <span>Claim total</span>
         <strong>{amountRaw === null ? "Enter valid amounts" : `${amount} ${amountUnit}`}</strong>
       </div>
-      <fieldset className="california-claim-checklist">
+    </div>
+  );
+
+  const claimChecklist = (
+    <fieldset className="california-claim-checklist">
         <legend>
           {versionedClaimPolicy
             ? "Address-routed claim packet · required"
@@ -763,8 +767,7 @@ export function ClaimSection({
               : "Attach one supporting test file. This non-specific profile records the test lifecycle but does not validate legal compliance."}
           </p>
         )}
-      </fieldset>
-    </div>
+    </fieldset>
   );
 
   async function recordNotice(method: "gmail" | "copy") {
@@ -1007,6 +1010,7 @@ export function ClaimSection({
           />
         </label>
         {fields}
+        {claimChecklist}
         <TxButton
           address={OPEN_ESCROW_ADDRESS}
           abi={OpenEscrowABI}
@@ -1051,6 +1055,7 @@ export function ClaimSection({
           />
         </label>
         {fields}
+        {claimChecklist}
         <TxButton
           address={OPEN_ESCROW_ADDRESS}
           abi={OpenEscrowABI}
