@@ -63,6 +63,7 @@ import {
 } from "../lib/finalizationTransaction";
 import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
 import type { InviteRole } from "../lib/inviteContext";
+import { publicAppOrigin } from "../lib/publicAppOrigin";
 import {
   checkComplianceSourceStatus,
   complianceSourceStatusSummary,
@@ -356,13 +357,14 @@ function inviteContent(
   proposalId: string,
   token: string,
 ) {
-  const inviteUrl = buildNegotiationInviteUrl(role, proposalId, token);
+  const verificationUrl = buildNegotiationInviteUrl(role, proposalId, token);
+  const appUrl = `${publicAppOrigin()}/`;
   const body = [
     `You have been invited to review an OpenEscrow security-deposit proposal as the ${role}.`,
     "",
-    `Review the landlord's terms, propose changes, or approve the current revision here: ${inviteUrl}`,
+    `Open OpenEscrow and sign in using the invited email address: ${appUrl}`,
     "",
-    "Your invitation is locked to the role named above. OpenEscrow can create an EVM wallet when you sign in with Google, or you can connect your own wallet.",
+    "OpenEscrow will load only the proposals and deposits associated with your verified account. Choose the tenant workspace to review, propose changes, or approve the current revision.",
     "",
     "Every proposal, requested change, approval, invitation action, and finalization is added to a timestamped running record.",
     "",
@@ -370,7 +372,8 @@ function inviteContent(
   ].join("\n");
   return {
     body,
-    url: inviteUrl,
+    url: appUrl,
+    verificationUrl,
   };
 }
 
@@ -1645,7 +1648,7 @@ function AgreementForm({
         await validateNegotiationInvitation(landlordAccess, {
           invitedRole: "tenant",
           invitedTenantId: tenantId,
-          invitationUrl: existing.url,
+          invitationUrl: existing.verificationUrl,
         });
         return existing;
       } catch (cause) {
@@ -1687,7 +1690,7 @@ function AgreementForm({
       try {
         await validateNegotiationInvitation(landlordAccess, {
           invitedRole: "arbiter",
-          invitationUrl: existing.url,
+          invitationUrl: existing.verificationUrl,
         });
         return existing;
       } catch (cause) {
@@ -1755,7 +1758,7 @@ function AgreementForm({
       const result = await sendNegotiationInvitation(landlordAccess, {
         invitedRole: "tenant",
         invitedTenantId: tenantId,
-        invitationUrl: invitation.url,
+        invitationUrl: invitation.verificationUrl,
       });
       if (!result.sent) {
         setFormMessage(
@@ -1803,7 +1806,7 @@ function AgreementForm({
       if (!invitation) throw new Error("The current arbiter invitation could not be prepared.");
       const result = await sendNegotiationInvitation(landlordAccess, {
         invitedRole: "arbiter",
-        invitationUrl: invitation.url,
+        invitationUrl: invitation.verificationUrl,
       });
       if (!result.sent) {
         setFormMessage(

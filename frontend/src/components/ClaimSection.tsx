@@ -32,6 +32,7 @@ import {
   type ClaimReceiptAction,
 } from "../lib/claimReceiptRecovery";
 import { tenantClaimEmailStatus } from "../lib/claimNotificationStatus";
+import { publicAppOrigin } from "../lib/publicAppOrigin";
 import {
   buildNegotiationInviteUrl,
   loadNegotiation,
@@ -487,6 +488,7 @@ export function ClaimSection({
         negotiationAccess.proposalId,
         token,
       );
+      const appUrl = `${publicAppOrigin()}/`;
       const body = [
         tenant.name?.trim() ? `Hello ${tenant.name.trim()},` : "Hello,",
         "",
@@ -502,9 +504,9 @@ export function ClaimSection({
             : `Invoice / evidence: ${uri}`
           : "",
         "",
-        `Review the documentation, add a note, and approve or dispute the claim here: ${reviewUrl}`,
+        `Open OpenEscrow and sign in to review the documentation, add a note, and approve or dispute the claim: ${appUrl}`,
         "",
-        "This private invitation is only for you. Do not forward it.",
+        "Use the email address that received this notice. OpenEscrow will load only the agreements associated with that verified account.",
         "",
         "Your decision and all related actions will be included in the timestamped agreement record.",
       ].filter(Boolean).join("\n");

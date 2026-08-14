@@ -706,6 +706,10 @@ const DEFAULT_OPERATIONS_RESERVE_ADDRESS =
   "0xfb5a1ae5bae33b82625abe90e9634b4505f37374";
 const DEFAULT_ACTIVITY_REGISTRY_ADDRESS =
   "0x14351b9dd8b985964d926f844504b2236f14f952";
+const ERC4337_ENTRY_POINT_V07_ADDRESS =
+  "0x0000000071727de22e5e9d8baf0edac6f37da032";
+const ERC4337_USER_OPERATION_EVENT_TOPIC =
+  "0x49628fd1471006c1482da88028e9ce4dbb080b815c9b0344d39e5a8e6ec1419f";
 const ACTIVITY_REGISTRY_ESCROW_SELECTOR = "0xe681c4aa";
 const ACTIVITY_REGISTRY_READINESS_TTL_MS = 60_000;
 const HOSTED_NOTIFICATION_SCHEDULER_INTERVAL_MS = 15 * 60 * 1000;
@@ -1957,7 +1961,8 @@ function receiptLogMatchesVariant(log, receipt, candidate) {
   for (const [index, expectedWord] of Object.entries(candidate.dataWords)) {
     if (words[Number(index)] !== expectedWord) return false;
   }
-  const sender = cleanText(receipt?.from, 80).toLowerCase();
+  const sender = receiptActorAddress(receipt);
+  if (!sender) return false;
   if (candidate.exactSender && sender !== candidate.exactSender) return false;
   if ((candidate.forbiddenSenders || []).includes(sender)) return false;
   if (
@@ -1968,6 +1973,33 @@ function receiptLogMatchesVariant(log, receipt, candidate) {
     if (!loggedActor || sender !== loggedActor) return false;
   }
   return true;
+}
+
+function receiptActorAddress(receipt) {
+  const outerSender = cleanText(receipt?.from, 80).toLowerCase();
+  const target = cleanText(receipt?.to, 80).toLowerCase();
+  if (target !== ERC4337_ENTRY_POINT_V07_ADDRESS) {
+    return WALLET_PATTERN.test(outerSender) ? outerSender : null;
+  }
+
+  const userOperationLogs = (Array.isArray(receipt?.logs) ? receipt.logs : []).filter(
+    (log) =>
+      cleanText(log?.address, 80).toLowerCase() === ERC4337_ENTRY_POINT_V07_ADDRESS &&
+      cleanText(log?.topics?.[0], 80).toLowerCase() ===
+        ERC4337_USER_OPERATION_EVENT_TOPIC,
+  );
+  // A receipt containing multiple user operations cannot prove which account
+  // produced the OpenEscrow event without a trace. Fail closed instead of
+  // accepting an unrelated account from the same EntryPoint bundle.
+  if (userOperationLogs.length !== 1) return null;
+  const [userOperationLog] = userOperationLogs;
+  const topics = Array.isArray(userOperationLog?.topics)
+    ? userOperationLog.topics
+    : [];
+  const words = receiptDataWords(userOperationLog?.data);
+  if (topics.length !== 4 || !words || words.length !== 4) return null;
+  if (words[1] !== uint256Topic(1)) return null;
+  return topicAddress(topics[2]);
 }
 
 async function agreementTokenAtReceipt(
@@ -5376,9 +5408,8 @@ async function sendProposalInvitation(request, env, proposalId) {
 
   const canonicalUrl = new URL(publicAppOriginForRequest(request, env));
   canonicalUrl.pathname = "/";
-  canonicalUrl.searchParams.set("invite", invitedRole);
-  canonicalUrl.searchParams.set("proposal", proposalId);
-  canonicalUrl.hash = `token=${encodeURIComponent(invitationToken)}`;
+  canonicalUrl.search = "";
+  canonicalUrl.hash = "";
 
   const participantLabel = invitedRole === "tenant" ? "tenant" : "optional arbiter";
   const recordReady = row.status === "finalized";
@@ -5449,9 +5480,8 @@ async function sendProposalInvitation(request, env, proposalId) {
               : `A landlord invited you to review an OpenEscrow security-deposit proposal as the ${participantLabel}.`,
             recordReady
               ? `Open your record: ${canonicalUrl.toString()}`
-              : `Review the terms, request a change, or approve the current revision: ${canonicalUrl.toString()}`,
-            "This role-locked link is intended only for the invited participant. Do not forward it.",
-            "Sign in using the invited email address to keep access connected to your OpenEscrow account.",
+              : `Sign in to review the terms, request a change, or approve the current revision: ${canonicalUrl.toString()}`,
+            "Sign in using the invited email address. OpenEscrow will load only the proposals and deposits associated with that verified account.",
             "OpenEscrow is a Base Sepolia testnet prototype. Do not send real funds or upload real tenancy documents.",
           ].join("\n\n"),
           idempotencyKey: `${deliveryKeyPrefix}${timeBucket}`,
@@ -11599,10 +11629,7 @@ async function sendClaimNotification(request, env) {
       return json({ error: "A tenant review link is invalid." }, 400);
     }
     seenTenantIds.add(tenantId);
-    const deliveryUrl = new URL(
-      `${reviewUrl.pathname}${reviewUrl.search}${reviewUrl.hash}`,
-      `${appOrigin}/`,
-    );
+    const deliveryUrl = new URL("/", `${appOrigin}/`);
     reviewLinks.push({
       tenantId,
       name: cleanText(tenant.name, 160),
@@ -11672,8 +11699,8 @@ async function sendClaimNotification(request, env) {
           ? "Invoice / evidence: available privately after opening the agreement"
           : `Invoice / evidence: ${evidenceUri}`
         : "",
-      `Review the documentation and approve or dispute the claim: ${reviewLink.url}`,
-      "This private invitation is only for you. Do not forward it.",
+      `Sign in to review the documentation and approve or dispute the claim: ${reviewLink.url}`,
+      "Use the email address that received this notice. OpenEscrow will load only the agreements associated with that verified account.",
       "Your decision and all related actions will be included in the timestamped agreement record.",
     ].filter(Boolean).join("\n\n");
     const delivered = await deliverTrackedEmail(env, {

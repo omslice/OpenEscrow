@@ -2212,6 +2212,11 @@ const RECEIPT_TEST_USDC = ACTIVE_DEPLOYMENT.usdc;
 const RECEIPT_TEST_YIELD_USDC = ACTIVE_DEPLOYMENT.yieldUsdc;
 const RECEIPT_TEST_OPEN_ESCROW = ACTIVE_DEPLOYMENT.escrow;
 const RECEIPT_TEST_OPERATIONS_RESERVE = ACTIVE_DEPLOYMENT.operationsReserve;
+const RECEIPT_TEST_ENTRY_POINT =
+  "0x0000000071727de22e5e9d8baf0edac6f37da032";
+const RECEIPT_TEST_BUNDLER = "0x4444444444444444444444444444444444444444";
+const USER_OPERATION_EVENT_TOPIC =
+  "0x49628fd1471006c1482da88028e9ce4dbb080b815c9b0344d39e5a8e6ec1419f";
 const AGREEMENT_PROPOSED_TOPIC =
   "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6";
 const PROPOSAL_CANCELLED_TOPIC =
@@ -2357,6 +2362,27 @@ function agreementStateResult(tokenAddress = RECEIPT_TEST_USDC) {
   const words = Array.from({ length: 29 }, () => receiptWord(0));
   words[12] = receiptAddressWord(tokenAddress);
   return receiptData(...words);
+}
+
+function userOperationEvent({
+  sender = RECEIPT_TEST_TENANT,
+  success = true,
+} = {}) {
+  return {
+    address: RECEIPT_TEST_ENTRY_POINT,
+    topics: [
+      USER_OPERATION_EVENT_TOPIC,
+      transactionHash(9_100),
+      receiptAddressWord(sender),
+      receiptAddressWord("0x0000000000000000000000000000000000000000"),
+    ],
+    data: receiptData(
+      receiptWord(0),
+      receiptWord(success ? 1 : 0),
+      receiptWord(100_000),
+      receiptWord(80_000),
+    ),
+  };
 }
 
 async function finalizeWithoutArbiter(db, created) {
@@ -7520,10 +7546,10 @@ test("proposal invitations are recipient-bound, canonical, tracked, and duplicat
     assert.deepEqual(deliveries[0].to, ["tenant@example.com"]);
     assert.match(
       deliveries[0].text,
-      new RegExp(
-        `https://openescrow\\.io/\\?invite=tenant&proposal=${created.record.id}#token=`,
-      ),
+      /https:\/\/openescrow\.io\//,
     );
+    assert.equal(deliveries[0].text.includes("#token="), false);
+    assert.equal(deliveries[0].text.includes("?invite="), false);
     assert.equal(deliveries[0].text.includes("untrusted-client-origin.example"), false);
 
     const arbiter = await jsonResponse(
@@ -12198,7 +12224,7 @@ test("role-bound actions are strictly enforced by session role", async () => {
   );
 });
 
-test("deduction claim emails isolate each tenant's private invitation", async () => {
+test("deduction claim emails validate private credentials but send the general app link", async () => {
   const db = new TestD1();
   const created = await jsonResponse(
     await worker.fetch(
@@ -12324,8 +12350,8 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
     for (const [index, tenant] of created.access.tenants.entries()) {
       const sent = sentEmails[index];
       assert.deepEqual(sent.body.to, [tenant.email]);
-      assert.match(sent.body.text, new RegExp(`#token=${tenant.token}`));
-      assert.match(sent.body.text, /https:\/\/openescrow\.io/);
+      assert.match(sent.body.text, /https:\/\/openescrow\.io\//);
+      assert.doesNotMatch(sent.body.text, /#token=|\?invite=|\?proposal=/);
       assert.doesNotMatch(sent.body.text, /openescrow\.example/);
       assert.equal(sent.body.text.includes("?token="), false);
       for (const otherTenant of created.access.tenants) {
@@ -15185,10 +15211,13 @@ test("receipt verification binds the operations reserve to its escrow, tenant, t
     token = RECEIPT_TEST_USDC,
     amount = 5_000_000n,
     from = RECEIPT_TEST_TENANT,
+    accountAbstractionSender = null,
+    userOperationSuccess = true,
   } = {}) => ({
     status: "0x1",
     blockNumber: "0x2b",
-    from,
+    from: accountAbstractionSender ? RECEIPT_TEST_BUNDLER : from,
+    ...(accountAbstractionSender ? { to: RECEIPT_TEST_ENTRY_POINT } : {}),
     logs: [
       {
         address: reserve,
@@ -15200,6 +15229,14 @@ test("receipt verification binds the operations reserve to its escrow, tenant, t
         ],
         data: receiptData(receiptAddressWord(token), receiptWord(amount)),
       },
+      ...(accountAbstractionSender
+        ? [
+            userOperationEvent({
+              sender: accountAbstractionSender,
+              success: userOperationSuccess,
+            }),
+          ]
+        : []),
     ],
   });
   const action = {
@@ -15257,6 +15294,21 @@ test("receipt verification binds the operations reserve to its escrow, tenant, t
       128,
       "wrong sender",
     ],
+    [
+      reserveReceipt({
+        accountAbstractionSender: RECEIPT_TEST_OTHER_TENANT,
+      }),
+      130,
+      "wrong smart-wallet sender",
+    ],
+    [
+      reserveReceipt({
+        accountAbstractionSender: RECEIPT_TEST_TENANT,
+        userOperationSuccess: false,
+      }),
+      131,
+      "failed smart-wallet operation",
+    ],
   ]) {
     const rejected = await actWithVerifiedReceipt(
       db,
@@ -15274,7 +15326,7 @@ test("receipt verification binds the operations reserve to its escrow, tenant, t
       created,
       created.access.tenant,
       { ...action, transactionHash: transactionHash(129) },
-      reserveReceipt(),
+      reserveReceipt({ accountAbstractionSender: RECEIPT_TEST_TENANT }),
     ),
   );
   assert.equal(
@@ -15374,7 +15426,13 @@ test("receipt verification binds tenant funding to the exact participant and amo
         blockNumber: "0x2c",
         blockHash: transactionHash(9_003),
         transactionHash: rpcRequest.params[0],
-        from: RECEIPT_TEST_TENANT,
+        from:
+          receiptMode === "account-abstraction"
+            ? RECEIPT_TEST_BUNDLER
+            : RECEIPT_TEST_TENANT,
+        ...(receiptMode === "account-abstraction"
+          ? { to: RECEIPT_TEST_ENTRY_POINT }
+          : {}),
         logs: [
           {
             address: ACTIVE_DEPLOYMENT.escrow,
@@ -15391,6 +15449,9 @@ test("receipt verification binds tenant funding to the exact participant and amo
                 ? receiptData(receiptWord(amount), receiptWord(amount))
                 : receiptData(receiptWord(amount)),
           },
+          ...(receiptMode === "account-abstraction"
+            ? [userOperationEvent({ sender: RECEIPT_TEST_TENANT })]
+            : []),
         ],
       },
     });
@@ -15430,7 +15491,7 @@ test("receipt verification binds tenant funding to the exact participant and amo
     );
     assert.equal(aggregateOnly.status, 400);
 
-    receiptMode = "valid";
+    receiptMode = "account-abstraction";
     const funded = await jsonResponse(
       await act(
         db,

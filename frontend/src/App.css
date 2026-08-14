@@ -67,8 +67,8 @@
 
 .app-header-account-entry {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
 }
 
 .app-header-account-entry .app-brand {
@@ -91,6 +91,7 @@
 .app-header-account-entry .header-actions {
   width: 100%;
   min-width: 0;
+  justify-content: flex-end;
 }
 
 .app-header-account-entry .account-entry {
@@ -104,8 +105,10 @@
 }
 
 .app-header-account-entry .account-entry .btn {
-  flex: 1 1 180px;
+  flex: 1 1 160px;
   min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .notification-center {
