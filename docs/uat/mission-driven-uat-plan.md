@@ -1,7 +1,9 @@
 # OpenEscrow mission-driven UAT plan
 
-Status: active  
-Initial release candidate: `167d45cb6ce362bb690c4ba165cce1df715241a8`  
+Status: active; exact candidate deployed and supervised hosted lifecycle in progress
+
+Current release candidate: `356f76e8684a0078b04d43f4ef15528710081531`
+
 Canonical hosted application: `https://openescrow.io/`  
 Test-data rule: synthetic or disposable data only unless the owner explicitly authorizes otherwise.
 
@@ -41,7 +43,7 @@ Recommend release for grant-reviewer UAT only when:
 | UAT-013 | Output and data quality are internally consistent. | UI, D1, onchain receipts, emails, downloadable reports, and computed balances agree on IDs, roles, revision, dates, statuses, token units, USD-equivalent values, and totals; invariant checks show no unexplained value creation or loss. | Critical | Data model; contract invariants | Local contract/accounting regressions pass; cross-surface closed-agreement reconciliation pending |
 | UAT-014 | Failures are safe and recoverable. | Network loss, RPC limits, rejected wallet actions, refreshes, duplicate clicks, delayed indexing, stale tabs, and provider failures produce accurate non-destructive guidance and a successful retry path. | Critical | Recovery requirements | Automated recovery baseline and one rendered non-JSON failure pass; remaining interruption/concurrency matrix pending |
 | UAT-015 | Responsive and accessible operation is practical. | All critical workflows work at 390 px, 768 px, and 1440 px without clipping or horizontal page overflow; keyboard-only use, visible focus, names/labels, announcements, contrast, zoom, and reduced-motion behavior meet the automated and manual checklist. | High | WCAG-oriented project checks | Public routes, empty-save recovery, and invitation failure pass locally; authenticated dense/zoom/screen-reader scenarios pending |
-| UAT-016 | The hosted release is reproducible and supportable. | Cloudflare and the retained Sites mirror report the exact clean commit; D1/R2 bindings and secrets are preserved; readiness is healthy or limitations are accurately disclosed; the standalone operator package matches documented constraints. | High | Deployment runbooks; self-host guide | Isolated candidate and automated release baseline pass; exact hosted candidate/provenance/rollback verification pending |
+| UAT-016 | The hosted release is reproducible and supportable. | Cloudflare and the retained Sites mirror report the exact clean commit; D1/R2 bindings and secrets are preserved; readiness is healthy or limitations are accurately disclosed; the standalone operator package matches documented constraints. | High | Deployment runbooks; self-host guide | Exact commit `356f76e` is deployed to Cloudflare and Sites with preserved bindings; HTTP/readiness and dual-host provenance checks pass. Strict compliance-source monitoring remains a separately disclosed non-green layer outside this functionality milestone. |
 
 ### Resolved claim-policy requirement
 
