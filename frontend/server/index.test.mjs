@@ -7966,6 +7966,25 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
   const db = new TestD1();
   const created = await create(db);
   await finalizeWithoutArbiter(db, created);
+  const retired = await create(db);
+  const currentFinalizationTransaction = `0x${"a".repeat(64)}`;
+  const retiredFinalizationTransaction = transactionHash(91_010);
+  const retiredEscrow = "0x9999999999999999999999999999999999999998";
+  db.prepare(
+    `UPDATE agreement_negotiations
+     SET onchain_contract_address = NULL
+     WHERE id = ?`,
+  )
+    .bind(created.record.id)
+    .run();
+  db.prepare(
+    `UPDATE agreement_negotiations
+     SET status = 'finalized', onchain_agreement_id = '42',
+         onchain_tx_hash = ?, onchain_contract_address = NULL
+     WHERE id = ?`,
+  )
+    .bind(retiredFinalizationTransaction, retired.record.id)
+    .run();
   const consentedAt = "2026-08-10T12:00:00.000Z";
   await db.batch([
     db
@@ -8052,6 +8071,14 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
       return Response.json({ id: `indexed-email-${providerCalls.length}` });
     }
     const payload = JSON.parse(options.body);
+    const finalizationFor = (transactionHashValue, contractAddress) => ({
+      ...finalizationReceipt(42),
+      transactionHash: transactionHashValue,
+      logs: finalizationReceipt(42).logs.map((log) => ({
+        ...log,
+        address: contractAddress,
+      })),
+    });
     const result =
       payload.method === "eth_chainId"
         ? "0x14a34"
@@ -8059,6 +8086,12 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
           ? `0x${latestBlock.toString(16)}`
           : payload.method === "eth_getLogs"
             ? [wrongContractLog, malformedLog, directLog, arbiterResignedLog, evidenceLog]
+            : payload.method === "eth_getTransactionReceipt"
+              ? payload.params[0] === currentFinalizationTransaction
+                ? finalizationFor(currentFinalizationTransaction, RECEIPT_TEST_OPEN_ESCROW)
+                : payload.params[0] === retiredFinalizationTransaction
+                  ? finalizationFor(retiredFinalizationTransaction, retiredEscrow)
+                  : null
             : null;
     return Response.json({ jsonrpc: "2.0", id: payload.id, result });
   };
@@ -8112,6 +8145,32 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
       event_type: "withdrawal_completed",
       processing_status: "processed",
     });
+    assert.equal(
+      db.prepare(
+        "SELECT onchain_contract_address FROM agreement_negotiations WHERE id = ?",
+      )
+        .bind(created.record.id)
+        .first().onchain_contract_address,
+      RECEIPT_TEST_OPEN_ESCROW,
+    );
+    assert.equal(
+      db.prepare(
+        "SELECT onchain_contract_address FROM agreement_negotiations WHERE id = ?",
+      )
+        .bind(retired.record.id)
+        .first().onchain_contract_address,
+      retiredEscrow,
+    );
+    assert.equal(
+      db.prepare(
+        `SELECT COUNT(*) AS count FROM negotiation_events
+         WHERE negotiation_id = ? AND action = 'onchain_activity_indexed'`,
+      )
+        .bind(retired.record.id)
+        .first().count,
+      0,
+      "A current-cohort event must never attach to a retired contract's same numeric agreement ID.",
+    );
     assert.deepEqual(JSON.parse(indexed.topics_json), directLog.topics);
     assert.equal(indexed.data_hex, directLog.data);
     assert.equal(

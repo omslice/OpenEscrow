@@ -64,7 +64,8 @@ CREATE TABLE IF NOT EXISTS agreement_negotiations (
   tenant_wallet TEXT,
   arbiter_wallet TEXT,
   onchain_agreement_id TEXT,
-  onchain_tx_hash TEXT
+  onchain_tx_hash TEXT,
+  onchain_contract_address TEXT
 )`;
 
 const AGREEMENT_LANDLORD_DISCOVERY_INDEX = `
@@ -82,6 +83,10 @@ ON agreement_negotiations (status, updated_at)`;
 const AGREEMENT_STATUS_ID_INDEX = `
 CREATE INDEX IF NOT EXISTS agreement_negotiations_status_id_idx
 ON agreement_negotiations (status, id)`;
+
+const AGREEMENT_ONCHAIN_COHORT_INDEX = `
+CREATE INDEX IF NOT EXISTS agreement_negotiations_onchain_cohort_idx
+ON agreement_negotiations (onchain_contract_address, onchain_agreement_id, status)`;
 
 const EVENTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS negotiation_events (
@@ -4087,17 +4092,74 @@ async function indexedRpcResult(rpcUrls, method, params, timeoutMs = 7_500) {
   throw new Error("Base Sepolia activity could not be read from the configured RPCs.");
 }
 
-async function matchingNegotiationForIndexedEvent(db, agreementId) {
-  const matches = await db
+async function escrowAddressFromFinalizationReceipt(env, row) {
+  const transactionHash = cleanText(row.onchain_tx_hash, 100).toLowerCase();
+  const agreementId = cleanText(row.onchain_agreement_id, 80);
+  if (!/^0x[0-9a-f]{64}$/.test(transactionHash) || !agreementId) return null;
+  const rpcUrls = await baseSepoliaRpcUrls(env);
+  if (!rpcUrls.length) return null;
+  let receipt;
+  try {
+    receipt = await indexedRpcResult(
+      rpcUrls,
+      "eth_getTransactionReceipt",
+      [transactionHash],
+    );
+  } catch {
+    return null;
+  }
+  if (
+    !isConfirmedReceiptForTransaction(receipt, transactionHash) ||
+    receipt.status !== "0x1"
+  ) {
+    return null;
+  }
+  const matches = receipt.logs.filter((log) => {
+    const topic0 = cleanText(log?.topics?.[0], 80).toLowerCase();
+    return (
+      INDEXED_OPEN_ESCROW_EVENTS[topic0]?.eventType === "finalize" &&
+      indexedAgreementId(log) === agreementId &&
+      WALLET_PATTERN.test(cleanText(log?.address, 80))
+    );
+  });
+  if (matches.length !== 1) return null;
+  return cleanText(matches[0].address, 80).toLowerCase();
+}
+
+async function matchingNegotiationForIndexedEvent(env, record) {
+  const agreementId = String(record.onchain_agreement_id);
+  const contractAddress = cleanText(record.contract_address, 80).toLowerCase();
+  if (!WALLET_PATTERN.test(contractAddress)) return null;
+  const matches = await env.DB
     .prepare(
       `SELECT * FROM agreement_negotiations
        WHERE status IN ('finalized', 'cancelled') AND onchain_agreement_id = ?
        ORDER BY updated_at DESC
-       LIMIT 2`,
+       LIMIT 20`,
     )
     .bind(agreementId)
     .all();
-  return matches.results?.length === 1 ? matches.results[0] : null;
+  const rows = matches.results || [];
+  for (const row of rows) {
+    const storedAddress = cleanText(row.onchain_contract_address, 80).toLowerCase();
+    if (storedAddress) continue;
+    const recoveredAddress = await escrowAddressFromFinalizationReceipt(env, row);
+    if (!recoveredAddress) continue;
+    await env.DB
+      .prepare(
+        `UPDATE agreement_negotiations
+         SET onchain_contract_address = ?
+         WHERE id = ? AND (onchain_contract_address IS NULL OR onchain_contract_address = '')`,
+      )
+      .bind(recoveredAddress, row.id)
+      .run();
+    row.onchain_contract_address = recoveredAddress;
+  }
+  const cohortMatches = rows.filter(
+    (row) =>
+      cleanText(row.onchain_contract_address, 80).toLowerCase() === contractAddress,
+  );
+  return cohortMatches.length === 1 ? cohortMatches[0] : null;
 }
 
 async function recordedAppEventForIndexedEvent(db, record) {
@@ -4297,10 +4359,7 @@ async function processIndexedChainEvent(env, record) {
   let negotiationId = cleanText(record.negotiation_id, 100);
   let row = negotiationId ? await rowFor(env.DB, negotiationId).catch(() => null) : null;
   if (!row) {
-    row = await matchingNegotiationForIndexedEvent(
-      env.DB,
-      String(record.onchain_agreement_id),
-    );
+    row = await matchingNegotiationForIndexedEvent(env, record);
     negotiationId = row?.id || "";
   }
   if (!row || !negotiationId) {
@@ -4881,6 +4940,7 @@ async function initialize(db) {
     db.prepare(AGREEMENT_ARBITER_DISCOVERY_INDEX),
     db.prepare(AGREEMENT_STATUS_UPDATED_INDEX),
     db.prepare(AGREEMENT_STATUS_ID_INDEX),
+    db.prepare(AGREEMENT_ONCHAIN_COHORT_INDEX),
     db.prepare(EVENTS_SCHEMA),
     db.prepare(EVENTS_INDEX),
     db.prepare(RECEIPT_GUARDS_SCHEMA),
@@ -9682,9 +9742,15 @@ async function applyAction(request, env, id) {
     statements.push(
       db
         .prepare(
-          "UPDATE agreement_negotiations SET status = 'finalized', onchain_agreement_id = ?, onchain_tx_hash = ?, updated_at = ? WHERE id = ?",
+          "UPDATE agreement_negotiations SET status = 'finalized', onchain_agreement_id = ?, onchain_tx_hash = ?, onchain_contract_address = ?, updated_at = ? WHERE id = ?",
         )
-        .bind(agreementId, transactionHash, now, id),
+        .bind(
+          agreementId,
+          transactionHash,
+          cleanText(env.OPEN_ESCROW_ADDRESS || DEFAULT_OPEN_ESCROW_ADDRESS, 80).toLowerCase(),
+          now,
+          id,
+        ),
       eventStatement(
         db,
         id,
