@@ -66,6 +66,9 @@ The current source includes:
   evidence protection, recovery boundaries, and the privacy-deletion design gate
 - [`docs/usability-test-plan.md`](docs/usability-test-plan.md) — moderated research script and success gate
 - [`docs/pilot-readiness-brief.md`](docs/pilot-readiness-brief.md) — legal, partner, privacy, and audit handoff
+- [`docs/compliance-architecture-screen.md`](docs/compliance-architecture-screen.md) — preliminary
+  official-source screen of withdrawal timing, custody, payments, yield, notice, privacy, and
+  protected-situation risks that must be resolved before real-money use
 - [`docs/legal-review-handoff.md`](docs/legal-review-handoff.md) — exact candidate behavior and
   questions for later qualified legal review
 - [`docs/pilot-services-setup.md`](docs/pilot-services-setup.md) — email, fiat sandbox, and encrypted evidence setup

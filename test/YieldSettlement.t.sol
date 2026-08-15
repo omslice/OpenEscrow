@@ -93,6 +93,11 @@ contract YieldSettlementTest is Test {
         assertEq(escrow.payoutToken(id), address(testUSDC));
 
         vm.prank(landlord);
+        vm.expectRevert(OpenEscrow.ClaimWindowStillOpen.selector);
+        escrow.withdraw(id);
+
+        vm.warp(agreement.claimSubmissionDeadline);
+        vm.prank(landlord);
         escrow.withdraw(id);
         vm.prank(tenantOne);
         escrow.withdraw(id);
@@ -199,6 +204,12 @@ contract YieldSettlementTest is Test {
         vm.prank(tenantTwo);
         reserveEscrow.respondToClaim(id, 0);
 
+        OpenEscrow.Agreement memory resolved = reserveEscrow.getAgreement(id);
+        vm.prank(tenantOne);
+        vm.expectRevert(OpenEscrow.ClaimWindowStillOpen.selector);
+        reserveEscrow.withdraw(id);
+
+        vm.warp(resolved.claimSubmissionDeadline);
         vm.prank(landlord);
         reserveEscrow.withdraw(id);
         vm.prank(tenantOne);

@@ -363,6 +363,11 @@ contract OperationsReserveTest is Test {
 
         uint256 balanceBefore = usdc.balanceOf(tenant);
         vm.prank(tenant);
+        vm.expectRevert(OpenEscrow.ClaimWindowStillOpen.selector);
+        escrow.withdraw(id);
+
+        vm.warp(escrow.getAgreement(id).claimSubmissionDeadline);
+        vm.prank(tenant);
         escrow.withdraw(id);
 
         assertEq(usdc.balanceOf(tenant), balanceBefore + 5e6);

@@ -600,6 +600,8 @@ CREATE TABLE IF NOT EXISTS indexed_chain_events (
   onchain_agreement_id TEXT NOT NULL,
   negotiation_id TEXT,
   event_type TEXT NOT NULL,
+  topics_json TEXT,
+  data_hex TEXT,
   processing_status TEXT NOT NULL,
   indexed_at TEXT NOT NULL,
   processed_at TEXT,
@@ -729,6 +731,12 @@ const RECEIPT_EVENT_TOPICS = Object.freeze({
     "0x416e669c63d9a3a5e36ee7cc7e2104b8db28ccd286aa18966e98fa230c73b08c",
   tenantParticipantAdded:
     "0x30ab399feb0ae9b4c920d576e81a8e47863afdae2efa0fc6d97a13114f5440ad",
+  arbiterAccepted:
+    "0xace33bf8da9ab969643da61f5fe66aa3d5d101d6715d8f3c4fc7ce8a9e1fa20b",
+  arbiterDeclined:
+    "0x70748135aefe4d0868db5e65d42ba3cd66c62471822882a2063912ff74ab07f6",
+  arbiterRenominated:
+    "0x7038fc4ac7357daa7d750e4c27bd46cc4878e6c5aea92637533e92ba69ed99e3",
   operationsReservePaid:
     "0x8817d9a1dd298236cd746a97680a13cf2e5d0a9d970b20e26b8fa0ee32cd855b",
   tenantShareFunded:
@@ -741,6 +749,8 @@ const RECEIPT_EVENT_TOPICS = Object.freeze({
     "0x478de1b8c18ffc9b16915e850b17f80fc5fe83405310df3db31765a38a3365ff",
   claimRetracted:
     "0x78ed2810f3e800697035ce152a2c6e2d92fe189711545693db5d97ac0b9f7eb9",
+  evidenceSubmitted:
+    "0xbd8d077abfbcb6c3b9f2c11ad4b440f43bd14e08a54cfb2748d117b85f05434b",
   tenantClaimResponse:
     "0x270cfb5d0a1ef7453b09614e7321e2bc1c39e82a0642070b4247c08452dca245",
   claimResponded:
@@ -751,6 +761,8 @@ const RECEIPT_EVENT_TOPICS = Object.freeze({
     "0x959dc01840aa516bf9407cffa45326c7b6821c48feff7b91eb0c743c8f460fd6",
   withdrawn:
     "0xcf7d23a3cbe4e8b36ff82fd1b05b1b17373dc7804b4ebbd6e2356716ef202372",
+  operationsReserveRefunded:
+    "0xc558424cad2e33a58907170aa81bd7f53445968d7f21668c41b5122a49a508d8",
   withdrawalCompleted:
     "0xd88f78449f08dea8008c468f4f93b91e77249c07a5327c0527377160ada9a0ad",
   noClaimWithdrawal:
@@ -793,6 +805,22 @@ const INDEXED_OPEN_ESCROW_EVENTS = Object.freeze({
     eventType: "agreement_funded",
     recordedActions: ["agreement_funded"],
   },
+  [RECEIPT_EVENT_TOPICS.tenantParticipantAdded]: {
+    eventType: "tenant_participant_added",
+    recordedActions: ["posted_onchain"],
+  },
+  [RECEIPT_EVENT_TOPICS.arbiterAccepted]: {
+    eventType: "arbiter_accepted",
+    recordedActions: ["revision_approved"],
+  },
+  [RECEIPT_EVENT_TOPICS.arbiterDeclined]: {
+    eventType: "arbiter_declined",
+    recordedActions: ["revision_declined"],
+  },
+  [RECEIPT_EVENT_TOPICS.arbiterRenominated]: {
+    eventType: "arbiter_renominated",
+    recordedActions: ["proposal_revised"],
+  },
   [RECEIPT_EVENT_TOPICS.claimSubmitted]: {
     eventType: "claim_submitted",
     recordedActions: ["deduction_claim_submitted"],
@@ -804,6 +832,10 @@ const INDEXED_OPEN_ESCROW_EVENTS = Object.freeze({
   [RECEIPT_EVENT_TOPICS.claimRetracted]: {
     eventType: "claim_retracted",
     recordedActions: ["deduction_claim_amended"],
+  },
+  [RECEIPT_EVENT_TOPICS.evidenceSubmitted]: {
+    eventType: "evidence_submitted",
+    recordedActions: ["evidence_uploaded"],
   },
   [RECEIPT_EVENT_TOPICS.tenantClaimResponse]: {
     eventType: "claim_response",
@@ -823,6 +855,10 @@ const INDEXED_OPEN_ESCROW_EVENTS = Object.freeze({
   },
   [RECEIPT_EVENT_TOPICS.withdrawn]: {
     eventType: "withdrawal_completed",
+    recordedActions: ["withdrawal_completed"],
+  },
+  [RECEIPT_EVENT_TOPICS.operationsReserveRefunded]: {
+    eventType: "operations_reserve_refunded",
     recordedActions: ["withdrawal_completed"],
   },
   [RECEIPT_EVENT_TOPICS.withdrawalCompleted]: {
@@ -3974,6 +4010,10 @@ function indexedAgreementId(log) {
 function indexedLogRecord(log, expectedAddress, indexedAt) {
   const topic0 = cleanText(log?.topics?.[0], 80).toLowerCase();
   const definition = INDEXED_OPEN_ESCROW_EVENTS[topic0];
+  const topics = Array.isArray(log?.topics)
+    ? log.topics.map((topic) => cleanText(topic, 80).toLowerCase())
+    : [];
+  const dataHex = cleanText(log?.data, 20_000).toLowerCase();
   const transactionHash = cleanText(log?.transactionHash, 100).toLowerCase();
   const blockHash = cleanText(log?.blockHash, 100).toLowerCase();
   const blockNumber = rpcHexNumber(log?.blockNumber);
@@ -3987,6 +4027,10 @@ function indexedLogRecord(log, expectedAddress, indexedAt) {
     blockNumber === null ||
     logIndex === null ||
     agreementId === null ||
+    topics.length < 2 ||
+    topics.length > 4 ||
+    topics.some((topic) => !normalizedReceiptWord(topic)) ||
+    receiptDataWords(dataHex) === null ||
     log?.removed === true
   ) {
     return null;
@@ -4001,6 +4045,9 @@ function indexedLogRecord(log, expectedAddress, indexedAt) {
     onchainAgreementId: agreementId,
     eventType: definition.eventType,
     recordedActions: definition.recordedActions,
+    topic0,
+    topicsJson: JSON.stringify(topics),
+    dataHex,
     indexedAt,
   };
 }
@@ -4054,9 +4101,12 @@ async function matchingNegotiationForIndexedEvent(db, agreementId) {
 }
 
 async function recordedAppEventForIndexedEvent(db, record) {
-  const definition = Object.values(INDEXED_OPEN_ESCROW_EVENTS).find(
-    (candidate) => candidate.eventType === record.event_type,
-  );
+  const topics = indexedEventTopics(record);
+  const definition =
+    INDEXED_OPEN_ESCROW_EVENTS[topics[0]] ||
+    Object.values(INDEXED_OPEN_ESCROW_EVENTS).find(
+      (candidate) => candidate.eventType === record.event_type,
+    );
   if (!definition?.recordedActions?.length || !record.negotiation_id) return false;
   const placeholders = definition.recordedActions.map(() => "?").join(", ");
   const existing = await db
@@ -4079,6 +4129,168 @@ function effectiveIndexedEventType(record, row) {
   return row.arbiter_email
     ? "response_timeout_escalated"
     : "response_timeout_recorded";
+}
+
+function indexedEventTopics(record) {
+  const candidate = record.topicsJson ?? record.topics_json;
+  try {
+    const parsed = typeof candidate === "string" ? JSON.parse(candidate) : candidate;
+    if (
+      !Array.isArray(parsed) ||
+      parsed.length < 2 ||
+      parsed.length > 4 ||
+      parsed.some((topic) => !normalizedReceiptWord(topic))
+    ) {
+      return [];
+    }
+    return parsed.map((topic) => topic.toLowerCase());
+  } catch {
+    return [];
+  }
+}
+
+function indexedEventDataWords(record) {
+  return receiptDataWords(record.dataHex ?? record.data_hex) || [];
+}
+
+function indexedWordBigInt(word) {
+  const normalized = normalizedReceiptWord(word);
+  if (!normalized) return null;
+  try {
+    return BigInt(normalized);
+  } catch {
+    return null;
+  }
+}
+
+function indexedWordAddress(word) {
+  return topicAddress(normalizedReceiptWord(word));
+}
+
+function indexedAmountDetails(word, tokenSymbol) {
+  const micros = indexedWordBigInt(word);
+  if (micros === null) return null;
+  return {
+    rawMicros: micros.toString(10),
+    tokenAmount: formatTokenMicros(micros),
+    testUsd: formatTestUsd(micros),
+    tokenSymbol,
+  };
+}
+
+function indexedAmountText(amount) {
+  return amount
+    ? `${amount.testUsd} test USD (${amount.tokenAmount} ${amount.tokenSymbol})`
+    : "an amount that could not be decoded";
+}
+
+function indexedChainEventDetails(record, row, eventType, env) {
+  const topics = indexedEventTopics(record);
+  const words = indexedEventDataWords(record);
+  let terms = {};
+  try {
+    terms = JSON.parse(row.terms_json);
+  } catch {
+    // The stored agreement remains authoritative even if an old row lacks terms.
+  }
+  const tokenSymbol = depositAssetTestnetLabel(terms);
+  const actorWallet = topicAddress(topics[2]);
+  const metadata = {
+    eventType,
+    source: "confirmed-base-sepolia-log",
+    recordCompleteness: "chain-only",
+    transactionHash: record.transaction_hash,
+    blockNumber: record.block_number,
+    blockHash: record.block_hash,
+    logIndex: record.log_index,
+    chainId: record.chain_id,
+    ...(actorWallet ? { actorWallet } : {}),
+  };
+  let summary = `Confirmed ${eventType.replaceAll("_", " ")} directly on Base Sepolia and added it to this Record as chain-only activity.`;
+
+  const amount = indexedAmountDetails(words[0], tokenSymbol);
+  if (eventType === "tenant_share_funded") {
+    metadata.amount = amount;
+    metadata.totalFunded = indexedAmountDetails(words[1], tokenSymbol);
+    summary = `Confirmed a tenant deposit payment of ${indexedAmountText(amount)} directly on Base Sepolia.`;
+  } else if (eventType === "agreement_funded") {
+    metadata.amount = amount;
+    summary = `Confirmed that the deposit reached its funded amount of ${indexedAmountText(amount)} directly on Base Sepolia.`;
+  } else if (eventType === "claim_submitted" || eventType === "claim_amended") {
+    metadata.claimAmount = amount;
+    metadata.tenantAllocation = indexedAmountDetails(words[1], tokenSymbol);
+    summary = `Confirmed a ${eventType === "claim_amended" ? "revised" : "new"} deduction claim for ${indexedAmountText(amount)} directly on Base Sepolia. Private itemization or supporting documents are not attached to this chain-only entry.`;
+    metadata.privateSupportingDocument = "not-attached-to-openescrow-record";
+  } else if (eventType === "evidence_submitted") {
+    metadata.evidenceIndex = indexedWordBigInt(words[0])?.toString(10) || null;
+    metadata.contentHash = normalizedReceiptWord(words[1]);
+    metadata.evidenceType = indexedWordBigInt(words[2])?.toString(10) || null;
+    metadata.privateSupportingDocument = "not-attached-to-openescrow-record";
+    summary = "Confirmed an evidence fingerprint directly on Base Sepolia. The private source document was not uploaded through OpenEscrow and is not available from this Record.";
+  } else if (eventType === "claim_response") {
+    metadata.acceptedAmount = amount;
+    metadata.responseCount = indexedWordBigInt(words[1])?.toString(10) || null;
+    metadata.requiredResponseCount = indexedWordBigInt(words[2])?.toString(10) || null;
+    summary = `Confirmed a tenant response accepting ${indexedAmountText(amount)} directly on Base Sepolia.`;
+  } else if (eventType === "claim_settled") {
+    metadata.acceptedAmount = amount;
+    metadata.disputedAmount = indexedAmountDetails(words[1], tokenSymbol);
+    summary = `Confirmed claim allocation directly on Base Sepolia: ${indexedAmountText(amount)} accepted and ${indexedAmountText(metadata.disputedAmount)} disputed.`;
+  } else if (eventType === "dispute_created") {
+    metadata.disputedAmount = amount;
+    metadata.rulingDeadline = indexedWordBigInt(words[1])?.toString(10) || null;
+    summary = `Confirmed a dispute for ${indexedAmountText(amount)} directly on Base Sepolia.`;
+  } else if (eventType === "arbiter_ruling") {
+    metadata.awardedToLandlord = amount;
+    metadata.awardedToTenant = indexedAmountDetails(words[1], tokenSymbol);
+    summary = `Confirmed a ruling directly on Base Sepolia: ${indexedAmountText(amount)} to the landlord and ${indexedAmountText(metadata.awardedToTenant)} to tenants.`;
+  } else if (eventType === "withdrawal_completed") {
+    const isAggregate = topics[0] === RECEIPT_EVENT_TOPICS.withdrawalCompleted;
+    metadata.payoutToken = isAggregate ? indexedWordAddress(words[0]) : null;
+    metadata.payoutAmount = indexedAmountDetails(
+      isAggregate ? words[1] : words[0],
+      isAggregate &&
+      indexedWordAddress(words[0]) ===
+        cleanText(env?.USDC_ADDRESS || DEFAULT_USDC_ADDRESS).toLowerCase()
+        ? "testUSDC"
+        : tokenSymbol,
+    );
+    if (isAggregate) {
+      metadata.reserveToken = indexedWordAddress(words[2]);
+      metadata.reserveAmount = indexedAmountDetails(words[3], "testUSDC");
+    }
+    summary = `Confirmed a participant withdrawal of ${indexedAmountText(metadata.payoutAmount)} directly on Base Sepolia${metadata.reserveAmount ? `, plus ${indexedAmountText(metadata.reserveAmount)} from the unused operations reserve` : ""}.`;
+  } else if (eventType === "operations_reserve_refunded") {
+    metadata.recipientWallet = actorWallet;
+    metadata.tokenAddress = topicAddress(topics[3]);
+    metadata.amount = indexedAmountDetails(words[0], "testUSDC");
+    summary = `Confirmed an unused operations-reserve refund of ${indexedAmountText(metadata.amount)} directly on Base Sepolia.`;
+  } else if (
+    eventType === "no_claim_refund_available" ||
+    eventType === "response_timeout_recorded" ||
+    eventType === "response_timeout_escalated" ||
+    eventType === "arbiter_timeout_allocation"
+  ) {
+    metadata.amount = amount;
+    summary = `Confirmed ${eventType.replaceAll("_", " ")} for ${indexedAmountText(amount)} directly on Base Sepolia.`;
+  } else if (eventType === "yield_settled") {
+    metadata.sharesBurned = indexedAmountDetails(words[0], "taUSDC");
+    metadata.testAssetsReceived = indexedAmountDetails(words[1], "testUSDC");
+    metadata.landlordPrincipal = indexedAmountDetails(words[2], "testUSDC");
+    metadata.tenantAssets = indexedAmountDetails(words[3], "testUSDC");
+    metadata.tenantYield = indexedAmountDetails(words[4], "testUSDC");
+    summary = `Confirmed yield settlement directly on Base Sepolia: ${indexedAmountText(metadata.landlordPrincipal)} of landlord principal and ${indexedAmountText(metadata.tenantAssets)} for tenants, including ${indexedAmountText(metadata.tenantYield)} of simulated tenant yield.`;
+  } else if (eventType === "tenant_participant_added") {
+    metadata.depositShareBps = indexedWordBigInt(words[0])?.toString(10) || null;
+    summary = `Confirmed a tenant participant${metadata.depositShareBps ? ` with a ${(Number(metadata.depositShareBps) / 100).toFixed(2).replace(/\.00$/, "")}% deposit share` : ""} directly on Base Sepolia.`;
+  } else if (eventType === "finalize") {
+    metadata.landlordWallet = topicAddress(topics[2]);
+    metadata.primaryTenantWallet = topicAddress(topics[3]);
+    metadata.depositAmount = indexedAmountDetails(words[1], tokenSymbol);
+    summary = `Confirmed agreement finalization for ${indexedAmountText(metadata.depositAmount)} directly on Base Sepolia.`;
+  }
+
+  return { summary, metadata };
 }
 
 async function processIndexedChainEvent(env, record) {
@@ -4106,6 +4318,7 @@ async function processIndexedChainEvent(env, record) {
   const boundRecord = { ...record, negotiation_id: negotiationId };
   const recordedInApp = await recordedAppEventForIndexedEvent(env.DB, boundRecord);
   const eventType = effectiveIndexedEventType(record, row);
+  const chainDetails = indexedChainEventDetails(record, row, eventType, env);
 
   const eventAlreadyRecorded = await env.DB
     .prepare(
@@ -4130,16 +4343,9 @@ async function processIndexedChainEvent(env, record) {
         now,
         "system",
         "onchain_activity_indexed",
-        `Detected ${eventType.replaceAll("_", " ")} directly on Base Sepolia and reconciled it with this agreement.`,
+        chainDetails.summary,
         Number(row.revision),
-        {
-          eventType,
-          transactionHash: record.transaction_hash,
-          blockNumber: record.block_number,
-          blockHash: record.block_hash,
-          logIndex: record.log_index,
-          chainId: record.chain_id,
-        },
+        chainDetails.metadata,
       ),
     ]);
     row = await rowFor(env.DB, negotiationId);
@@ -4237,12 +4443,15 @@ async function reconcileCanonicalIndexedRange(env, fromBlock, toBlock, records) 
       if (
         record.block_hash !== candidate.blockHash ||
         record.block_number !== candidate.blockNumber ||
+        record.topics_json !== candidate.topicsJson ||
+        record.data_hex !== candidate.dataHex ||
         record.processing_status === "orphaned"
       ) {
         await env.DB
           .prepare(
             `UPDATE indexed_chain_events
              SET block_number = ?, block_hash = ?, event_type = ?,
+                 topics_json = ?, data_hex = ?,
                  processing_status = CASE
                    WHEN processing_status = 'orphaned' THEN 'pending'
                    ELSE processing_status END,
@@ -4255,6 +4464,8 @@ async function reconcileCanonicalIndexedRange(env, fromBlock, toBlock, records) 
             candidate.blockNumber,
             candidate.blockHash,
             candidate.eventType,
+            candidate.topicsJson,
+            candidate.dataHex,
             record.chain_id,
             record.transaction_hash,
             record.log_index,
@@ -4414,6 +4625,11 @@ async function runOnchainActivityIndexer(env, now = new Date()) {
           )
           .map((record) => `${record.transactionHash}:${record.onchainAgreementId}`),
       );
+      const aggregateWithdrawalTransactions = new Set(
+        records
+          .filter((record) => record.topic0 === RECEIPT_EVENT_TOPICS.withdrawalCompleted)
+          .map((record) => `${record.transactionHash}:${record.onchainAgreementId}`),
+      );
       records = records.filter(
         (record) => {
           const transactionKey =
@@ -4430,6 +4646,12 @@ async function runOnchainActivityIndexer(env, now = new Date()) {
           ) {
             return false;
           }
+          if (
+            record.topic0 === RECEIPT_EVENT_TOPICS.withdrawn &&
+            aggregateWithdrawalTransactions.has(transactionKey)
+          ) {
+            return false;
+          }
           return !(
             record.eventType === "claim_settled" &&
             disputedTransactions.has(transactionKey)
@@ -4443,8 +4665,9 @@ async function runOnchainActivityIndexer(env, now = new Date()) {
             `INSERT OR IGNORE INTO indexed_chain_events
                (chain_id, contract_address, transaction_hash, log_index,
                 block_number, block_hash, onchain_agreement_id, negotiation_id,
-                event_type, processing_status, indexed_at, processed_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, 'pending', ?, NULL)`,
+                 event_type, topics_json, data_hex, processing_status, indexed_at,
+                 processed_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, 'pending', ?, NULL)`,
           )
           .bind(
             record.chainId,
@@ -4455,6 +4678,8 @@ async function runOnchainActivityIndexer(env, now = new Date()) {
             record.blockHash,
             record.onchainAgreementId,
             record.eventType,
+            record.topicsJson,
+            record.dataHex,
             record.indexedAt,
           )
           .run();
@@ -4469,6 +4694,8 @@ async function runOnchainActivityIndexer(env, now = new Date()) {
             onchain_agreement_id: record.onchainAgreementId,
             negotiation_id: null,
             event_type: record.eventType,
+            topics_json: record.topicsJson,
+            data_hex: record.dataHex,
             processing_status: "pending",
             indexed_at: record.indexedAt,
           });
@@ -7561,10 +7788,20 @@ async function sendOptedInAgreementActivityEmails(
       subject: `OpenEscrow agreement #${agreementNumber} claim withdrawn`,
       text: "The landlord withdrew the deduction claim. Review the resulting refund allocation in OpenEscrow.",
     },
+    evidence_submitted: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${agreementNumber} evidence fingerprint recorded`,
+      text: "A participant recorded an evidence fingerprint directly on Base Sepolia. Review the chain-only entry in OpenEscrow; a private source document is not available unless it was separately uploaded through the app.",
+    },
     withdrawal_completed: {
       recipients: allAgreementRecipients,
       subject: `OpenEscrow agreement #${agreementNumber} withdrawal completed`,
       text: "An agreement party completed an available withdrawal. Review the participant-controlled record and transaction receipt in OpenEscrow.",
+    },
+    operations_reserve_refunded: {
+      recipients: allAgreementRecipients,
+      subject: `OpenEscrow agreement #${agreementNumber} unused reserve returned`,
+      text: "An unused operations-reserve balance was returned on Base Sepolia. Review the recipient and amount in the private agreement Record.",
     },
     no_claim_refund_available: {
       recipients: allAgreementRecipients,
@@ -8327,6 +8564,15 @@ function withdrawalCandidates(row, events, now, tenantRows = []) {
       ];
   const resolution = resolutionEvent(events, lifecycleTenants, Boolean(row.arbiter_email));
   if (!resolution) return [];
+  const terms = JSON.parse(row.terms_json);
+  const claimDeadline = addSeconds(
+    new Date(terms.claimWindowStart),
+    agreementTimingSeconds(terms).claimPeriodSeconds,
+  );
+  const resolutionTime = new Date(resolution.createdAt);
+  const withdrawalAvailableAt = new Date(
+    Math.max(resolutionTime.getTime(), claimDeadline.getTime()),
+  );
   return [
     ["landlord", row.landlord_email],
     ...lifecycleTenants.map((tenant) => [
@@ -8338,10 +8584,10 @@ function withdrawalCandidates(row, events, now, tenantRows = []) {
     role,
     email,
     preference: "activity",
-    scheduledFor: new Date(resolution.createdAt),
+    scheduledFor: withdrawalAvailableAt,
     subject: `OpenEscrow agreement #${row.onchain_agreement_id || ""}: allocation ready`,
     text:
-      "A deduction decision has been recorded. Open the agreement dashboard to review any balance available to withdraw.",
+      "The claim period has ended and the deduction outcome is recorded. Open the agreement dashboard to review any balance available to withdraw.",
   })).filter((candidate) => candidate.scheduledFor <= now);
 }
 
@@ -10624,6 +10870,17 @@ async function applyAction(request, env, id) {
     if (row.status !== "finalized") {
       return json({ error: "The agreement must be finalized before a withdrawal." }, 409);
     }
+    const withdrawalTerms = JSON.parse(row.terms_json);
+    const withdrawalDeadline = addSeconds(
+      new Date(withdrawalTerms.claimWindowStart),
+      agreementTimingSeconds(withdrawalTerms).claimPeriodSeconds,
+    );
+    if (new Date(now) < withdrawalDeadline) {
+      return json(
+        { error: "No landlord or tenant withdrawal can be recorded until the agreed claim period ends." },
+        409,
+      );
+    }
     const tenantRows = await tenantsFor(db, id);
     if (!resolutionEvent(recordedEvents, tenantRows, Boolean(row.arbiter_email))) {
       return json(
@@ -12172,11 +12429,19 @@ ${policyRows(snapshot)}
     .filter((event) => /^0x[a-fA-F0-9]{64}$/.test(event.metadata?.transactionHash || ""))
     .map((event) => {
       const transactionHash = event.metadata.transactionHash;
-      const action = event.action
+      const actionSource =
+        event.action === "onchain_activity_indexed" && event.metadata?.eventType
+          ? event.metadata.eventType
+          : event.action;
+      const action = actionSource
         .split("_")
         .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
         .join(" ");
-      return `<tr><td>${escapeHtml(event.createdAt)}</td><td>${escapeHtml(event.actorRole)}</td><td>${escapeHtml(action)}</td><td class="hash">${escapeHtml(transactionHash)}</td><td><a href="https://sepolia.basescan.org/tx/${escapeHtml(transactionHash)}">BaseScan receipt</a></td></tr>`;
+      const details =
+        event.action === "onchain_activity_indexed"
+          ? `${escapeHtml(event.summary)}${event.metadata?.contentHash ? `<br><small class="hash">Content fingerprint: ${escapeHtml(event.metadata.contentHash)}</small>` : ""}<br><small>Chain-only entry; private supporting material is available only when separately submitted through OpenEscrow.</small>`
+          : escapeHtml(event.summary);
+      return `<tr><td>${escapeHtml(event.createdAt)}</td><td>${escapeHtml(event.actorRole)}</td><td>${escapeHtml(action)}</td><td>${details}</td><td class="hash">${escapeHtml(transactionHash)}</td><td><a href="https://sepolia.basescan.org/tx/${escapeHtml(transactionHash)}">BaseScan receipt</a></td></tr>`;
     })
     .join("");
   const tenantPartyRows = record.tenants
@@ -12217,7 +12482,7 @@ ${policyRows(terms)}
 <p>${tenantApprovalState} · Arbiter: ${record.arbiterEmail ? (record.arbiterApproved ? "approved" : "not approved") : "not appointed"}</p>
 <h2>Revision snapshots</h2>${revisionSnapshots}
 ${claimBreakdowns ? `<h2>Itemized deduction claims</h2>${claimBreakdowns}` : ""}
-${transactionReceipts ? `<h2>Recorded transaction receipts</h2><table><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Transaction hash</th><th>Explorer</th></tr></thead><tbody>${transactionReceipts}</tbody></table>` : ""}
+  ${transactionReceipts ? `<h2>Recorded transaction receipts</h2><table><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th><th>Details</th><th>Transaction hash</th><th>Explorer</th></tr></thead><tbody>${transactionReceipts}</tbody></table>` : ""}
 ${onchainEvidence ? `<h2>Onchain evidence receipts</h2><table><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Evidence</th><th>Hash</th><th>Transaction</th></tr></thead><tbody>${onchainEvidence}</tbody></table>` : ""}
 <h2>Timestamped activity</h2><table><thead><tr><th>Time (UTC)</th><th>Actor</th><th>Action</th></tr></thead><tbody>${timeline}</tbody></table>
 <p class="meta">The readable record is platform-stored. Transaction hashes recorded by the app should be checked using their BaseScan links. The onchain evidence table lists snapshot or activity hashes separately anchored to Base Sepolia; a hash proves integrity only when checked against the corresponding private source material.</p>

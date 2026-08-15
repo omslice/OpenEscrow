@@ -34,7 +34,7 @@ import {
 } from "../lib/agreementAmountDisplay";
 import { participantDepositTokenBalance } from "../lib/participantBalances";
 
-function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | null {
+function nextDeadline(agreement: Agreement, now: number): { label: string; ts: bigint } | null {
   switch (agreement.phase) {
     case Phase.Active:
       return { label: "Claim submission deadline (tenant can withdraw in full after)", ts: agreement.claimSubmissionDeadline };
@@ -48,6 +48,10 @@ function nextDeadline(agreement: Agreement): { label: string; ts: bigint } | nul
       };
     case Phase.Disputed:
       return { label: "Arbiter ruling deadline (disputed funds default to tenant after)", ts: agreement.arbiterRulingDeadline };
+    case Phase.Closed:
+      return now < Number(agreement.claimSubmissionDeadline)
+        ? { label: "Claim period ends (withdrawals unlock after)", ts: agreement.claimSubmissionDeadline }
+        : null;
     default:
       return null;
   }
@@ -90,7 +94,7 @@ export function AgreementDashboard({
   participantRecord?: NegotiationRecord | null;
 }) {
   const now = useNow();
-  const deadline = nextDeadline(agreement);
+  const deadline = nextDeadline(agreement, now);
   const { address } = useAccount();
   const normalized = address?.toLowerCase();
   const inviteRole = useInviteRole();

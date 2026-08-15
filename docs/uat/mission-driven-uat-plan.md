@@ -87,13 +87,14 @@ Hosted tests that require email/OAuth identities remain read-only until disposab
 
 ### Next bounded tranche
 
-The highest-priority local tranche is complete. `DATA-001` established the accounting invariant and
-`DATA-002` carried it into the deployable MVP-contract design: terminal test-token conversion, exact
-principal-equivalent landlord allocation, tenant-only positive yield, and full return of the currently
-unmetered operations reserve. UI value/token labels, terminal state, activity display, receipt recovery,
-and server verification have adjacent regressions. The next tranche is exact-commit assurance and a
-credential-free Base Sepolia deployment rehearsal, followed by the owner's one supervised testnet
-signature and the hosted landlord/two-tenant lifecycle.
+The highest-priority local tranche is complete. In addition to the tenant-only-yield and refundable-
+reserve settlement design, the active candidate locks every normally closed withdrawal until the
+claim-submission period ends and turns validated direct-chain events into value- and actor-aware
+private Record entries. The full application gate, isolated 25-migration Wrangler D1 run, contract
+assurance, and credential-free two-cohort deployment rehearsal pass. The next tranche is to freeze
+the exact commit, obtain the owner's one supervised Base Sepolia signature for that cohort, apply
+the additive hosted migration and verified address switch, then run the hosted landlord/two-tenant
+lifecycle and cross-surface Record reconciliation.
 
 ## Execution protocol
 

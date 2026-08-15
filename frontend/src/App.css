@@ -5892,11 +5892,11 @@ a.btn.disabled {
   }
 
   .workspace-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     top: 4px;
     gap: 4px;
-    overflow-x: auto;
-    scrollbar-color: var(--accent-border) transparent;
-    scrollbar-width: thin;
+    overflow-x: visible;
   }
 
   .workspace-tabs::-webkit-scrollbar {
@@ -5909,9 +5909,10 @@ a.btn.disabled {
   }
 
   .workspace-tabs .tab {
-    flex: 0 0 auto;
+    width: 100%;
     min-height: 44px;
-    padding: 9px 14px;
+    padding: 9px 8px;
+    gap: 6px;
     font-size: 13px;
   }
 

@@ -868,6 +868,15 @@ contract OpenEscrow is ReentrancyGuard {
         bool isLandlord = msg.sender == a.landlord;
         if (!isTenant && !isLandlord) revert NotAuthorized();
         if (a.phase != Phase.Closed && a.phase != Phase.Cancelled) revert InvalidPhase();
+        // A claim may resolve before the fixed submission window closes. Keep
+        // every resulting allocation in escrow until that original claim
+        // period ends so neither party can remove funds while the landlord's
+        // agreed claim window is still running. A cancelled, never-active
+        // proposal remains immediately refundable to avoid stranding partial
+        // tenant funding.
+        if (a.phase == Phase.Closed && block.timestamp < a.claimSubmissionDeadline) {
+            revert ClaimWindowStillOpen();
+        }
 
         uint256 amount;
         if (isTenant) {

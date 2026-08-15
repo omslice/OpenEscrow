@@ -156,27 +156,15 @@
   }
 
   .agreement-panel-tabs {
-    display: flex;
-    overflow-x: auto;
-    scroll-snap-type: x proximity;
-    scrollbar-color: var(--accent-border) transparent;
-    scrollbar-width: thin;
-  }
-
-  .agreement-panel-tabs::-webkit-scrollbar {
-    height: 4px;
-  }
-
-  .agreement-panel-tabs::-webkit-scrollbar-thumb {
-    border-radius: 999px;
-    background: var(--accent-border);
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    overflow: visible;
   }
 
   .agreement-panel-tabs [role="tab"] {
-    flex: 0 0 auto;
-    min-height: 40px;
-    scroll-snap-align: start;
-    white-space: nowrap;
+    min-width: 0;
+    min-height: 52px;
+    padding-inline: 8px;
+    white-space: normal;
   }
 
   .agreement-load-recovery,

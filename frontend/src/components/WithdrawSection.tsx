@@ -25,6 +25,7 @@ import {
   type WithdrawalReceiptAction,
 } from "../lib/terminalReceiptRecovery";
 import type { Agreement } from "../lib/useAgreement";
+import { useNow } from "../lib/useNow";
 import { TxButton } from "./TxButton";
 
 export function WithdrawSection({
@@ -39,6 +40,7 @@ export function WithdrawSection({
   onRefetch?: () => void;
 }) {
   const { address } = useAccount();
+  const now = useNow();
   const [pendingRecord, setPendingRecord] =
     useState<WithdrawalReceiptAction | null>(null);
   const [recordError, setRecordError] = useState<string | null>(null);
@@ -225,8 +227,10 @@ export function WithdrawSection({
   if (!isTenant && !isLandlord && !pendingRecord) return null;
   if (credited === 0n && reserveRefund === 0n && !pendingRecord) return null;
 
+  const claimPeriodEnded = now >= Number(agreement.claimSubmissionDeadline);
   const resolved =
-    agreement.phase === Phase.Closed || agreement.phase === Phase.Cancelled;
+    agreement.phase === Phase.Cancelled ||
+    (agreement.phase === Phase.Closed && claimPeriodEnded);
   if (pendingRecord || (withdrawalRecorded && credited > 0n)) {
     return (
       <div className="action-section" tabIndex={-1}>
@@ -252,8 +256,12 @@ export function WithdrawSection({
           </>
         )}{" "}
         {resolved
-          ? "The claim process is complete, so this balance is available to withdraw."
-          : "This balance remains protected in escrow until the deduction claim and any dispute are fully resolved."}
+          ? agreement.phase === Phase.Cancelled
+            ? "This proposal was cancelled, so the funded balance and unused reserve are available to withdraw."
+            : "The claim period has ended and the claim process is complete, so this balance is available to withdraw."
+          : agreement.phase === Phase.Closed
+            ? `The outcome is recorded, but all funds remain protected in escrow until the claim period ends on ${new Date(Number(agreement.claimSubmissionDeadline) * 1000).toLocaleString()}.`
+            : "This balance remains protected in escrow until the claim period ends and the deduction claim and any dispute are fully resolved."}
       </p>
       {resolved ? (
         <TxButton
@@ -294,7 +302,9 @@ export function WithdrawSection({
         />
       ) : (
         <button className="btn btn-secondary" type="button" disabled>
-          Withdrawal locked until resolution
+          {agreement.phase === Phase.Closed
+            ? "Withdrawal locked until claim period ends"
+            : "Withdrawal locked until claim period ends and outcome is resolved"}
         </button>
       )}
     </div>

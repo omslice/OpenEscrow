@@ -21,14 +21,24 @@ export function friendlyActivitySummary(event: NegotiationEvent): string {
     const eventType = String(event.metadata?.eventType || "");
     const indexedMessages: Record<string, string> = {
       onchain_proposal_cancelled: "The unfunded agreement was cancelled on Base Sepolia.",
+      finalize: "The approved agreement was finalized on Base Sepolia.",
+      tenant_participant_added: "A tenant and their deposit share were confirmed on Base Sepolia.",
       tenant_share_funded: "A tenant funded their approved share of the deposit.",
       agreement_funded: "The full approved deposit was funded.",
+      evidence_submitted:
+        "A supporting-document fingerprint was recorded on Base Sepolia. The private file is not attached to this chain-only entry.",
       claim_submitted: "A deduction claim was submitted on Base Sepolia.",
       claim_amended: "The deduction claim was updated on Base Sepolia.",
       claim_retracted: "The deduction claim was withdrawn.",
       claim_response: "A tenant response to the deduction claim was recorded.",
+      claim_settled: "The deduction claim allocation was recorded on Base Sepolia.",
+      dispute_created: "A disputed claim amount was recorded on Base Sepolia.",
       arbiter_ruling: "The dispute ruling was recorded on Base Sepolia.",
+      yield_settled:
+        "The test-yield position was settled with the landlord limited to principal and the remaining value allocated to tenants.",
       withdrawal_completed: "An available agreement balance was withdrawn.",
+      operations_reserve_refunded:
+        "An unused testnet operations reserve was returned to its tenant.",
       no_claim_refund_available: "The no-claim tenant refund was recorded.",
       response_timeout_recorded:
         "A missed response deadline was recorded and the documented claim was finalized.",
@@ -38,6 +48,9 @@ export function friendlyActivitySummary(event: NegotiationEvent): string {
       arbiter_replacement_confirmed: "Both agreement sides confirmed the arbiter change.",
       arbiter_replacement_cancelled: "The pending arbiter change was cancelled.",
       arbiter_replacement_accepted: "The replacement arbiter accepted the role.",
+      arbiter_accepted: "The optional arbiter accepted the role.",
+      arbiter_declined: "The optional arbiter declined the role.",
+      arbiter_renominated: "A new optional arbiter nominee was recorded.",
       arbiter_resigned: "The optional arbiter resigned from this agreement.",
     };
     if (indexedMessages[eventType]) return indexedMessages[eventType];

@@ -34,6 +34,11 @@ The candidate behavior requiring an opinion is:
 9. Public-chain data can include wallet addresses, test-token amounts, deadlines, state changes,
    hashes, and opaque references. Private proposal, identity, notification, and evidence data are
    hosted offchain; evidence is encrypted at rest, but blockchain metadata cannot be made private.
+10. A normally closed agreement prevents both landlord and tenant withdrawals until the configured
+    claim-submission deadline. Cancellation remains immediately refundable. The preliminary
+    [compliance architecture screen](./compliance-architecture-screen.md) identifies jurisdictions,
+    including Florida, whose separate no-claim and claim-notice deadlines cannot be represented by
+    this single-deadline model and therefore require a contract redesign before real-money use.
 
 ## Questions counsel must answer
 

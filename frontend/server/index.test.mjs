@@ -105,6 +105,7 @@ test("the packaged D1 migration applies cleanly", () => {
     "0021_notification_delivery_events.sql",
     "0022_onchain_activity_indexer.sql",
     "0023_notification_scheduler_cursor.sql",
+    "0024_onchain_activity_record_details.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -2188,6 +2189,16 @@ async function act(db, id, token, action, env = {}) {
   );
 }
 
+function advancePastClaimDeadline(t, agreementTerms = terms) {
+  const claimDeadline =
+    new Date(agreementTerms.claimWindowStart).getTime() +
+    Number(agreementTerms.claimDays) * 24 * 60 * 60 * 1000;
+  t.mock.timers.enable({
+    apis: ["Date"],
+    now: claimDeadline + 1_000,
+  });
+}
+
 function transactionHash(index) {
   return `0x${BigInt(index).toString(16).padStart(64, "0")}`;
 }
@@ -2235,6 +2246,8 @@ const CLAIM_AMENDED_TOPIC =
   "0x478de1b8c18ffc9b16915e850b17f80fc5fe83405310df3db31765a38a3365ff";
 const CLAIM_RETRACTED_TOPIC =
   "0x78ed2810f3e800697035ce152a2c6e2d92fe189711545693db5d97ac0b9f7eb9";
+const EVIDENCE_SUBMITTED_TOPIC =
+  "0xbd8d077abfbcb6c3b9f2c11ad4b440f43bd14e08a54cfb2748d117b85f05434b";
 const TENANT_CLAIM_RESPONSE_TOPIC =
   "0x270cfb5d0a1ef7453b09614e7321e2bc1c39e82a0642070b4247c08452dca245";
 const LEGACY_CLAIM_RESPONSE_TOPIC =
@@ -7976,6 +7989,7 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
   const latestBlock = deploymentBlock + 30;
   const directTransaction = transactionHash(91_001);
   const resignedTransaction = transactionHash(91_005);
+  const evidenceTransaction = transactionHash(91_007);
   const directLog = {
     address: RECEIPT_TEST_OPEN_ESCROW,
     topics: [
@@ -8014,6 +8028,21 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
     logIndex: "0x1",
     removed: false,
   };
+  const evidenceHash = transactionHash(91_008);
+  const evidenceLog = {
+    address: RECEIPT_TEST_OPEN_ESCROW,
+    topics: [
+      EVIDENCE_SUBMITTED_TOPIC,
+      receiptWord(42),
+      receiptAddressWord(RECEIPT_TEST_TENANT),
+    ],
+    data: receiptData(receiptWord(0), evidenceHash, receiptWord(2)),
+    transactionHash: evidenceTransaction,
+    blockHash: transactionHash(91_009),
+    blockNumber: `0x${(indexedBlock + 2).toString(16)}`,
+    logIndex: "0x2",
+    removed: false,
+  };
   const providerCalls = [];
   const originalFetch = globalThis.fetch;
   globalThis.fetch = async (input, options = {}) => {
@@ -8029,7 +8058,7 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
         : payload.method === "eth_blockNumber"
           ? `0x${latestBlock.toString(16)}`
           : payload.method === "eth_getLogs"
-            ? [wrongContractLog, malformedLog, directLog, arbiterResignedLog]
+            ? [wrongContractLog, malformedLog, directLog, arbiterResignedLog, evidenceLog]
             : null;
     return Response.json({ jsonrpc: "2.0", id: payload.id, result });
   };
@@ -8055,31 +8084,39 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
       await Promise.all(waits);
     };
     await runScheduled(Date.parse("2026-08-10T12:15:00.000Z"));
-    assert.equal(providerCalls.length, 4);
+    assert.equal(providerCalls.length, 6);
     assert.deepEqual(
       providerCalls.flatMap((call) => call.to).sort(),
       [
         "landlord@example.com",
         "landlord@example.com",
+        "landlord@example.com",
+        "tenant@example.com",
         "tenant@example.com",
         "tenant@example.com",
       ],
     );
     const indexed = db
       .prepare(
-        `SELECT negotiation_id, event_type, processing_status
+        `SELECT negotiation_id, event_type, processing_status, topics_json, data_hex
          FROM indexed_chain_events WHERE transaction_hash = ?`,
       )
       .bind(directTransaction)
       .first();
-    assert.deepEqual({ ...indexed }, {
+    assert.deepEqual({
+      negotiation_id: indexed.negotiation_id,
+      event_type: indexed.event_type,
+      processing_status: indexed.processing_status,
+    }, {
       negotiation_id: created.record.id,
       event_type: "withdrawal_completed",
       processing_status: "processed",
     });
+    assert.deepEqual(JSON.parse(indexed.topics_json), directLog.topics);
+    assert.equal(indexed.data_hex, directLog.data);
     assert.equal(
       db.prepare("SELECT COUNT(*) AS count FROM indexed_chain_events").first().count,
-      2,
+      3,
       "Malformed and wrong-contract RPC logs must not enter the durable index.",
     );
     const resigned = db
@@ -8094,14 +8131,48 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
       event_type: "arbiter_resigned",
       processing_status: "processed",
     });
+    const evidenceTimeline = db
+      .prepare(
+        `SELECT summary, metadata_json FROM negotiation_events
+         WHERE negotiation_id = ? AND action = 'onchain_activity_indexed'
+           AND lower(json_extract(metadata_json, '$.transactionHash')) = ?`,
+      )
+      .bind(created.record.id, evidenceTransaction)
+      .first();
+    const evidenceMetadata = JSON.parse(evidenceTimeline.metadata_json);
+    assert.equal(evidenceMetadata.contentHash, evidenceHash);
+    assert.equal(
+      evidenceMetadata.privateSupportingDocument,
+      "not-attached-to-openescrow-record",
+    );
+    assert.match(evidenceTimeline.summary, /private source document was not uploaded/i);
+    const indexedReportResponse = await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}/report?token=${created.access.landlord}`,
+      ),
+      env,
+    );
+    assert.equal(indexedReportResponse.status, 200);
+    const indexedReportHtml = await indexedReportResponse.text();
+    assert.match(indexedReportHtml, /Withdrawal Completed/);
+    assert.match(indexedReportHtml, /\$1200\.00 test USD \(1200 testUSDC\)/);
+    assert.match(indexedReportHtml, /Chain-only entry/);
+    assert.match(indexedReportHtml, new RegExp(evidenceHash.slice(2), "i"));
     const timelineEvent = db
       .prepare(
-        `SELECT metadata_json FROM negotiation_events
+        `SELECT summary, metadata_json FROM negotiation_events
          WHERE negotiation_id = ? AND action = 'onchain_activity_indexed'`,
       )
       .bind(created.record.id)
       .first();
-    assert.equal(JSON.parse(timelineEvent.metadata_json).transactionHash, directTransaction);
+    const timelineMetadata = JSON.parse(timelineEvent.metadata_json);
+    assert.equal(timelineMetadata.transactionHash, directTransaction);
+    assert.equal(timelineMetadata.source, "confirmed-base-sepolia-log");
+    assert.equal(timelineMetadata.recordCompleteness, "chain-only");
+    assert.equal(timelineMetadata.actorWallet, RECEIPT_TEST_TENANT.toLowerCase());
+    assert.equal(timelineMetadata.payoutAmount.tokenAmount, "1200");
+    assert.equal(timelineMetadata.payoutAmount.testUsd, "$1200.00");
+    assert.match(timelineEvent.summary, /\$1200\.00 test USD \(1200 testUSDC\)/);
     assert.equal(
       db
         .prepare(
@@ -8122,7 +8193,7 @@ test("the scheduled onchain indexer reconciles direct activity once and emails o
     );
 
     await runScheduled(Date.parse("2026-08-10T12:30:00.000Z"));
-    assert.equal(providerCalls.length, 4, "A finalized indexed log must not resend.");
+    assert.equal(providerCalls.length, 6, "A finalized indexed log must not resend.");
     const originalDateNow = Date.now;
     const readinessNow = originalDateNow() + 60_000;
     Date.now = () => readinessNow;
@@ -10802,23 +10873,38 @@ test("scheduled response and allocation notices respect every tenant", async () 
       { waitUntil(promise) { resolutionWaits.push(promise); } },
     );
     await Promise.all(resolutionWaits);
-    assert.equal(deliveries.length, 4);
+    assert.equal(deliveries.length, 1);
+
+    const claimDeadline =
+      new Date(terms.claimWindowStart).getTime() +
+      Number(terms.claimDays) * 24 * 60 * 60 * 1000;
+    const deadlineWaits = [];
+    await worker.scheduled(
+      { scheduledTime: claimDeadline },
+      env,
+      { waitUntil(promise) { deadlineWaits.push(promise); } },
+    );
+    await Promise.all(deadlineWaits);
+    const allocationDeliveries = deliveries.filter((delivery) =>
+      /allocation ready/.test(delivery.subject),
+    );
+    assert.equal(allocationDeliveries.length, 3);
     assert.deepEqual(
-      deliveries.slice(1).map((delivery) => delivery.to[0]),
+      allocationDeliveries.map((delivery) => delivery.to[0]),
       ["landlord@example.com", "tenant@example.com", "casey@example.com"],
     );
-    for (const delivery of deliveries.slice(1)) {
+    for (const delivery of allocationDeliveries) {
       assert.match(delivery.subject, /allocation ready/);
     }
 
     const duplicateWaits = [];
     await worker.scheduled(
-      { scheduledTime: reminderTime + 22 * 60 * 1000 },
+      { scheduledTime: claimDeadline + 11 * 60 * 1000 },
       env,
       { waitUntil(promise) { duplicateWaits.push(promise); } },
     );
     await Promise.all(duplicateWaits);
-    assert.equal(deliveries.length, 4);
+    assert.equal(deliveries.length, 7);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -10937,12 +11023,27 @@ test("scheduled allocation notices wait for an arbiter to resolve a dispute", as
       { waitUntil(promise) { resolutionWaits.push(promise); } },
     );
     await Promise.all(resolutionWaits);
-    assert.equal(deliveries.length, 3);
+    assert.equal(deliveries.length, 1);
+
+    const claimDeadline =
+      new Date(terms.claimWindowStart).getTime() +
+      Number(terms.claimDays) * 24 * 60 * 60 * 1000;
+    const deadlineWaits = [];
+    await worker.scheduled(
+      { scheduledTime: claimDeadline },
+      env,
+      { waitUntil(promise) { deadlineWaits.push(promise); } },
+    );
+    await Promise.all(deadlineWaits);
+    const allocationDeliveries = deliveries.filter((delivery) =>
+      /allocation ready/.test(delivery.subject),
+    );
+    assert.equal(allocationDeliveries.length, 2);
     assert.deepEqual(
-      deliveries.slice(1).map((delivery) => delivery.to[0]),
+      allocationDeliveries.map((delivery) => delivery.to[0]),
       ["landlord@example.com", "tenant@example.com"],
     );
-    for (const delivery of deliveries.slice(1)) {
+    for (const delivery of allocationDeliveries) {
       assert.match(delivery.subject, /allocation ready/);
     }
   } finally {
@@ -13124,7 +13225,7 @@ test("pilot rehearsal: record export and proof include claim, decision, and rece
   }
 });
 
-test("transaction receipt retries are atomic and remain bound to the exact participant", async () => {
+test("transaction receipt retries are atomic and remain bound to the exact participant", async (t) => {
   const db = new TestD1();
   const created = await jsonResponse(
     await worker.fetch(
@@ -13313,6 +13414,8 @@ test("transaction receipt retries are atomic and remain bound to the exact parti
     ruling,
   );
   assert.equal(crossRoleReplay.status, 403);
+
+  advancePastClaimDeadline(t);
 
   const tenantWithdrawal = {
     type: "withdrawal_completed",
@@ -13535,7 +13638,7 @@ test("deadline receipt retries are atomic and exact-tenant bound", async () => {
   );
 });
 
-test("pilot rehearsal: a disputed claim completes funding, ruling, and withdrawals once", async () => {
+test("pilot rehearsal: a disputed claim completes funding, ruling, and withdrawals once", async (t) => {
   const db = new TestD1();
   const created = await jsonResponse(
     await worker.fetch(
@@ -13685,7 +13788,7 @@ test("pilot rehearsal: a disputed claim completes funding, ruling, and withdrawa
     },
   );
   assert.equal(prematureWithdrawal.status, 409);
-  assert.match((await prematureWithdrawal.json()).error, /must be resolved/);
+  assert.match((await prematureWithdrawal.json()).error, /claim period ends/);
 
   const excessiveAward = await act(
     db,
@@ -13708,6 +13811,7 @@ test("pilot rehearsal: a disputed claim completes funding, ruling, and withdrawa
       transactionHash: transactionHash(13),
     }),
   );
+  advancePastClaimDeadline(t, { ...terms, deposit: "1000", responseDays: "10" });
   const withdrawalActors = [
     [created.access.landlord, "landlord", "225"],
     [primary.token, "tenant", "465"],
@@ -13768,7 +13872,7 @@ test("pilot rehearsal: a disputed claim completes funding, ruling, and withdrawa
   assert.match(reportHtml, /withdrew 310 payout units/);
 });
 
-test("pilot rehearsal: an accepted claim resolves allocations, withdrawals, and record export", async () => {
+test("pilot rehearsal: an accepted claim resolves allocations, withdrawals, and record export", async (t) => {
   const db = new TestD1();
   const created = await create(db);
   await finalizeWithoutArbiter(db, created);
@@ -13801,6 +13905,40 @@ test("pilot rehearsal: an accepted claim resolves allocations, withdrawals, and 
   );
   assert.equal(accepted.events.at(-1).action, "claim_response_submitted");
   assert.equal(accepted.events.at(-1).metadata.decision, "approve");
+
+  const prematureLandlordWithdrawal = await act(
+    db,
+    created.record.id,
+    created.access.landlord,
+    {
+      type: "withdrawal_completed",
+      amount: "300",
+      transactionHash: transactionHash(224),
+    },
+  );
+  assert.equal(prematureLandlordWithdrawal.status, 409);
+  assert.match(
+    (await prematureLandlordWithdrawal.json()).error,
+    /claim period ends/,
+  );
+
+  const prematureTenantWithdrawal = await act(
+    db,
+    created.record.id,
+    created.access.tenant,
+    {
+      type: "withdrawal_completed",
+      amount: "900",
+      transactionHash: transactionHash(225),
+    },
+  );
+  assert.equal(prematureTenantWithdrawal.status, 409);
+  assert.match(
+    (await prematureTenantWithdrawal.json()).error,
+    /claim period ends/,
+  );
+
+  advancePastClaimDeadline(t);
 
   await jsonResponse(
     await act(db, created.record.id, created.access.landlord, {
@@ -13874,7 +14012,7 @@ test("pilot rehearsal: an accepted claim resolves allocations, withdrawals, and 
   );
 });
 
-test("pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-time", async () => {
+test("pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-time", async (t) => {
   const db = new TestD1();
   const created = await create(db);
   const appId = "test-privy-no-claim-app";
@@ -13973,7 +14111,7 @@ test("pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-ti
       transactionHash: transactionHash(33),
     });
     assert.equal(prematureWithdrawal.status, 409);
-    assert.match((await prematureWithdrawal.json()).error, /must be resolved/);
+    assert.match((await prematureWithdrawal.json()).error, /claim period ends/);
 
     const landlordRefund = await act(db, created.record.id, landlordToken, {
       type: "timeout_executed",
@@ -14015,19 +14153,22 @@ test("pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-ti
     assert.equal(claimAfterRefund.status, 409);
     assert.match((await claimAfterRefund.json()).error, /refund is already recorded/);
 
+    advancePastClaimDeadline(t);
+
     await jsonResponse(
-      await act(db, created.record.id, tenantToken, {
+      await act(db, created.record.id, created.access.tenant, {
         type: "withdrawal_completed",
         amount: "1200",
         transactionHash: transactionHash(38),
       }),
     );
-    const duplicateWithdrawal = await act(db, created.record.id, tenantToken, {
+    const duplicateWithdrawal = await act(db, created.record.id, created.access.tenant, {
       type: "withdrawal_completed",
       amount: "1",
       transactionHash: transactionHash(39),
     });
     assert.equal(duplicateWithdrawal.status, 409);
+    t.mock.timers.reset();
 
     const record = await jsonResponse(
       await worker.fetch(
@@ -14112,7 +14253,7 @@ test("pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-ti
   }
 });
 
-test("a landlord can retract an unanswered claim but cannot replace or increase it", async () => {
+test("a landlord can retract an unanswered claim but cannot replace or increase it", async (t) => {
   const db = new TestD1();
   const created = await create(db);
   await finalizeWithoutArbiter(db, created);
@@ -14196,6 +14337,8 @@ test("a landlord can retract an unanswered claim but cannot replace or increase 
     }),
   );
   assert.equal(retracted.events.at(-1).action, "deduction_claim_amended");
+
+  advancePastClaimDeadline(t);
 
   await jsonResponse(
     await act(db, created.record.id, created.access.tenant, {
@@ -15830,7 +15973,7 @@ test("yield agreement receipt verification expects settlement-time allocation ra
   );
 });
 
-test("receipt verification binds tenant responses, rulings, and withdrawals to exact parties and values", async () => {
+test("receipt verification binds tenant responses, rulings, and withdrawals to exact parties and values", async (t) => {
   const db = new TestD1();
   const created = await create(db, "arbiter@example.com");
   await finalizeWithVerifiedReceipt(db, created, {
@@ -15987,6 +16130,8 @@ test("receipt verification binds tenant responses, rulings, and withdrawals to e
     1,
   );
 
+  advancePastClaimDeadline(t);
+
   const withdrawalReceipt = (party, amount, from = party) => ({
     status: "0x1",
     blockNumber: "0x33",
@@ -16091,7 +16236,7 @@ test("receipt verification binds tenant responses, rulings, and withdrawals to e
   );
 });
 
-test("legacy finalized records re-prove and preserve the landlord wallet before landlord receipts", async () => {
+test("legacy finalized records re-prove and preserve the landlord wallet before landlord receipts", async (t) => {
   const db = new TestD1();
   const created = await create(db);
   await finalizeWithoutArbiter(db, created);
@@ -16120,6 +16265,8 @@ test("legacy finalized records re-prove and preserve the landlord wallet before 
       transactionHash: transactionHash(222),
     }),
   );
+
+  advancePastClaimDeadline(t);
 
   const originalTransactionHash = `0x${"a".repeat(64)}`;
   const otherWallet = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";

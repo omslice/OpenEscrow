@@ -87,4 +87,28 @@ test("direct onchain activity uses consumer-facing notification language", () =>
     }),
     "The optional arbiter resigned from this agreement.",
   );
+  assert.equal(
+    friendlyActivitySummary({
+      id: 11,
+      createdAt: "2026-08-10T10:02:00.000Z",
+      actorRole: "system",
+      action: "onchain_activity_indexed",
+      summary: "Confirmed yield_settled directly on Base Sepolia.",
+      revision: 1,
+      metadata: { eventType: "yield_settled" },
+    }),
+    "The test-yield position was settled with the landlord limited to principal and the remaining value allocated to tenants.",
+  );
+  assert.equal(
+    friendlyActivitySummary({
+      id: 12,
+      createdAt: "2026-08-10T10:03:00.000Z",
+      actorRole: "system",
+      action: "onchain_activity_indexed",
+      summary: "Confirmed evidence_submitted directly on Base Sepolia.",
+      revision: 1,
+      metadata: { eventType: "evidence_submitted" },
+    }),
+    "A supporting-document fingerprint was recorded on Base Sepolia. The private file is not attached to this chain-only entry.",
+  );
 });

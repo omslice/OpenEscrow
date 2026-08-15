@@ -568,43 +568,50 @@ export function RecordSnapshotControls({
         )}
       </section>
 
-      {snapshot && (
-        <section className="record-export-step snapshot-anchor">
-          <div>
-            <span className="eyebrow">3 · Optional public proof</span>
-            <strong>Save proof that this record has not changed</strong>
-          </div>
+      <section className="record-export-step snapshot-anchor">
+        <div>
+          <span className="eyebrow">3 · Optional public proof</span>
+          <strong>Save proof that this record has not changed</strong>
+        </div>
+        <p className="field-help">
+          The test network stores a digital fingerprint and the saving wallet—not the record
+          itself. Names, emails, notes, documents, the encrypted file, and its key stay private.
+        </p>
+        {snapshot ? (
+          <>
+            <details className="technical-details record-proof-details">
+              <summary>View technical fingerprint</summary>
+              <code className="snapshot-hash" title={snapshot.hash}>
+                {snapshot.algorithm}: {snapshot.hash}
+              </code>
+            </details>
+            {agreementId !== undefined && registry.isReady ? (
+              <AnchorAction
+                key={snapshot.hash}
+                access={access}
+                agreementId={agreementId}
+                snapshot={snapshot}
+              />
+            ) : agreementId === undefined ? (
+              <p className="field-help">
+                Finalize this proposal before saving a public proof.
+              </p>
+            ) : registry.isChecking ? (
+              <p className="field-help">Checking the public proof service…</p>
+            ) : (
+              <p className="tx-error" role="alert">
+                Public proof is temporarily unavailable because the record service is not
+                connected to this OpenEscrow release.
+              </p>
+            )}
+          </>
+        ) : (
           <p className="field-help">
-            The test network stores a digital fingerprint and the saving wallet—not the record
-            itself. Names, emails, notes, documents, the encrypted file, and its key stay private.
+            Download the encrypted record above to prepare the fingerprint for this optional
+            test-network check.
           </p>
-          <details className="technical-details record-proof-details">
-            <summary>View technical fingerprint</summary>
-            <code className="snapshot-hash" title={snapshot.hash}>
-              {snapshot.algorithm}: {snapshot.hash}
-            </code>
-          </details>
-          {agreementId !== undefined && registry.isReady ? (
-            <AnchorAction
-              key={snapshot.hash}
-              access={access}
-              agreementId={agreementId}
-              snapshot={snapshot}
-            />
-          ) : agreementId === undefined ? (
-            <p className="field-help">
-              Finalize this proposal before saving a public proof.
-            </p>
-          ) : registry.isChecking ? (
-            <p className="field-help">Checking the public proof service…</p>
-          ) : (
-            <p className="tx-error" role="alert">
-              Public proof is temporarily unavailable because the record service is not
-              connected to this OpenEscrow release.
-            </p>
-          )}
-        </section>
-      )}
+        )}
+      </section>
 
       <section className="record-export-step">
         <span className="eyebrow">4 · Independent check</span>
