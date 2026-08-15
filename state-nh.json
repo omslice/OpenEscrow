@@ -3,36 +3,35 @@
   "sourceKey": "state:nh",
   "profileVersion": "nh-rules-2026-08-09.v12",
   "sourceUrl": "https://gc.nh.gov/rsa/html/lv/540-a/540-a-mrg.htm",
-  "checkedAt": "2026-08-14T06:46:14.004Z",
-  "status": "unreachable",
-  "httpStatus": 0,
+  "checkedAt": "2026-08-15T05:44:42.269Z",
+  "status": "unchanged",
+  "httpStatus": 200,
   "finalUrl": "https://gc.nh.gov/rsa/html/lv/540-a/540-a-mrg.htm",
-  "bodySha256": "",
-  "contentLength": 0,
-  "contentType": "",
-  "etag": "",
-  "lastModified": "",
+  "bodySha256": "de4dde43b319422a2444a4e86a561e5d227429765f8df2f9d9be9f4b73b59c5f",
+  "contentLength": 37220,
+  "contentType": "text/html",
+  "etag": "\"0aee38cb4b7dc1:0\"",
+  "lastModified": "Thu, 19 Mar 2026 15:25:00 GMT",
   "markerChecks": [
     {
       "marker": "CHAPTER 540-A",
-      "present": false
+      "present": true
     },
     {
       "marker": "540-A:5 Definition",
-      "present": false
+      "present": true
     },
     {
       "marker": "540-A:6 Procedure",
-      "present": false
+      "present": true
     },
     {
       "marker": "540-A:7 Return of Security Deposit",
-      "present": false
+      "present": true
     },
     {
       "marker": "540-A:8 Remedies",
-      "present": false
+      "present": true
     }
-  ],
-  "error": "fetch failed"
+  ]
 }
