@@ -1,19 +1,19 @@
 ﻿{
     "schema":  "openescrow.base-sepolia-independent-verification/v1",
-    "verifiedAtUtc":  "2026-08-13T23:30:19.0801586Z",
-    "sourceCommit":  "d1d1eabd8497c10b3b5d99860f43b0f139bdd77e",
+    "verifiedAtUtc":  "2026-08-16T02:57:53.9548480Z",
+    "sourceCommit":  "5073f2a98de0741f577ca443f249541f08e4d67e",
     "candidateManifest":  "deployments/base-sepolia-candidate.json",
-    "candidateManifestSha256":  "43a5a7d4c4034965e3adc13ebdcd1b7fe0cbb1c183edf6a393e9a07eb43dd020",
+    "candidateManifestSha256":  "d197b305a98a19bd271f57745ad9e02d7fb5f51b43506e2c0791260ae7ddc15e",
     "rpcAgreement":  [
                          {
                              "rpcUrl":  "https://sepolia.base.org",
                              "chainId":  84532,
                              "codeHashes":  {
                                                 "TestUSDC":  "0xf03bbfb5d70135209649d749b4c839dd40c5e6ff3009b43a65627f25be7d6990",
-                                                "TestAaveUSDC":  "0xad7f0214b5b5436ce53adf22e1f812cea260a5f48304c62230b763481df43e7e",
-                                                "OpenEscrow":  "0xd1a4f2e972da1a51052c1cf62bd41628d84ccfa561fbff924a7be7b7f136648f",
-                                                "OperationsReserve":  "0x3314cc2e5b17d4d40774ae6969ef062d8ebd56adb93eec3446c66537f1c06b89",
-                                                "AgreementActivityRegistry":  "0xb7d05e064cea8701b8a355f257240a6c8384df62259958a99c90af7eaf22bda7"
+                                                "TestAaveUSDC":  "0xbaec0f11fda3e3af88ebded275b0f17d4d76a33616e09f42ba9aa06088f63155",
+                                                "OpenEscrow":  "0x85775d66c3c0e0e06bd7b9b211a4a9a52e973a5f0fe4d88a7ca8fd86c92be0da",
+                                                "OperationsReserve":  "0x89dbd4a213a42e40dcd3086ca4bccff2304fa71e2a3504a744ace28a939905fd",
+                                                "AgreementActivityRegistry":  "0xc1eaf17bd64f588de518757b4874bde57890b43dbdccb0ea0003a172bcd2f6ba"
                                             },
                              "receiptsVerified":  6,
                              "reciprocalBindingsVerified":  true
@@ -23,21 +23,21 @@
                              "chainId":  84532,
                              "codeHashes":  {
                                                 "TestUSDC":  "0xf03bbfb5d70135209649d749b4c839dd40c5e6ff3009b43a65627f25be7d6990",
-                                                "TestAaveUSDC":  "0xad7f0214b5b5436ce53adf22e1f812cea260a5f48304c62230b763481df43e7e",
-                                                "OpenEscrow":  "0xd1a4f2e972da1a51052c1cf62bd41628d84ccfa561fbff924a7be7b7f136648f",
-                                                "OperationsReserve":  "0x3314cc2e5b17d4d40774ae6969ef062d8ebd56adb93eec3446c66537f1c06b89",
-                                                "AgreementActivityRegistry":  "0xb7d05e064cea8701b8a355f257240a6c8384df62259958a99c90af7eaf22bda7"
+                                                "TestAaveUSDC":  "0xbaec0f11fda3e3af88ebded275b0f17d4d76a33616e09f42ba9aa06088f63155",
+                                                "OpenEscrow":  "0x85775d66c3c0e0e06bd7b9b211a4a9a52e973a5f0fe4d88a7ca8fd86c92be0da",
+                                                "OperationsReserve":  "0x89dbd4a213a42e40dcd3086ca4bccff2304fa71e2a3504a744ace28a939905fd",
+                                                "AgreementActivityRegistry":  "0xc1eaf17bd64f588de518757b4874bde57890b43dbdccb0ea0003a172bcd2f6ba"
                                             },
                              "receiptsVerified":  6,
                              "reciprocalBindingsVerified":  true
                          }
                      ],
     "contractAddresses":  {
-                              "TestUSDC":  "0xB58FD0C49B53000f4354634dE49E355e09AD98Dc",
-                              "TestAaveUSDC":  "0x7c4Ea30FB3B21ac5594E094cac8F991786CF7D43",
-                              "OpenEscrow":  "0x96fe68b52c6ea79e7b035f768c85382a066116e3",
-                              "OperationsReserve":  "0xfb5a1ae5bae33b82625abe90e9634b4505f37374",
-                              "AgreementActivityRegistry":  "0x14351b9dd8b985964d926f844504b2236f14f952"
+                              "TestUSDC":  "0xCEA540421894c031684A0f0aC1679B0AF94935D9",
+                              "TestAaveUSDC":  "0x606352797c4cC30B7A50D82E1032042B9ac35eDb",
+                              "OpenEscrow":  "0x8a46cfed7153c53fd080e16624f9702887c78b54",
+                              "OperationsReserve":  "0x5f6c341fcb0a154d10724aba28040ca81ff670d1",
+                              "AgreementActivityRegistry":  "0xcf032b7da95d2710baa599979b8b9f350ce88a62"
                           },
     "transactionCount":  6,
     "status":  "passed"

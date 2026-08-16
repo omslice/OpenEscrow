@@ -1,45 +1,45 @@
-{
-  "schema": "openescrow.deployment-manifest/v2",
-  "network": "base-sepolia",
-  "chainId": 84532,
-  "sourceCommit": "d1d1eabd8497c10b3b5d99860f43b0f139bdd77e",
-  "cohortStatus": "candidate-unconfigured",
-  "exportedAtUtc": "2026-08-13T23:08:02.4916179Z",
-  "openEscrow": {
-    "address": "0x96fe68b52c6ea79e7b035f768c85382a066116e3",
-    "transactionHash": "0x8aee832c7239d739e2cf57ac23bee9bf983ff1f8d3697d20d8e3ec664ac7550e",
-    "deploymentBlock": 45447092
-  },
-  "operationsReserve": {
-    "address": "0xfb5a1ae5bae33b82625abe90e9634b4505f37374",
-    "transactionHash": "0xda7a3097bc68fc72b3acfbf316883cd6932607ca50b12f59f92f780481279a04",
-    "deploymentBlock": 45447091
-  },
-  "agreementActivityRegistry": {
-    "address": "0x14351b9dd8b985964d926f844504b2236f14f952",
-    "transactionHash": "0x830b58763e8c2d0cc06182d2b3d44345f55bdd7c9707b30b9c79424422d4ef44",
-    "deploymentBlock": 45447094,
-    "escrowAddress": "0x96fe68b52c6ea79e7b035f768c85382a066116e3"
-  },
-  "reciprocalConfiguration": {
-    "transactionHash": "0xa984cabdc507bc17d89685e004fca808570c145c2e9fc9f091db19de55dcbf38",
-    "reserveAddress": "0xfb5a1ae5bae33b82625abe90e9634b4505f37374",
-    "escrowAddress": "0x96fe68b52c6ea79e7b035f768c85382a066116e3",
-    "treasuryAddress": "0x0b3aa7539bb7edcd44131f1a71edcff1c1fdf20e",
-    "liveBindingsVerified": true
-  },
-  "tokens": {
-    "plain": "0xB58FD0C49B53000f4354634dE49E355e09AD98Dc",
-    "yield": "0x7c4Ea30FB3B21ac5594E094cac8F991786CF7D43",
-    "plainDeployment": {
-      "contractName": "TestUSDC",
-      "transactionHash": "0xea94b3db570757589f53df9fb0baca79f933849e9787b7e4cb77b7ac0dfb48bc",
-      "deploymentBlock": 45447089
-    },
-    "yieldDeployment": {
-      "contractName": "TestAaveUSDC",
-      "transactionHash": "0xea4f17457f47821a86ea8d76bce13b31cb72e2579d41a7e2fe052a2731fc7a04",
-      "deploymentBlock": 45447090
-    }
-  }
+﻿{
+    "schema":  "openescrow.deployment-manifest/v2",
+    "network":  "base-sepolia",
+    "chainId":  84532,
+    "sourceCommit":  "5073f2a98de0741f577ca443f249541f08e4d67e",
+    "cohortStatus":  "candidate-unconfigured",
+    "exportedAtUtc":  "2026-08-16T02:54:21.6414503Z",
+    "openEscrow":  {
+                       "address":  "0x8a46cfed7153c53fd080e16624f9702887c78b54",
+                       "transactionHash":  "0x8d666379164f214cb129be167f78ef82738ec027c200934d07af74d497d5c441",
+                       "deploymentBlock":  45540281
+                   },
+    "operationsReserve":  {
+                              "address":  "0x5f6c341fcb0a154d10724aba28040ca81ff670d1",
+                              "transactionHash":  "0x28752ce29c5e6f3540a521b51fa4dafd651ebbfbc98c67b32bda1be0582634a1",
+                              "deploymentBlock":  45540280
+                          },
+    "agreementActivityRegistry":  {
+                                      "address":  "0xcf032b7da95d2710baa599979b8b9f350ce88a62",
+                                      "transactionHash":  "0x6a71378a14dfbc29ad83d394be3dc5d80e038fd025202dbab8dac39107b63316",
+                                      "deploymentBlock":  45540283,
+                                      "escrowAddress":  "0x8a46cfed7153c53fd080e16624f9702887c78b54"
+                                  },
+    "reciprocalConfiguration":  {
+                                    "transactionHash":  "0x7d98ef5e74f957215290a24127ff560f8aef0db07c9d249602cd17b3534dad2e",
+                                    "reserveAddress":  "0x5f6c341fcb0a154d10724aba28040ca81ff670d1",
+                                    "escrowAddress":  "0x8a46cfed7153c53fd080e16624f9702887c78b54",
+                                    "treasuryAddress":  "0x0b3aa7539bb7edcd44131f1a71edcff1c1fdf20e",
+                                    "liveBindingsVerified":  true
+                                },
+    "tokens":  {
+                   "plain":  "0xCEA540421894c031684A0f0aC1679B0AF94935D9",
+                   "yield":  "0x606352797c4cC30B7A50D82E1032042B9ac35eDb",
+                   "plainDeployment":  {
+                                           "contractName":  "TestUSDC",
+                                           "transactionHash":  "0x9009e427b2963ff1896d19a87f4e2986ffcecb7efebc8160237c8128529e85da",
+                                           "deploymentBlock":  45540278
+                                       },
+                   "yieldDeployment":  {
+                                           "contractName":  "TestAaveUSDC",
+                                           "transactionHash":  "0x4f594484ad35fd614b1e205cddba52c73a6e335a8176159e18b70fdb839a3b07",
+                                           "deploymentBlock":  45540279
+                                       }
+               }
 }
