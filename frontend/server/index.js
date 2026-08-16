@@ -7192,15 +7192,19 @@ async function getNegotiation(db, id, token) {
   const row = await rowFor(db, id);
   const role = await authorize(db, row, token);
   if (!role) return json({ error: "This proposal link is invalid or no longer available." }, 403);
+  return json(await serializeForAccess(db, row, role, token));
+}
+
+async function serializeForAccess(db, row, role, token) {
   const record = await serialize(db, row);
   if (role === "tenant") {
-    const tenant = await tenantForToken(db, id, token);
+    const tenant = await tenantForToken(db, row.id, token);
     if (tenant) {
       record.viewerTenantId = tenant.id;
       record.viewerEmail = tenant.email;
     }
   }
-  return json(record);
+  return record;
 }
 
 async function addTenant(request, env, id) {
@@ -9305,7 +9309,9 @@ async function applyAction(request, env, id) {
       transactionHash: incomingTransactionHash,
       events: recordedEvents,
     });
-    if (replayIsAuthorized) return json(await serialize(db, row));
+    if (replayIsAuthorized) {
+      return json(await serializeForAccess(db, row, role, body.token));
+    }
   }
 
   const now = new Date().toISOString();
@@ -9371,7 +9377,7 @@ async function applyAction(request, env, id) {
       );
     }
     if (row.status === "cancelled" || row.status === "superseded") {
-      return json(await serialize(db, row));
+      return json(await serializeForAccess(db, row, role, body.token));
     }
     statements.push(
       db
@@ -11244,7 +11250,9 @@ async function applyAction(request, env, id) {
         events: latestEvents,
       });
       if (replayIsAuthorized) {
-        return json(await serialize(db, latestRow));
+        return json(
+          await serializeForAccess(db, latestRow, role, body.token),
+        );
       }
       const receiptIsAlreadyAssigned = latestEvents.some(
         (event) =>
@@ -11382,7 +11390,7 @@ async function applyAction(request, env, id) {
       // The recorded agreement action must not fail if optional email delivery is unavailable.
     }
   }
-  const serialized = await serialize(db, updated);
+  const serialized = await serializeForAccess(db, updated, role, body.token);
   return replacementInvite
     ? json({ record: serialized, invite: replacementInvite })
     : json(serialized);

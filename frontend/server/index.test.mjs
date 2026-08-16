@@ -11165,6 +11165,8 @@ test("every tenant reviewer must approve and adding a tenant resets the revision
   );
   assert.equal(primaryApproved.status, "draft");
   assert.equal(primaryApproved.tenantApproved, false);
+  assert.equal(primaryApproved.viewerTenantId, created.record.tenants[0].id);
+  assert.equal(primaryApproved.viewerEmail, "tenant@example.com");
 
   const coTenantView = await jsonResponse(
     await worker.fetch(
@@ -11183,6 +11185,8 @@ test("every tenant reviewer must approve and adding a tenant resets the revision
   );
   assert.equal(allApproved.status, "ready");
   assert.equal(allApproved.tenantApproved, true);
+  assert.equal(allApproved.viewerTenantId, created.record.tenants[1].id);
+  assert.equal(allApproved.viewerEmail, "cotenant@example.com");
 
   const added = await jsonResponse(
     await worker.fetch(
