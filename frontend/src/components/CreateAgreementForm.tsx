@@ -106,6 +106,7 @@ import {
   acceleratedReviewClaimWindowStart,
   agreementTimingSeconds,
   isAcceleratedReviewTiming,
+  reviewerTimingControlState,
 } from "../../shared/testnet-review-timing.js";
 import "./CreateAgreementFormTabs.css";
 
@@ -522,6 +523,10 @@ function AgreementForm({
     Boolean(claimWindowStart) && new Date(claimWindowStart).getTime() <= Date.now();
   const acceleratedReviewTiming = isAcceleratedReviewTiming({
     testnetTimingProfile,
+  });
+  const reviewerTimingControl = reviewerTimingControlState({
+    accelerated: acceleratedReviewTiming,
+    expired: claimWindowHasPassed,
   });
   const currentRevisionHasApproval = Boolean(
     draft &&
@@ -3348,18 +3353,16 @@ function AgreementForm({
           </strong>
         </div>
         <button
-          className={acceleratedReviewTiming ? "btn btn-ghost" : "btn btn-primary"}
+          className={reviewerTimingControl.primary ? "btn btn-primary" : "btn btn-ghost"}
           type="button"
           disabled={approvedTermsLocked}
           onClick={
-            acceleratedReviewTiming
+            reviewerTimingControl.action === "restore"
               ? restoreStandardTiming
               : applyAcceleratedReviewTiming
           }
         >
-          {acceleratedReviewTiming
-            ? "Restore standard timing"
-            : "Use accelerated reviewer timing"}
+          {reviewerTimingControl.label}
         </button>
       </section>
       <label>

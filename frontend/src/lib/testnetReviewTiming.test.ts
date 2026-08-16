@@ -5,6 +5,7 @@ import {
   acceleratedReviewClaimWindowStart,
   agreementTimingSeconds,
   isAcceleratedReviewTiming,
+  reviewerTimingControlState,
 } from "../../shared/testnet-review-timing.js";
 
 test("accelerated reviewer timing uses fixed thirty-minute lifecycle periods", () => {
@@ -43,5 +44,24 @@ test("accelerated claim window starts one hour after the preset is applied", () 
   assert.equal(
     acceleratedReviewClaimWindowStart(now).toISOString(),
     "2026-08-11T21:00:00.000Z",
+  );
+});
+
+test("expired accelerated timing offers a one-click clock refresh", () => {
+  assert.deepEqual(
+    reviewerTimingControlState({ accelerated: true, expired: true }),
+    {
+      label: "Refresh accelerated test clock",
+      action: "apply",
+      primary: true,
+    },
+  );
+  assert.equal(
+    reviewerTimingControlState({ accelerated: true, expired: false }).action,
+    "restore",
+  );
+  assert.equal(
+    reviewerTimingControlState({ accelerated: false, expired: false }).action,
+    "apply",
   );
 });

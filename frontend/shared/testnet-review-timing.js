@@ -36,3 +36,25 @@ export function acceleratedReviewClaimWindowStart(now = new Date()) {
     now.getTime() + ACCELERATED_REVIEW_TIMING.claimWindowLeadSeconds * 1_000,
   );
 }
+
+export function reviewerTimingControlState({ accelerated, expired }) {
+  if (!accelerated) {
+    return {
+      label: "Use accelerated reviewer timing",
+      action: "apply",
+      primary: true,
+    };
+  }
+  if (expired) {
+    return {
+      label: "Refresh accelerated test clock",
+      action: "apply",
+      primary: true,
+    };
+  }
+  return {
+    label: "Restore standard timing",
+    action: "restore",
+    primary: false,
+  };
+}
