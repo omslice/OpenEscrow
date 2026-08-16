@@ -133,6 +133,21 @@ test("account-bound wallet and inventory callbacks reject stale identity complet
   );
 });
 
+test("an existing embedded wallet is activated automatically for a signed-in account", () => {
+  assert.match(
+    accountCenterSource,
+    /wallets\.find\(\(wallet\) => wallet\.walletClientType === "privy"\) \?\? wallets\[0\]/,
+  );
+  assert.match(
+    accountCenterSource,
+    /activationAttemptedForUser\.current = user\.id;\s*void Promise\.resolve\(setActiveWallet\(preferredWallet\)\)/,
+  );
+  assert.match(
+    accountCenterSource,
+    /activeAccountIdentity\.current !== user\.id \|\| !accountScopeActive\.current/,
+  );
+});
+
 test("mobile account security recovery actions retain full-width touch targets", () => {
   assert.match(
     appStyles,
