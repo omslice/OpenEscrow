@@ -8,6 +8,10 @@ const accountCenterSource = readFileSync(
 );
 const appStyles = readFileSync(new URL("../App.css", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+const appProvidersSource = readFileSync(
+  new URL("../AppProviders.tsx", import.meta.url),
+  "utf8",
+);
 const connectWalletSource = readFileSync(
   new URL("../components/PrivyConnectWallet.tsx", import.meta.url),
   "utf8",
@@ -134,6 +138,10 @@ test("account-bound wallet and inventory callbacks reject stale identity complet
 });
 
 test("an existing embedded wallet is activated automatically for a signed-in account", () => {
+  assert.match(
+    appProvidersSource,
+    /createOnLogin: "users-without-wallets"/,
+  );
   assert.match(
     accountCenterSource,
     /wallets\.find\(\(wallet\) => wallet\.walletClientType === "privy"\) \?\? wallets\[0\]/,

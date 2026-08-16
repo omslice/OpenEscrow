@@ -23,9 +23,9 @@ export function AppProviders({ children }: { children: ReactNode }) {
         },
         embeddedWallets: {
           ethereum: {
-            // Provision explicitly after authentication so a slow Privy request cannot
-            // trap the entire app inside its blocking "Creating your wallet" modal.
-            createOnLogin: "off",
+            // Privy's supported first-login path provisions only accounts that do not
+            // already have a wallet. The account center retains explicit retry controls.
+            createOnLogin: "users-without-wallets",
           },
         },
         defaultChain: baseSepolia,
