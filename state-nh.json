@@ -3,15 +3,15 @@
   "sourceKey": "state:nh",
   "profileVersion": "nh-rules-2026-08-09.v12",
   "sourceUrl": "https://gc.nh.gov/rsa/html/lv/540-a/540-a-mrg.htm",
-  "checkedAt": "2026-08-21T05:50:59.630Z",
+  "checkedAt": "2026-08-22T05:45:50.282Z",
   "status": "unchanged",
   "httpStatus": 200,
   "finalUrl": "https://gc.nh.gov/rsa/html/lv/540-a/540-a-mrg.htm",
   "bodySha256": "de4dde43b319422a2444a4e86a561e5d227429765f8df2f9d9be9f4b73b59c5f",
   "contentLength": 37220,
   "contentType": "text/html",
-  "etag": "\"0aee38cb4b7dc1:0\"",
-  "lastModified": "Thu, 19 Mar 2026 15:25:00 GMT",
+  "etag": "\"24c060e215eddc1:0\"",
+  "lastModified": "Tue, 26 May 2026 13:45:16 GMT",
   "markerChecks": [
     {
       "marker": "CHAPTER 540-A",
