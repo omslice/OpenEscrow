@@ -109,7 +109,9 @@ production custody, or reliance on the compliance research as legal advice.
   wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector
   imports are exercised on every candidate, and the production dependency audit is clean with no
   active exceptions. A newly disclosed Hono CORS middleware advisory is also removed: the
-  transitive wallet path is pinned to 4.12.34 and verified offline before each release.
+  transitive wallet path is pinned to 4.13.5 and verified offline before each release.
+  Wallet URL parsing uses query-string 9.5.1 with decode-uri-component 0.5.0;
+  pairing parameters, encoded names, malformed input, and connector imports are checked.
 - **Verified:** Critical flows have rendered accessibility, keyboard/focus, mobile-width, loading,
   error, and retry checks. Remaining usability work requires moderated human sessions rather than
   another code-only claim. The validated-address combobox keeps its controlled listbox present but
