@@ -982,6 +982,70 @@ try {
   );
   await recoverableInvitationContext.close();
 
+  const walletLoadingContext = await browser.newContext();
+  await walletLoadingContext.addInitScript(() => {
+    window.localStorage.setItem("openescrow:account-provider-activated", "1");
+  });
+  const walletLoadingPage = await walletLoadingContext.newPage();
+  await walletLoadingPage.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (url.origin !== baseUrl) return route.abort();
+    if (url.pathname.startsWith("/api/")) {
+      return route.fulfill({ status: 503, json: { error: "Unavailable in this wallet check." } });
+    }
+    return route.continue();
+  });
+  await walletLoadingPage.clock.install();
+  await walletLoadingPage.goto(`${baseUrl}/?wallets-loading-test=1`);
+  await walletLoadingPage.getByRole("button", { name: /I am a landlord/ }).click();
+  await walletLoadingPage.locator("details.account-profile-disclosure > summary").click();
+  const walletCard = walletLoadingPage.locator(".account-wallet-card");
+  const walletHeader = walletLoadingPage.locator(".account-summary");
+  await walletCard.getByText("Loading wallets...", { exact: true }).waitFor();
+  assert.equal(
+    await walletLoadingPage.evaluate(
+      () => window.__openEscrowAccountSwitchTest?.snapshot().walletAttempts["account-a"],
+    ),
+    0,
+    "Wallet creation must wait for the provider to settle its connected wallets.",
+  );
+  await walletLoadingPage.clock.fastForward(12_100);
+  const retryName = "Reload to retry wallet connection";
+  await walletHeader.getByRole("button", { name: retryName }).waitFor();
+  await walletCard.getByRole("button", { name: retryName }).waitFor();
+  assert.equal(await walletCard.getByText("Loading wallets...", { exact: true }).count(), 0);
+
+  await walletLoadingPage.evaluate(() => {
+    window.__openEscrowAccountSwitchTest?.switchAccount("account-b");
+  });
+  await walletHeader.getByText("account.b@example.test", { exact: true }).waitFor();
+  await walletHeader.getByText("Connecting wallet...", { exact: true }).waitFor();
+  assert.equal(await walletHeader.getByRole("button", { name: retryName }).count(), 0);
+  await walletLoadingPage.clock.fastForward(12_100);
+  await walletHeader.getByRole("button", { name: retryName }).click();
+  await walletHeader.getByText("account.a@example.test", { exact: true }).waitFor();
+  await walletHeader.getByText("Connecting wallet...", { exact: true }).waitFor();
+
+  const chooseLandlord = walletLoadingPage.getByRole("button", { name: /I am a landlord/ });
+  if (await chooseLandlord.isVisible()) await chooseLandlord.click();
+  const profile = walletLoadingPage.locator("details.account-profile-disclosure");
+  if ((await profile.getAttribute("open")) === null) await profile.locator("summary").click();
+  await walletCard.getByText("Loading wallets...", { exact: true }).waitFor();
+  await walletLoadingPage.clock.fastForward(12_100);
+  await walletCard.getByRole("button", { name: retryName }).waitFor();
+  await walletLoadingPage.evaluate(() => {
+    window.__openEscrowAccountSwitchTest?.setWalletsReady(true);
+  });
+  await walletLoadingPage.waitForFunction(
+    () => window.__openEscrowAccountSwitchTest?.snapshot().walletAttempts["account-a"] === 1,
+  );
+  await walletLoadingPage.evaluate(() => {
+    window.__openEscrowAccountSwitchTest?.resolveWallet("account-a");
+  });
+  await walletCard.getByText("OpenEscrow wallet", { exact: true }).waitFor();
+  assert.equal(await walletCard.getByRole("button", { name: retryName }).count(), 0);
+  await walletLoadingContext.close();
+
   process.stdout.write(
     "Account-switch browser check passed: neutral and role-aware invitation sign-in recover safely; proposal and Record archives restore in the rendered mobile workspace; and archives, wallet setup, inventory delivery, session containment, notification preferences, and test-email feedback remain isolated across live identity changes.\n",
   );

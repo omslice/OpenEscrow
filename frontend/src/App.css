@@ -354,6 +354,8 @@
 }
 
 .donation-message-copy {
+  flex: 1 1 320px;
+  min-width: 0;
   color: var(--text-h);
   font-size: 16px;
   line-height: 1.45;
@@ -362,6 +364,8 @@
 .donation-address-control {
   display: inline-flex;
   align-items: stretch;
+  flex-shrink: 0;
+  margin-inline-start: auto;
   gap: 8px;
 }
 
@@ -3205,6 +3209,12 @@ html.demo-route #root {
 
 .wallet-setup-state {
   margin-bottom: 0.75rem;
+}
+
+.wallet-connection-pending {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
 }
 
 .role-mismatch,

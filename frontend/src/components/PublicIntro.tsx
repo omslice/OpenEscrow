@@ -8,9 +8,11 @@ import { replaceRecoveryUrl } from "../lib/browserRecovery";
 export function PublicIntro({
   onStart,
   showAboutDetails = false,
+  showSampleDemo = false,
 }: {
   onStart: () => void;
   showAboutDetails?: boolean;
+  showSampleDemo?: boolean;
 }) {
   const yieldDialogRef = useRef<HTMLDialogElement>(null);
   const yieldDialogCloseRef = useRef<HTMLButtonElement>(null);
@@ -111,6 +113,11 @@ export function PublicIntro({
           >
             View on GitHub
           </a>
+          {showSampleDemo && (
+            <a className="btn btn-secondary intro-demo-cta" href="/explore">
+              Try the mock demo
+            </a>
+          )}
         </div>
       </div>
 

@@ -2,6 +2,7 @@ import { usePrivy } from "@privy-io/react-auth";
 import { useAccount, useSwitchChain } from "wagmi";
 import { chain } from "../contracts/config";
 import { shortAddr } from "../lib/format";
+import { WalletConnectionPending } from "./WalletConnectionPending";
 
 export function PrivyConnectedWallet() {
   const { user, logout } = usePrivy();
@@ -28,7 +29,7 @@ export function PrivyConnectedWallet() {
           {shortAddr(address)}
         </span>
       ) : (
-        <span className="chain-badge">Setting up wallet...</span>
+        <WalletConnectionPending key={user?.id} compact />
       )}
       <button className="btn btn-ghost" onClick={() => logout()}>
         Sign out

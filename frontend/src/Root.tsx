@@ -25,6 +25,9 @@ const DemoPage = lazy(() =>
     default: module.DemoPage,
   })),
 );
+const SampleWorkspace = lazy(() =>
+  import("./components/SampleWorkspace").then((module) => ({ default: module.SampleWorkspace })),
+);
 const FundingPage = lazy(() =>
   import("./components/FundingPage").then((module) => ({
     default: module.FundingPage,
@@ -136,6 +139,14 @@ function InteractiveRoot() {
 
 export function Root() {
   const path = window.location.pathname.replace(/\/+$/, "") || "/";
+
+  // Route before all account activation and invitation recovery. The sample
+  // workspace never mounts authentication, live data, or wallet providers.
+  if (path === "/explore") {
+    return <Suspense fallback={<div className="app-loading" role="status">Loading the sample workspace...</div>}>
+      <SampleWorkspace />
+    </Suspense>;
+  }
 
   if (path === "/demo") {
     return (

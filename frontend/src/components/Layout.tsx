@@ -30,12 +30,14 @@ export function Layout({
   notificationStorageScope = "guest",
   showNotifications = true,
   accountEntry,
+  notice,
 }: {
   children: ReactNode;
   notifications?: AppNotification[];
   notificationStorageScope?: string | null;
   showNotifications?: boolean;
   accountEntry?: ReactNode;
+  notice?: ReactNode;
 }) {
   const readStateKey = `openescrow:read-notifications:${
     notificationStorageScope?.toLowerCase() || "guest"
@@ -172,25 +174,14 @@ export function Layout({
         </div>
       </header>
       <div className="demo-notice" role="status">
-        <strong>Public Base Sepolia testnet prototype.</strong> Test tokens only; use invented
-        information and test files. OpenEscrow is not legal advice or a licensed escrow provider.
+        {notice ?? <><strong>Public Base Sepolia testnet prototype.</strong> Test tokens only; use invented
+        information and test files. OpenEscrow is not legal advice or a licensed escrow provider.</>}
       </div>
       <main className="app-main">{children}</main>
       <footer className="app-footer">
-        <nav className="legal-links" aria-label="Legal and project information">
-          <a href="/help">Help &amp; Guides</a>
-          <a href="/funding">Project Funding</a>
-          <a href="/privacy">Privacy Policy</a>
-          <a href="/terms">Terms of Use</a>
-          <a href="mailto:support@openescrow.io">Support</a>
-          <a href="https://github.com/omslice/OpenEscrow" target="_blank" rel="noreferrer">
-            GitHub
-          </a>
-        </nav>
         <div className="donation-message">
           <strong className="donation-message-copy">
-            Donations support the continued development of OpenEscrow as a free,
-            open-source public good.
+            Support OpenEscrow’s free, open-source development.
           </strong>
           <span className="donation-address-control">
             <span
@@ -232,6 +223,16 @@ export function Layout({
             </span>
           )}
         </div>
+        <nav className="legal-links" aria-label="Legal and project information">
+          <a href="/help">Help &amp; Guides</a>
+          <a href="/funding">Project Funding</a>
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/terms">Terms of Use</a>
+          <a href="mailto:support@openescrow.io">Support</a>
+          <a href="https://github.com/omslice/OpenEscrow" target="_blank" rel="noreferrer">
+            GitHub
+          </a>
+        </nav>
       </footer>
     </div>
   );

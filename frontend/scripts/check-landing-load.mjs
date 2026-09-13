@@ -303,10 +303,17 @@ try {
   );
   assert.equal(
     await landingPage
+      .getByRole("link", { name: "Try the mock demo", exact: true })
+      .getAttribute("href"),
+    "/explore",
+    "The mock demo should be an optional choice on the About landing page.",
+  );
+  assert.equal(
+    await landingPage
       .getByRole("link", { name: "View on GitHub", exact: true })
       .getAttribute("href"),
     "https://github.com/omslice/OpenEscrow",
-    "The signed-out landing page should expose the source repository beside its primary action.",
+    "The signed-out About page should retain its View on GitHub action.",
   );
   assert.equal(
     await landingPage
@@ -382,7 +389,7 @@ try {
     "A clean logged-out visit must not ask the visitor to choose a workspace role.",
   );
   await landingPage
-    .getByRole("button", { name: "Try the testnet demo" })
+    .getByRole("button", { name: "Try the testnet demo", exact: true })
     .click();
   await landingPage.waitForFunction(
     () => document.activeElement?.id === "public-access-title",

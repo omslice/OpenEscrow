@@ -33,6 +33,7 @@ import {
   reloadBrowserPage,
 } from "../lib/browserActions";
 import { createAccountOperationGuard } from "../lib/accountOperationGuard";
+import { WalletConnectionPending } from "./WalletConnectionPending";
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   agreementActivity: true,
@@ -626,7 +627,7 @@ export function PrivyAccountCenter({
               <div className="account-info-card account-wallet-card">
                 <h3>Wallets</h3>
                 {!walletsReady ? (
-                  <p className="hint">Loading wallets...</p>
+                  <WalletConnectionPending key={accountIdentity} />
                 ) : !hasWallet ? (
                   <div className="wallet-setup-state">
                     <p className="hint" role="status">
