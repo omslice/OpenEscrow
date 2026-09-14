@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "sourceKey": "state:oh",
+  "profileVersion": "oh-rules-2026-09-14.v6",
+  "sourceUrl": "https://codes.ohio.gov/ohio-revised-code/section-5321.16",
+  "checkedAt": "2026-09-14T20:20:28.845Z",
+  "status": "unchanged",
+  "httpStatus": 200,
+  "finalUrl": "https://codes.ohio.gov/ohio-revised-code/section-5321.16",
+  "bodySha256": "e81d3dfe1e00552f7b8ea81f79237d4d7da646a25e597f5d5b4fecc62e246017",
+  "contentLength": 16432,
+  "contentType": "text/html;charset=UTF-8",
+  "etag": "",
+  "lastModified": "",
+  "markerChecks": [
+    {
+      "marker": "Section 5321.16",
+      "present": true
+    },
+    {
+      "marker": "five per cent per annum",
+      "present": true
+    },
+    {
+      "marker": "within thirty days",
+      "present": true
+    },
+    {
+      "marker": "forwarding address",
+      "present": true
+    }
+  ]
+}
