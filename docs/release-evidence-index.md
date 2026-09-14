@@ -35,31 +35,32 @@ contract cohort and repository HEAD all match.
 
 ## Current source and deployment boundary
 
-September 14, 2026 superseding observation:
+September 14, 2026 publication observation:
 
 - Canonical Cloudflare and retained Sites release: clean application commit
-  `592c6d04f0fb3c1de1faf9b956be4e8c4067952e`, verified after the September 13 deployment.
+  `f988fff4a2068367f48e72c4bd583bfcebbc5333`, verified after the September 14 deployment.
+  [Publication record](release-publication-2026-09-14.md): PR #11 merged, self-host
+  v0.2.0-testnet published, Cloudflare activated and retained Sites version 233 synchronized.
 - Active contract source: `5073f2a98de0741f577ca443f249541f08e4d67e`. The active escrow is
   `0x8a46cfed7153c53fd080e16624f9702887c78b54` and registry is
   `0xcf032b7da95d2710baa599979b8b9f350ce88a62`, as recorded in the current manifests and live
   registry-binding check. Older addresses below are historical.
-- The release included the optional `/explore` mock workspace, original About entry, footer and
-  wallet recovery changes, and dependency patches. Application validation included 372
-  client/script checks. Contract assurance at parent `42b386c` passed 251 tests with one opt-in
-  external-RPC skip; contract inputs were unchanged by the dependency-only `592c6d0` delta.
-- Core and dual-host checks passed. This is not a newly regenerated complete pilot-candidate
-  envelope on `592c6d0`, an independent audit, or a completed participant rehearsal.
+- The release retains the optional `/explore` mock workspace, original About entry, footer,
+  wallet recovery and dependency patches. It activates the source scheduler/expiry fixes and
+  Ohio statutory-source correction. The complete exact-source envelope is recorded below.
+- Core and dual-host checks passed. Automated rehearsals do not establish an independent
+  audit or completed participant sessions.
 - September 14 strict operator readiness passes hosted email/scheduler, private encrypted R2,
   retained-key checks, registry binding, address attestation and caught-up activity indexing.
   The compliance-source gate remains non-green. See the
   [selected execution board](roadmap-progress-2026-09-14.md) for the active remediation work.
 
-## September 14 candidate verification
+## September 14 release verification
 
-The full credential-free envelope passed on exact application candidate
+The full credential-free envelope passed on exact application source
 [`f988fff4a2068367f48e72c4bd583bfcebbc5333`](https://github.com/omslice/OpenEscrow/commit/f988fff4a2068367f48e72c4bd583bfcebbc5333).
-This is a candidate after the hosted `592c6d0` release; it does not change the live application or
-the active immutable contract cohort by itself.
+This application replaced hosted `592c6d0` after owner authorization. The active immutable
+contract cohort did not change.
 
 - Deterministic contract assurance: 251 passed, zero failed, one opt-in live-fork skip;
   five ABI/runtime/storage-layout checks and the pinned dependency checks passed.
@@ -76,11 +77,12 @@ the active immutable contract cohort by itself.
   measurement/selection, with no application or migration delta. All 24 published migrations
   remain unchanged; migrations 0024 and 0025 are additive.
 
-The [execution board](roadmap-progress-2026-09-14.md) and [PR #11](https://github.com/omslice/OpenEscrow/pull/11)
-track publication separately. The subsequent `6bb6210` documentation tranche records the owner's
+The [execution board](roadmap-progress-2026-09-14.md) and
+[publication record](release-publication-2026-09-14.md) distinguish delivery from acceptance.
+The subsequent `6bb6210` documentation tranche records the owner's
 unsubsidized Ottawa Hills/Brady Lake scope and the property-timezone review; its
 [GitHub checks also passed](https://github.com/omslice/OpenEscrow/actions/runs/34895309880).
-Do not describe draft artifacts, local simulations or an unchanged-source observation as a
+Do not describe published artifacts, local simulations or an unchanged-source observation as a
 completed hosted participant session, legal approval or production readiness.
 
 ## Historical August 13 release evidence

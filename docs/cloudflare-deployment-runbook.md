@@ -8,6 +8,12 @@ user-facing routes redirect to `https://openescrow.io/`, its writes fail closed,
 readiness endpoint remains available for exact-build verification. Its historical D1/R2 bindings
 remain preserved and untouched.
 
+The [September 14 publication record](release-publication-2026-09-14.md) identifies the current
+clean `f988fff` release, Cloudflare version and synchronized Sites version 233. Core and dual-host
+checks passed; the live source monitor now runs every 15 minutes. Strict global source readiness
+remains non-green. Use that dated record when distinguishing completed activation from remaining
+participant and source-review work.
+
 ## Account boundary
 
 - Authorized account: `Omrigross@gmail.com's Account`

@@ -6,7 +6,8 @@ in Ottawa Hills, Brady Lake, or both** as the first pilot scope. See the
 [current execution board](docs/roadmap-progress-2026-09-14.md).
 Historical unchecked setup items below must be read against that dated evidence: hosted email,
 Cron, evidence encryption and registry are already active; compliance readiness and supervised
-validation remain open. The first self-host release is published and needs an update.
+validation remain open. Updated self-host v0.2.0-testnet and both existing hosts now use tested
+application source `f988fff`; see the [publication record](docs/release-publication-2026-09-14.md).
 
 This roadmap is organized by dependency and release evidence. Checked items are implemented in
 the repository; they are not claims of legal approval or production readiness.
