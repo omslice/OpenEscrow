@@ -727,8 +727,8 @@ const ONCHAIN_INDEXER_REORG_LOOKBACK_BLOCKS = 128;
 const ONCHAIN_INDEXER_BLOCK_RANGE = 2_000;
 const ONCHAIN_INDEXER_MAX_RANGES_PER_RUN = 4;
 const ONCHAIN_INDEXER_HEALTH_GRACE_MS = 2 * HOSTED_NOTIFICATION_SCHEDULER_INTERVAL_MS;
-const COMPLIANCE_SOURCE_BOOTSTRAP_INTERVAL_MS = 15 * 60 * 1000;
-const COMPLIANCE_SOURCE_MONITOR_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const COMPLIANCE_SOURCE_MONITOR_INTERVAL_MS = 15 * 60 * 1000;
+const COMPLIANCE_SOURCE_RECHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const RECEIPT_EVENT_TOPICS = Object.freeze({
   agreementProposed:
     "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6",
@@ -3366,6 +3366,13 @@ function complianceEventKeysForSnapshot(snapshot) {
   );
 }
 
+function complianceSourceFreshnessMs(sourceItem) {
+  return sourceItem.externalMonitor
+    ? Math.min(COMPLIANCE_SOURCE_FRESHNESS_MS,
+        validateExternalComplianceMonitor(sourceItem).maximumAgeMs)
+    : COMPLIANCE_SOURCE_FRESHNESS_MS;
+}
+
 async function complianceSourceGate(terms, env, now = new Date(Date.now())) {
   if (
     terms?.jurisdiction === GENERIC_TEST_POLICY.jurisdiction ||
@@ -3403,9 +3410,9 @@ async function complianceSourceGate(terms, env, now = new Date(Date.now())) {
         .first(),
     ),
   );
-  const staleBefore = now.getTime() - COMPLIANCE_SOURCE_FRESHNESS_MS;
   const currentTime = now.getTime();
   const sources = requiredSources.map((sourceItem, index) => {
+    const staleBefore = currentTime - complianceSourceFreshnessMs(sourceItem);
     const row = rows[index];
     const verifiedAt = row?.last_verified_at
       ? new Date(row.last_verified_at).getTime()
@@ -5232,7 +5239,6 @@ async function serviceReadiness(env) {
     const rows = sourceRows.results || [];
     const rowByKey = new Map(rows.map((row) => [row.source_key, row]));
     const sourceEvaluationTime = Date.now();
-    const staleBefore = sourceEvaluationTime - COMPLIANCE_SOURCE_FRESHNESS_MS;
     const blockedKeys = new Set();
     let tracked = 0;
     let changed = 0;
@@ -5241,6 +5247,7 @@ async function serviceReadiness(env) {
     let pending = 0;
     let stale = 0;
     for (const expected of COMPLIANCE_SOURCE_REGISTRY) {
+      const staleBefore = sourceEvaluationTime - complianceSourceFreshnessMs(expected);
       const row = rowByKey.get(expected.key);
       if (!row) {
         blockedKeys.add(expected.key);
@@ -5307,9 +5314,7 @@ async function serviceReadiness(env) {
   const complianceSourceBootstrapInProgress =
     complianceSourceStats.tracked < COMPLIANCE_SOURCE_REGISTRY.length ||
     complianceSourceStats.pending > 0;
-  const complianceSourceCurrentIntervalMs = complianceSourceBootstrapInProgress
-    ? COMPLIANCE_SOURCE_BOOTSTRAP_INTERVAL_MS
-    : COMPLIANCE_SOURCE_MONITOR_INTERVAL_MS;
+  const complianceSourceCurrentIntervalMs = COMPLIANCE_SOURCE_MONITOR_INTERVAL_MS;
   const complianceSourceMonitorHealthy =
     env.DB &&
     env.COMPLIANCE_SOURCE_MONITOR_ENABLED === "true" &&
@@ -9088,19 +9093,6 @@ async function runComplianceSourceAudit(env, now = new Date()) {
   if (!env.DB || env.COMPLIANCE_SOURCE_MONITOR_ENABLED !== "true") return;
   await initialize(env.DB);
   await seedComplianceSources(env.DB);
-  const sourceProgress = await env.DB
-    .prepare(
-      `SELECT COUNT(*) AS tracked,
-              SUM(CASE WHEN status = 'pending' THEN 1 ELSE 0 END) AS pending
-       FROM compliance_source_checks`,
-    )
-    .first();
-  const bootstrapInProgress =
-    Number(sourceProgress?.tracked || 0) < COMPLIANCE_SOURCE_REGISTRY.length ||
-    Number(sourceProgress?.pending || 0) > 0;
-  const minimumInterval = bootstrapInProgress
-    ? COMPLIANCE_SOURCE_BOOTSTRAP_INTERVAL_MS
-    : COMPLIANCE_SOURCE_MONITOR_INTERVAL_MS;
   const prior = await env.DB
     .prepare("SELECT last_started_at FROM scheduled_job_runs WHERE name = ?")
     .bind("compliance-source-monitor")
@@ -9108,7 +9100,7 @@ async function runComplianceSourceAudit(env, now = new Date()) {
   const lastStarted = prior?.last_started_at
     ? new Date(prior.last_started_at).getTime()
     : 0;
-  if (now.getTime() - lastStarted < minimumInterval) return;
+  if (now.getTime() - lastStarted < COMPLIANCE_SOURCE_MONITOR_INTERVAL_MS) return;
   await env.DB
     .prepare(
       `INSERT INTO scheduled_job_runs (name, last_started_at)
@@ -9120,9 +9112,14 @@ async function runComplianceSourceAudit(env, now = new Date()) {
   const pending = await env.DB
     .prepare(
       `SELECT * FROM compliance_source_checks
+       WHERE last_checked_at IS NULL OR last_checked_at <= ? OR last_checked_at > ?
        ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END,
                 COALESCE(last_checked_at, '') ASC, source_key ASC
        LIMIT 4`,
+    )
+    .bind(
+      new Date(now.getTime() - COMPLIANCE_SOURCE_RECHECK_INTERVAL_MS).toISOString(),
+      now.toISOString(),
     )
     .all();
   for (const row of pending.results || []) {

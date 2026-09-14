@@ -15,6 +15,12 @@ provider or hosting control that owns the secret.
 
 ## Recommended weekend sequence
 
+September 14 update: use the [selected execution board](roadmap-progress-2026-09-14.md) and
+[Ohio reviewer matrix](ohio-pilot-review.md). The active August 16 contract cohort and September
+13 application are already deployed; the historical broadcast steps below do not request another
+broadcast. Current work is acceptance, Ohio compliance/legal preparation, self-host updates and
+[funding/continuity](organization-readiness.md).
+
 1. Review the exact hardened contract candidate and the independent-audit handoff.
 2. In a private PowerShell window, use the encrypted Foundry keystore to broadcast the
    unified Base Sepolia escrow/reserve/registry cohort. Never paste the key or password here.
@@ -110,17 +116,16 @@ provider or hosting control that owns the secret.
   finalization, funding, claim/refund, withdrawal, stale-link, wrong-account, and inbox-versus-spam
   checks still require the named participant sessions. The strict compliance-source alerts remain
   a separately scoped, fail-closed baseline and are not being accepted or changed in this milestone.
-- [ ] **Choose the first pilot markets for local-rule coverage.**
-  State law is routed nationwide, but only Chicago, Seattle, and Portland have
-  reviewed city overlays. Name the cities/counties most likely to be used in
-  the first pilot so Codex can prioritize official-source local profiles.
-- [ ] **Activate the New Hampshire external source workflow after this release reaches `main`.**
-  In GitHub repository settings, confirm Actions has `Read and write permissions`, then manually
-  run the **Compliance source monitor** workflow once. Confirm it creates the public
-  `compliance-attestations` branch with `state-nh.json` reporting `unchanged`, and confirm the next
-  scheduled run succeeds. No new secret is required. Do not edit the attestation by hand or turn
-  off the hosted compliance monitor. The app will block New Hampshire proposals if the
-  observation is changed, malformed, unavailable, or more than 48 hours old.
+- [x] **Select the first pilot state and segment — confirmed September 14, 2026.** Ohio residential
+  rentals. Municipality/county, fixed-term versus periodic tenancy, and housing-program scope
+  remain open; see the Ohio reviewer matrix before extending local coverage.
+- [x] **Activate the New Hampshire external source workflow — operation verified September 14.**
+  Scheduled GitHub runs publish fresh observations. The latest run failed because the official
+  document hash changed; setup is complete, legal-source review is not.
+- [ ] **Review changed sources and activate Ohio's exact statutory observation with the candidate.**
+  New Hampshire's reviewed hash remains unchanged pending content review. Ohio candidate v6
+  monitors the actual R.C. 5321.16 text. Validate the exact workflow source, observation and
+  deployed profile before treating it as current; retain changed/stale/malformed-source blocks.
 - [ ] **Approve a property-timezone source and local-time policy for the pilot.** The candidate
   rejects ambiguous stored timestamps and shows the participant's device timezone, but it cannot
   yet attest that the device and property share the same IANA timezone or decide how a legal

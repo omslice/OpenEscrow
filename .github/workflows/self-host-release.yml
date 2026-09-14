@@ -88,5 +88,5 @@ jobs:
             "$ARCHIVE" "$CHECKSUM" "$SBOM" "$MANIFEST" \
             --verify-tag \
             --latest \
-            --title "OpenEscrow self-hosted testnet v0.1.0" \
+            --title "OpenEscrow self-hosted testnet ${GITHUB_REF_NAME#selfhost-}" \
             --notes-file "$notes"

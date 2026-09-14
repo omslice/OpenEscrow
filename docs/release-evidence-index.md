@@ -35,12 +35,33 @@ contract cohort and repository HEAD all match.
 
 ## Current source and deployment boundary
 
-- The current complete credential-free pilot-candidate envelope passed on exact application source
+September 14, 2026 superseding observation:
+
+- Canonical Cloudflare and retained Sites release: clean application commit
+  `592c6d04f0fb3c1de1faf9b956be4e8c4067952e`, verified after the September 13 deployment.
+- Active contract source: `5073f2a98de0741f577ca443f249541f08e4d67e`. The active escrow is
+  `0x8a46cfed7153c53fd080e16624f9702887c78b54` and registry is
+  `0xcf032b7da95d2710baa599979b8b9f350ce88a62`, as recorded in the current manifests and live
+  registry-binding check. Older addresses below are historical.
+- The release included the optional `/explore` mock workspace, original About entry, footer and
+  wallet recovery changes, and dependency patches. Application validation included 372
+  client/script checks. Contract assurance at parent `42b386c` passed 251 tests with one opt-in
+  external-RPC skip; contract inputs were unchanged by the dependency-only `592c6d0` delta.
+- Core and dual-host checks passed. This is not a newly regenerated complete pilot-candidate
+  envelope on `592c6d0`, an independent audit, or a completed participant rehearsal.
+- September 14 strict operator readiness passes hosted email/scheduler, private encrypted R2,
+  retained-key checks, registry binding, address attestation and caught-up activity indexing.
+  The compliance-source gate remains non-green. See the
+  [selected execution board](roadmap-progress-2026-09-14.md) for the active remediation work.
+
+## Historical August 13 release evidence
+
+- The August 13 complete credential-free pilot-candidate envelope passed on exact application source
   [`356f76e`](https://github.com/omslice/OpenEscrow/commit/356f76e8684a0078b04d43f4ef15528710081531).
   It covers the revised tenant-only-yield settlement, participant notification delivery, landlord
   and multi-tenant lifecycle checks, rendered accessibility/UX checks, deployment and incident
   rehearsals, and exact-source Cloudflare and Sites builds.
-- The canonical hosted app and retained Sites mirror report clean release commit `356f76e`. It
+- At that release, the canonical hosted app and retained Sites mirror reported clean commit `356f76e`. It
   uses the independently verified Base Sepolia cohort compiled from exact contract source
   `d1d1eabd8497c10b3b5d99860f43b0f139bdd77e`: escrow `0x96fe...16e3`, reserve
   `0xfb5a...7374`, activity registry `0x1435...f952`, testUSDC `0xB58F...98Dc`, and taUSDC

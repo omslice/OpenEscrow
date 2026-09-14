@@ -5,6 +5,16 @@ change looks small.
 
 ## Supported upgrade procedure
 
+For the September 14 candidate, inspect the source-monitor changes: bounded batches now run
+every 15 minutes while each source is normally fetched daily, and external observations expire
+at their configured shorter lifetime. Ohio v6 uses the actual R.C. 5321.16 page through the
+external observation workflow. Its observation must be published and fresh before the new
+profile can pass. These checks do not approve legal rules or change historical snapshots.
+
+An upgrade from the August 10 package also includes later immutable-cohort configuration and
+additive migrations. Preserve old agreement-to-contract bindings; never describe a new contract
+address as a migration of existing funds. Consult the bundled current deployment manifest.
+
 1. Download the new release from the official `omslice/OpenEscrow` repository.
 2. Verify its SHA-256 checksum, source commit, SBOM, and GitHub artifact attestation.
 3. Read the release notes and every new D1 migration.

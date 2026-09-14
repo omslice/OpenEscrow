@@ -1,6 +1,8 @@
 # OpenEscrow testnet MVP roadmap
 
-Updated 2026-08-10. This is the canonical high-level project status. The
+Current status reconciled 2026-09-14. Historical implementation entries retain their original
+release context and are superseded by the current execution board and release evidence index.
+This is the canonical high-level project status. The
 [validation ledger](./mvp-checkpoint-2026-07-29.md) contains detailed evidence, and
 [owner actions](./owner-actions.md) contains only work that needs credentials, signatures,
 external professional review, or an owner decision.
@@ -19,6 +21,20 @@ The product remains a Base Sepolia demonstration. Nothing here authorizes real d
 production custody, or reliance on the compliance research as legal advice.
 
 ## In progress
+
+- **Verified:** The September 14 operator check identifies clean live application `592c6d0`,
+  active August 16 contract cohort `5073f2a`, healthy email/scheduler/private evidence/registry/
+  address/indexer services, and a non-green compliance-source gate. The retained Sites build is
+  synchronized. See [release evidence](release-evidence-index.md).
+- **Verified:** The owner selected Ohio residential rentals and prioritized acceptance,
+  compliance, production legal design, self-host updates, and funding/continuity. The
+  [execution board](roadmap-progress-2026-09-14.md), [Ohio matrix](ohio-pilot-review.md), and
+  [organization checklist](organization-readiness.md) identify concrete work and unresolved inputs.
+- **Verified:** The first Cloudflare self-host package and download action already exist.
+  Updating and validating that package remains work; creating the initial download is no longer
+  a future milestone.
+
+### Historical implementation and release record
 
 - **Verified:** Repeatable landlord/tenant rehearsals cover no-claim refund, accepted claim,
   disputed claim, archive/restore, record export and verification, privacy requests, service
@@ -494,13 +510,10 @@ production custody, or reliance on the compliance research as legal advice.
 - **Planned:** Validate managed hosting, professional workflows, integrations, and support as
   optional monetization paths while preserving the free, self-hostable core and free access to
   essential records.
-- **Planned:** Add a prominent **Download / self-host OpenEscrow** action only after a supported,
-  reproducible release package exists. The first supported path will package the complete
-  Cloudflare Worker application with reviewed D1 migrations, private R2 configuration, safe
-  testnet defaults, a guided setup checker, backup/restore instructions, release checksums, an
-  SBOM, and signed upgrade notes. A later provider-neutral package may add Docker, SQLite, and
-  S3-compatible storage, but it must preserve the same private-record, encryption, receipt,
-  migration, and rollback boundaries rather than presenting a source archive as a one-click app.
+- **Planned:** Update the published Cloudflare self-host package with the current fixes and
+  validate installation, additive migration, upgrade, backup and rollback. Preserve safe testnet
+  defaults, private R2, checksums, SBOM and provenance. A later Docker/SQLite/S3-compatible
+  package remains optional and must preserve the same privacy and recovery boundaries.
 
 ## Material unknowns
 
@@ -508,7 +521,8 @@ production custody, or reliance on the compliance research as legal advice.
   This does not block the adopted fresh Cloudflare dataset; it matters only if the owner later
   requests a verified historical import. The comparison tooling intentionally cannot turn a
   partial provider export into continuity evidence.
-- First pilot cities/counties and tenancy segment.
+- Ohio residential rentals is the selected first scope. Municipality/county, lease subtype and
+  any housing-program coverage remain open.
 - The authoritative property-timezone source and qualified local civil-time/DST interpretation
   for each pilot market. The candidate stores explicit instants deterministically but does not
   yet attest that a participant device timezone matches the property.

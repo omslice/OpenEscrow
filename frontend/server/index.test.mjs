@@ -939,12 +939,14 @@ test("the implemented registry covers every state and the District of Columbia",
   const ohioProfile = US_JURISDICTION_PROFILES.find(
     (profile) => profile.postalCode === "OH",
   );
-  assert.equal(ohioProfile.version, "oh-rules-2026-08-08.v5");
+  assert.equal(ohioProfile.version, "oh-rules-2026-09-14.v6");
   assert.equal(
     ohioProfile.statuteUrl,
-    "https://www.supremecourt.ohio.gov/rod/docs/pdf/10/2025/2025-Ohio-2840.pdf",
+    "https://codes.ohio.gov/ohio-revised-code/section-5321.16",
   );
-  assert.equal(ohioProfile.researchedOn, "2026-08-08");
+  assert.equal(ohioProfile.researchedOn, "2026-09-14");
+  assert.equal(ohioProfile.sourceExternalMonitor.maximumAgeMs, 48 * 60 * 60 * 1000);
+  assert.ok(ohioProfile.sourceExternalMonitor.requiredMarkers.includes("within thirty days"));
   const tennesseeProfile = US_JURISDICTION_PROFILES.find(
     (profile) => profile.postalCode === "TN",
   );
@@ -4256,6 +4258,25 @@ test("New Hampshire uses a fresh external official-source attestation and blocks
       )
       .bind(checkedAt, checkedAt)
       .run();
+    await db.prepare(
+      "UPDATE compliance_source_checks SET last_verified_at = ? WHERE source_key = 'state:nh'",
+    ).bind(new Date(now - 48 * 60 * 60 * 1000 - 1).toISOString()).run();
+    const expiredCachedProposal = await worker.fetch(
+      request("/api/negotiations", "POST", proposalBody),
+      {
+        DB: db,
+        ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+        COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+      },
+    );
+    assert.equal(expiredCachedProposal.status, 503,
+      "An unchanged cached observation must expire at its external monitor's 48-hour limit.");
+    const expiredReadiness = await jsonResponse(await worker.fetch(
+      request("/api/system/readiness"),
+      { DB: db, COMPLIANCE_SOURCE_MONITOR_ENABLED: "true" },
+    ));
+    assert.equal(expiredReadiness.complianceSources.blocked, 1);
+    assert.equal(expiredReadiness.complianceSources.stale, 1);
     await db
       .prepare(
         `UPDATE compliance_source_checks
@@ -8895,7 +8916,7 @@ test("readiness reports compliance monitor freshness and configuration", async (
     );
     assert.equal(readiness.complianceSources.configured, true);
     assert.equal(readiness.complianceSources.monitorHealthy, true);
-    assert.equal(readiness.complianceSources.monitorExpectedIntervalMinutes, 1440);
+    assert.equal(readiness.complianceSources.monitorExpectedIntervalMinutes, 15);
     assert.equal(readiness.complianceSources.monitorCurrentIntervalMinutes, 15);
     assert.equal(readiness.complianceSources.bootstrapInProgress, true);
     assert.equal(readiness.complianceSources.monitorLastRunAgeMinutes, 5);
@@ -9041,9 +9062,9 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
       .prepare(
         `UPDATE compliance_source_checks
          SET status = 'unchanged', baseline_signature = 'stable',
-             current_signature = 'stable', last_verified_at = ?`,
+             current_signature = 'stable', last_verified_at = ?, last_checked_at = ?`,
       )
-      .bind("2027-07-02T12:15:00.000Z")
+      .bind("2027-07-02T12:15:00.000Z", "2027-07-02T12:15:00.000Z")
       .run();
     const steadyReadiness = await jsonResponse(
       await worker.fetch(request("/api/system/readiness"), {
@@ -9052,7 +9073,7 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
       }),
     );
     assert.equal(steadyReadiness.complianceSources.bootstrapInProgress, false);
-    assert.equal(steadyReadiness.complianceSources.monitorCurrentIntervalMinutes, 1440);
+    assert.equal(steadyReadiness.complianceSources.monitorCurrentIntervalMinutes, 15);
 
     const tooSoonWaits = [];
     await worker.scheduled(
@@ -9098,7 +9119,7 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
     await Promise.all(replacementWaits);
     assert.equal(
       complianceCheckCount(),
-      12,
+      9,
       "A replacement source must enter the 15-minute bootstrap path immediately.",
     );
     const replacement = await db
@@ -9128,7 +9149,57 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
       },
     );
     await Promise.all(dailyWaits);
-    assert.equal(complianceCheckCount(), 16);
+    assert.equal(complianceCheckCount(), 13);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("all overdue sources are revisited within four hours without refetching today's sources", async () => {
+  const db = new TestD1();
+  const env = { DB: db, COMPLIANCE_SOURCE_MONITOR_ENABLED: "true", VERIFY_ACTIVITY_REGISTRY_BINDING: "false" };
+  await worker.fetch(request("/api/system/readiness"), env);
+  let now = Date.parse("2027-07-03T12:00:00.000Z");
+  const oldCheck = new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString();
+  for (const source of COMPLIANCE_SOURCE_REGISTRY) {
+    await db.prepare(`INSERT INTO compliance_source_checks
+      (source_key, scope, jurisdiction, profile_version, citation, url,
+       baseline_signature, current_signature, status, last_checked_at, last_verified_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'old', 'old', 'unchanged', ?, ?)`)
+      .bind(source.key, source.scope, source.jurisdiction, source.version, source.citation,
+        source.url, oldCheck, oldCheck).run();
+  }
+  const originalFetch = globalThis.fetch;
+  const checked = [];
+  globalThis.fetch = async (input) => {
+    const source = COMPLIANCE_SOURCE_REGISTRY.find((item) =>
+      (item.externalMonitor?.url || item.url) === String(input));
+    assert.ok(source, `Unexpected source request: ${input}`);
+    checked.push(source.key);
+    if (source.externalMonitor) {
+      return Response.json({
+        schemaVersion: 1, sourceKey: source.key, profileVersion: source.version,
+        sourceUrl: source.url, finalUrl: source.url, checkedAt: new Date(now).toISOString(),
+        status: "unchanged", httpStatus: 200,
+        bodySha256: source.externalMonitor.expectedBodySha256,
+        markerChecks: source.externalMonitor.requiredMarkers.map((marker) => ({ marker, present: true })),
+      });
+    }
+    return new Response(`<html>${source.key}</html>`, { headers: { "content-type": "text/html" } });
+  };
+  try {
+    for (let batch = 0; batch < 17; batch += 1) {
+      const waits = [];
+      await worker.scheduled({ scheduledTime: now }, env, { waitUntil(promise) { waits.push(promise); } });
+      await Promise.all(waits);
+      now += 15 * 60 * 1000;
+    }
+    assert.equal(new Set(checked).size, COMPLIANCE_SOURCE_REGISTRY.length);
+    assert.equal(checked.length, COMPLIANCE_SOURCE_REGISTRY.length,
+      "Freshly checked sources must not consume another batch slot before their daily refresh.");
+    assert.equal((await db.prepare(
+      "SELECT COUNT(*) AS count FROM compliance_source_checks WHERE last_checked_at = ?",
+    ).bind(oldCheck).first()).count, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }

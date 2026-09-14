@@ -6,6 +6,11 @@ OpenEscrow to hold real deposits.
 
 ## Review boundary
 
+The owner selected **Ohio residential rentals** on September 14, 2026. Start with the
+[Ohio source and production decision matrix](ohio-pilot-review.md); municipality, lease subtype,
+provider/custody model and qualified review remain open. This selection does not activate a
+production jurisdiction or modify an immutable contract.
+
 Review the release candidate and its deployed configuration together. The public application remains
 a Base Sepolia demonstration using valueless `testUSDC` and `taUSDC`; invented information and test
 files are required. The software is not a bank, licensed escrow provider, custodian, money
@@ -73,8 +78,9 @@ authority, effective date, and any unresolved interpretation:
 - [`protocol-flow.md`](./protocol-flow.md) — participant flow and outcome timing.
 - [`privacy-threat-model.md`](./privacy-threat-model.md) — data, access, and recovery boundaries.
 - [`contract-threat-model.md`](./contract-threat-model.md) — value and authorization threats.
-- [`jurisdiction-research-methodology.md`](./jurisdiction-research-methodology.md) — source and
-  review method for compliance profiles.
+- [`us-jurisdiction-profiles.md`](./us-jurisdiction-profiles.md) and
+  [`ohio-pilot-review.md`](./ohio-pilot-review.md) — source coverage, review boundaries and the
+  selected pilot's decision matrix.
 - [`../frontend/src/components/LegalPage.tsx`](../frontend/src/components/LegalPage.tsx) — published
   Terms and Privacy presentation.
 - [`../contracts/OpenEscrow.sol`](../contracts/OpenEscrow.sol) and

@@ -1,6 +1,7 @@
 # OpenEscrow grant reviewer guide
 
-Last reviewed: 2026-08-10.
+Entry routes reviewed: 2026-09-14. Use the [release evidence index](release-evidence-index.md)
+for exact application and contract versions and remaining readiness gates.
 
 OpenEscrow is a free, open-source Base Sepolia prototype for a shared rental-deposit process.
 The canonical public app is <https://openescrow.io> and the one-minute overview is
@@ -18,6 +19,14 @@ The canonical public app is <https://openescrow.io> and the one-minute overview 
    real funds or real tenancy records.
 
 ### Five minutes: inspect the product shape
+
+For a fictional workspace without sign-in or a wallet, choose **Try the mock demo** on the
+About page or open <https://openescrow.io/explore>. Changes stay in memory and reset on reload.
+This demonstrates the interface; it does not execute transactions or prove hosted participant
+acceptance. The normal About page, **Try the testnet demo**, **View on GitHub**, and regular
+Google/wallet sign-in remain available.
+
+For the authenticated testnet workflow:
 
 1. Sign in with a test Google account or wallet.
 2. Choose landlord or tenant after sign-in. Only a specific invitation link preselects a role.
