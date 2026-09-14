@@ -54,6 +54,35 @@ September 14, 2026 superseding observation:
   The compliance-source gate remains non-green. See the
   [selected execution board](roadmap-progress-2026-09-14.md) for the active remediation work.
 
+## September 14 candidate verification
+
+The full credential-free envelope passed on exact application candidate
+[`f988fff4a2068367f48e72c4bd583bfcebbc5333`](https://github.com/omslice/OpenEscrow/commit/f988fff4a2068367f48e72c4bd583bfcebbc5333).
+This is a candidate after the hosted `592c6d0` release; it does not change the live application or
+the active immutable contract cohort by itself.
+
+- Deterministic contract assurance: 251 passed, zero failed, one opt-in live-fork skip;
+  five ABI/runtime/storage-layout checks and the pinned dependency checks passed.
+- Application release envelope: 137 server tests, 373 client/script checks, required rendered
+  browser checks, production build/load/bundle gates, dependency audit and wallet compatibility.
+- Credential-free deployment/rollback rehearsal, 23 pilot scenarios and 19 incident scenarios.
+- Exact-source Cloudflare build/configuration and retained Sites build. The packaged Sites build
+  was independently extracted and all 418 files matched the passing candidate's directory digest.
+- [Linux CI](https://github.com/omslice/OpenEscrow/actions/runs/34892937204) and
+  [self-host packaging](https://github.com/omslice/OpenEscrow/actions/runs/34892931296) passed.
+  The self-host archive's 697 file hashes and separate provenance/SBOM attestations verified.
+- Synthetic self-host installation, additive upgrade and backup restoration passed on `2c5db06`;
+  later changes through this candidate affected metadata, workflows, documents and rehearsal
+  measurement/selection, with no application or migration delta. All 24 published migrations
+  remain unchanged; migrations 0024 and 0025 are additive.
+
+The [execution board](roadmap-progress-2026-09-14.md) and [PR #11](https://github.com/omslice/OpenEscrow/pull/11)
+track publication separately. The subsequent `6bb6210` documentation tranche records the owner's
+unsubsidized Ottawa Hills/Brady Lake scope and the property-timezone review; its
+[GitHub checks also passed](https://github.com/omslice/OpenEscrow/actions/runs/34895309880).
+Do not describe draft artifacts, local simulations or an unchanged-source observation as a
+completed hosted participant session, legal approval or production readiness.
+
 ## Historical August 13 release evidence
 
 - The August 13 complete credential-free pilot-candidate envelope passed on exact application source
@@ -102,7 +131,8 @@ Repository release documentation records:
 - one opt-in live Base Sepolia Aave fork test skipped without an RPC URL;
 - nine stateful accounting properties exercised for 32,768 calls each; and
 - five ABI/runtime/storage-layout checks and two pinned dependency-tree checks; and
-- a complete credential-free pilot-candidate envelope on `356f76e`.
+- a complete credential-free pilot-candidate envelope on `f988fff`, with the earlier `356f76e`
+  envelope retained below as historical evidence.
 
 On 2026-08-13, exact candidate `356f76e` completed all credential-free candidate stages:
 the repository release envelope, deployment rehearsal, pilot rehearsal, incident rehearsal,

@@ -366,11 +366,12 @@ production custody, or reliance on the compliance research as legal advice.
   exposed in readiness; local regressions prove one direct withdrawal is recorded and emailed once
   across repeated schedules.
 - **Verified:** The canonical Cloudflare app and both local readiness endpoints exposed the same
-  exact release provenance on 2026-08-08. Cloudflare scheduler health, evidence
+  exact release provenance on 2026-08-08. At that checkpoint, Cloudflare scheduler health, evidence
   encryption/keyring, address attestation, Google sign-in origin, private R2 storage, D1, static
-  assets, and the fifteen-minute trigger are configured. Pilot readiness remains fail-closed for
-  the version-matched activity registry; the official-source gate is
-  current across all 61 profiles, including the disclosed time-limited New Hampshire review.
+  assets, and the fifteen-minute trigger were configured. The then-open version-matched registry
+  gate and passing 61-profile source observation are historical: the September 14 check verified
+  the current registry binding but found 36 blocked source checks. Use the dated
+  [execution board](roadmap-progress-2026-09-14.md) for current remediation status.
 - **Verified:** The latest approved public deployment matches its exact release-checked and pushed
   source. Each subsequent coherent slice is validated and saved separately for explicit review;
   D1, R2, hosted data, runtime secrets, and configuration remain unchanged.
