@@ -22,17 +22,19 @@ production custody, or reliance on the compliance research as legal advice.
 
 ## In progress
 
-- **Verified:** The September 14 operator check identifies clean live application `592c6d0`,
+- **Verified:** The September 14 post-deployment check identifies clean live application `f988fff`,
   active August 16 contract cohort `5073f2a`, healthy email/scheduler/private evidence/registry/
   address/indexer services, and a non-green compliance-source gate. The retained Sites build is
-  synchronized. See [release evidence](release-evidence-index.md).
+  synchronized at version 233. The source monitor now runs every 15 minutes and Ohio v6
+  is current; global source review remains open. See [release evidence](release-evidence-index.md).
 - **Verified:** The owner selected Ohio residential rentals and prioritized acceptance,
   compliance, production legal design, self-host updates, and funding/continuity. The
   [execution board](roadmap-progress-2026-09-14.md), [Ohio matrix](ohio-pilot-review.md), and
   [organization checklist](organization-readiness.md) identify concrete work and unresolved inputs.
-- **Verified:** The first Cloudflare self-host package and download action already exist.
-  Updating and validating that package remains work; creating the initial download is no longer
-  a future milestone.
+- **Verified:** Cloudflare self-host v0.2.0-testnet is public at exact application source
+  `f988fff`, with verified checksums, provenance/SBOM, fresh installation, additive upgrade and
+  backup restoration. [Publication evidence](release-publication-2026-09-14.md) distinguishes
+  the package from an independent operator's deployment.
 
 ### Historical implementation and release record
 
@@ -494,9 +496,9 @@ production custody, or reliance on the compliance research as legal advice.
 - **Planned:** Keep verifying the version-matched activity registry after every public release,
   together with custom-domain notification delivery, scheduler freshness, private-R2 evidence
   encryption and retained-key recovery, and address attestation.
-- **Planned, deferred from this milestone:** Resume compliance-source and local-overlay work only
-  after the grant-review functionality, notification, UX, cohort-deployment, and separate-account
-  rehearsal gates above are complete.
+- **Planned:** Continue qualified review of changed/unreachable compliance sources and Ohio local
+  coverage after the deployed scheduling, expiry and statutory-source fixes. Do not replace
+  reviewed hashes merely to clear readiness; participant rehearsal remains a separate gate.
 - **Planned:** Validate the refined consumer experience in moderated landlord and tenant sessions.
   Any request to remove, defer, or change a proposal field must be handled as a separate product
   and legal decision rather than presentation-only UX work.
@@ -511,10 +513,10 @@ production custody, or reliance on the compliance research as legal advice.
 - **Planned:** Validate managed hosting, professional workflows, integrations, and support as
   optional monetization paths while preserving the free, self-hostable core and free access to
   essential records.
-- **Planned:** Update the published Cloudflare self-host package with the current fixes and
-  validate installation, additive migration, upgrade, backup and rollback. Preserve safe testnet
-  defaults, private R2, checksums, SBOM and provenance. A later Docker/SQLite/S3-compatible
-  package remains optional and must preserve the same privacy and recovery boundaries.
+- **Planned:** Obtain an independent operator's installation/recovery result for the published
+  Cloudflare self-host package. Preserve safe testnet defaults, private R2, checksums, SBOM and
+  provenance in future updates. A later Docker/SQLite/S3-compatible package remains optional
+  and must preserve the same privacy and recovery boundaries.
 
 ## Material unknowns
 

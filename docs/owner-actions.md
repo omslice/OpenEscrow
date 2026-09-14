@@ -17,17 +17,19 @@ provider or hosting control that owns the secret.
 
 September 14 update: use the [selected execution board](roadmap-progress-2026-09-14.md) and
 [Ohio reviewer matrix](ohio-pilot-review.md). The active August 16 contract cohort and September
-13 application are already deployed; the historical broadcast steps below do not request another
-broadcast. Current work is acceptance, Ohio compliance/legal preparation, self-host updates and
+14 application are already deployed. PR #11 and self-host v0.2.0-testnet are public;
+[publication verification](release-publication-2026-09-14.md) is complete. Current work is
+acceptance, Ohio compliance/legal decisions, independent self-host operation and
 [funding/continuity](organization-readiness.md).
 
-1. Review the exact hardened contract candidate and the independent-audit handoff.
-2. In a private PowerShell window, use the encrypted Foundry keystore to broadcast the
-   unified Base Sepolia escrow/reserve/registry cohort. Never paste the key or password here.
-3. Share only the public candidate manifest and transaction hashes. Codex can verify code and
-   bindings, prepare the reversible configuration switch, and preserve the current cohort.
-4. Run the separate-account synthetic pilot and the incident/privacy drill after the new site
-   candidate is explicitly approved and deployed.
+1. Review the current application/contract manifests and independent-audit handoff. Existing
+   publication and cohort activation do not require another broadcast.
+2. Identify the actual Ottawa Hills and/or former Brady Lake parcels and lease subtype; keep
+   both fixed-term and month-to-month review cases until selected. Subsidized housing is excluded.
+3. Resolve qualified source, local-law, custody and deadline/timezone decisions in the Ohio
+   matrix. The unchanged Ohio observation does not clear the global source gate.
+4. Complete separate-account synthetic pilot and incident/privacy acceptance under their
+   runbooks' readiness requirements; record actual participant and inbox outcomes.
 5. Complete the remaining privacy-contact receive/reply acceptance checks. Participant notification
    sending, evidence encryption, address attestation, private R2, and the hosted scheduler are
    already configured and verified; preserve those controls and keep every secret in its owning
@@ -123,10 +125,12 @@ broadcast. Current work is acceptance, Ohio compliance/legal preparation, self-h
 - [x] **Activate the New Hampshire external source workflow — operation verified September 14.**
   Scheduled GitHub runs publish fresh observations. The latest run failed because the official
   document hash changed; setup is complete, legal-source review is not.
-- [ ] **Review changed sources and activate Ohio's exact statutory observation with the candidate.**
-  New Hampshire's reviewed hash remains unchanged pending content review. Ohio candidate v6
-  monitors the actual R.C. 5321.16 text. Validate the exact workflow source, observation and
-  deployed profile before treating it as current; retain changed/stale/malformed-source blocks.
+- [x] **Activate Ohio's exact statutory observation — verified September 14.** Deployed profile
+  `oh-rules-2026-09-14.v6` monitors the actual R.C. 5321.16 text. The main-branch observation
+  and live source check match; the deployed monitor runs every 15 minutes. See the publication record.
+- [ ] **Complete qualified review of changed and unresolved sources.** New Hampshire's reviewed
+  hash remains unchanged pending content review. Retain changed/stale/malformed-source blocks;
+  Ohio's unchanged observation does not approve legal interpretation or clear other source alerts.
 - [ ] **Approve a property-timezone source and local-time policy for the pilot.** The candidate
   rejects ambiguous stored timestamps and shows the participant's device timezone, but it cannot
   yet attest that the device and property share the same IANA timezone or decide how a legal

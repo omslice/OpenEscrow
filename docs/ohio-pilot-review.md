@@ -7,14 +7,15 @@ not a legal opinion or approval for real deposits.
 
 ## Exact review target
 
-The starting application release is `592c6d04f0fb3c1de1faf9b956be4e8c4067952e`.
+The current application release is `f988fff4a2068367f48e72c4bd583bfcebbc5333`, published
+September 14 after owner authorization; it replaced `592c6d0`.
 The active immutable contract cohort was compiled from
 `5073f2a98de0741f577ca443f249541f08e4d67e`; use
 [`base-sepolia-latest.json`](../deployments/base-sepolia-latest.json) for all addresses and
 transactions. A reviewer must additionally identify the exact commit containing any proposed
 changes. This document cannot bind future moving branch contents to an opinion.
 
-The engineering candidate is `f988fff4a2068367f48e72c4bd583bfcebbc5333`. Its complete local
+The published application is also the exact review candidate. Its complete local
 release envelope, 23 pilot scenarios and 19 incident scenarios passed, as did Linux CI. The
 locality and timezone supplements were prepared after that application commit; they change no
 runtime policy and are not part of its packaged source. Read the
@@ -64,17 +65,18 @@ whether a later delta review is required. All legal conclusions are currently **
 
 ## Ohio source-monitor correction
 
-Candidate profile `oh-rules-2026-09-14.v6` replaces a court-opinion URL with the actual official
+Deployed profile `oh-rules-2026-09-14.v6` replaces a court-opinion URL with the actual official
 R.C. 5321.16 page. Three independent local HTTP retrievals returned 200 with the same 16,432-byte
 body hash `e81d3dfe1e00552f7b8ea81f79237d4d7da646a25e597f5d5b4fecc62e246017`.
 The source observation verifies the exact URL, content hash, essential text markers, and a
 48-hour maximum age through the existing GitHub external monitor. This verifies a document
 observation; it does not certify the rule interpretation or production readiness.
 
-The [September 14 workflow](https://github.com/omslice/OpenEscrow/actions/runs/34892299991)
-published Ohio's matching observation at `2026-09-14T20:20:28.845Z` from candidate `4c708bc`.
+The [September 14 main-branch workflow](https://github.com/omslice/OpenEscrow/actions/runs/34898515268)
+published Ohio's matching observation at `2026-09-14T21:23:29.91Z` from merged source `c97bb43`.
 Its overall review gate failed for New Hampshire's changed source; Ohio itself was unchanged.
-This dated result expires after 48 hours. Before activating a later candidate, refresh and verify
+The live Ohio endpoint verified this observation after deployment. This dated result expires
+after 48 hours. Before activating a later candidate, refresh and verify
 `state-oh.json`, then verify the deployed Ohio source status. A missing, changed, stale,
 or malformed observation must block new adoption of that profile. Never manufacture an
 `unchanged` result or rewrite an accepted historical snapshot to make a check green.

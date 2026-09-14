@@ -1,120 +1,94 @@
 # Selected roadmap execution board
 
-Started September 14, 2026. The owner selected roadmap items **1, 4, 5, 9, and 10** and
-confirmed **unsubsidized residential rentals in Ottawa Hills, Brady Lake, or both** as the first
-pilot scope. Fixed-term versus month-to-month remains open. This board tracks execution;
-the broader [roadmap](../ROADMAP.md) retains the other workstreams.
+Updated September 14, 2026 after publication. The owner selected roadmap items **1, 4, 5, 9,
+and 10**, with **unsubsidized Ohio residential rentals in Ottawa Hills, Brady Lake, or both**
+as the first pilot scope. These numbers refer to the selected execution plan; the broader
+[roadmap](../ROADMAP.md) retains its own workstream organization.
 
-## Verified starting point
+## Published baseline
 
-- Live application: clean commit `592c6d04f0fb3c1de1faf9b956be4e8c4067952e` at
-  <https://openescrow.io/>; mock workspace at `/explore`.
-- Active Base Sepolia contract source: `5073f2a98de0741f577ca443f249541f08e4d67e`;
+- [PR #11](https://github.com/omslice/OpenEscrow/pull/11) merged into the default branch as
+  `c97bb438ae2b4e3699787758dc33d257043f416b`; both main-branch CI runs passed.
+- [OpenEscrow](https://openescrow.io/) and retained Sites version 233 both report clean
+  application source `f988fff4a2068367f48e72c4bd583bfcebbc5333`. Core and dual-host checks pass.
+- [Self-host v0.2.0-testnet](https://github.com/omslice/OpenEscrow/releases/tag/selfhost-v0.2.0-testnet)
+  is public. Its downloaded archive matches the verified checksum and exact application source.
+- Active Base Sepolia contract source remains `5073f2a98de0741f577ca443f249541f08e4d67e`;
   escrow `0x8a46cfed7153c53fd080e16624f9702887c78b54`, registry
-  `0xcf032b7da95d2710baa599979b8b9f350ce88a62`. Application changes do not redeploy contracts.
-- September 14 live operator check: email, scheduler, encrypted evidence/keyring, registry,
-  address attestation, and caught-up indexing passed. The strict source gate failed with
-  36 blocked sources out of 61. This is not a completed supervised pilot.
-- The downloadable `selfhost-v0.1.0-testnet` release was published August 10 from `53f65b574be9`.
-  It predates the current application and dependency fixes.
-- A September 14 read-only aggregate inventory found no finalized private record bound to the
-  active escrow address. Historical finalized records include other cohorts and an unbound
-  legacy record. This is a gap in current-cohort acceptance evidence, not permission to relabel,
-  migrate, delete or infer the state of those records. A fresh participant rehearsal is needed.
+  `0xcf032b7da95d2710baa599979b8b9f350ce88a62`. No contract broadcast or hosted data migration occurred.
+- The [publication record](release-publication-2026-09-14.md) binds these claims to deployment
+  identities, dated readiness, source checks and rollback references.
 
-## Execution and acceptance criteria
+## Execution and remaining evidence
 
-| Item | Work now | Completion evidence | Current boundary |
-|---|---|---|---|
-| 1. Testnet acceptance | Run current-source synthetic lifecycle/recovery checks; prepare Ohio-specific participant handoff | Local artifacts plus separate-account hosted outcome records | Automated fixtures cannot prove participant login, wallet signing, inbox placement, or live funds flow |
-| 4. Compliance | Correct bounded source scheduling and cached-attestation expiry; monitor the actual Ohio statute; inventory remaining source failures | Regressions, exact Ohio observation, deployed freshness/readiness checks | Changed legal documents remain review-required; no baseline reset is authorized by a passing fetch |
-| 5. Production design | Map Ohio requirements to the current contract, privacy, payments, and notice design | [Ohio reviewer matrix](ohio-pilot-review.md) completed by qualified reviewers against exact source | Unsubsidized scope and two candidate locations are selected; lease subtype, actual parcel, provider/custody model, and counsel remain open |
-| 9. Release/self-host | Refresh release evidence and package; test a clean installation and additive upgrades; prepare updated publication | Checksums, SBOM, clean-source manifest, install/build/migration/recovery evidence | Candidate validation is distinct from a published release and from an independent operator deployment |
-| 10. Organization/funding | Reuse existing decision packets; collect opening facts; document role and continuity gaps | [Organization checklist](organization-readiness.md), owner-confirmed funding records, accepted roles | No funding amount, legal entity, signed partner, or new maintainer is inferred |
+| Selected item | Completed in this tranche | Remaining evidence or decision |
+|---|---|---|
+| 1. Testnet acceptance | Full exact-source envelope, 23 synthetic pilot scenarios, 19 incident scenarios, current-cohort inventory and participant handoff | Separate landlord/two-tenant login, wallet, inbox and lifecycle outcomes; synthetic fixtures cannot establish these |
+| 4. Compliance | Deployed 15-minute bounded source scheduling, 48-hour external-observation expiry, official Ohio statute v6, live unchanged Ohio check, source triage, local-scope and DST analysis | Qualified review of changed text and unresolved sources; actual parcel and lease subtype; approved local rules and civil-time counting |
+| 5. Production design | Exact application/active-contract review package; OH-01 through OH-12 issue matrix; local and timezone supplements | Qualified conclusions, production custody/provider choice, any resulting contract/product change and independent review |
+| 9. Release/self-host | Default-branch merge, public v0.2.0-testnet, both hosts activated, checksum/provenance/SBOM, fresh-install/additive-upgrade/backup verification | Independent operator deployment/recovery result; maintain evidence for future releases |
+| 10. Organization/funding | Existing decision packets reused, private evidence delta refreshed, public transparency controls retained, continuity checklist prepared | Owner-confirmed funding/recipient/attribution facts, organization direction, accepted role holders and any signed partner evidence |
 
-## Engineering findings under remediation
+## Verified engineering and release evidence
 
-1. The prior monitor processed four sources once per day after bootstrap. A full 61-source
-   rotation therefore took about 16 days. The candidate runs bounded batches every 15 minutes,
-   selects sources due for their daily refresh, and avoids re-fetching today's fresh sources.
-   All 61 overdue sources fit into 16 batches (under four hours after the first batch).
-2. The prior cached proposal/readiness gates applied a 21-day lifetime even to external
-   observations configured for 48 hours. A regression reproduced an expired observation
-   permitting proposal creation. The candidate enforces each source's shorter lifetime.
-3. Ohio's v5 source link pointed to a court opinion while citing R.C. 5321.16. Candidate v6
-   restores the official statutory text with an exact-content external observation and a
-   48-hour lifetime. Existing agreement snapshots remain unchanged.
-4. New Hampshire's workflow is active. Its September 14 observation reports changed official
-   content. The older instruction to activate the workflow is superseded; content review is
-   still required. The candidate does not replace New Hampshire's reviewed hash.
+The full `f988fff` envelope passed: 251 Foundry tests, zero failures and one opt-in live-fork
+skip; five ABI/runtime/storage checks and pinned dependencies; 137 server tests; 373 client/script
+checks; required rendered browser, recovery, accessibility, load, bundle and build gates; clean
+production dependency audit and wallet compatibility. Deployment/rollback, pilot and incident
+rehearsals and both hosting builds passed. See the [release index](release-evidence-index.md)
+for exact-source CI and packaging links.
 
-The complete [61-source triage snapshot](compliance-source-triage-2026-09-14.md) distinguishes
-stored status from freshness and gives the remaining source-review queue.
+The published archive's 697 file checksums, build provenance and separate CycloneDX attestation
+verified against its source and packaging workflow. Isolated installation/build/configuration,
+137 packaged server tests, all 26 local D1 migrations and Worker dry-run passed on `2c5db06`.
+A synthetic upgrade from the old public `53f65b5` migration set preserved a record, restored a
+backup, matched a fresh schema and passed integrity checks. All 24 old migrations remain
+unchanged; 0024 and 0025 are additive. Later package-source changes through `f988fff` concern
+CI/toolchain metadata, attestations, documents and rehearsal measurement/selection, with no
+application or migration delta. No hosted private data was used for these simulations.
 
-## Validation checkpoint
+The scheduler formerly visited four sources daily, taking roughly 16 days to rotate through
+61 sources. It now processes four due sources every 15 minutes and skips fresh observations;
+all 61 overdue sources fit into 16 batches, under four hours after the first batch. Cached
+proposal/readiness gates now honor external observations' shorter 48-hour lifetime instead of
+always applying the general 21-day limit. Regressions cover expiry and complete source rotation.
 
-The full application check passed for the first candidate tranche: 137 server tests, 372
-client/script checks, every required browser recovery/lifecycle/accessibility check, and the
-production build/load/bundle gates. The production dependency audit is clean and wallet
-dependency compatibility passes. The source-expiry regression failed before the fix and passed
-afterward; a separate test verifies all 61 overdue sources are revisited without repeat fetching.
+Ohio's v6 profile replaces the mismatched court-opinion URL with the official R.C. 5321.16 text.
+The main-branch observation and live check are current and unchanged. The global compliance
+gate remains false: changed, unreachable and stale observations still require attention.
+New Hampshire's official page includes current and future-effective amendments; its changed
+alert was preserved. A passing fetch does not authorize replacing a reviewed baseline.
+The [61-source triage](compliance-source-triage-2026-09-14.md) is the earlier diagnostic snapshot;
+use the dated post-deployment observation in the publication record for current release evidence.
 
-Self-host review then found missing explicit escrow/reserve/block/indexer configuration. The
-generator and validator now require the active manifest's values and enabled indexing; all five
-focused configuration/SBOM tests pass.
+## Ohio and participant handoffs
 
-The clean `2c5db06` archive passed all 697 extracted file checksums, fresh `npm ci`, the
-self-host build/configuration check, 137 packaged server tests, all 26 local Wrangler D1
-migrations, and the Worker deployment dry-run. A separate synthetic SQLite upgrade from the
-published `53f65b5` migration set preserved a record, restored a backup, produced the same schema
-as a fresh install, and passed integrity checks. All 24 published migrations remain unchanged;
-only migrations 0024 and 0025 are added. No hosted database or private participant data was used.
+The [Ohio matrix](ohio-pilot-review.md), [local review](ohio-local-pilot-scope.md) and
+[timezone decision](ohio-timezone-decision.md) are prepared. The former Brady Lake village is
+now Franklin Township, Portage County; Ottawa Hills is in Lucas County. Actual parcel
+jurisdiction and applicable local requirements must be verified. Both fixed-term and
+month-to-month review cases remain open. Subsidized housing is excluded by the owner's decision.
 
-Linux CI exposed npm 10's rejection of the reviewed npm 11 lockfile. Both CI and self-host
-packaging now pin npm 11.16.0; fresh installation and packaging passed on Linux as well.
-The GitHub `4c708bc` archive's checksum verified, but its default provenance verification failed:
-the workflow had only created an SBOM attestation. The candidate now generates and verifies both
-build provenance and SBOM attestations separately before publishing artifacts.
-The amended workflow passed on `c6514db`, including both signature checks bound to that exact
-source and the release workflow identity.
+The timezone diagnostic reproduces UTC-calendar arithmetic crossing a different Ohio civil
+date around DST. `America/New_York` is the proposed property zone; legal counting and a
+versioned attested-zone design still require decisions. No unapproved deadline policy was deployed.
 
-The mobile recovery check also exposed CDP measurement rounding during a hover translation:
-a 44px DOM rectangle can be reported as 43.999998px by the browser protocol's quad subtraction.
-The check now reads the DOM rectangle directly and retains the exact 44px minimum. The focused
-recovery check, final Linux CI and amended artifact workflow all passed on `f988fff`.
-
-The incident rehearsal identified a stale scenario name after claim emails were changed to
-use the general app link. Its manifest now selects the existing credential-validation test and
-accurately describes credential-free notices; all 19 incident-control scenarios pass. This is
-local simulation, including mocked notification delivery, and does not send external messages.
-
-The complete clean `f988fff4a2068367f48e72c4bd583bfcebbc5333` candidate envelope then passed:
-contract assurance, application checks, deployment/rollback rehearsal, 23 pilot scenarios, 19
-incident scenarios, Cloudflare build/configuration and retained Sites build. The final self-host
-artifact passed all 697 file checksums and both provenance/SBOM signature checks. Existing hosted
-D1/R2 configuration and current migrations passed the read-only deployment preflight.
-
-The [local scope review](ohio-local-pilot-scope.md) separates Ottawa Hills/Lucas County from
-the former Brady Lake village, now Franklin Township/Portage County. It identifies Lucas rental
-registration, the distinct county-population issue for Portage, and local-code currency gaps.
-The [timezone decision](ohio-timezone-decision.md) proposes `America/New_York` for both and
-records reproduced UTC-date/DST behavior for qualified review. These are documentation
-supplements after the application candidate, not implemented local-law approval.
-
-Ohio's exact-source observation was published from `4c708bc` and verified unchanged; New
-Hampshire's changed-source alert remains open. Candidate source is tracked in
-[PR #11](https://github.com/omslice/OpenEscrow/pull/11). None of these results is a new hosted
-deployment, a published replacement self-host release, or a completed participant session.
+A read-only aggregate hosted inventory did not establish a finalized record bound to the active
+escrow cohort. Older finalized records include other cohorts and an unbound legacy record;
+they must not be relabeled as current acceptance. Use the [pilot runbook](testnet-pilot-runbook.md)
+for separate-account synthetic sessions and record exact app/contract versions, role outcomes,
+transaction receipts, private-document isolation and inbox placement. No participant outcome,
+external message or live transaction was fabricated to close the evidence gap.
 
 ## Remaining owner and external inputs
 
-- Actual pilot parcel and fixed-term versus month-to-month lease subtype; subsidized housing is excluded.
-- Qualified Ohio counsel and the intended production custody/provider model.
-- Separate participant sessions for hosted acceptance and inbox checks.
-- Organization posture, funding facts, attribution permissions, and any signed partner evidence.
-- Named continuity roles and acceptance of those responsibilities.
+- Actual pilot parcels and fixed-term/month-to-month lease scope.
+- Qualified Ohio conclusions and production custody/provider decisions.
+- Separate participant sessions and moderated usability/incident exercises.
+- Organization posture, confirmed funding facts, attribution permissions and signed partner evidence.
+- Named continuity roles and acceptance of their responsibilities.
 
-Keep private funding records, participant identities, provider credentials, and legal correspondence
-outside the public repository. Record actual outcomes without converting a draft or invitation
-into an accepted commitment. This goal remains active until its achievable work and explicit
-handoffs have been verified; this document is not a declaration that all five workstreams are done.
+The [organization checklist](organization-readiness.md) and existing private preparation records
+identify the evidence needed. Keep private identities, financial records, credentials and legal
+correspondence outside the public repository. Publication and completed preparation advance the
+selected goal; they do not establish a completed external pilot, legal approval or production readiness.
