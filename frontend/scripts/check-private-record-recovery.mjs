@@ -926,11 +926,15 @@ try {
     true,
     "A failed automatic claim email should restore focus to its retry control.",
   );
-  const sendClaimEmailBox = await sendClaimEmail.boundingBox();
+  // Read the DOM rectangle directly: CDP quad subtraction can round 44px down
+  // to 43.999998px while the restored button's hover translation is animating.
+  const sendClaimEmailHeight = await sendClaimEmail.evaluate(
+    (element) => element.getBoundingClientRect().height,
+  );
   assert.equal(
-    Boolean(sendClaimEmailBox && sendClaimEmailBox.height >= 44),
+    sendClaimEmailHeight >= 44,
     true,
-    "The focused claim-email retry should remain a 44px mobile touch target.",
+    `The focused claim-email retry should remain a 44px mobile touch target (measured ${sendClaimEmailHeight}px).`,
   );
   await sendClaimEmail.press("Enter");
   const sendingClaimEmail = claimPage.getByRole("button", {

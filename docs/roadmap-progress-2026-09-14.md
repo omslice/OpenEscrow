@@ -60,8 +60,30 @@ afterward; a separate test verifies all 61 overdue sources are revisited without
 
 Self-host review then found missing explicit escrow/reserve/block/indexer configuration. The
 generator and validator now require the active manifest's values and enabled indexing; all five
-focused configuration/SBOM tests pass. Fresh-package installation and publication remain separate
-checks. None of these results is a new hosted deployment or a completed participant session.
+focused configuration/SBOM tests pass.
+
+The clean `2c5db06` archive passed all 697 extracted file checksums, fresh `npm ci`, the
+self-host build/configuration check, 137 packaged server tests, all 26 local Wrangler D1
+migrations, and the Worker deployment dry-run. A separate synthetic SQLite upgrade from the
+published `53f65b5` migration set preserved a record, restored a backup, produced the same schema
+as a fresh install, and passed integrity checks. All 24 published migrations remain unchanged;
+only migrations 0024 and 0025 are added. No hosted database or private participant data was used.
+
+Linux CI exposed npm 10's rejection of the reviewed npm 11 lockfile. Both CI and self-host
+packaging now pin npm 11.16.0; fresh installation and packaging passed on Linux as well.
+The GitHub `4c708bc` archive's checksum verified, but its default provenance verification failed:
+the workflow had only created an SBOM attestation. The candidate now generates and verifies both
+build provenance and SBOM attestations separately before publishing artifacts.
+
+The mobile recovery check also exposed CDP measurement rounding during a hover translation:
+a 44px DOM rectangle can be reported as 43.999998px by the browser protocol's quad subtraction.
+The check now reads the DOM rectangle directly and retains the exact 44px minimum. The focused
+recovery check passes; final Linux CI and the amended artifact workflow must also pass.
+
+Ohio's exact-source observation was published from `4c708bc` and verified unchanged; New
+Hampshire's changed-source alert remains open. Candidate source is tracked in
+[PR #11](https://github.com/omslice/OpenEscrow/pull/11). None of these results is a new hosted
+deployment, a published replacement self-host release, or a completed participant session.
 
 ## Remaining owner and external inputs
 

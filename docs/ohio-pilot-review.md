@@ -59,8 +59,11 @@ The source observation verifies the exact URL, content hash, essential text mark
 48-hour maximum age through the existing GitHub external monitor. This verifies a document
 observation; it does not certify the rule interpretation or production readiness.
 
-Before activating the candidate: run the external workflow from the exact candidate source,
-verify `state-oh.json`, then verify the deployed Ohio source status. A missing, changed, stale,
+The [September 14 workflow](https://github.com/omslice/OpenEscrow/actions/runs/34892299991)
+published Ohio's matching observation at `2026-09-14T20:20:28.845Z` from candidate `4c708bc`.
+Its overall review gate failed for New Hampshire's changed source; Ohio itself was unchanged.
+This dated result expires after 48 hours. Before activating a later candidate, refresh and verify
+`state-oh.json`, then verify the deployed Ohio source status. A missing, changed, stale,
 or malformed observation must block new adoption of that profile. Never manufacture an
 `unchanged` result or rewrite an accepted historical snapshot to make a check green.
 

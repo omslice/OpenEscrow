@@ -1,6 +1,6 @@
 # OpenEscrow release and grant evidence index
 
-Last reviewed: 2026-08-13.
+Last reviewed: 2026-09-14.
 
 This index helps reviewers, contributors, auditors, partners, and funders locate authoritative
 evidence. It is not itself an audit, legal approval, deployment authorization, or a claim that the

@@ -53,11 +53,29 @@ jobs:
           test -n "$manifest"
           echo "manifest=$manifest" >> "$GITHUB_OUTPUT"
 
-      - name: Attest archive and SBOM
+      - name: Attest archive build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: ${{ steps.artifacts.outputs.archive }}
+
+      - name: Attest archive SBOM
         uses: actions/attest@v4
         with:
           subject-path: ${{ steps.artifacts.outputs.archive }}
           sbom-path: ${{ steps.artifacts.outputs.sbom }}
+
+      - name: Verify published attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARCHIVE: ${{ steps.artifacts.outputs.archive }}
+        shell: bash
+        run: |
+          gh attestation verify "$ARCHIVE" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/self-host-release.yml" \
+            --source-digest "$GITHUB_SHA"
+          gh attestation verify "$ARCHIVE" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/self-host-release.yml" \
+            --source-digest "$GITHUB_SHA" --predicate-type https://cyclonedx.org/bom
 
       - name: Upload release package
         uses: actions/upload-artifact@v4

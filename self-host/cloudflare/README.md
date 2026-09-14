@@ -37,9 +37,11 @@ provenance:
 
 ```bash
 gh attestation verify openescrow-cloudflare-self-host-*.tar.gz --repo omslice/OpenEscrow
+gh attestation verify openescrow-cloudflare-self-host-*.tar.gz --repo omslice/OpenEscrow --predicate-type https://cyclonedx.org/bom
 ```
 
 Do not continue if the source commit, archive checksum, or attestation is unexpected.
+The two commands verify build provenance and the CycloneDX dependency inventory separately.
 
 ## 2. Install and authenticate
 
