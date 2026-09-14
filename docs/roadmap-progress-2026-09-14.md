@@ -1,7 +1,8 @@
 # Selected roadmap execution board
 
 Started September 14, 2026. The owner selected roadmap items **1, 4, 5, 9, and 10** and
-confirmed **Ohio residential rentals** as the first pilot scope. This board tracks execution;
+confirmed **unsubsidized residential rentals in Ottawa Hills, Brady Lake, or both** as the first
+pilot scope. Fixed-term versus month-to-month remains open. This board tracks execution;
 the broader [roadmap](../ROADMAP.md) retains the other workstreams.
 
 ## Verified starting point
@@ -27,7 +28,7 @@ the broader [roadmap](../ROADMAP.md) retains the other workstreams.
 |---|---|---|---|
 | 1. Testnet acceptance | Run current-source synthetic lifecycle/recovery checks; prepare Ohio-specific participant handoff | Local artifacts plus separate-account hosted outcome records | Automated fixtures cannot prove participant login, wallet signing, inbox placement, or live funds flow |
 | 4. Compliance | Correct bounded source scheduling and cached-attestation expiry; monitor the actual Ohio statute; inventory remaining source failures | Regressions, exact Ohio observation, deployed freshness/readiness checks | Changed legal documents remain review-required; no baseline reset is authorized by a passing fetch |
-| 5. Production design | Map Ohio requirements to the current contract, privacy, payments, and notice design | [Ohio reviewer matrix](ohio-pilot-review.md) completed by qualified reviewers against exact source | Residential scope is selected; municipality, lease subtype, provider/custody model, and counsel remain open |
+| 5. Production design | Map Ohio requirements to the current contract, privacy, payments, and notice design | [Ohio reviewer matrix](ohio-pilot-review.md) completed by qualified reviewers against exact source | Unsubsidized scope and two candidate locations are selected; lease subtype, actual parcel, provider/custody model, and counsel remain open |
 | 9. Release/self-host | Refresh release evidence and package; test a clean installation and additive upgrades; prepare updated publication | Checksums, SBOM, clean-source manifest, install/build/migration/recovery evidence | Candidate validation is distinct from a published release and from an independent operator deployment |
 | 10. Organization/funding | Reuse existing decision packets; collect opening facts; document role and continuity gaps | [Organization checklist](organization-readiness.md), owner-confirmed funding records, accepted roles | No funding amount, legal entity, signed partner, or new maintainer is inferred |
 
@@ -80,12 +81,25 @@ source and the release workflow identity.
 The mobile recovery check also exposed CDP measurement rounding during a hover translation:
 a 44px DOM rectangle can be reported as 43.999998px by the browser protocol's quad subtraction.
 The check now reads the DOM rectangle directly and retains the exact 44px minimum. The focused
-recovery check passes; final Linux CI and the amended artifact workflow must also pass.
+recovery check, final Linux CI and amended artifact workflow all passed on `f988fff`.
 
 The incident rehearsal identified a stale scenario name after claim emails were changed to
 use the general app link. Its manifest now selects the existing credential-validation test and
 accurately describes credential-free notices; all 19 incident-control scenarios pass. This is
 local simulation, including mocked notification delivery, and does not send external messages.
+
+The complete clean `f988fff4a2068367f48e72c4bd583bfcebbc5333` candidate envelope then passed:
+contract assurance, application checks, deployment/rollback rehearsal, 23 pilot scenarios, 19
+incident scenarios, Cloudflare build/configuration and retained Sites build. The final self-host
+artifact passed all 697 file checksums and both provenance/SBOM signature checks. Existing hosted
+D1/R2 configuration and current migrations passed the read-only deployment preflight.
+
+The [local scope review](ohio-local-pilot-scope.md) separates Ottawa Hills/Lucas County from
+the former Brady Lake village, now Franklin Township/Portage County. It identifies Lucas rental
+registration, the distinct county-population issue for Portage, and local-code currency gaps.
+The [timezone decision](ohio-timezone-decision.md) proposes `America/New_York` for both and
+records reproduced UTC-date/DST behavior for qualified review. These are documentation
+supplements after the application candidate, not implemented local-law approval.
 
 Ohio's exact-source observation was published from `4c708bc` and verified unchanged; New
 Hampshire's changed-source alert remains open. Candidate source is tracked in
@@ -94,7 +108,7 @@ deployment, a published replacement self-host release, or a completed participan
 
 ## Remaining owner and external inputs
 
-- Municipality/county and residential lease subtype; identify any subsidized/special housing.
+- Actual pilot parcel and fixed-term versus month-to-month lease subtype; subsidized housing is excluded.
 - Qualified Ohio counsel and the intended production custody/provider model.
 - Separate participant sessions for hosted acceptance and inbox checks.
 - Organization posture, funding facts, attribution permissions, and any signed partner evidence.

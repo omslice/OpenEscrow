@@ -6,9 +6,10 @@ OpenEscrow to hold real deposits.
 
 ## Review boundary
 
-The owner selected **Ohio residential rentals** on September 14, 2026. Start with the
-[Ohio source and production decision matrix](ohio-pilot-review.md); municipality, lease subtype,
-provider/custody model and qualified review remain open. This selection does not activate a
+The owner selected **unsubsidized residential rentals in Ottawa Hills, Brady Lake, or both**
+on September 14, 2026. Start with the [Ohio source and production decision matrix](ohio-pilot-review.md)
+and [local jurisdiction review](ohio-local-pilot-scope.md); actual parcels, fixed-term versus
+month-to-month, provider/custody model and qualified review remain open. This selection does not activate a
 production jurisdiction or modify an immutable contract.
 
 Review the release candidate and its deployed configuration together. The public application remains

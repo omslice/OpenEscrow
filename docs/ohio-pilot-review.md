@@ -1,8 +1,8 @@
 # Ohio residential pilot: source review and production decisions
 
-Prepared September 14, 2026. Owner-selected scope: **Ohio residential rentals**. Municipality,
-fixed-term versus periodic tenancy, housing-program participation, operating entity, and custody
-provider are not yet selected. This is an engineering issue matrix for qualified Ohio counsel,
+Prepared September 14, 2026. Owner-selected scope: **unsubsidized residential rentals in Ottawa
+Hills, Brady Lake, or both**. Fixed-term versus month-to-month, actual parcels, operating entity,
+and custody provider remain open. This is an engineering issue matrix for qualified Ohio counsel,
 not a legal opinion or approval for real deposits.
 
 ## Exact review target
@@ -13,6 +13,13 @@ The active immutable contract cohort was compiled from
 [`base-sepolia-latest.json`](../deployments/base-sepolia-latest.json) for all addresses and
 transactions. A reviewer must additionally identify the exact commit containing any proposed
 changes. This document cannot bind future moving branch contents to an opinion.
+
+The engineering candidate is `f988fff4a2068367f48e72c4bd583bfcebbc5333`. Its complete local
+release envelope, 23 pilot scenarios and 19 incident scenarios passed, as did Linux CI. The
+locality and timezone supplements were prepared after that application commit; they change no
+runtime policy and are not part of its packaged source. Read the
+[local jurisdiction review](ohio-local-pilot-scope.md) and
+[property-timezone decision](ohio-timezone-decision.md) alongside this matrix.
 
 ## Official sources checked September 14
 
@@ -39,12 +46,17 @@ The list is a starting inventory, not a complete opinion on Ohio landlord-tenant
 | OH-04 | R.C. 5321.16(B) connects deductions to past-due rent and qualifying damage from noncompliance with the lease or R.C. 5321.05 | App records offchain line items; contract allocates an aggregate claim | Approve categories, proof, itemization and dispute process; ensure an unsupported amount cannot be described as legally adjudicated |
 | OH-05 | R.C. 5321.16(B)-(C) discusses the written forwarding address and remedies for wrongful withholding | Wallet/email routing is not itself a postal-address or statutory-delivery determination | Decide private address collection, evidence of delivery, failed-delivery recovery and missing-address treatment; do not infer that missing address forfeits the principal |
 | OH-06 | R.C. 5321.13 limits waiver and certain contractual liability/fee terms | Default no-arbiter mode allocates the landlord claim after responses or expiry, including dispute/non-response | Obtain an explicit opinion on automatic release, notice, consent, judicial remedies and any required hold; agreement acceptance alone is not the answer |
-| OH-07 | R.C. 5321.01 distinguishes covered residential arrangements | Address routing does not establish tenancy/program eligibility | Define an eligibility checklist and escalation for excluded or subsidized arrangements; test unknown facts without assuming conventional tenancy |
-| OH-08 | Municipal and federal overlays depend on location and participant facts | Reviewed Ohio city overlays are not yet established | Identify actual pilot municipality/county, check local and housing-program requirements, and record coverage gaps before enabling them |
+| OH-07 | R.C. 5321.01 distinguishes covered residential arrangements; the owner excludes subsidized housing | Address routing does not establish tenancy/program eligibility | Record unsubsidized eligibility; review both fixed-term and month-to-month cases pending selection; escalate unknown or special arrangements |
+| OH-08 | Ottawa Hills is in Lucas County; the former Brady Lake village is now Franklin Township, Portage County | Reviewed Ohio local overlays are not yet established | Verify each actual parcel, Lucas registration where applicable, current village/township zoning and maintenance text, and any separate licensing rules; record coverage gaps before enabling them |
 | OH-09 | Legal civil-time interpretation needs review | Explicit instants are deterministic; a device timezone is not attested property location | Select property timezone evidence and deadline counting; test DST, conflicting device zone, month/year rollover and an unavailable timezone provider |
 | OH-10 | Who may hold deposits and whether the chosen token/funds flow is lawful remain open | Immutable shared testnet escrow plus separate refundable reserve | Counsel and provider specify custody, segregation, licensing, sanctions and fee/reserve responsibilities; review the actual flow diagram |
 | OH-11 | Loss, unavailable wallets, court orders and exceptional tenancy events need operational treatment | Wallet authorization and fixed onchain transitions are not a legal recovery service | Specify permitted recovery/holds and who can initiate or verify them; independently audit any resulting contract change |
 | OH-12 | Personal evidence, notices and payment records create privacy/retention obligations | Private R2, encryption, role isolation, exports and session containment implemented | Approve data map, retention, deletion/legal holds, access requests, breach response, vendor roles and accessible notices |
+
+The two candidate locations share the proposed `America/New_York` property zone. Current
+calendar-day logic uses UTC dates; the timezone supplement demonstrates DST crossings that can
+change the displayed Ohio date. Legal counting and a versioned signed-zone implementation remain
+required decisions. Choosing a timezone alone does not resolve the statutory due-time question.
 
 For each row, counsel should record: conclusion, controlling authority/effective date, factual
 assumptions, permitted product behavior, blocked behavior, required changes, reviewer/date, and

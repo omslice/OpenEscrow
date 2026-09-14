@@ -521,8 +521,9 @@ production custody, or reliance on the compliance research as legal advice.
   This does not block the adopted fresh Cloudflare dataset; it matters only if the owner later
   requests a verified historical import. The comparison tooling intentionally cannot turn a
   partial provider export into continuity evidence.
-- Ohio residential rentals is the selected first scope. Municipality/county, lease subtype and
-  any housing-program coverage remain open.
+- Unsubsidized residential rentals in Ottawa Hills, Brady Lake, or both are the selected first
+  scope. Actual parcels and fixed-term versus month-to-month remain open; see the
+  [local scope review](ohio-local-pilot-scope.md) for the governing jurisdictions.
 - The authoritative property-timezone source and qualified local civil-time/DST interpretation
   for each pilot market. The candidate stores explicit instants deterministically but does not
   yet attest that a participant device timezone matches the property.

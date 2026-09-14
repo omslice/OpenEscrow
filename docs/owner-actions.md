@@ -116,9 +116,10 @@ broadcast. Current work is acceptance, Ohio compliance/legal preparation, self-h
   finalization, funding, claim/refund, withdrawal, stale-link, wrong-account, and inbox-versus-spam
   checks still require the named participant sessions. The strict compliance-source alerts remain
   a separately scoped, fail-closed baseline and are not being accepted or changed in this milestone.
-- [x] **Select the first pilot state and segment — confirmed September 14, 2026.** Ohio residential
-  rentals. Municipality/county, fixed-term versus periodic tenancy, and housing-program scope
-  remain open; see the Ohio reviewer matrix before extending local coverage.
+- [x] **Select the first pilot state and segment — confirmed September 14, 2026.** Unsubsidized
+  residential rentals in Ottawa Hills (Lucas County), Brady Lake (now Franklin Township,
+  Portage County), or both. Actual parcels and fixed-term versus month-to-month remain open;
+  see the Ohio reviewer matrix and local scope review before extending local coverage.
 - [x] **Activate the New Hampshire external source workflow — operation verified September 14.**
   Scheduled GitHub runs publish fresh observations. The latest run failed because the official
   document hash changed; setup is complete, legal-source review is not.
