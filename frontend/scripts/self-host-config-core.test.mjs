@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { ACTIVE_DEPLOYMENT } from "./active-deployment.mjs";
 import {
   ACTIVE_REGISTRY_ADDRESS,
   buildSelfHostConfig,
@@ -24,6 +25,10 @@ test("builds a fail-closed Base Sepolia Cloudflare configuration", () => {
   assert.equal(config.d1_databases[0].binding, "DB");
   assert.equal(config.r2_buckets[0].binding, "EVIDENCE");
   assert.equal(config.vars.ACTIVITY_REGISTRY_ADDRESS, ACTIVE_REGISTRY_ADDRESS);
+  assert.equal(config.vars.OPEN_ESCROW_ADDRESS, ACTIVE_DEPLOYMENT.escrow);
+  assert.equal(config.vars.OPERATIONS_RESERVE_ADDRESS, ACTIVE_DEPLOYMENT.operationsReserve);
+  assert.equal(config.vars.OPEN_ESCROW_DEPLOYMENT_BLOCK, String(ACTIVE_DEPLOYMENT.deploymentBlock));
+  assert.equal(config.vars.ONCHAIN_ACTIVITY_INDEXER_ENABLED, "true");
   assert.equal(config.vars.VERIFY_ACTIVITY_REGISTRY_BINDING, "true");
   assert.equal(config.vars.VERIFY_TRANSACTION_RECEIPTS, "true");
   assert.equal(config.vars.EVIDENCE_STORAGE_MODE, "private-r2");
@@ -46,6 +51,17 @@ test("rejects official resources, placeholders, mainnet gates, and weakened veri
   assert.match(errors, /Public URL must be the final origin only/);
   assert.match(errors, /VERIFY_TRANSACTION_RECEIPTS must remain true/);
   assert.match(errors, /Real-money and fiat funding must remain disabled/);
+});
+
+test("rejects missing or mixed-cohort self-host indexing configuration", () => {
+  for (const key of ["OPEN_ESCROW_ADDRESS", "OPERATIONS_RESERVE_ADDRESS",
+    "OPEN_ESCROW_DEPLOYMENT_BLOCK", "ONCHAIN_ACTIVITY_INDEXER_ENABLED"]) {
+    const config = buildSelfHostConfig(validInput);
+    delete config.vars[key];
+    assert.ok(validateSelfHostConfig(config).some((error) => error.startsWith(`${key} must remain`)));
+    config.vars[key] = key.endsWith("ADDRESS") ? `0x${"9".repeat(40)}` : "0";
+    assert.ok(validateSelfHostConfig(config).some((error) => error.startsWith(`${key} must remain`)));
+  }
 });
 
 test("normalizes only final HTTPS origins", () => {

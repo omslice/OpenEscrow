@@ -7,7 +7,7 @@ on:
       - "selfhost-v*"
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
   attestations: write
 
@@ -22,6 +22,9 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: frontend/package-lock.json
+
+      - name: Use the reviewed lockfile toolchain
+        run: npm install --global npm@11.16.0
 
       - name: Install dependencies
         working-directory: frontend
@@ -45,12 +48,34 @@ jobs:
           test -n "$sbom"
           echo "archive=$archive" >> "$GITHUB_OUTPUT"
           echo "sbom=$sbom" >> "$GITHUB_OUTPUT"
+          echo "checksum=${archive}.sha256" >> "$GITHUB_OUTPUT"
+          manifest="$(find self-host-dist -mindepth 2 -maxdepth 2 -type f -name 'release-manifest.json' -print -quit)"
+          test -n "$manifest"
+          echo "manifest=$manifest" >> "$GITHUB_OUTPUT"
 
-      - name: Attest archive and SBOM
+      - name: Attest archive build provenance
+        uses: actions/attest@v4
+        with:
+          subject-path: ${{ steps.artifacts.outputs.archive }}
+
+      - name: Attest archive SBOM
         uses: actions/attest@v4
         with:
           subject-path: ${{ steps.artifacts.outputs.archive }}
           sbom-path: ${{ steps.artifacts.outputs.sbom }}
+
+      - name: Verify published attestations
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARCHIVE: ${{ steps.artifacts.outputs.archive }}
+        shell: bash
+        run: |
+          gh attestation verify "$ARCHIVE" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/self-host-release.yml" \
+            --source-digest "$GITHUB_SHA"
+          gh attestation verify "$ARCHIVE" --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/self-host-release.yml" \
+            --source-digest "$GITHUB_SHA" --predicate-type https://cyclonedx.org/bom
 
       - name: Upload release package
         uses: actions/upload-artifact@v4
@@ -62,3 +87,27 @@ jobs:
             self-host-dist/*/SBOM.cdx.json
             self-host-dist/*/release-manifest.json
           if-no-files-found: error
+
+      - name: Publish tagged self-host release
+        if: startsWith(github.ref, 'refs/tags/selfhost-v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARCHIVE: ${{ steps.artifacts.outputs.archive }}
+          CHECKSUM: ${{ steps.artifacts.outputs.checksum }}
+          SBOM: ${{ steps.artifacts.outputs.sbom }}
+          MANIFEST: ${{ steps.artifacts.outputs.manifest }}
+        shell: bash
+        run: |
+          notes="$(mktemp)"
+          printf '%s\n' \
+            'Supported Cloudflare-oriented distribution of the complete OpenEscrow Base Sepolia testnet application.' \
+            '' \
+            'This release is for synthetic testing and qualified self-host operators. It does not enable mainnet, real rental deposits, a production fiat route, or production yield assets. Read README.md, SECURITY.md, BACKUP-AND-RESTORE.md, and UPGRADE.md in the extracted package root before deployment.' \
+            '' \
+            'Verify the archive checksum and GitHub artifact attestation before use.' > "$notes"
+          gh release create "$GITHUB_REF_NAME" \
+            "$ARCHIVE" "$CHECKSUM" "$SBOM" "$MANIFEST" \
+            --verify-tag \
+            --latest \
+            --title "OpenEscrow self-hosted testnet ${GITHUB_REF_NAME#selfhost-}" \
+            --notes-file "$notes"

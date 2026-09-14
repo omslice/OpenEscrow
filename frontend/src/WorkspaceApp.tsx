@@ -1,4 +1,5 @@
 import {
+  Fragment,
   lazy,
   useEffect,
   useRef,
@@ -6,7 +7,7 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useIdentityToken, usePrivy } from "@privy-io/react-auth";
-import { useAccount } from "wagmi";
+import { useAccount, useReadContracts } from "wagmi";
 import { Layout, type AppNotification } from "./components/Layout";
 import type {
   AgreementFocusRequest,
@@ -20,6 +21,7 @@ import { DepositAgreementListItem } from "./components/DepositAgreementListItem"
 import { RecordListItem } from "./components/RecordListItem";
 import { DeferredLoadBoundary } from "./components/DeferredLoadBoundary";
 import {
+  reconcileWorkspaceRoleIdentity,
   roleLabel,
   selectWorkspaceRole,
   useInviteRole,
@@ -31,9 +33,11 @@ import {
   listNegotiationAccesses,
   loadNegotiation,
   readNegotiationAccess,
+  recoverNegotiationAccessForAccount,
   storeNegotiationAccess,
   updateRecordArchivePreference,
   type NegotiationAccess,
+  type NegotiationEvent,
   type NegotiationStatus,
 } from "./lib/negotiations";
 import { agreementReference, proposalReference } from "./lib/displayIds";
@@ -56,8 +60,18 @@ import {
 import { mapSettledWithConcurrency } from "./lib/settledPool";
 import {
   mergeSavedRecordRefresh,
+  refreshOpenProposalAccess,
+  shouldClearDetachedInviteAccess,
   type SavedRecord,
 } from "./lib/savedRecordRefresh";
+import { OpenEscrowABI, OPEN_ESCROW_ADDRESS, Phase } from "./contracts/config";
+import { tenantFundingAttentionIds } from "./lib/tenantFundingAttention";
+import { compactActiveProposals } from "./lib/proposalList";
+import {
+  landlordClaimAttentionIds,
+  tenantClaimAttentionIds,
+} from "./lib/claimAttention";
+import { agreementLifecycleCounts } from "./lib/agreementLifecycleCounts";
 
 const ACCOUNT_DISCOVERY_REFRESH_INTERVAL_MS = 5 * 60 * 1000;
 const ACCOUNT_DISCOVERY_RETRY_INTERVAL_MS = 60 * 1000;
@@ -111,7 +125,8 @@ const WORKSPACE_TABS: WorkspaceTab[] = [
 ];
 
 function initialWorkspaceTab(): WorkspaceTab {
-  return window.location.hash === "#yield-stablecoins" ? "about" : "overview";
+  if (window.location.hash === "#yield-stablecoins") return "about";
+  return linkedAgreementIdFromUrl() ? "agreements" : "overview";
 }
 
 function savedRecordKey(item: SavedProposal) {
@@ -126,6 +141,13 @@ function linkedAgreementIdFromUrl(): string | undefined {
   const id = new URLSearchParams(window.location.search).get("id");
   if (!id || !/^[0-9]+$/.test(id)) return undefined;
   return BigInt(id).toString();
+}
+
+function linkedAgreementPanelFromUrl(): AgreementPanel | undefined {
+  const panel = new URLSearchParams(window.location.search).get("panel");
+  return panel === "summary" || panel === "funds" || panel === "claims"
+    ? panel
+    : undefined;
 }
 
 function WorkspaceToolFallback({ label }: { label: string }) {
@@ -169,37 +191,14 @@ function panelForAgreementAction(action: string): AgreementPanel | null {
   return null;
 }
 
-function isSameAgreementFamily(left: SavedProposal, right: SavedProposal): boolean {
-  if (left.access.role !== right.access.role) return false;
-  const leftProperty = left.record.terms.propertyAddress?.trim().toLowerCase();
-  const rightProperty = right.record.terms.propertyAddress?.trim().toLowerCase();
-  if (leftProperty && rightProperty && leftProperty === rightProperty) return true;
-  const leftTenantEmails = new Set(
-    left.record.tenants.map((tenant) => tenant.email.trim().toLowerCase()),
-  );
-  return right.record.tenants.some((tenant) =>
-    leftTenantEmails.has(tenant.email.trim().toLowerCase()),
-  );
-}
-
-function compactActiveProposals(items: SavedProposal[]): SavedProposal[] {
-  const active = items
-    .filter(
-      (item) =>
-        item.record.status !== "cancelled" && item.record.status !== "superseded",
-    )
-    .sort(
-      (a, b) =>
-        new Date(b.record.updatedAt).getTime() -
-        new Date(a.record.updatedAt).getTime(),
-    );
-  const kept: SavedProposal[] = [];
-  for (const item of active) {
-    if (!kept.some((candidate) => isSameAgreementFamily(item, candidate))) {
-      kept.push(item);
-    }
-  }
-  return kept;
+function notificationIsForViewer(item: SavedProposal, event: NegotiationEvent) {
+  if (event.action === "scheduled_notification_sent") return false;
+  if (event.action !== "scheduled_notification_due") return true;
+  const recipientRole = String(event.metadata?.recipientRole || "");
+  if (!recipientRole) return true;
+  if (item.access.role === "landlord") return recipientRole === "landlord";
+  if (item.access.role === "arbiter") return recipientRole === "arbiter";
+  return recipientRole === `tenant-${item.record.viewerTenantId}`;
 }
 
 function proposalStatusPresentation(
@@ -279,7 +278,7 @@ function AppView({
     {},
   );
   const proposalOpenerRef = useRef<HTMLElement | null>(null);
-  const { ids, addId, removeId } = useTrackedAgreements(
+  const { ids, archivedIds, addId, removeId, archiveId, restoreId } = useTrackedAgreements(
     ACCOUNT_AUTH_ENABLED ? accountIdentity : null,
   );
   const activeAccountIdentity = useRef(accountIdentity);
@@ -314,7 +313,11 @@ function AppView({
   >(null);
   const [agreementPanels, setAgreementPanels] = useState<
     Record<string, AgreementPanel>
-  >({});
+  >(() => {
+    const agreementId = linkedAgreementIdFromUrl();
+    const panel = linkedAgreementPanelFromUrl();
+    return agreementId && panel ? { [agreementId]: panel } : {};
+  });
   const [agreementFocusRequests, setAgreementFocusRequests] = useState<
     Record<string, AgreementFocusRequest>
   >({});
@@ -333,7 +336,9 @@ function AppView({
       : []
     : ids;
   const displayedIds = discoveredAgreementIds.filter(
-    (id) => !unavailableAgreementIds.has(id.toString()),
+    (id) =>
+      !unavailableAgreementIds.has(id.toString()) &&
+      !archivedIds.some((archivedId) => archivedId === id),
   );
   const expandedDepositId = resolveExpandedDepositId(
     requestedDepositId,
@@ -351,6 +356,117 @@ function AppView({
   );
   const inviteRole = useInviteRole();
   const workspaceRole = useWorkspaceRole();
+
+  useEffect(() => {
+    reconcileWorkspaceRoleIdentity(accountIdentity);
+  }, [accountIdentity]);
+  const tenantFundingContracts =
+    workspaceRole === "tenant" && address
+      ? displayedIds.flatMap((id) => [
+          {
+            address: OPEN_ESCROW_ADDRESS,
+            abi: OpenEscrowABI,
+            functionName: "getAgreement",
+            args: [id],
+          },
+          {
+            address: OPEN_ESCROW_ADDRESS,
+            abi: OpenEscrowABI,
+            functionName: "tenantShareBps",
+            args: [id, address],
+          },
+          {
+            address: OPEN_ESCROW_ADDRESS,
+            abi: OpenEscrowABI,
+            functionName: "tenantContribution",
+            args: [id, address],
+          },
+        ])
+      : [];
+  const tenantFundingReads = useReadContracts({
+    contracts: tenantFundingContracts,
+    query: {
+      enabled: tenantFundingContracts.length > 0,
+      refetchInterval: 5_000,
+    },
+  });
+  const tenantFundingAgreementIds = tenantFundingAttentionIds(
+    displayedIds,
+    tenantFundingReads.data,
+    Phase.ReadyToFund,
+  );
+  const claimAttentionContracts =
+    workspaceRole === "tenant" && address
+      ? displayedIds.flatMap((id) => [
+          {
+            address: OPEN_ESCROW_ADDRESS,
+            abi: OpenEscrowABI,
+            functionName: "getAgreement",
+            args: [id],
+          },
+          {
+            address: OPEN_ESCROW_ADDRESS,
+            abi: OpenEscrowABI,
+            functionName: "tenantClaimResponded",
+            args: [id, address],
+          },
+        ])
+      : workspaceRole === "landlord"
+        ? displayedIds.flatMap((id) => [
+            {
+              address: OPEN_ESCROW_ADDRESS,
+              abi: OpenEscrowABI,
+              functionName: "getAgreement",
+              args: [id],
+            },
+            {
+              address: OPEN_ESCROW_ADDRESS,
+              abi: OpenEscrowABI,
+              functionName: "claimResponseCount",
+              args: [id],
+            },
+          ])
+        : [];
+  const claimAttentionReads = useReadContracts({
+    contracts: claimAttentionContracts,
+    query: {
+      enabled: claimAttentionContracts.length > 0,
+      refetchInterval: 5_000,
+    },
+  });
+  const claimAttentionAgreementIds =
+    workspaceRole === "tenant"
+      ? tenantClaimAttentionIds(
+          displayedIds,
+          claimAttentionReads.data,
+          Phase.ClaimOpen,
+        )
+      : workspaceRole === "landlord"
+        ? landlordClaimAttentionIds(displayedIds, claimAttentionReads.data, {
+            claimOpen: Phase.ClaimOpen,
+            disputed: Phase.Disputed,
+            closed: Phase.Closed,
+          })
+        : [];
+  const lifecycleContracts = displayedIds.map((id) => ({
+    address: OPEN_ESCROW_ADDRESS,
+    abi: OpenEscrowABI,
+    functionName: "getAgreement",
+    args: [id],
+  }));
+  const lifecycleReads = useReadContracts({
+    contracts: lifecycleContracts,
+    query: {
+      enabled: lifecycleContracts.length > 0,
+      refetchInterval: 5_000,
+    },
+  });
+  const lifecycleCounts = agreementLifecycleCounts(lifecycleReads.data, {
+    active: Phase.Active,
+    claimOpen: Phase.ClaimOpen,
+    disputed: Phase.Disputed,
+    closed: Phase.Closed,
+  });
   const [proposalAccess, setProposalAccess] = useState<NegotiationAccess | null>(() => {
     if (initialCapturedAccess && initialCapturedAccess.role !== "landlord") {
       return initialCapturedAccess;
@@ -365,6 +481,39 @@ function AppView({
         )
       : null;
   });
+  const accountAccessRecoveryAttempts = useRef(new Set<string>());
+
+  useEffect(() => {
+    if (!identityToken) return;
+    const inviteAccess =
+      proposalAccess?.source === "invite"
+        ? proposalAccess
+        : activeLandlordAccess?.source === "invite"
+          ? activeLandlordAccess
+          : null;
+    if (!inviteAccess) return;
+
+    const recoveryKey = `${accountIdentity || "signed-in"}:${inviteAccess.role}:${inviteAccess.proposalId}`;
+    if (accountAccessRecoveryAttempts.current.has(recoveryKey)) return;
+    accountAccessRecoveryAttempts.current.add(recoveryKey);
+
+    let active = true;
+    void recoverNegotiationAccessForAccount(inviteAccess, identityToken)
+      .then((recovered) => {
+        if (!active || !recovered) return;
+        if (recovered.role === "landlord") {
+          setActiveLandlordAccess(recovered);
+        } else {
+          setProposalAccess(recovered);
+        }
+      })
+      .catch(() => {
+        // Keep the invitation-specific error visible when this signed-in account is not a party.
+      });
+    return () => {
+      active = false;
+    };
+  }, [accountIdentity, activeLandlordAccess, identityToken, proposalAccess]);
 
   useEffect(() => {
     if (initialCapturedAccess?.role !== "landlord") return;
@@ -496,12 +645,11 @@ function AppView({
   }, [accountIdentity]);
 
   useEffect(() => {
-    if (
-      !inviteRole &&
-      proposalAccess &&
-      proposalAccess.role !== "landlord" &&
-      !new URLSearchParams(window.location.search).has("invite")
-    ) {
+    if (shouldClearDetachedInviteAccess(
+      proposalAccess,
+      inviteRole,
+      new URLSearchParams(window.location.search).has("invite"),
+    )) {
       setProposalAccess(null);
     }
   }, [inviteRole, proposalAccess]);
@@ -587,6 +735,9 @@ function AppView({
         savedRecordsRef.current = records;
         setSavedRecords(records);
         setSavedProposals(compactActiveProposals(records));
+        setActiveLandlordAccess((current) =>
+          refreshOpenProposalAccess(current, records),
+        );
       } catch {
         // Manual search below presents discovery errors. Background refresh preserves the last
         // known records instead of turning a transient identity failure into persistent UI noise.
@@ -653,6 +804,9 @@ function AppView({
       const proposals = compactActiveProposals(records);
       setSavedRecords(records);
       setSavedProposals(proposals);
+      setActiveLandlordAccess((current) =>
+        refreshOpenProposalAccess(current, records),
+      );
 
       const accountAgreementIds = records.flatMap(({ record }) =>
         record.status === "finalized" && record.onchainAgreementId
@@ -732,6 +886,65 @@ function AppView({
     }
     setProposalAccess(item.access);
     setTab("proposals");
+  }
+
+  function openTenantFundingAttention() {
+    const agreementId = tenantFundingAgreementIds[0]?.toString();
+    if (!agreementId) {
+      setTab("proposals");
+      return;
+    }
+    addId(BigInt(agreementId));
+    setProposalAccess(null);
+    setRequestedDepositId(agreementId);
+    setTab("agreements");
+    setAgreementPanels((current) => ({
+      ...current,
+      [agreementId]: "funds",
+    }));
+    setAgreementFocusRequests((current) => ({
+      ...current,
+      [agreementId]: {
+        targetId: `agreement-${agreementId}-panel-funds`,
+        nonce: (current[agreementId]?.nonce || 0) + 1,
+      },
+    }));
+  }
+
+  function openClaimAttention() {
+    const agreementId = claimAttentionAgreementIds[0]?.toString();
+    if (!agreementId) {
+      setTab("proposals");
+      return;
+    }
+    addId(BigInt(agreementId));
+    setProposalAccess(null);
+    setRequestedDepositId(agreementId);
+    setTab("agreements");
+    setAgreementPanels((current) => ({
+      ...current,
+      [agreementId]: "claims",
+    }));
+    setAgreementFocusRequests((current) => ({
+      ...current,
+      [agreementId]: {
+        targetId:
+          workspaceRole === "tenant"
+            ? `agreement-${agreementId}-response`
+            : `agreement-${agreementId}-panel-claims`,
+        nonce: (current[agreementId]?.nonce || 0) + 1,
+      },
+    }));
+  }
+
+  function openAttention() {
+    if (claimAttentionAgreementIds.length > 0) {
+      openClaimAttention();
+    } else if (tenantFundingAgreementIds.length > 0) {
+      openTenantFundingAttention();
+    } else {
+      setTab("proposals");
+    }
   }
 
   function scrollToNotificationTarget(targetId: string, fallbackId: string) {
@@ -920,7 +1133,11 @@ function AppView({
   const notifications: AppNotification[] = [
     ...savedProposals.filter((item) => !item.access.archived).flatMap((item) =>
       item.record.events
-        .filter((event) => event.action !== "record_snapshot_anchored")
+        .filter(
+          (event) =>
+            event.action !== "record_snapshot_anchored" &&
+            notificationIsForViewer(item, event),
+        )
         .map((event) => ({
           id: `${item.record.id}-${event.id}`,
           createdAt: event.createdAt,
@@ -951,6 +1168,21 @@ function AppView({
       (item.access.role === "landlord" && item.record.status === "ready") ||
       (item.access.role !== "landlord" && item.record.status === "draft"),
   );
+  const attentionCount =
+    readyProposals.length +
+    tenantFundingAgreementIds.length +
+    claimAttentionAgreementIds.length;
+  const attentionSummary = [
+    claimAttentionAgreementIds.length > 0
+      ? workspaceRole === "landlord"
+        ? "tenant claim responses to review"
+        : "deduction claims to review"
+      : null,
+    tenantFundingAgreementIds.length > 0 ? "deposits to fund" : null,
+    readyProposals.length > 0 ? "proposals to review" : null,
+  ]
+    .filter(Boolean)
+    .join(", ");
   const workspaceTabLabels =
     workspaceRole === "landlord"
       ? {
@@ -1085,14 +1317,18 @@ function AppView({
         isReadyForLandlord,
       );
       const propertyAddress = item.record.terms.propertyAddress?.trim();
+      const isSelectedLandlordProposal =
+        isProposalComposerOpen &&
+        item.access.role === "landlord" &&
+        activeLandlordAccess?.proposalId === item.access.proposalId;
       return (
+        <Fragment key={`${item.access.proposalId}-${item.access.role}`}>
         <article
           className={`saved-proposal-card${
             isReadyForLandlord ? " ready-to-finalize" : ""
           }${isFinalized ? " is-finalized" : ""}${
             archived ? " is-archived" : ""
           }`}
-          key={`${item.access.proposalId}-${item.access.role}`}
           data-record-key={savedRecordKey(item)}
           tabIndex={-1}
         >
@@ -1182,6 +1418,42 @@ function AppView({
             </p>
           )}
         </article>
+        {isSelectedLandlordProposal && (
+          <section
+            className="proposal-composer-launcher proposal-composer-inline"
+            aria-label={`Review and finalize ${proposalReference(item.record.id)}`}
+          >
+            <div className="proposal-composer-toolbar">
+              <span>Reviewing the selected proposal</span>
+              <button
+                className="btn btn-ghost small"
+                type="button"
+                onClick={() => {
+                  const opener = proposalOpenerRef.current;
+                  setActiveLandlordAccess(null);
+                  setIsProposalComposerOpen(false);
+                  window.requestAnimationFrame(() => {
+                    if (opener?.isConnected) opener.focus();
+                  });
+                }}
+              >
+                Close proposal editor
+              </button>
+            </div>
+            <DeferredLoadBoundary
+              area="workspace"
+              fallback={<WorkspaceToolFallback label="Loading proposal editor..." />}
+            >
+              <CreateAgreementForm
+                key={activeLandlordAccess.proposalId}
+                initialAccess={activeLandlordAccess}
+                focusOnMount
+                onTrackAgreement={addId}
+              />
+            </DeferredLoadBoundary>
+          </section>
+        )}
+        </Fragment>
       );
     });
   }
@@ -1211,6 +1483,9 @@ function AppView({
                   key={agreementKey}
                   id={id}
                   propertyAddress={proposal?.record.terms.propertyAddress}
+                  needsFunding={tenantFundingAgreementIds.some(
+                    (candidate) => candidate === id,
+                  )}
                   expanded={expanded}
                   onToggle={() =>
                     setRequestedDepositId(
@@ -1302,6 +1577,9 @@ function AppView({
       ),
     );
     const unlinkedAgreementIds = displayedIds.filter(
+      (id) => !linkedAgreementIds.has(id.toString()),
+    );
+    const archivedOnchainAgreementIds = archivedIds.filter(
       (id) => !linkedAgreementIds.has(id.toString()),
     );
     const sortedRecords = [...savedRecords].sort(
@@ -1437,7 +1715,7 @@ function AppView({
       );
     }
 
-    function renderOnchainRecordCard(id: bigint) {
+    function renderOnchainRecordCard(id: bigint, archived = false) {
       const key = onchainRecordKey(id);
       const expanded = Boolean(expandedRecordKeys[key]);
       const contentId = `record-content-onchain-${id.toString()}`;
@@ -1450,11 +1728,29 @@ function AppView({
           eyebrow="Onchain-only record"
           reference={agreementReference(id)}
           meta={`Onchain agreement ID ${id.toString()}`}
+          className={archived ? "is-archived" : undefined}
           onToggle={() =>
             setExpandedRecordKeys((current) => ({
               ...current,
               [key]: !current[key],
             }))
+          }
+          actions={
+            <button
+              className="btn btn-ghost small"
+              type="button"
+              onClick={() => {
+                if (archived) {
+                  restoreId(id);
+                  setRecordArchiveAnnouncement(`${agreementReference(id)} restored.`);
+                } else {
+                  archiveId(id);
+                  setRecordArchiveAnnouncement(`${agreementReference(id)} archived.`);
+                }
+              }}
+            >
+              {archived ? "Restore" : "Archive"}
+            </button>
           }
         >
           <DeferredLoadBoundary
@@ -1480,12 +1776,12 @@ function AppView({
         {currentRecords.length === 0 && unlinkedAgreementIds.length === 0 && (
           <div className="workspace-empty">
             <strong>
-              {archivedRecords.length
+              {archivedRecords.length || archivedOnchainAgreementIds.length
                 ? "All account records are archived."
                 : "No account records found."}
             </strong>
             <span>
-              {archivedRecords.length
+              {archivedRecords.length || archivedOnchainAgreementIds.length
                 ? "Open Archived records below to review or restore them."
                 : "Proposal history and finalized agreement activity will appear here."}
             </span>
@@ -1522,16 +1818,16 @@ function AppView({
         )}
         <div className="record-list" role="list">
           {currentRecords.map((item) => renderSavedRecordCard(item, false))}
-          {unlinkedAgreementIds.map(renderOnchainRecordCard)}
+          {unlinkedAgreementIds.map((id) => renderOnchainRecordCard(id, false))}
         </div>
-        {archivedRecords.length > 0 && (
+        {(archivedRecords.length > 0 || archivedOnchainAgreementIds.length > 0) && (
           <details
             className="record-archive-section"
             open={isRecordArchiveOpen}
             onToggle={(event) => setIsRecordArchiveOpen(event.currentTarget.open)}
           >
             <summary id="record-archive-summary">
-              Archived records ({archivedRecords.length})
+              Archived records ({archivedRecords.length + archivedOnchainAgreementIds.length})
             </summary>
             <p>
               Archiving only removes a record from your current list. It does not delete
@@ -1539,6 +1835,7 @@ function AppView({
             </p>
             <div className="record-list" role="list">
               {archivedRecords.map((item) => renderSavedRecordCard(item, true))}
+              {archivedOnchainAgreementIds.map((id) => renderOnchainRecordCard(id, true))}
             </div>
           </details>
         )}
@@ -1577,15 +1874,16 @@ function AppView({
         </section>
         <div className="workspace-stat-grid">
           <button
-            className={`workspace-stat${readyProposals.length > 0 ? " has-action" : ""}`}
-            onClick={() => setTab("proposals")}
+            className={`workspace-stat${attentionCount > 0 ? " has-action" : ""}`}
+            onClick={openAttention}
           >
             <span>Needs attention</span>
-            <strong>{readyProposals.length}</strong>
+            <strong>{attentionCount}</strong>
             <small>
-              {workspaceRole === "landlord"
-                ? "approved or updated proposals"
-                : "invitations or proposals to review"}
+              {attentionSummary ||
+                (workspaceRole === "landlord"
+                  ? "approved proposals or claim responses"
+                  : "invitations, funding, or claims")}
             </small>
           </button>
           <button className="workspace-stat" onClick={() => setTab("proposals")}>
@@ -1601,6 +1899,28 @@ function AppView({
                 ? "deposits and deduction work"
                 : "deposits and claim activity"}
             </small>
+          </button>
+          <button className="workspace-stat" onClick={() => setTab("agreements")}>
+            <span>Active deposits</span>
+            <strong>{lifecycleCounts.activeDeposits}</strong>
+            <small>funded deposits still in progress</small>
+          </button>
+          <button
+            className={`workspace-stat${lifecycleCounts.activeClaims > 0 ? " has-action" : ""}`}
+            onClick={() =>
+              claimAttentionAgreementIds.length > 0
+                ? openClaimAttention()
+                : setTab("agreements")
+            }
+          >
+            <span>Active claims</span>
+            <strong>{lifecycleCounts.activeClaims}</strong>
+            <small>deduction claims being reviewed</small>
+          </button>
+          <button className="workspace-stat" onClick={() => setTab("record")}>
+            <span>Completed refunds</span>
+            <strong>{lifecycleCounts.completedRefunds}</strong>
+            <small>closed outcomes with withdrawals complete</small>
           </button>
         </div>
         {currentSavedProposals.length > 0 && (
@@ -1677,6 +1997,40 @@ function AppView({
             </p>
             <button className="btn btn-primary" onClick={() => setTab("proposals")}>
               Review now
+            </button>
+          </section>
+        )}
+        {tenantFundingAgreementIds.length > 0 && (
+          <section className="card urgent-work tenant-funding-attention">
+            <span className="eyebrow">Funding needed</span>
+            <h2>
+              {tenantFundingAgreementIds.length} finalized deposit
+              {tenantFundingAgreementIds.length === 1 ? " needs" : "s need"} your funding
+            </h2>
+            <p className="hint">
+              Fund your approved tenant share to activate the security deposit for every party.
+            </p>
+            <button className="btn btn-primary" onClick={openTenantFundingAttention}>
+              Fund deposit now
+            </button>
+          </section>
+        )}
+        {claimAttentionAgreementIds.length > 0 && (
+          <section className="card urgent-work claim-attention">
+            <span className="eyebrow">
+              {workspaceRole === "landlord" ? "Tenant responded" : "Claim response needed"}
+            </span>
+            <h2>
+              {claimAttentionAgreementIds.length} deduction claim
+              {claimAttentionAgreementIds.length === 1 ? " needs" : "s need"} your attention
+            </h2>
+            <p className="hint">
+              {workspaceRole === "landlord"
+                ? "Review the tenant response and the resulting claim outcome."
+                : "Review the documented deduction and record whether you approve or dispute it."}
+            </p>
+            <button className="btn btn-primary" onClick={openClaimAttention}>
+              Review claim now
             </button>
           </section>
         )}
@@ -1775,7 +2129,9 @@ function AppView({
         </section>
       )}
       {(inviteRole || !workspaceRole || isChangingRole) && (
-        <AccountCenter />
+        <AccountCenter
+          workspaceRole={inviteRole ? roleLabel[inviteRole] : undefined}
+        />
       )}
 
       {workspaceRole && (
@@ -1938,7 +2294,7 @@ function AppView({
                   </p>
                 )}
               </section>
-              {workspaceRole === "landlord" && !inviteRole && (
+              {workspaceRole === "landlord" && !inviteRole && !activeLandlordAccess && (
                 <section className="proposal-composer-launcher">
                   {!isProposalComposerOpen ? (
                     <button

@@ -9,6 +9,14 @@ const wrapper = readFileSync(
   path.join(frontendRoot, "..", "scripts", "Broadcast-BaseSepolia.ps1"),
   "utf8",
 );
+const rehearsal = readFileSync(
+  path.join(frontendRoot, "scripts", "rehearse-contract-deployment.mjs"),
+  "utf8",
+);
+const exporter = readFileSync(
+  path.join(frontendRoot, "..", "scripts", "Export-BaseSepoliaDeployment.ps1"),
+  "utf8",
+);
 
 test("Base Sepolia wrapper keeps exact-release assurance offline", () => {
   const rpcSelection = wrapper.indexOf(
@@ -35,4 +43,57 @@ test("credential-free preflight stops before wallet access", () => {
   assert.ok(preflightExit >= 0);
   assert.ok(walletNotice > preflightExit);
   assert.ok(forgeBroadcast > walletNotice);
+});
+
+test("deployment rehearsal binds the yield token to its settlement asset", () => {
+  assert.match(
+    rehearsal,
+    /compiled\.yieldToken,\s*\[\s*token\.address,?\s*\]/,
+    "the local rehearsal must pass the freshly deployed testUSDC address to TestAaveUSDC",
+  );
+});
+
+test("broadcast export reuses the verified Base Sepolia endpoint", () => {
+  assert.match(
+    wrapper,
+    /Export-BaseSepoliaDeployment\.ps1[\s\S]*-ExpectedCommit \$candidateCommit[\s\S]*-RpcUrl \$verifiedRpcUrl/,
+  );
+});
+
+test("deployment export verifies live code and every reciprocal cohort binding", () => {
+  assert.match(exporter, /cast\.exe" code/);
+  for (const signature of [
+    "SETTLEMENT_ASSET()(address)",
+    "TOKEN()(address)",
+    "YIELD_TOKEN()(address)",
+    "OPERATIONS_RESERVE()(address)",
+    "ESCROW()(address)",
+    "TREASURY()(address)",
+  ]) {
+    assert.ok(exporter.includes(signature), `missing live verification for ${signature}`);
+  }
+  assert.match(exporter, /liveBindingsVerified = \$true/);
+});
+
+test("independent verifier requires two-RPC code, receipt, and binding agreement", () => {
+  const source = readFileSync(
+    new URL("../../scripts/Verify-BaseSepoliaCandidate.ps1", import.meta.url),
+    "utf8",
+  );
+  assert.match(source, /base-sepolia-rpc\.publicnode\.com/);
+  assert.match(source, /Parameter\(Mandatory = \$true\)/);
+  assert.match(source, /source commit does not match the reviewed release candidate/);
+  assert.match(source, /IsPathRooted\(\$ManifestPath\)/);
+  assert.match(source, /Independent RPC endpoints disagree/);
+  assert.match(source, /\$code \| & "\$foundryBin\\cast\.exe" keccak/);
+  assert.match(source, /cast\.exe" receipt/);
+  assert.match(source, /'true', '1', '0x1', '0x01'/);
+  assert.match(source, /SETTLEMENT_ASSET\(\)\(address\)/);
+  assert.match(source, /OpenEscrow\.OPERATIONS_RESERVE\(\)/);
+  assert.match(source, /OperationsReserve\.TREASURY\(\)/);
+  assert.match(source, /AgreementActivityRegistry\.ESCROW\(\)/);
+  assert.match(source, /Get-FileHash[\s\S]*SHA256/);
+  assert.match(source, /candidateManifestSha256/);
+  assert.match(source, /candidateManifest = "deployments\/base-sepolia-candidate\.json"/);
+  assert.match(source, /base-sepolia-candidate-verification\.json/);
 });

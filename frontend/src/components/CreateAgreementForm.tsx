@@ -63,6 +63,7 @@ import {
 } from "../lib/finalizationTransaction";
 import { ARBITER_UI_ENABLED } from "../lib/featureFlags";
 import type { InviteRole } from "../lib/inviteContext";
+import { publicAppOrigin } from "../lib/publicAppOrigin";
 import {
   checkComplianceSourceStatus,
   complianceSourceStatusSummary,
@@ -75,6 +76,7 @@ import {
   resetNegotiationArbiterInvite,
   resetNegotiationTenantInvite,
   sendNegotiationInvitation,
+  validateNegotiationInvitation,
   updateNegotiationTenant,
   clearLandlordBundle,
   createNegotiation,
@@ -99,6 +101,13 @@ import {
   getDepositAsset,
   type DepositAssetId,
 } from "../../shared/deposit-assets.js";
+import {
+  ACCELERATED_REVIEW_TIMING_PROFILE,
+  acceleratedReviewClaimWindowStart,
+  agreementTimingSeconds,
+  isAcceleratedReviewTiming,
+  reviewerTimingControlState,
+} from "../../shared/testnet-review-timing.js";
 import "./CreateAgreementFormTabs.css";
 
 const DAY = 24 * 60 * 60;
@@ -191,11 +200,20 @@ function hasFirstAndLastName(value: string): boolean {
   return value.trim().split(/\s+/).filter(Boolean).length >= 2;
 }
 
+function localDateTimeInputValue(date: Date): string {
+  const offsetMs = date.getTimezoneOffset() * 60_000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+}
+
+function serializedDateTimeValue(value: string): string {
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : value;
+}
+
 function defaultClaimWindowStart(): string {
   const date = new Date();
   date.setFullYear(date.getFullYear() + 1);
-  const offsetMs = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+  return localDateTimeInputValue(date);
 }
 
 function equalSplitBps(count: number): number[] {
@@ -340,13 +358,14 @@ function inviteContent(
   proposalId: string,
   token: string,
 ) {
-  const inviteUrl = buildNegotiationInviteUrl(role, proposalId, token);
+  const verificationUrl = buildNegotiationInviteUrl(role, proposalId, token);
+  const appUrl = `${publicAppOrigin()}/`;
   const body = [
     `You have been invited to review an OpenEscrow security-deposit proposal as the ${role}.`,
     "",
-    `Review the landlord's terms, propose changes, or approve the current revision here: ${inviteUrl}`,
+    `Open OpenEscrow and sign in using the invited email address: ${appUrl}`,
     "",
-    "Your invitation is locked to the role named above. OpenEscrow can create an EVM wallet when you sign in with Google, or you can connect your own wallet.",
+    "OpenEscrow will load only the proposals and deposits associated with your verified account. Choose the tenant workspace to review, propose changes, or approve the current revision.",
     "",
     "Every proposal, requested change, approval, invitation action, and finalization is added to a timestamped running record.",
     "",
@@ -354,7 +373,8 @@ function inviteContent(
   ].join("\n");
   return {
     body,
-    url: inviteUrl,
+    url: appUrl,
+    verificationUrl,
   };
 }
 
@@ -434,6 +454,8 @@ function AgreementForm({
   const [claimDays, setClaimDays] = useState<string>(GENERIC_TEST_POLICY.claimDays);
   const [responseDays, setResponseDays] = useState<string>(GENERIC_TEST_POLICY.responseDays);
   const [arbiterDays, setArbiterDays] = useState<string>(GENERIC_TEST_POLICY.arbiterDays);
+  const [testnetTimingProfile, setTestnetTimingProfile] =
+    useState<AgreementTerms["testnetTimingProfile"]>();
   const [draft, setDraft] = useState<NegotiationRecord | null>(null);
   const [accessBundle, setAccessBundle] = useState<CreatedNegotiation["access"] | null>(null);
   const [revisionSummary, setRevisionSummary] = useState("");
@@ -448,7 +470,16 @@ function AgreementForm({
   const [invalidField, setInvalidField] = useState<ProposalField | null>(null);
   const [copiedInvite, setCopiedInvite] = useState<string | null>(null);
   const [sendingInvite, setSendingInvite] = useState<string | null>(null);
-  const [sentInvite, setSentInvite] = useState<string | null>(null);
+  const [sentInvites, setSentInvites] = useState<Set<string>>(() => new Set());
+  const persistedSentInviteKeys = draft
+    ? [
+        ...draft.tenants
+          .filter((tenant) => Boolean(tenant.invitationSentAt))
+          .map((tenant) => tenant.id),
+        ...(draft.arbiterInvitationSentAt ? ["arbiter"] : []),
+      ]
+    : [];
+  const persistedSentInviteKey = persistedSentInviteKeys.join("|");
   const [isSavingDraft, setIsSavingDraft] = useState(false);
   const [isPreflightingFinalization, setIsPreflightingFinalization] =
     useState(false);
@@ -458,6 +489,14 @@ function AgreementForm({
   const handledReceipt = useRef<`0x${string}` | null>(null);
   const finalizationRetryButton = useRef<HTMLButtonElement>(null);
   const pendingFinalizationStored = useRef(true);
+
+  useEffect(() => {
+    setSentInvites(
+      new Set(
+        persistedSentInviteKey ? persistedSentInviteKey.split("|") : [],
+      ),
+    );
+  }, [draft?.id, draft?.revision, persistedSentInviteKey]);
 
   function confirmProposalChange(message: string) {
     setFormError(null);
@@ -482,12 +521,19 @@ function AgreementForm({
   } = useWaitForTransactionReceipt({ hash });
   const claimWindowHasPassed =
     Boolean(claimWindowStart) && new Date(claimWindowStart).getTime() <= Date.now();
-  const approvedTermsLocked =
-    Boolean(
-      draft &&
-        (draft.tenants.some((tenant) => tenant.approved) ||
-          (draft.arbiterEmail && draft.arbiterApproved)),
-    ) && !isEditingRevision;
+  const acceleratedReviewTiming = isAcceleratedReviewTiming({
+    testnetTimingProfile,
+  });
+  const reviewerTimingControl = reviewerTimingControlState({
+    accelerated: acceleratedReviewTiming,
+    expired: claimWindowHasPassed,
+  });
+  const currentRevisionHasApproval = Boolean(
+    draft &&
+      (draft.tenants.some((tenant) => tenant.approved) ||
+        (draft.arbiterEmail && draft.arbiterApproved)),
+  );
+  const approvedTermsLocked = Boolean(draft) && !isEditingRevision;
   const compliancePreview =
     selectedJurisdiction && addressResolution
       ? buildComplianceSnapshot(
@@ -707,7 +753,9 @@ function AgreementForm({
     setMonthlyRent(record.terms.monthlyRent || "");
     setDepositAssetId(depositAssetIdFromTerms(record.terms));
     setYieldConsent(record.terms.yieldConsent === true);
-    setClaimWindowStart(record.terms.claimWindowStart);
+    setClaimWindowStart(
+      localDateTimeInputValue(new Date(record.terms.claimWindowStart)),
+    );
     setClaimDays(
       isLegacyCalifornia ? GENERIC_TEST_POLICY.claimDays : record.terms.claimDays,
     );
@@ -717,6 +765,7 @@ function AgreementForm({
     setArbiterDays(
       isLegacyCalifornia ? GENERIC_TEST_POLICY.arbiterDays : record.terms.arbiterDays,
     );
+    setTestnetTimingProfile(record.terms.testnetTimingProfile);
     setProposalStep(
       record.status === "ready" || record.status === "finalized"
         ? "review"
@@ -733,23 +782,41 @@ function AgreementForm({
         ? initialAccess
         : null;
     if (!access) return;
+    if (draft?.id === access.proposalId) {
+      setAccessBundle((current) => {
+        if (current?.landlord === access.token) return current;
+        return current
+          ? { ...current, landlord: access.token }
+          : {
+              landlord: access.token,
+              tenant: "",
+              tenants: [],
+              arbiter: null,
+            };
+      });
+      setFormError((current) =>
+        current === "This proposal link is invalid or no longer available." ? null : current,
+      );
+      return;
+    }
     loadNegotiation(access)
       .then((record) => {
         setDraft(record);
-        setAccessBundle(
-          saved?.access || {
-            landlord: access.token,
+        setAccessBundle({
+          ...(saved?.access || {
             tenant: "",
             tenants: [],
             arbiter: null,
-          },
-        );
+          }),
+          landlord: access.token,
+        });
+        setFormError(null);
         applyTerms(record);
       })
       .catch(() => {
         clearLandlordBundle(access.proposalId);
       });
-  }, [initialAccess]);
+  }, [draft?.id, initialAccess]);
 
   useEffect(() => {
     if (!receipt || handledReceipt.current === receipt.transactionHash) return;
@@ -801,10 +868,11 @@ function AgreementForm({
       smallLandlordException: false,
       tenantIsServiceMember: false,
       electronicDeliveryConsent: true,
-      claimWindowStart,
+      claimWindowStart: serializedDateTimeValue(claimWindowStart),
       claimDays: policy?.defaultClaimDays ?? claimDays,
       responseDays,
       arbiterDays,
+      testnetTimingProfile,
     };
   }
 
@@ -953,6 +1021,45 @@ function AgreementForm({
     setFormError(null);
   }
 
+  function proposalFieldErrorId(field: ProposalField) {
+    return `proposal-${field}-error`;
+  }
+
+  function renderFieldIssue(field: ProposalField) {
+    if (invalidField !== field || !formError) return null;
+    return (
+      <p
+        className="field-validation-error"
+        id={proposalFieldErrorId(field)}
+        role="alert"
+      >
+        {formError}
+      </p>
+    );
+  }
+
+  function applyAcceleratedReviewTiming() {
+    setTestnetTimingProfile(ACCELERATED_REVIEW_TIMING_PROFILE);
+    setClaimWindowStart(
+      localDateTimeInputValue(acceleratedReviewClaimWindowStart()),
+    );
+    clearFieldIssue("claimWindowStart");
+    setFormError(null);
+    setFormMessage(
+      "Accelerated reviewer timing applied. The claim window starts in about one hour, followed by 30-minute claim, response, and arbiter periods.",
+    );
+  }
+
+  function restoreStandardTiming() {
+    setTestnetTimingProfile(undefined);
+    setClaimWindowStart(defaultClaimWindowStart());
+    clearFieldIssue("claimWindowStart");
+    setFormError(null);
+    setFormMessage(
+      "Standard test timing restored. Review the possession-return date before publishing.",
+    );
+  }
+
   function reportIssue(issue: ProposalValidationIssue) {
     setFormMessage(null);
     setFormError(issue.message);
@@ -1017,7 +1124,15 @@ function AgreementForm({
             created.record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
           ),
         );
-        setFormMessage("Proposal saved. Invitations are now unlocked for this exact revision.");
+        const invitationDelivery = await sendPublishedInvitations(
+          created.record,
+          created.access,
+        );
+        setFormMessage(
+          invitationDelivery.failedRecipients.length === 0
+            ? "Proposal published and invitation email sent to every tenant."
+            : `Proposal published, but OpenEscrow could not email ${invitationDelivery.failedRecipients.join(", ")}. Use Resend or Send manually below.`,
+        );
         setProposalStep("review");
       } else {
         if (!landlordAccess) throw new Error("The landlord proposal access is unavailable.");
@@ -1028,10 +1143,27 @@ function AgreementForm({
           participants: { landlordName, tenantName, arbiterName },
         });
         setDraft(updated);
+        const refreshed = await rotateParticipantInvites(
+          updated,
+          accessBundle || {
+            landlord: landlordAccess.token,
+            tenant: "",
+            tenants: [],
+            arbiter: null,
+          },
+        );
+        setDraft(refreshed.record);
+        setAccessBundle(refreshed.access);
         setRevisionSummary("");
         setIsEditingRevision(false);
+        const invitationDelivery = await sendPublishedInvitations(
+          refreshed.record,
+          refreshed.access,
+        );
         setFormMessage(
-          `Revision ${updated.revision} published. Prior approvals were reset; resend the review invitations so every tenant${updated.arbiterEmail ? " and the arbiter" : ""} can approve the new revision.`,
+          invitationDelivery.failedRecipients.length === 0
+            ? `Revision ${updated.revision} published and fresh invitation email${updated.tenants.length === 1 && !updated.arbiterEmail ? "" : "s"} sent automatically.`
+            : `Revision ${updated.revision} published, but OpenEscrow could not email ${invitationDelivery.failedRecipients.join(", ")}. Use Resend or Send manually below.`,
         );
         setProposalStep("review");
       }
@@ -1059,6 +1191,7 @@ function AgreementForm({
     setPrimaryTenantShareBps(10000);
     setTenantShareDraft({});
     setClaimWindowStart(defaultClaimWindowStart());
+    setTestnetTimingProfile(undefined);
     setClaimDays(GENERIC_TEST_POLICY.claimDays);
     setRevisionSummary("");
     setIsEditingRevision(false);
@@ -1086,6 +1219,7 @@ function AgreementForm({
     setPrimaryTenantShareBps(10000);
     setTenantShareDraft({});
     setClaimWindowStart(defaultClaimWindowStart());
+    setTestnetTimingProfile(undefined);
     setClaimDays(GENERIC_TEST_POLICY.claimDays);
     setRevisionSummary("");
     setIsEditingRevision(false);
@@ -1150,19 +1284,21 @@ function AgreementForm({
         ],
       };
       setDraft(result.record);
+      const refreshed = await rotateParticipantInvites(result.record, nextBundle);
+      setDraft(refreshed.record);
       setTenantShareDraft(
         Object.fromEntries(
-          result.record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
+          refreshed.record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
         ),
       );
-      setAccessBundle(nextBundle);
-      rememberLandlordBundle({ record: result.record, access: nextBundle });
+      setAccessBundle(refreshed.access);
+      rememberLandlordBundle(refreshed);
       setNewTenantName("");
       setNewTenantEmail("");
       setShowAdditionalTenant(false);
       setIsEditingRevision(false);
       setFormMessage(
-        `Added ${email}. Revision ${result.record.revision} now requires fresh approval from every tenant${result.record.arbiterEmail ? " and the arbiter" : ""}.`,
+        `Added ${email}. Revision ${result.record.revision} now requires fresh approval from every tenant${result.record.arbiterEmail ? " and the arbiter" : ""}. Fresh links are ready to send.`,
       );
     } catch (cause) {
       setFormError(
@@ -1229,19 +1365,21 @@ function AgreementForm({
         tenants: nextTenants,
       };
       setDraft(result.record);
-      setTenantName(result.record.tenantName || "");
-      setTenantEmail(result.record.tenantEmail);
-      setAccessBundle(nextBundle);
+      const refreshed = await rotateParticipantInvites(result.record, nextBundle);
+      setDraft(refreshed.record);
+      setTenantName(refreshed.record.tenantName || "");
+      setTenantEmail(refreshed.record.tenantEmail);
+      setAccessBundle(refreshed.access);
       setTenantShareDraft(
         Object.fromEntries(
-          result.record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
+          refreshed.record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
         ),
       );
-      rememberLandlordBundle({ record: result.record, access: nextBundle });
+      rememberLandlordBundle(refreshed);
       setEditingTenantId(null);
       setIsEditingRevision(false);
       setFormMessage(
-        `Updated ${email} on the active proposal. Revision ${result.record.revision} now requires fresh approval from every tenant${result.record.arbiterEmail ? " and the arbiter" : ""}.${result.invite ? " The prior email invite was invalidated; send the new invite." : ""}`,
+        `Updated ${email} on the active proposal. Revision ${result.record.revision} now requires fresh approval from every tenant${result.record.arbiterEmail ? " and the arbiter" : ""}. Fresh links are ready to send.`,
       );
     } catch (cause) {
       setFormError(
@@ -1283,22 +1421,24 @@ function AgreementForm({
         tenants: remainingInvites,
       };
       setDraft(result.record);
-      setTenantName(result.record.tenantName || "");
-      setTenantEmail(result.record.tenantEmail);
-      setAccessBundle(nextBundle);
+      const refreshed = await rotateParticipantInvites(result.record, nextBundle);
+      setDraft(refreshed.record);
+      setTenantName(refreshed.record.tenantName || "");
+      setTenantEmail(refreshed.record.tenantEmail);
+      setAccessBundle(refreshed.access);
       setTenantShareDraft(
         Object.fromEntries(
-          result.record.tenants.map((recordTenant) => [
+          refreshed.record.tenants.map((recordTenant) => [
             recordTenant.id,
             recordTenant.depositShareBps,
           ]),
         ),
       );
-      rememberLandlordBundle({ record: result.record, access: nextBundle });
+      rememberLandlordBundle(refreshed);
       setEditingTenantId(null);
       setIsEditingRevision(false);
       setFormMessage(
-        `Removed ${tenant.email} from the active proposal. Revision ${result.record.revision} now requires fresh approval from every remaining tenant${result.record.arbiterEmail ? " and the arbiter" : ""}.`,
+        `Removed ${tenant.email} from the active proposal. Revision ${result.record.revision} now requires fresh approval from every remaining tenant${result.record.arbiterEmail ? " and the arbiter" : ""}. Fresh links are ready to send.`,
       );
     } catch (cause) {
       setFormError(
@@ -1386,14 +1526,25 @@ function AgreementForm({
         shares,
       });
       setDraft(updated);
+      const refreshed = await rotateParticipantInvites(
+        updated,
+        accessBundle || {
+          landlord: landlordAccess.token,
+          tenant: "",
+          tenants: [],
+          arbiter: null,
+        },
+      );
+      setDraft(refreshed.record);
+      setAccessBundle(refreshed.access);
       setTenantShareDraft(
         Object.fromEntries(
-          updated.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
+          refreshed.record.tenants.map((tenant) => [tenant.id, tenant.depositShareBps]),
         ),
       );
       setIsEditingRevision(false);
       setFormMessage(
-        `Updated the tenant deposit split. Revision ${updated.revision} now requires fresh approval from every tenant${updated.arbiterEmail ? " and the arbiter" : ""}.`,
+        `Updated the tenant deposit split. Revision ${updated.revision} now requires fresh approval from every tenant${updated.arbiterEmail ? " and the arbiter" : ""}. Fresh links are ready to send.`,
       );
     } catch (cause) {
       setFormError(
@@ -1431,6 +1582,7 @@ function AgreementForm({
       setPrimaryTenantShareBps(10000);
       setTenantShareDraft({});
       setClaimWindowStart(defaultClaimWindowStart());
+      setTestnetTimingProfile(undefined);
       setClaimDays(GENERIC_TEST_POLICY.claimDays);
       setFormMessage(
         "Proposal cancelled and removed from active workspaces. Its audit record was preserved.",
@@ -1462,91 +1614,176 @@ function AgreementForm({
       : null;
   }
 
-  async function resetTenantInvite(tenantId: string) {
-    if (!landlordAccess || !draft || !accessBundle) return;
-    const tenant = draft.tenants.find((item) => item.id === tenantId);
-    if (!tenant) return;
-    if (
-      !confirmProposalChange(
-        `Reset the link for ${tenant.email}? The prior link and any current tenant record session will stop working. The invited email can still find this agreement after signing in.`,
-      )
-    ) {
-      return;
+  async function rotateParticipantInvites(
+    record: NegotiationRecord,
+    bundle: CreatedNegotiation["access"],
+  ) {
+    if (!landlordAccess) {
+      throw new Error("The landlord proposal access is unavailable.");
     }
-
-    setIsSavingDraft(true);
-    setFormError(null);
-    setFormMessage(null);
-    try {
-      const result = await resetNegotiationTenantInvite(landlordAccess, tenantId);
-      const existingInvites = accessBundle.tenants || [];
-      const nextTenants = existingInvites.some((item) => item.id === tenantId)
+    let latestRecord = record;
+    let nextBundle = bundle;
+    for (const tenant of record.tenants) {
+      const result = await resetNegotiationTenantInvite(landlordAccess, tenant.id);
+      const existingInvites = nextBundle.tenants || [];
+      const nextTenants = existingInvites.some((item) => item.id === tenant.id)
         ? existingInvites.map((item) =>
-            item.id === tenantId ? result.invite : item,
+            item.id === tenant.id ? result.invite : item,
           )
         : [...existingInvites, result.invite];
-      const nextBundle = {
-        ...accessBundle,
+      nextBundle = {
+        ...nextBundle,
         tenant: result.invite.isFundingTenant
           ? result.invite.token
-          : accessBundle.tenant,
+          : nextBundle.tenant,
         tenants: nextTenants,
       };
-      setDraft(result.record);
+      latestRecord = result.record;
+      setDraft(latestRecord);
       setAccessBundle(nextBundle);
-      rememberLandlordBundle({ record: result.record, access: nextBundle });
-      setCopiedInvite(null);
-      setSentInvite(null);
-      setFormMessage(
-        `Reset the link for ${tenant.email}. Send the new link; every prior copy is invalid.`,
-      );
-    } catch (cause) {
-      setFormError(
-        cause instanceof Error
-          ? cause.message
-          : "The tenant invitation link could not be reset.",
-      );
-    } finally {
-      setIsSavingDraft(false);
+      rememberLandlordBundle({ record: latestRecord, access: nextBundle });
+    }
+    if (record.arbiterEmail) {
+      const result = await resetNegotiationArbiterInvite(landlordAccess);
+      nextBundle = { ...nextBundle, arbiter: result.invite.token };
+      latestRecord = result.record;
+      setDraft(latestRecord);
+      setAccessBundle(nextBundle);
+      rememberLandlordBundle({ record: latestRecord, access: nextBundle });
+    } else if (nextBundle.arbiter) {
+      nextBundle = { ...nextBundle, arbiter: null };
+      setAccessBundle(nextBundle);
+      rememberLandlordBundle({ record: latestRecord, access: nextBundle });
+    }
+    setCopiedInvite(null);
+    setSentInvites(new Set());
+    return { record: latestRecord, access: nextBundle };
+  }
+
+  async function sendPublishedInvitations(
+    record: NegotiationRecord,
+    bundle: CreatedNegotiation["access"],
+  ) {
+    const access: NegotiationAccess = {
+      proposalId: record.id,
+      role: "landlord",
+      token: bundle.landlord,
+    };
+    const delivered = new Set<string>();
+    const failedRecipients: string[] = [];
+    for (const tenant of record.tenants) {
+      const token =
+        bundle.tenants.find((candidate) => candidate.id === tenant.id)?.token ||
+        (tenant.isFundingTenant ? bundle.tenant : null);
+      if (!token) {
+        failedRecipients.push(tenant.email);
+        continue;
+      }
+      try {
+        const invitation = inviteContent("tenant", record.id, token);
+        const result = await sendNegotiationInvitation(access, {
+          invitedRole: "tenant",
+          invitedTenantId: tenant.id,
+          invitationUrl: invitation.verificationUrl,
+        });
+        if (result.sent) delivered.add(tenant.id);
+        else failedRecipients.push(tenant.email);
+      } catch {
+        failedRecipients.push(tenant.email);
+      }
+    }
+    if (record.arbiterEmail && bundle.arbiter) {
+      try {
+        const invitation = inviteContent("arbiter", record.id, bundle.arbiter);
+        const result = await sendNegotiationInvitation(access, {
+          invitedRole: "arbiter",
+          invitationUrl: invitation.verificationUrl,
+        });
+        if (result.sent) delivered.add("arbiter");
+        else failedRecipients.push(record.arbiterEmail);
+      } catch {
+        failedRecipients.push(record.arbiterEmail);
+      }
+    }
+    setSentInvites(delivered);
+    try {
+      const refreshed = await loadNegotiation(access);
+      setDraft(refreshed);
+      return { record: refreshed, delivered, failedRecipients };
+    } catch {
+      return { record, delivered, failedRecipients };
     }
   }
 
-  async function resetArbiterInvite() {
-    if (!landlordAccess || !draft || !accessBundle || !draft.arbiterEmail) return;
-    if (
-      !confirmProposalChange(
-        `Reset the link for ${draft.arbiterEmail}? The prior link and any current arbiter record session will stop working. The invited email can still find this agreement after signing in.`,
-      )
-    ) {
-      return;
+  async function ensureTenantInvite(tenantId: string) {
+    const existing = tenantInvite(tenantId);
+    if (existing && landlordAccess) {
+      try {
+        await validateNegotiationInvitation(landlordAccess, {
+          invitedRole: "tenant",
+          invitedTenantId: tenantId,
+          invitationUrl: existing.verificationUrl,
+        });
+        return existing;
+      } catch (cause) {
+        if (
+          !(cause instanceof Error) ||
+          cause.message !==
+            "This invitation link was replaced. Send the current link instead."
+        ) {
+          throw cause;
+        }
+      }
     }
+    if (!landlordAccess || !draft || !accessBundle) return null;
+    const tenant = draft.tenants.find((item) => item.id === tenantId);
+    if (!tenant) return null;
+    const result = await resetNegotiationTenantInvite(landlordAccess, tenantId);
+    const existingInvites = accessBundle.tenants || [];
+    const nextTenants = existingInvites.some((item) => item.id === tenantId)
+      ? existingInvites.map((item) =>
+          item.id === tenantId ? result.invite : item,
+        )
+      : [...existingInvites, result.invite];
+    const nextBundle = {
+      ...accessBundle,
+      tenant: result.invite.isFundingTenant
+        ? result.invite.token
+        : accessBundle.tenant,
+      tenants: nextTenants,
+    };
+    setDraft(result.record);
+    setAccessBundle(nextBundle);
+    rememberLandlordBundle({ record: result.record, access: nextBundle });
+    return inviteContent("tenant", result.record.id, result.invite.token);
+  }
 
-    setIsSavingDraft(true);
-    setFormError(null);
-    setFormMessage(null);
-    try {
-      const result = await resetNegotiationArbiterInvite(landlordAccess);
-      const nextBundle = {
-        ...accessBundle,
-        arbiter: result.invite.token,
-      };
-      setDraft(result.record);
-      setAccessBundle(nextBundle);
-      rememberLandlordBundle({ record: result.record, access: nextBundle });
-      setCopiedInvite(null);
-      setSentInvite(null);
-      setFormMessage(
-        `Reset the link for ${result.invite.email}. Send the new link; every prior copy is invalid.`,
-      );
-    } catch (cause) {
-      setFormError(
-        cause instanceof Error
-          ? cause.message
-          : "The arbiter invitation link could not be reset.",
-      );
-    } finally {
-      setIsSavingDraft(false);
+  async function ensureArbiterInvite() {
+    const existing = arbiterInvite();
+    if (existing && landlordAccess) {
+      try {
+        await validateNegotiationInvitation(landlordAccess, {
+          invitedRole: "arbiter",
+          invitationUrl: existing.verificationUrl,
+        });
+        return existing;
+      } catch (cause) {
+        if (
+          !(cause instanceof Error) ||
+          cause.message !==
+            "This invitation link was replaced. Send the current link instead."
+        ) {
+          throw cause;
+        }
+      }
     }
+    if (!landlordAccess || !draft?.arbiterEmail || !accessBundle) return null;
+    const result = await resetNegotiationArbiterInvite(landlordAccess);
+    const nextBundle = { ...accessBundle, arbiter: result.invite.token };
+    setDraft(result.record);
+    setAccessBundle(nextBundle);
+    rememberLandlordBundle({ record: result.record, access: nextBundle });
+    return inviteContent("arbiter", result.record.id, result.invite.token);
   }
 
   async function recordInvitation(
@@ -1569,7 +1806,7 @@ function AgreementForm({
   }
 
   async function copyTenantInvite(tenantId: string) {
-    const invitation = tenantInvite(tenantId);
+    const invitation = await ensureTenantInvite(tenantId);
     if (!invitation) return;
     setFormError(null);
     try {
@@ -1584,17 +1821,21 @@ function AgreementForm({
   }
 
   async function sendTenantInvite(tenantId: string) {
-    const invitation = tenantInvite(tenantId);
     const tenant = draft?.tenants.find((item) => item.id === tenantId);
-    if (!invitation || !tenant || !landlordAccess) return;
+    if (!tenant || !landlordAccess) return;
     setFormError(null);
     setFormMessage(null);
     setSendingInvite(tenantId);
     try {
+      const resend = sentInvites.has(tenantId);
+      const invitation = await ensureTenantInvite(tenantId);
+      if (!invitation) throw new Error("The current tenant invitation could not be prepared.");
       const result = await sendNegotiationInvitation(landlordAccess, {
         invitedRole: "tenant",
         invitedTenantId: tenantId,
-        invitationUrl: invitation.url,
+        invitationUrl: invitation.verificationUrl,
+        resend,
+        resendRequestId: resend ? crypto.randomUUID() : undefined,
       });
       if (!result.sent) {
         setFormMessage(
@@ -1602,9 +1843,11 @@ function AgreementForm({
         );
         return;
       }
-      setSentInvite(tenantId);
+      setSentInvites((current) => new Set(current).add(tenantId));
       setFormMessage(
-        result.duplicate
+        resend
+          ? `Resent the current invitation to ${result.recipientEmail}.`
+          : result.duplicate
           ? `The current invitation for ${result.recipientEmail} was already sent recently.`
           : `Sent the current invitation to ${result.recipientEmail}.`,
       );
@@ -1618,7 +1861,7 @@ function AgreementForm({
   }
 
   async function copyArbiterInvite() {
-    const invitation = arbiterInvite();
+    const invitation = await ensureArbiterInvite();
     if (!invitation) return;
     setFormError(null);
     try {
@@ -1633,15 +1876,19 @@ function AgreementForm({
   }
 
   async function sendArbiterInvite() {
-    const invitation = arbiterInvite();
-    if (!invitation || !draft?.arbiterEmail || !landlordAccess) return;
+    if (!draft?.arbiterEmail || !landlordAccess) return;
     setFormError(null);
     setFormMessage(null);
     setSendingInvite("arbiter");
     try {
+      const resend = sentInvites.has("arbiter");
+      const invitation = await ensureArbiterInvite();
+      if (!invitation) throw new Error("The current arbiter invitation could not be prepared.");
       const result = await sendNegotiationInvitation(landlordAccess, {
         invitedRole: "arbiter",
-        invitationUrl: invitation.url,
+        invitationUrl: invitation.verificationUrl,
+        resend,
+        resendRequestId: resend ? crypto.randomUUID() : undefined,
       });
       if (!result.sent) {
         setFormMessage(
@@ -1649,9 +1896,11 @@ function AgreementForm({
         );
         return;
       }
-      setSentInvite("arbiter");
+      setSentInvites((current) => new Set(current).add("arbiter"));
       setFormMessage(
-        result.duplicate
+        resend
+          ? `Resent the current invitation to ${result.recipientEmail}.`
+          : result.duplicate
           ? `The current invitation for ${result.recipientEmail} was already sent recently.`
           : `Sent the current invitation to ${result.recipientEmail}.`,
       );
@@ -1740,6 +1989,7 @@ function AgreementForm({
 
     const nowSec = Math.floor(Date.now() / 1000);
     const startSec = Math.floor(new Date(draft.terms.claimWindowStart).getTime() / 1000);
+    const timingSeconds = agreementTimingSeconds(draft.terms);
     if (startSec < nowSec) return setFormError("The expected possession-return date must still be in the future.");
     if (startSec - nowSec > MAX_CLAIM_WINDOW_OFFSET_SECONDS) {
       return setFormError("The expected possession-return date is too far in the future.");
@@ -1806,9 +2056,9 @@ function AgreementForm({
             : ZERO_ADDRESS,
           agreedAmount: parseUSDC(draft.terms.deposit),
           claimWindowStart: BigInt(startSec),
-          claimPeriod: BigInt(Number(draft.terms.claimDays) * DAY),
-          responsePeriod: BigInt(Number(draft.terms.responseDays) * DAY),
-          arbiterRulingPeriod: BigInt(Number(draft.terms.arbiterDays) * DAY),
+          claimPeriod: BigInt(timingSeconds.claimPeriodSeconds),
+          responsePeriod: BigInt(timingSeconds.responsePeriodSeconds),
+          arbiterRulingPeriod: BigInt(timingSeconds.arbiterRulingPeriodSeconds),
         },
       );
       if (!finalizationScope.isCurrent(operationId)) return;
@@ -1849,9 +2099,9 @@ function AgreementForm({
         draft.terms.tokenChoice === "yield" ? YIELD_USDC_ADDRESS : USDC_ADDRESS,
         parseUSDC(draft.terms.deposit),
         BigInt(startSec),
-        BigInt(Number(draft.terms.claimDays) * DAY),
-        BigInt(Number(draft.terms.responseDays) * DAY),
-        BigInt(Number(draft.terms.arbiterDays) * DAY),
+        BigInt(timingSeconds.claimPeriodSeconds),
+        BigInt(timingSeconds.responsePeriodSeconds),
+        BigInt(timingSeconds.arbiterRulingPeriodSeconds),
       ],
     });
   }
@@ -1992,7 +2242,11 @@ function AgreementForm({
           disabled={Boolean(draft)}
           data-proposal-field="tenantName"
           aria-invalid={invalidField === "tenantName"}
+          aria-errormessage={
+            invalidField === "tenantName" ? proposalFieldErrorId("tenantName") : undefined
+          }
         />
+        {renderFieldIssue("tenantName")}
       </div>
       <label>
         Tenant email address
@@ -2009,8 +2263,12 @@ function AgreementForm({
           disabled={Boolean(draft)}
           data-proposal-field="tenantEmail"
           aria-invalid={invalidField === "tenantEmail"}
+          aria-errormessage={
+            invalidField === "tenantEmail" ? proposalFieldErrorId("tenantEmail") : undefined
+          }
         />
       </label>
+      {renderFieldIssue("tenantEmail")}
       <p className="field-help">
         Use a complete address in the format tenant@example.com. The server validates it again
         before saving or changing an invitation.
@@ -2094,8 +2352,14 @@ function AgreementForm({
                 disabled={Boolean(draft)}
                 data-proposal-field="arbiterEmail"
                 aria-invalid={invalidField === "arbiterEmail"}
+                aria-errormessage={
+                  invalidField === "arbiterEmail"
+                    ? proposalFieldErrorId("arbiterEmail")
+                    : undefined
+                }
               />
             </label>
+            {renderFieldIssue("arbiterEmail")}
           </div>
         </section>
       )}
@@ -2280,7 +2544,7 @@ function AgreementForm({
         onVerifiedSuggestion={(suggestion: AddressSuggestion) => {
           const resolution = normalizeAddressResolution({
             ...suggestion,
-            provider: "photon-openstreetmap",
+            provider: suggestion.provider,
             providerFeatureId: suggestion.id,
           });
           const profile =
@@ -2295,7 +2559,13 @@ function AgreementForm({
         }}
         disabled={approvedTermsLocked}
         invalid={invalidField === "propertyAddress"}
+        errorMessageId={
+          invalidField === "propertyAddress"
+            ? proposalFieldErrorId("propertyAddress")
+            : undefined
+        }
       />
+      {renderFieldIssue("propertyAddress")}
       <p className="field-help">
         This identifies which rental and security deposit the proposal covers. It remains in the
         private agreement record and is not written directly to the public blockchain.
@@ -2554,8 +2824,11 @@ function AgreementForm({
           </label>
           <label>
             <span>
-              <strong>Assistance-animal accommodation affects deposit treatment</strong>
-              <small>No diagnosis or medical documentation is stored here.</small>
+              <strong>Do special deposit rules apply because of an assistance animal?</strong>
+              <small>
+                Choose Yes only if an approved accommodation changes how this deposit
+                should be handled. Do not enter medical details.
+              </small>
             </span>
             <select
               value={String(complianceFacts.assistanceAnimalAccommodation)}
@@ -2572,15 +2845,20 @@ function AgreementForm({
                 }))
               }
             >
-              <option value="unknown">Unknown / not answered</option>
+              <option value="unknown">Not sure</option>
               <option value="true">Yes</option>
               <option value="false">No</option>
             </select>
           </label>
           <label>
             <span>
-              <strong>Qualifying SCRA lease termination asserted</strong>
-              <small>Orders and military details stay outside the general agreement record.</small>
+              <strong>
+                Is a tenant ending the lease early because of qualifying military orders?
+              </strong>
+              <small>
+                Federal protections under the Servicemembers Civil Relief Act (SCRA) may
+                apply. Do not upload military orders here.
+              </small>
             </span>
             <select
               value={String(complianceFacts.scraQualifiedTermination)}
@@ -2597,14 +2875,15 @@ function AgreementForm({
                 }))
               }
             >
-              <option value="unknown">Unknown / not asserted</option>
-              <option value="true">Yes, asserted</option>
+              <option value="unknown">Not sure</option>
+              <option value="true">Yes</option>
               <option value="false">No</option>
             </select>
           </label>
           <p className="field-help">
-            OpenEscrow never infers these facts from an address. VAWA survivor details and
-            emergency-transfer information must not be entered or uploaded here.
+            These answers are not inferred from the address. Do not enter or upload medical
+            details, military orders, survivor information, or confidential relocation
+            details.
           </p>
         </fieldset>
       )}
@@ -2637,6 +2916,10 @@ function AgreementForm({
         aria-labelledby="deposit-split-title"
         data-proposal-field="depositShares"
         tabIndex={-1}
+        aria-invalid={invalidField === "depositShares"}
+        aria-errormessage={
+          invalidField === "depositShares" ? proposalFieldErrorId("depositShares") : undefined
+        }
       >
         <div className="record-header">
           <div>
@@ -2964,8 +3247,16 @@ function AgreementForm({
           </>
         )}
       </section>
+      {renderFieldIssue("depositShares")}
 
-      <div data-proposal-field="depositAsset" tabIndex={-1}>
+      <div
+        data-proposal-field="depositAsset"
+        tabIndex={-1}
+        aria-invalid={invalidField === "depositAsset"}
+        aria-errormessage={
+          invalidField === "depositAsset" ? proposalFieldErrorId("depositAsset") : undefined
+        }
+      >
         <DepositAssetSelector
           selectedAssetId={depositAssetId}
           yieldConsent={yieldConsent}
@@ -2975,6 +3266,7 @@ function AgreementForm({
           onYieldConsentChange={setYieldConsent}
         />
       </div>
+      {renderFieldIssue("depositAsset")}
       <label>
         Monthly rent
         <input
@@ -2989,11 +3281,15 @@ function AgreementForm({
           disabled={approvedTermsLocked}
           data-proposal-field="monthlyRent"
           aria-invalid={invalidField === "monthlyRent"}
+          aria-errormessage={
+            invalidField === "monthlyRent" ? proposalFieldErrorId("monthlyRent") : undefined
+          }
         />
         <small>
           Used to evaluate deposit caps. It remains in the private agreement record.
         </small>
       </label>
+      {renderFieldIssue("monthlyRent")}
       <label>
         Deposit amount ({tokenChoice === "yield" ? "taUSDC shares" : "testUSDC"})
         <input
@@ -3008,8 +3304,12 @@ function AgreementForm({
           disabled={approvedTermsLocked}
           data-proposal-field="deposit"
           aria-invalid={invalidField === "deposit"}
+          aria-errormessage={
+            invalidField === "deposit" ? proposalFieldErrorId("deposit") : undefined
+          }
         />
       </label>
+      {renderFieldIssue("deposit")}
       <section className="cost-breakdown" aria-label="Agreement funding breakdown">
         <div>
           <span>Refundable security deposit</span>
@@ -3030,9 +3330,40 @@ function AgreementForm({
         <p>
           Each tenant pays the approved deposit percentage shown above plus an equal share of the
           separate {operationsReserve} {tokenLabel(tokenChoice)} testnet reserve. The reserve uses
-          the selected token but is not refundable deposit principal. This test profile does not
-          determine the legal treatment of any real tenant-paid charge.
+          the selected token, remains separate from deposit principal, and is returned when the
+          agreement closes. This test profile does not determine the legal treatment of any real
+          tenant-paid charge.
         </p>
+      </section>
+      <section
+        className={`reviewer-timing-card${acceleratedReviewTiming ? " is-active" : ""}`}
+        aria-labelledby="reviewer-timing-title"
+      >
+        <div>
+          <span className="eyebrow">Base Sepolia reviewer tool</span>
+          <h3 id="reviewer-timing-title">Accelerated lifecycle timing</h3>
+          <p>
+            Use this only for an invented reviewer agreement. The possession-return time is set
+            about one hour ahead, followed by 30-minute claim, response, and arbiter periods.
+          </p>
+          <strong>
+            {acceleratedReviewTiming
+              ? "Accelerated timing is active for this revision."
+              : "Standard agreement timing is active."}
+          </strong>
+        </div>
+        <button
+          className={reviewerTimingControl.primary ? "btn btn-primary" : "btn btn-ghost"}
+          type="button"
+          disabled={approvedTermsLocked}
+          onClick={
+            reviewerTimingControl.action === "restore"
+              ? restoreStandardTiming
+              : applyAcceleratedReviewTiming
+          }
+        >
+          {reviewerTimingControl.label}
+        </button>
       </section>
       <label>
         Expected date tenant vacates / possession is returned
@@ -3046,18 +3377,25 @@ function AgreementForm({
           disabled={approvedTermsLocked}
           data-proposal-field="claimWindowStart"
           aria-invalid={invalidField === "claimWindowStart" || claimWindowHasPassed}
+          aria-errormessage={
+            invalidField === "claimWindowStart"
+              ? proposalFieldErrorId("claimWindowStart")
+              : undefined
+          }
         />
       </label>
       <p className="field-help">
-        This is the test lifecycle start date. It is not calculated from or validated against any
-        jurisdiction&apos;s law.
+        {acceleratedReviewTiming
+          ? "This accelerated Base Sepolia date is for reviewer testing only and does not represent a legal deadline."
+          : "This is the test lifecycle start date. It is not calculated from or validated against any jurisdiction's law."}
       </p>
-      {claimWindowHasPassed && (
+      {claimWindowHasPassed && invalidField !== "claimWindowStart" && (
         <p className="field-validation-error" role="alert">
           This saved date has passed. Select a future possession-return date before publishing a
           revision or finalizing onchain.
         </p>
       )}
+      {renderFieldIssue("claimWindowStart")}
       <label>
         {selectedJurisdiction ? "Statewide onchain safeguard window" : "Test deduction window"}
         <input
@@ -3071,13 +3409,19 @@ function AgreementForm({
           disabled={approvedTermsLocked || Boolean(selectedJurisdiction)}
           data-proposal-field="claimDays"
           aria-invalid={invalidField === "claimDays"}
+          aria-errormessage={
+            invalidField === "claimDays" ? proposalFieldErrorId("claimDays") : undefined
+          }
         />
       </label>
       <p className="field-help">
-        {selectedJurisdiction
-          ? `${selectedJurisdiction.defaultClaimDays} days is locked as the onchain safeguard. The agreement record also preserves the profile's conditional and multi-stage deadlines.`
-          : "Editable test timing. This value does not represent a legal deadline."}
+        {acceleratedReviewTiming
+          ? `${selectedJurisdiction?.defaultClaimDays || claimDays} days remains in the policy record, while this reviewer-only onchain agreement uses a 30-minute claim period.`
+          : selectedJurisdiction
+            ? `${selectedJurisdiction.defaultClaimDays} days is locked as the onchain safeguard. The agreement record also preserves the profile's conditional and multi-stage deadlines.`
+            : "Editable test timing. This value does not represent a legal deadline."}
       </p>
+      {renderFieldIssue("claimDays")}
       <label>
         OpenEscrow tenant response period
         <input
@@ -3091,11 +3435,17 @@ function AgreementForm({
           disabled={approvedTermsLocked}
           data-proposal-field="responseDays"
           aria-invalid={invalidField === "responseDays"}
+          aria-errormessage={
+            invalidField === "responseDays" ? proposalFieldErrorId("responseDays") : undefined
+          }
         />
       </label>
       <p className="field-help">
-        Editable test timing for the tenant&apos;s approve-or-dispute step.
+        {acceleratedReviewTiming
+          ? "Reviewer-only onchain response period: 30 minutes. The recorded standard value remains visible above."
+          : "Editable test timing for the tenant's approve-or-dispute step."}
       </p>
+      {renderFieldIssue("responseDays")}
       {ARBITER_UI_ENABLED && (showArbiter || Boolean(draft?.arbiterEmail)) && (
         <>
           <label>
@@ -3111,11 +3461,17 @@ function AgreementForm({
               disabled={approvedTermsLocked}
               data-proposal-field="arbiterDays"
               aria-invalid={invalidField === "arbiterDays"}
+              aria-errormessage={
+                invalidField === "arbiterDays" ? proposalFieldErrorId("arbiterDays") : undefined
+              }
             />
           </label>
           <p className="field-help">
-            Editable test timing for the optional arbiter&apos;s ruling step.
+            {acceleratedReviewTiming
+              ? "Reviewer-only onchain arbiter period: 30 minutes. The recorded standard value remains visible above."
+              : "Editable test timing for the optional arbiter's ruling step."}
           </p>
+          {renderFieldIssue("arbiterDays")}
         </>
       )}
 
@@ -3192,10 +3548,13 @@ function AgreementForm({
           {approvedTermsLocked ? (
             <div className="revision-lock">
               <div>
-                <h3 id="revision-publisher-title">Approved terms are locked</h3>
+                <h3 id="revision-publisher-title">
+                  {currentRevisionHasApproval ? "Approved terms are locked" : "Proposal published"}
+                </h3>
                 <p className="hint">
-                  At least one invited party approved revision {draft.revision}. Unlocking edits
-                  does not change the record until you publish a new revision.
+                  {currentRevisionHasApproval
+                    ? `At least one invited party approved revision ${draft.revision}. Unlocking edits does not change the record until you publish a new revision.`
+                    : "The current proposal is ready to share. Its saved terms stay unchanged unless you choose to edit and publish a new revision."}
                 </p>
               </div>
               <div className="button-row">
@@ -3208,7 +3567,7 @@ function AgreementForm({
                     goToProposalStep("terms");
                   }}
                 >
-                  Edit terms ⓘ
+                  {currentRevisionHasApproval ? "Edit terms ⓘ" : "Edit proposal"}
                 </button>
                 <button
                   className="btn btn-ghost"
@@ -3227,7 +3586,7 @@ function AgreementForm({
             Update the terms above, then describe the change. Publishing creates a new timestamped
             revision and requires fresh approval from every invited reviewer.
           </p>
-          {(draft.tenantApproved || draft.arbiterApproved) && (
+          {currentRevisionHasApproval && (
             <div className="revision-impact">
               <strong>The current revision is already approved.</strong>
               <span>
@@ -3249,9 +3608,15 @@ function AgreementForm({
               minLength={8}
               data-proposal-field="revisionSummary"
               aria-invalid={invalidField === "revisionSummary"}
+              aria-errormessage={
+                invalidField === "revisionSummary"
+                  ? proposalFieldErrorId("revisionSummary")
+                  : undefined
+              }
             />
           </label>
           <p className="field-help">At least 8 characters. This note becomes part of the running record.</p>
+          {renderFieldIssue("revisionSummary")}
           <div className="button-row">
             <button
               className="btn btn-primary"
@@ -3317,7 +3682,7 @@ function AgreementForm({
         tabIndex={-1}
       >
         {formMessage && <p className="tx-success">{formMessage}</p>}
-        {formError && <p className="tx-error">{formError}</p>}
+        {formError && !invalidField && <p className="tx-error">{formError}</p>}
       </div>
       {draft && draft.status !== "finalized" && (
         <div className="proposal-danger-zone">
@@ -3351,7 +3716,15 @@ function AgreementForm({
           <div className="record-header">
             <div>
               <h3>Invite parties to review revision {draft.revision}</h3>
-              <p className="hint">Each link is role-locked and opens this saved proposal—not the landlord’s creation tools.</p>
+              <p className="hint">
+                Publishing sends each participant a separate email automatically. Use
+                <strong> Resend</strong> if they need another copy, or
+                <strong> Send manually</strong> as a fallback.
+              </p>
+              <p className="hint">
+                After sign-in, OpenEscrow uses the recipient’s verified email to show only
+                proposals associated with that account.
+              </p>
             </div>
           </div>
           <div className="tenant-invite-list">
@@ -3365,7 +3738,7 @@ function AgreementForm({
                 <div>
                   <strong>{tenant.name || "Tenant"}</strong>
                   <span>{tenant.email}</span>
-                  <small>{sharePercent(tenant.depositShareBps)}% deposit ownership</small>
+                  <small>{sharePercent(tenant.depositShareBps)}% deposit share</small>
                   <TenantFundingDue
                     deposit={draft.terms.deposit}
                     reserve={draft.terms.operationsReserve}
@@ -3381,47 +3754,35 @@ function AgreementForm({
                   </strong>
                 </div>
                 <div className="invite-actions">
+                  {sentInvites.has(tenant.id) && (
+                    <span className="invite-delivery-status" role="status">
+                      ✓ Email sent
+                    </span>
+                  )}
                   <button
                     className="btn btn-primary"
                     type="button"
-                    disabled={!tenantInvite(tenant.id) || sendingInvite !== null}
-                    title={
-                      !tenantInvite(tenant.id)
-                        ? "The original invitation token is not available on this device. Reset the link to create a new one, or the tenant can sign in with the invited email."
-                        : undefined
-                    }
+                    disabled={isSavingDraft || sendingInvite !== null}
                     onClick={() => void sendTenantInvite(tenant.id)}
                   >
                     {sendingInvite === tenant.id
-                      ? "Sending..."
-                      : sentInvite === tenant.id
-                        ? draft.status === "finalized"
-                          ? "Record link sent"
-                          : "Invite sent"
-                        : draft.status === "finalized"
-                          ? "Send record link"
-                          : "Send invite"}
+                      ? sentInvites.has(tenant.id)
+                        ? "Resending..."
+                        : "Sending..."
+                      : sentInvites.has(tenant.id)
+                        ? "Resend"
+                        : "Send invite"}
                   </button>
                   <button
                     className="btn btn-secondary"
                     type="button"
-                    disabled={!tenantInvite(tenant.id) || sendingInvite !== null}
+                    disabled={isSavingDraft || sendingInvite !== null}
+                    title="Copy the current invitation so you can send it in your preferred email or messaging app."
                     onClick={() => void copyTenantInvite(tenant.id)}
                   >
                     {copiedInvite === tenant.id
-                      ? "Link copied"
-                      : tenant.approved
-                        ? "Copy record link"
-                        : "Copy invite"}
-                  </button>
-                  <button
-                    className="btn btn-ghost"
-                    type="button"
-                    disabled={isSavingDraft || sendingInvite !== null}
-                    title="Create a new link and invalidate every prior copy."
-                    onClick={() => void resetTenantInvite(tenant.id)}
-                  >
-                    Reset link
+                      ? "✓ Copied"
+                      : "Send manually"}
                   </button>
                 </div>
               </div>
@@ -3442,47 +3803,35 @@ function AgreementForm({
                   </strong>
                 </div>
                 <div className="invite-actions">
+                {sentInvites.has("arbiter") && (
+                  <span className="invite-delivery-status" role="status">
+                    ✓ Email sent
+                  </span>
+                )}
                 <button
                   className="btn btn-primary"
                   type="button"
-                  disabled={!arbiterInvite() || sendingInvite !== null}
-                  title={
-                    !arbiterInvite()
-                      ? "The original invitation token is not available on this device. Reset the link to create a new one, or the arbiter can sign in with the invited email."
-                      : undefined
-                  }
+                  disabled={isSavingDraft || sendingInvite !== null}
                   onClick={() => void sendArbiterInvite()}
                 >
                   {sendingInvite === "arbiter"
-                    ? "Sending..."
-                    : sentInvite === "arbiter"
-                      ? draft.status === "finalized"
-                        ? "Record link sent"
-                        : "Invite sent"
-                      : draft.status === "finalized"
-                        ? "Send record link"
-                        : "Send invite"}
+                    ? sentInvites.has("arbiter")
+                      ? "Resending..."
+                      : "Sending..."
+                    : sentInvites.has("arbiter")
+                      ? "Resend"
+                      : "Send invite"}
                 </button>
                 <button
                   className="btn btn-secondary"
                   type="button"
-                  disabled={!arbiterInvite() || sendingInvite !== null}
+                  disabled={isSavingDraft || sendingInvite !== null}
+                  title="Copy the current invitation so you can send it in your preferred email or messaging app."
                   onClick={() => void copyArbiterInvite()}
                 >
                   {copiedInvite === "arbiter"
-                    ? "Arbiter link copied"
-                    : draft.arbiterApproved
-                      ? "Copy record link"
-                      : "Copy arbiter invite"}
-                </button>
-                <button
-                  className="btn btn-ghost"
-                  type="button"
-                  disabled={isSavingDraft || sendingInvite !== null}
-                  title="Create a new link and invalidate every prior copy."
-                  onClick={() => void resetArbiterInvite()}
-                >
-                  Reset link
+                    ? "✓ Copied"
+                    : "Send manually"}
                 </button>
                 </div>
               </div>

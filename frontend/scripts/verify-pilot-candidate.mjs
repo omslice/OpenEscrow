@@ -475,9 +475,9 @@ function verifiedDeploymentRehearsalArtifact({
   if (
     summary.configSwitch?.switchVerified !== true ||
     summary.configSwitch?.rollbackVerified !== true ||
-    summary.configSwitch?.replacementCount !== 12 ||
+    summary.configSwitch?.replacementCount !== 15 ||
     !Array.isArray(summary.configSwitch?.files) ||
-    summary.configSwitch.files.length !== 3
+    summary.configSwitch.files.length !== 4
   ) {
     throw new Error("Deployment rehearsal did not prove configuration switch and rollback.");
   }

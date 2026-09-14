@@ -56,6 +56,16 @@ function summarizeScheduleAndDeliveryIssues(readiness: ServiceReadiness): string
     );
   }
 
+  if (!readiness.recordIntegrity.activityIndexer?.configured) {
+    blockers.push(
+      "Enable the Base Sepolia activity indexer so direct onchain actions can reach the shared record and notification system.",
+    );
+  } else if (!readiness.recordIntegrity.activityIndexer.healthy) {
+    blockers.push(
+      "Verify the Base Sepolia activity indexer is running successfully on the hosted schedule.",
+    );
+  }
+
   if (!readiness.addressValidation.configured) {
     blockers.push("Configure address attestation so property checks are tamper-resistant.");
   }
@@ -135,6 +145,20 @@ export function getServiceReadinessActions(
       label: "Verify registry binding",
       detail:
         "Copy ACTIVITY_REGISTRY_ADDRESS from the matching deployment manifest, set VERIFY_ACTIVITY_REGISTRY_BINDING=true, and redeploy.",
+    });
+  }
+  if (!serviceReadiness.recordIntegrity.activityIndexer?.configured) {
+    actions.push({
+      label: "Enable onchain activity indexing",
+      detail:
+        "Set ONCHAIN_ACTIVITY_INDEXER_ENABLED=true with the active OPEN_ESCROW_ADDRESS and deployment block, then redeploy.",
+    });
+  } else if (!serviceReadiness.recordIntegrity.activityIndexer.healthy) {
+    actions.push({
+      label: "Restore onchain activity indexing",
+      detail:
+        serviceReadiness.recordIntegrity.activityIndexer.error ||
+        "Keep the */15 minute schedule enabled and verify a successful Base Sepolia indexing run.",
     });
   }
 

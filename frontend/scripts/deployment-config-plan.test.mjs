@@ -39,6 +39,24 @@ const DEFAULT_OPERATIONS_RESERVE_ADDRESS =
 const DEFAULT_ACTIVITY_REGISTRY_ADDRESS =
   "${values.activityRegistry}";
 `,
+    "frontend/wrangler.jsonc": `
+{
+  "vars": {
+    "ACTIVITY_REGISTRY_ADDRESS": "${values.activityRegistry}",
+    "OPEN_ESCROW_ADDRESS": "${values.openEscrow}",
+    "OPEN_ESCROW_DEPLOYMENT_BLOCK": "${values.deploymentBlock}"
+  },
+  "env": {
+    "staging": {
+      "vars": {
+        "ACTIVITY_REGISTRY_ADDRESS": "${values.activityRegistry}",
+        "OPEN_ESCROW_ADDRESS": "${values.openEscrow}",
+        "OPEN_ESCROW_DEPLOYMENT_BLOCK": "${values.deploymentBlock}"
+      }
+    }
+  }
+}
+`,
   };
 }
 
@@ -66,6 +84,7 @@ const candidateManifest = {
     transactionHash: `0x${"4".repeat(64)}`,
     reserveAddress: "0x7777777777777777777777777777777777777777",
     escrowAddress: "0x6666666666666666666666666666666666666666",
+    liveBindingsVerified: true,
   },
   tokens: {
     plain: "0x9999999999999999999999999999999999999999",
@@ -121,6 +140,17 @@ test("public deployment manifests require transaction evidence", () => {
       }),
     /transaction evidence/,
   );
+  assert.throws(
+    () =>
+      validateDeploymentManifest({
+        ...publicManifest,
+        reciprocalConfiguration: {
+          ...publicManifest.reciprocalConfiguration,
+          liveBindingsVerified: false,
+        },
+      }),
+    /live-binding verification/,
+  );
 });
 
 test("configuration switch and rollback are byte-for-byte reversible", () => {
@@ -130,7 +160,30 @@ test("configuration switch and rollback are byte-for-byte reversible", () => {
   const result = rehearseConfigurationSwitch(original, candidate);
   assert.equal(result.switchVerified, true);
   assert.equal(result.rollbackVerified, true);
-  assert.equal(result.replacementCount, 12);
+  assert.equal(result.replacementCount, 15);
+});
+
+test("configuration rollback preserves mixed address casing byte-for-byte", () => {
+  const original = files();
+  original["frontend/wrangler.jsonc"] = original["frontend/wrangler.jsonc"].replaceAll(
+    current.openEscrow,
+    "0x1111111111111111111111111111111111111111".toUpperCase().replace("0X", "0x"),
+  );
+  const candidate = validateDeploymentManifest(candidateManifest, "a".repeat(40));
+  const result = rehearseConfigurationSwitch(original, candidate);
+  assert.equal(result.switchVerified, true);
+  assert.equal(result.rollbackVerified, true);
+});
+
+test("configuration parsing fails closed on Cloudflare cohort drift", () => {
+  const mismatched = files();
+  mismatched["frontend/wrangler.jsonc"] = mismatched[
+    "frontend/wrangler.jsonc"
+  ].replace(current.activityRegistry, candidateManifest.agreementActivityRegistry.address);
+  assert.throws(
+    () => parseDeploymentConfiguration(mismatched),
+    /Client\/Cloudflare deployment configuration mismatch for activityRegistry/,
+  );
 });
 
 test("configuration parsing fails closed on client/server cohort drift", () => {

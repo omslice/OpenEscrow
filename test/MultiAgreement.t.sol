@@ -43,6 +43,7 @@ contract MultiAgreementTest is Base {
         escrow.respondToClaim(idA, 0);
         vm.prank(arbiter);
         escrow.resolveDispute(idA, DEPOSIT / 4);
+        vm.warp(_claimSubmissionDeadline(idA));
         vm.prank(tenant);
         escrow.withdraw(idA);
         vm.prank(landlord);

@@ -20,26 +20,25 @@ contract OptionalArbiterTest is Base {
         _assertConserved(id);
     }
 
-    function test_withoutArbiter_disputeDefaultsToTenantAtTimeout() public {
+    function test_withoutArbiter_tenantDisputeIsRecordOnlyAndDoesNotOpenArbitration() public {
         uint256 id = _readyWithoutArbiter();
         _submitClaim(id, DEPOSIT / 2);
         vm.prank(tenant);
         escrow.respondToClaim(id, 0);
-
-        vm.warp(_arbiterRulingDeadline(id));
-        escrow.claimArbiterTimeout(id);
 
         OpenEscrow.Agreement memory a = escrow.getAgreement(id);
         assertEq(uint8(a.phase), uint8(OpenEscrow.Phase.Closed));
-        assertEq(a.tenantWithdrawable, DEPOSIT);
+        assertEq(a.landlordWithdrawable, DEPOSIT / 2);
+        assertEq(a.tenantWithdrawable, DEPOSIT / 2);
+        assertEq(a.locked, 0);
+
+        vm.expectRevert(OpenEscrow.InvalidPhase.selector);
+        escrow.claimArbiterTimeout(id);
         _assertConserved(id);
     }
 
-    function test_withoutArbiter_partiesCanMutuallyAppointOneDuringDispute() public {
+    function test_withoutArbiter_partiesCanMutuallyAppointOneBeforeClaim() public {
         uint256 id = _readyWithoutArbiter();
-        _submitClaim(id, DEPOSIT / 2);
-        vm.prank(tenant);
-        escrow.respondToClaim(id, 0);
 
         vm.prank(landlord);
         escrow.proposeArbiterReplacement(id, newArbiter);
@@ -47,13 +46,11 @@ contract OptionalArbiterTest is Base {
         escrow.confirmArbiterReplacement(id);
         vm.prank(newArbiter);
         escrow.acceptArbiterRole(id);
-        vm.prank(newArbiter);
-        escrow.resolveDispute(id, DEPOSIT / 4);
 
         OpenEscrow.Agreement memory a = escrow.getAgreement(id);
-        assertEq(uint8(a.phase), uint8(OpenEscrow.Phase.Closed));
-        assertEq(a.landlordWithdrawable, DEPOSIT / 4);
-        assertEq(a.tenantWithdrawable, DEPOSIT - DEPOSIT / 4);
+        assertEq(uint8(a.phase), uint8(OpenEscrow.Phase.Active));
+        assertEq(a.arbiter, newArbiter);
+        assertTrue(a.arbiterAccepted);
         _assertConserved(id);
     }
 }

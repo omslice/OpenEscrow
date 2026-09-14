@@ -35,3 +35,80 @@ test("ordinary participant activity keeps its exact human-readable summary", () 
   assert.equal(friendlyActivitySummary(approved), approved.summary);
   assert.equal(activityHasVerificationDetails(approved), false);
 });
+
+test("scheduled agreement notices use concise consumer-facing language", () => {
+  const reminder = {
+    ...event("scheduled_notification_due", "Sent the response deadline notice."),
+    metadata: {
+      notificationType: "response_deadline_1_day",
+      recipientRole: "tenant-1",
+    },
+  };
+  assert.equal(
+    friendlyActivitySummary(reminder),
+    "Your response to the deduction claim is due tomorrow.",
+  );
+});
+
+test("direct onchain activity uses consumer-facing notification language", () => {
+  assert.equal(
+    friendlyActivitySummary({
+      id: 8,
+      createdAt: "2026-08-10T09:59:00.000Z",
+      actorRole: "system",
+      action: "onchain_activity_indexed",
+      summary: "Detected response_timeout_recorded directly on Base Sepolia.",
+      revision: 1,
+      metadata: { eventType: "response_timeout_recorded" },
+    }),
+    "A missed response deadline was recorded and the documented claim was finalized.",
+  );
+  assert.equal(
+    friendlyActivitySummary({
+      id: 9,
+      createdAt: "2026-08-10T10:00:00.000Z",
+      actorRole: "system",
+      action: "onchain_activity_indexed",
+      summary: "Detected response_timeout_escalated directly on Base Sepolia.",
+      revision: 1,
+      metadata: { eventType: "response_timeout_escalated" },
+    }),
+    "An unanswered claim was escalated for resolution.",
+  );
+  assert.equal(
+    friendlyActivitySummary({
+      id: 10,
+      createdAt: "2026-08-10T10:01:00.000Z",
+      actorRole: "system",
+      action: "onchain_activity_indexed",
+      summary: "Detected arbiter_resigned directly on Base Sepolia.",
+      revision: 1,
+      metadata: { eventType: "arbiter_resigned" },
+    }),
+    "The optional arbiter resigned from this agreement.",
+  );
+  assert.equal(
+    friendlyActivitySummary({
+      id: 11,
+      createdAt: "2026-08-10T10:02:00.000Z",
+      actorRole: "system",
+      action: "onchain_activity_indexed",
+      summary: "Confirmed yield_settled directly on Base Sepolia.",
+      revision: 1,
+      metadata: { eventType: "yield_settled" },
+    }),
+    "The test-yield position was settled with the landlord limited to principal and the remaining value allocated to tenants.",
+  );
+  assert.equal(
+    friendlyActivitySummary({
+      id: 12,
+      createdAt: "2026-08-10T10:03:00.000Z",
+      actorRole: "system",
+      action: "onchain_activity_indexed",
+      summary: "Confirmed evidence_submitted directly on Base Sepolia.",
+      revision: 1,
+      metadata: { eventType: "evidence_submitted" },
+    }),
+    "A supporting-document fingerprint was recorded on Base Sepolia. The private file is not attached to this chain-only entry.",
+  );
+});

@@ -1,0 +1,53 @@
+{
+  "schema": "openescrow.deployment-manifest/v2",
+  "network": "base-sepolia",
+  "chainId": 84532,
+  "sourceCommit": "d1d1eabd8497c10b3b5d99860f43b0f139bdd77e",
+  "cohortStatus": "active-testnet",
+  "exportedAtUtc": "2026-08-13T23:08:02.4916179Z",
+  "openEscrow": {
+    "address": "0x96fe68b52c6ea79e7b035f768c85382a066116e3",
+    "transactionHash": "0x8aee832c7239d739e2cf57ac23bee9bf983ff1f8d3697d20d8e3ec664ac7550e",
+    "deploymentBlock": 45447092
+  },
+  "operationsReserve": {
+    "address": "0xfb5a1ae5bae33b82625abe90e9634b4505f37374",
+    "transactionHash": "0xda7a3097bc68fc72b3acfbf316883cd6932607ca50b12f59f92f780481279a04",
+    "deploymentBlock": 45447091
+  },
+  "agreementActivityRegistry": {
+    "address": "0x14351b9dd8b985964d926f844504b2236f14f952",
+    "transactionHash": "0x830b58763e8c2d0cc06182d2b3d44345f55bdd7c9707b30b9c79424422d4ef44",
+    "deploymentBlock": 45447094,
+    "escrowAddress": "0x96fe68b52c6ea79e7b035f768c85382a066116e3"
+  },
+  "reciprocalConfiguration": {
+    "transactionHash": "0xa984cabdc507bc17d89685e004fca808570c145c2e9fc9f091db19de55dcbf38",
+    "reserveAddress": "0xfb5a1ae5bae33b82625abe90e9634b4505f37374",
+    "escrowAddress": "0x96fe68b52c6ea79e7b035f768c85382a066116e3",
+    "treasuryAddress": "0x0b3aa7539bb7edcd44131f1a71edcff1c1fdf20e",
+    "liveBindingsVerified": true
+  },
+  "tokens": {
+    "plain": "0xB58FD0C49B53000f4354634dE49E355e09AD98Dc",
+    "yield": "0x7c4Ea30FB3B21ac5594E094cac8F991786CF7D43",
+    "plainDeployment": {
+      "contractName": "TestUSDC",
+      "transactionHash": "0xea94b3db570757589f53df9fb0baca79f933849e9787b7e4cb77b7ac0dfb48bc",
+      "deploymentBlock": 45447089
+    },
+    "yieldDeployment": {
+      "contractName": "TestAaveUSDC",
+      "transactionHash": "0xea4f17457f47821a86ea8d76bce13b31cb72e2579d41a7e2fe052a2731fc7a04",
+      "deploymentBlock": 45447090
+    }
+  },
+  "activatedAtUtc": "2026-08-13T23:33:30.181Z",
+  "verification": {
+    "liveBindingsVerified": true,
+    "independentEvidence": "deployments/base-sepolia-candidate-verification.json",
+    "candidateManifestSha256": "43a5a7d4c4034965e3adc13ebdcd1b7fe0cbb1c183edf6a393e9a07eb43dd020",
+    "rpcCount": 2,
+    "transactionCount": 6
+  }
+}

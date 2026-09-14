@@ -119,6 +119,7 @@ contract YieldEscrowV2Prototype is ReentrancyGuard {
         uint256 responseCount,
         uint256 requiredResponseCount
     );
+    event NoResponseRecorded(uint256 indexed id, uint256 claimedPrincipal);
     event DisputeCreated(
         uint256 indexed id, uint256 acceptedPrincipal, uint256 disputedPrincipal, uint64 arbiterRulingDeadline
     );
@@ -408,8 +409,10 @@ contract YieldEscrowV2Prototype is ReentrancyGuard {
         }
     }
 
-    /// @notice Every tenant must respond. The lowest amount accepted by every
-    ///         tenant is settled; the remainder of the claim becomes disputed.
+    /// @notice Every tenant must respond. With an accepted arbiter, the lowest amount
+    ///         accepted by every tenant settles and the remainder becomes disputed.
+    ///         Without an arbiter, responses remain part of the record while the
+    ///         landlord's documented principal claim is allocated in full.
     function respondToClaim(uint256 id, uint256 acceptedPrincipal) external {
         Agreement storage agreement = _agreement(id);
         if (agreement.phase != Phase.ClaimOpen) revert InvalidPhase();
@@ -432,13 +435,15 @@ contract YieldEscrowV2Prototype is ReentrancyGuard {
         }
     }
 
-    /// @notice Tenant silence never approves a claim. After the response deadline
-    ///         the entire unaccepted amount becomes disputed.
+    /// @notice Records tenant non-response after the response deadline. With no
+    ///         arbiter, the documented principal claim is allocated in full without
+    ///         characterizing silence as consent or a dispute.
     function finalizeNoResponse(uint256 id) external {
         Agreement storage agreement = _agreement(id);
         if (agreement.phase != Phase.ClaimOpen) revert InvalidPhase();
         if (block.timestamp < agreement.responseDeadline) revert ResponseWindowStillOpen();
         _settleResponses(id, agreement, 0);
+        emit NoResponseRecorded(id, agreement.claimedPrincipal);
     }
 
     function finalizeNoClaim(uint256 id) external {
@@ -557,6 +562,10 @@ contract YieldEscrowV2Prototype is ReentrancyGuard {
 
     function _settleResponses(uint256 id, Agreement storage agreement, uint256 acceptedPrincipal) internal {
         agreement.acceptedPrincipal = acceptedPrincipal;
+        if (agreement.arbiter == address(0)) {
+            _resolveClaimOutcome(id, agreement, agreement.claimedPrincipal, CloseReason.Settled);
+            return;
+        }
         uint256 disputedPrincipal = agreement.claimedPrincipal - acceptedPrincipal;
         if (disputedPrincipal == 0) {
             _resolveClaimOutcome(id, agreement, acceptedPrincipal, CloseReason.Settled);

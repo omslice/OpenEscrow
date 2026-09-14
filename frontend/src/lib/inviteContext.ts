@@ -7,8 +7,10 @@ export type InviteRole = "tenant" | "arbiter";
 export type WorkspaceRole = "landlord" | InviteRole;
 
 const WORKSPACE_ROLE_STORAGE_KEY = "openescrow.workspaceRole";
+const WORKSPACE_ROLE_IDENTITY_STORAGE_KEY = "openescrow.workspaceRoleIdentity";
 const CHANGE_EVENT = "openescrow:invite-context-changed";
 let memoryWorkspaceRole: WorkspaceRole | null = null;
+let memoryWorkspaceRoleIdentity: string | null = null;
 let ignoredInviteHref: string | null = null;
 
 export const roleLabel: Record<WorkspaceRole, string> = {
@@ -90,6 +92,48 @@ export function selectWorkspaceRole(role: WorkspaceRole) {
     // Current-page memory still reflects the selection.
   }
   window.dispatchEvent(new Event(CHANGE_EVENT));
+}
+
+export function reconcileWorkspaceRoleIdentity(identity: string | null) {
+  if (!identity) return;
+  const inviteRole = readInviteRole();
+  let roleChanged = false;
+
+  try {
+    const storedIdentity = window.sessionStorage.getItem(
+      WORKSPACE_ROLE_IDENTITY_STORAGE_KEY,
+    );
+    const storedRole = window.sessionStorage.getItem(WORKSPACE_ROLE_STORAGE_KEY);
+    if (inviteRole) {
+      roleChanged = storedRole !== inviteRole;
+      window.sessionStorage.setItem(WORKSPACE_ROLE_STORAGE_KEY, inviteRole);
+      window.sessionStorage.setItem(WORKSPACE_ROLE_IDENTITY_STORAGE_KEY, identity);
+      memoryWorkspaceRole = inviteRole;
+      memoryWorkspaceRoleIdentity = identity;
+    } else if (storedIdentity !== identity) {
+      roleChanged = isSelectableWorkspaceRole(storedRole);
+      window.sessionStorage.removeItem(WORKSPACE_ROLE_STORAGE_KEY);
+      window.sessionStorage.setItem(WORKSPACE_ROLE_IDENTITY_STORAGE_KEY, identity);
+      memoryWorkspaceRole = null;
+      memoryWorkspaceRoleIdentity = identity;
+    } else {
+      memoryWorkspaceRoleIdentity = identity;
+    }
+  } catch {
+    if (inviteRole) {
+      roleChanged = memoryWorkspaceRole !== inviteRole;
+      memoryWorkspaceRole = inviteRole;
+      memoryWorkspaceRoleIdentity = identity;
+    } else if (memoryWorkspaceRoleIdentity !== identity) {
+      roleChanged = memoryWorkspaceRole !== null;
+      memoryWorkspaceRole = null;
+      memoryWorkspaceRoleIdentity = identity;
+    }
+  }
+
+  if (roleChanged) {
+    window.dispatchEvent(new Event(CHANGE_EVENT));
+  }
 }
 
 export function useInviteRole() {

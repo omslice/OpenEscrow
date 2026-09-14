@@ -1,6 +1,7 @@
 # OpenEscrow grant reviewer guide
 
-Last reviewed: 2026-08-10.
+Entry routes reviewed: 2026-09-14. Use the [release evidence index](release-evidence-index.md)
+for exact application and contract versions and remaining readiness gates.
 
 OpenEscrow is a free, open-source Base Sepolia prototype for a shared rental-deposit process.
 The canonical public app is <https://openescrow.io> and the one-minute overview is
@@ -18,6 +19,14 @@ The canonical public app is <https://openescrow.io> and the one-minute overview 
    real funds or real tenancy records.
 
 ### Five minutes: inspect the product shape
+
+For a fictional workspace without sign-in or a wallet, choose **Try the mock demo** on the
+About page or open <https://openescrow.io/explore>. Changes stay in memory and reset on reload.
+This demonstrates the interface; it does not execute transactions or prove hosted participant
+acceptance. The normal About page, **Try the testnet demo**, **View on GitHub**, and regular
+Google/wallet sign-in remain available.
+
+For the authenticated testnet workflow:
 
 1. Sign in with a test Google account or wallet.
 2. Choose landlord or tenant after sign-in. Only a specific invitation link preselects a role.
@@ -47,6 +56,12 @@ single signed-in identity to simulate multiple parties.
 8. Confirm that claim notices go to tenants separately and that the landlord receives the saved
    tenant-response update. Email bodies intentionally omit the property address, deposit amount,
    evidence, and private agreement notes.
+9. Choose short test deadlines and confirm the intended participant sees the reminder in the
+   notification menu. If email reminders are enabled, confirm the same participant receives the
+   privacy-minimal email once and that another party does not receive it.
+10. For a direct-onchain check, submit one supported lifecycle transaction outside the app, wait
+    for confirmations and the hosted schedule, then confirm the indexed event appears once in the
+    matching Record and produces only the opted-in notices.
 
 The fresh bounded test-token cohort is deployed, independently checked against its recorded
 runtime bytes and immutable bindings, and active in the canonical app. Standard testUSDC remains

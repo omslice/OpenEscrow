@@ -5,8 +5,9 @@ import {
   OPEN_ESCROW_ADDRESS,
   Phase,
   YIELD_USDC_ADDRESS,
+  ZERO_ADDRESS,
 } from "../contracts/config";
-import { agreementAmountUnit } from "../lib/agreementAmountDisplay";
+import { claimAmountUnit } from "../lib/agreementAmountDisplay";
 import { agreementReference } from "../lib/displayIds";
 import { formatUSDC, parseUSDC } from "../lib/format";
 import {
@@ -30,6 +31,8 @@ import {
   sameClaimReceipt,
   type ClaimReceiptAction,
 } from "../lib/claimReceiptRecovery";
+import { tenantClaimEmailStatus } from "../lib/claimNotificationStatus";
+import { publicAppOrigin } from "../lib/publicAppOrigin";
 import {
   buildNegotiationInviteUrl,
   loadNegotiation,
@@ -150,7 +153,7 @@ export function ClaimSection({
     () => createAsyncOperationScope(claimRecordScopeKey),
     [claimRecordScopeKey],
   );
-  const amountUnit = agreementAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
+  const amountUnit = claimAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
 
   useLayoutEffect(() => {
     tenantNotificationScope.open();
@@ -485,6 +488,7 @@ export function ClaimSection({
         negotiationAccess.proposalId,
         token,
       );
+      const appUrl = `${publicAppOrigin()}/`;
       const body = [
         tenant.name?.trim() ? `Hello ${tenant.name.trim()},` : "Hello,",
         "",
@@ -500,9 +504,9 @@ export function ClaimSection({
             : `Invoice / evidence: ${uri}`
           : "",
         "",
-        `Review the documentation, add a note, and approve or dispute the claim here: ${reviewUrl}`,
+        `Open OpenEscrow and sign in to review the documentation, add a note, and approve or dispute the claim: ${appUrl}`,
         "",
-        "This private invitation is only for you. Do not forward it.",
+        "Use the email address that received this notice. OpenEscrow will load only the agreements associated with that verified account.",
         "",
         "Your decision and all related actions will be included in the timestamped agreement record.",
       ].filter(Boolean).join("\n");
@@ -623,7 +627,11 @@ export function ClaimSection({
         <span>Claim total</span>
         <strong>{amountRaw === null ? "Enter valid amounts" : `${amount} ${amountUnit}`}</strong>
       </div>
-      <fieldset className="california-claim-checklist">
+    </div>
+  );
+
+  const claimChecklist = (
+    <fieldset className="california-claim-checklist">
         <legend>
           {versionedClaimPolicy
             ? "Address-routed claim packet · required"
@@ -759,8 +767,7 @@ export function ClaimSection({
               : "Attach one supporting test file. This non-specific profile records the test lifecycle but does not validate legal compliance."}
           </p>
         )}
-      </fieldset>
-    </div>
+    </fieldset>
   );
 
   async function recordNotice(method: "gmail" | "copy") {
@@ -780,6 +787,7 @@ export function ClaimSection({
   }
 
   const notices = tenantNotices();
+  const tenantEmailStatus = tenantClaimEmailStatus(record);
   async function sendTenantClaimNotification() {
     if (
       notices.length === 0 ||
@@ -797,12 +805,17 @@ export function ClaimSection({
     });
     try {
       try {
+        const resendRequestId = tenantEmailStatus.allSent
+          ? crypto.randomUUID()
+          : undefined;
         await sendClaimNotification(negotiationAccess, {
           reviewLinks: notices.map((notice) => ({
             tenantId: notice.tenantId,
             email: notice.email,
             reviewUrl: notice.reviewUrl,
           })),
+          resend: tenantEmailStatus.allSent,
+          resendRequestId,
         });
       } catch (emailError) {
         if (!tenantNotificationScope.isCurrent(operationId)) return;
@@ -819,7 +832,9 @@ export function ClaimSection({
       if (!tenantNotificationScope.isCurrent(operationId)) return;
       setNoticeFeedback({
         kind: "success",
-        message: "Tenant claim email sent and added to the record.",
+        message: tenantEmailStatus.allSent
+          ? "Tenant claim emails resent and added to the record."
+          : "Tenant claim emails sent and added to the record.",
       });
       try {
         const updatedRecord = await loadNegotiation(negotiationAccess);
@@ -869,10 +884,10 @@ export function ClaimSection({
   }
   const noticeActions = notices.length > 0 && (
     <div className="claim-notice-actions">
-      <strong>Notify each tenant privately</strong>
+      <strong>Tenant claim emails</strong>
       <p className="hint">
-        Send every tenant a separate message with only their own private review link. The draft and
-        copy controls below are backups for individual recipients.
+        OpenEscrow sends each tenant a separate notice. The draft and copy controls are manual
+        backups for individual recipients.
       </p>
       {negotiationAccess && (
         <button
@@ -883,8 +898,16 @@ export function ClaimSection({
           onClick={() => void sendTenantClaimNotification()}
         >
           {isSendingTenantNotification
-            ? "Sending tenant email(s)..."
-            : "Send tenant email(s)"}
+            ? tenantEmailStatus.allSent
+              ? "Resending tenant emails..."
+              : "Sending tenant emails..."
+            : tenantEmailStatus.allSent
+              ? notices.length === 2
+                ? "Resend to both tenants"
+                : notices.length === 1
+                  ? "Resend tenant email"
+                  : `Resend to all ${notices.length} tenants`
+              : "Send tenant emails"}
         </button>
       )}
       <div className="claim-notice-recipient-list">
@@ -893,6 +916,11 @@ export function ClaimSection({
             <span>
               <strong>{notice.label}</strong>
               {notice.label !== notice.email && <small>{notice.email}</small>}
+              {tenantEmailStatus.statusByTenantId[notice.tenantId] ? (
+                <small className="claim-email-sent">✓ Email sent</small>
+              ) : (
+                <small>Email delivery not yet confirmed</small>
+              )}
             </span>
             <div className="button-row">
               <button
@@ -964,9 +992,9 @@ export function ClaimSection({
     <div className="action-section" id={`agreement-${id.toString()}-claim`} tabIndex={-1}>
         <h3>Submit a documented deduction claim</h3>
         <p className="hint">
-          Only the landlord can initiate a deduction. The claimed amount remains subject to the
-          tenant’s approve-or-dispute response and, if disputed, the appointed arbiter process.
-          All balances stay in escrow until the claim and any dispute are fully resolved.
+          {agreement.arbiter === ZERO_ADDRESS
+            ? "Only the landlord can initiate a deduction. Tenant responses—including a dispute or no response—are preserved in the shared record. In this no-arbiter version, the documented claim is allocated to the landlord and the remaining balance to the tenants once the response step is complete."
+            : "Only the landlord can initiate a deduction. The claimed amount remains subject to each tenant’s recorded response and, if disputed, the agreed arbiter process. Balances stay in escrow until the claim and any dispute are resolved."}
         </p>
         {itemEditor}
         <p className="field-help">
@@ -982,6 +1010,7 @@ export function ClaimSection({
           />
         </label>
         {fields}
+        {claimChecklist}
         <TxButton
           address={OPEN_ESCROW_ADDRESS}
           abi={OpenEscrowABI}
@@ -1026,6 +1055,7 @@ export function ClaimSection({
           />
         </label>
         {fields}
+        {claimChecklist}
         <TxButton
           address={OPEN_ESCROW_ADDRESS}
           abi={OpenEscrowABI}

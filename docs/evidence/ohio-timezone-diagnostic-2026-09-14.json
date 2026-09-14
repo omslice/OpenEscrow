@@ -1,0 +1,59 @@
+{
+  "checkedAt": "2026-09-14T20:36:43.670Z",
+  "sourceCommit": "f988fff4a2068367f48e72c4bd583bfcebbc5333",
+  "engineSha256": "025ef79683ade8f2631f1e8fbc5a3711a1255925d745d53e151f68be84cb2207",
+  "nodeVersion": "v24.18.0",
+  "icuVersion": "78.3",
+  "tzVersion": "2026b",
+  "propertyZone": "America/New_York",
+  "cases": [
+    {
+      "id": "spring-transition-late-evening",
+      "start": "2026-02-15T23:30:00-05:00",
+      "sameWallTimeAfter30Days": "2026-03-17T23:30:00-04:00",
+      "currentDueAt": "2026-03-18T04:30:00.000Z",
+      "comparisonDueAt": "2026-03-18T03:30:00.000Z",
+      "currentPropertyWallTime": "2026-03-18, 00:30 GMT-4",
+      "comparisonPropertyWallTime": "2026-03-17, 23:30 GMT-4",
+      "currentDeviceWallTimeExample": "2026-03-17, 21:30 GMT-7",
+      "differenceMinutes": 60
+    },
+    {
+      "id": "fall-transition-early-morning",
+      "start": "2026-10-15T00:30:00-04:00",
+      "sameWallTimeAfter30Days": "2026-11-14T00:30:00-05:00",
+      "currentDueAt": "2026-11-14T04:30:00.000Z",
+      "comparisonDueAt": "2026-11-14T05:30:00.000Z",
+      "currentPropertyWallTime": "2026-11-13, 23:30 GMT-5",
+      "comparisonPropertyWallTime": "2026-11-14, 00:30 GMT-5",
+      "currentDeviceWallTimeExample": "2026-11-13, 21:30 GMT-7",
+      "differenceMinutes": -60
+    },
+    {
+      "id": "no-transition-control",
+      "start": "2026-09-14T12:00:00-04:00",
+      "sameWallTimeAfter30Days": "2026-10-14T12:00:00-04:00",
+      "currentDueAt": "2026-10-14T16:00:00.000Z",
+      "comparisonDueAt": "2026-10-14T16:00:00.000Z",
+      "currentPropertyWallTime": "2026-10-14, 12:00 GMT-4",
+      "comparisonPropertyWallTime": "2026-10-14, 12:00 GMT-4",
+      "currentDeviceWallTimeExample": "2026-10-14, 09:00 GMT-7",
+      "differenceMinutes": 0
+    }
+  ],
+  "ambiguousFallWallTime": [
+    {
+      "instant": "2026-11-01T05:30:00.000Z",
+      "propertyWallTime": "2026-11-01, 01:30 GMT-4"
+    },
+    {
+      "instant": "2026-11-01T06:30:00.000Z",
+      "propertyWallTime": "2026-11-01, 01:30 GMT-5"
+    }
+  ],
+  "nonexistentSpringWallTime": {
+    "input": "2026-03-08T02:30:00-05:00",
+    "roundTripPropertyWallTime": "2026-03-08, 03:30 GMT-4"
+  },
+  "boundary": "Diagnostic only. The comparison preserves local wall time across calendar dates; it is not a selected or legally approved Ohio deadline-counting rule. No application, policy snapshot, contract, or hosted data was changed."
+}

@@ -236,6 +236,12 @@ export function useReadContract(parameters: { functionName?: string }) {
             ? 500_000n
             : 0n,
       };
+    case "paidAmount":
+      return { data: 0n };
+    case "refunded":
+      return { data: false };
+    case "yieldSettled":
+      return { data: false };
     case "tenantClaimResponded":
       return {
         data:

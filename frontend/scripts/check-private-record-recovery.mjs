@@ -907,7 +907,7 @@ try {
   );
 
   const sendClaimEmail = claimPage.getByRole("button", {
-    name: "Send tenant email(s)",
+    name: "Send tenant emails",
   });
   await sendClaimEmail.click();
   const claimNotificationFailure = claimPage.getByRole("alert").filter({
@@ -926,15 +926,19 @@ try {
     true,
     "A failed automatic claim email should restore focus to its retry control.",
   );
-  const sendClaimEmailBox = await sendClaimEmail.boundingBox();
+  // Read the DOM rectangle directly: CDP quad subtraction can round 44px down
+  // to 43.999998px while the restored button's hover translation is animating.
+  const sendClaimEmailHeight = await sendClaimEmail.evaluate(
+    (element) => element.getBoundingClientRect().height,
+  );
   assert.equal(
-    Boolean(sendClaimEmailBox && sendClaimEmailBox.height >= 44),
+    sendClaimEmailHeight >= 44,
     true,
-    "The focused claim-email retry should remain a 44px mobile touch target.",
+    `The focused claim-email retry should remain a 44px mobile touch target (measured ${sendClaimEmailHeight}px).`,
   );
   await sendClaimEmail.press("Enter");
   const sendingClaimEmail = claimPage.getByRole("button", {
-    name: "Sending tenant email(s)...",
+    name: "Sending tenant emails...",
   });
   await sendingClaimEmail.waitFor({ state: "visible" });
   assert.equal(
@@ -945,7 +949,7 @@ try {
   releaseClaimNotification();
   releaseClaimNotification = undefined;
   await claimPage
-    .getByText("Tenant claim email sent and added to the record.")
+    .getByText("Tenant claim emails sent and added to the record.")
     .waitFor({ state: "visible" });
   await claimAlert.waitFor({ state: "visible" });
   assert.match(
@@ -1441,7 +1445,7 @@ try {
     role: "tenant",
     actionType: "withdrawal_completed",
     transactionHash: `0x${"5".repeat(64)}`,
-    transactionButton: "Withdraw 0.5 USDC",
+    transactionButton: "Withdraw 0.5 testUSDC",
     retryButton: "Finish adding withdrawal to Record",
     confirmedHeading: "Withdrawal confirmed",
     recoveredText: /recovered a confirmed testnet withdrawal/i,
@@ -1648,10 +1652,10 @@ try {
     {
       flow: "no-response-timeout-receipt",
       role: "landlord",
-      timeout: "no_response_dispute",
+      timeout: "no_response_recorded",
       transactionHash: `0x${"2".repeat(64)}`,
-      transactionButton: "Escalate to dispute",
-      confirmedHeading: "Dispute escalation confirmed",
+      transactionButton: "Record no response and finalize claim",
+      confirmedHeading: "No response recorded",
     },
     {
       flow: "arbiter-timeout-receipt",

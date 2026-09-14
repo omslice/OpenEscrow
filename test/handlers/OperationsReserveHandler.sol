@@ -92,8 +92,9 @@ contract OperationsReserveHandler is Test {
     function withdraw(uint256 tokenSeed, uint256 amountSeed) external {
         address token = tokenSeed % 2 == 0 ? address(usdc) : address(yieldToken);
         uint256 available = reserve.availableBalance(token);
-        if (available == 0) return;
-        uint256 amount = (amountSeed % available) + 1;
+        uint256 refundable = reserve.refundableBalance(token);
+        if (available == refundable) return;
+        uint256 amount = (amountSeed % (available - refundable)) + 1;
         reserve.withdrawReserveToken(token, address(this), amount);
         cumulativeWithdrawn[token] += amount;
     }

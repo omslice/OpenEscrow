@@ -161,7 +161,9 @@ if ($LASTEXITCODE -ne 0 -or $broadcastCommit -ne $candidateCommit) {
   throw "The candidate source changed during broadcast. The transactions completed, but no manifest was exported."
 }
 
-& (Join-Path $PSScriptRoot "Export-BaseSepoliaDeployment.ps1") -ExpectedCommit $candidateCommit
+& (Join-Path $PSScriptRoot "Export-BaseSepoliaDeployment.ps1") `
+  -ExpectedCommit $candidateCommit `
+  -RpcUrl $verifiedRpcUrl
 if ($LASTEXITCODE -ne 0) {
   throw "The deployment succeeded, but its candidate manifest could not be exported."
 }

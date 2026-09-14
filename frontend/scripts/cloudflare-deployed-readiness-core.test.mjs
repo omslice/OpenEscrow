@@ -25,6 +25,10 @@ function readinessFixture() {
         verificationEnabled: true,
         ready: false,
       },
+      activityIndexer: {
+        configured: true,
+        healthy: false,
+      },
     },
     complianceSources: {
       configured: true,
@@ -46,7 +50,7 @@ test("core deployment verification still requires every configured safety bounda
   );
 });
 
-test("strict pilot verification requires notification, scheduler, registry, and compliance readiness", () => {
+test("strict pilot verification requires notification, scheduler, registry, indexer, and compliance readiness", () => {
   const readiness = readinessFixture();
   assert.throws(
     () =>
@@ -54,9 +58,10 @@ test("strict pilot verification requires notification, scheduler, registry, and 
         requirePilotServices: true,
       }),
     (error) => {
-      assert.match(error.message, /3 blockers/i);
+      assert.match(error.message, /4 blockers/i);
       assert.match(error.message, /notification delivery/i);
       assert.match(error.message, /not bound/i);
+      assert.match(error.message, /activity indexer/i);
       assert.match(error.message, /compliance source baseline/i);
       return true;
     },
@@ -91,6 +96,7 @@ test("strict pilot verification requires notification, scheduler, registry, and 
   );
 
   readiness.recordIntegrity.activityRegistry.ready = true;
+  readiness.recordIntegrity.activityIndexer.healthy = true;
   assert.throws(
     () =>
       assertCloudflareDeployedReadiness(readiness, {

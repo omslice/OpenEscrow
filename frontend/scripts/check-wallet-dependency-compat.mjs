@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -28,8 +29,8 @@ assert.ok(honoPackages.length > 0, "The wallet dependency tree must contain a lo
 for (const [packagePath, packageMetadata] of honoPackages) {
   assert.equal(
     packageMetadata.version,
-    "4.12.34",
-    `${packagePath} must use the reviewed CORS-safe hono release.`,
+    "4.13.5",
+    `${packagePath} must use the reviewed Hono security release.`,
   );
 }
 
@@ -61,7 +62,30 @@ assert.equal(
   "The transitive Hono runtime must remain importable.",
 );
 
+const queryString = (await import("query-string")).default;
+const relayQuery = { "relay-protocol": "irn", symKey: "b".repeat(64), expiryTimestamp: "2000000000" };
+const encoded = queryString.stringify(relayQuery);
+assert.deepEqual({ ...queryString.parse(encoded) }, relayQuery, "Wallet pairing query parameters must round-trip.");
+assert.equal(queryString.parse("name=Ren%C3%A9e&path=%2Frental%2F1").name, "Renée");
+assert.equal(queryString.parse("name=Ren%C3%A9e&path=%2Frental%2F1").path, "/rental/1");
+assert.doesNotThrow(() => queryString.parse(`invalid=${"%C2".repeat(1000)}`));
+
+const require = createRequire(import.meta.url);
+const walletUtils = Object.entries(lock.packages || {}).filter(([packagePath, metadata]) =>
+  packagePath.endsWith("node_modules/@walletconnect/utils") && metadata.dependencies?.["query-string"],
+);
+assert.ok(walletUtils.length > 0, "The WalletConnect parser consumers must be covered.");
+for (const [packagePath] of walletUtils) {
+  const utilities = require(path.join(frontendRoot, packagePath));
+  const parsed = utilities.parseUri(`wc:${"a".repeat(64)}@2?${encoded}`);
+  assert.equal(parsed.topic, "a".repeat(64), `${packagePath} must preserve the pairing topic.`);
+  assert.equal(parsed.version, 2);
+  assert.equal(parsed.symKey, relayQuery.symKey);
+  assert.equal(parsed.relay.protocol, "irn");
+  assert.equal(parsed.expiryTimestamp, 2000000000);
+}
+
 console.log(
   `Wallet dependency compatibility verified: ${uuidPackages.length} locked UUID path(s) use 11.1.1, ` +
-    `${honoPackages.length} locked Hono path(s) use 4.12.34, connector imports pass, and undersized buffers fail closed.`,
+    `${honoPackages.length} locked Hono path(s) use 4.13.5, ${walletUtils.length} WalletConnect parser consumers pass, connector imports pass, and undersized buffers fail closed.`,
 );

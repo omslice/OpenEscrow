@@ -1,5 +1,13 @@
 # OpenEscrow roadmap
 
+September 14 execution update: the owner prioritized acceptance, compliance, production legal
+design, self-host releases and organizational continuity, with **unsubsidized residential rentals
+in Ottawa Hills, Brady Lake, or both** as the first pilot scope. See the
+[current execution board](docs/roadmap-progress-2026-09-14.md).
+Historical unchecked setup items below must be read against that dated evidence: hosted email,
+Cron, evidence encryption and registry are already active; compliance readiness and supervised
+validation remain open. The first self-host release is published and needs an update.
+
 This roadmap is organized by dependency and release evidence. Checked items are implemented in
 the repository; they are not claims of legal approval or production readiness.
 

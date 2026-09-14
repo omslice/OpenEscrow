@@ -32,6 +32,8 @@ contract OperationsReserveInvariantTest is Test {
             reserve.availableBalance(yieldToken),
             handler.cumulativePaid(yieldToken) - handler.cumulativeWithdrawn(yieldToken)
         );
+        assertEq(reserve.refundableBalance(plainToken), handler.cumulativePaid(plainToken));
+        assertEq(reserve.refundableBalance(yieldToken), handler.cumulativePaid(yieldToken));
     }
 
     function invariant_eachPaymentIsExactUniqueAndTokenBound() public view {

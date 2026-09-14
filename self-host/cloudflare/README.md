@@ -13,7 +13,7 @@ open source; a self-hosted operator becomes responsible for their own deployment
 
 You need:
 
-- Node.js 22 or newer;
+- Node.js 22.12 or newer and npm 11.16.0 (the reviewed lockfile toolchain);
 - a Cloudflare account with Workers, D1, and R2 available;
 - a Privy application configured for Base Sepolia with your eventual HTTPS origin allowed;
 - an Ethereum wallet only for testnet activity; and
@@ -37,14 +37,18 @@ provenance:
 
 ```bash
 gh attestation verify openescrow-cloudflare-self-host-*.tar.gz --repo omslice/OpenEscrow
+gh attestation verify openescrow-cloudflare-self-host-*.tar.gz --repo omslice/OpenEscrow --predicate-type https://cyclonedx.org/bom
 ```
 
 Do not continue if the source commit, archive checksum, or attestation is unexpected.
+The two commands verify build provenance and the CycloneDX dependency inventory separately.
 
 ## 2. Install and authenticate
 
 ```bash
 cd frontend
+npm install --global npm@11.16.0
+npm --version
 npm ci
 npx wrangler login
 npx wrangler whoami
@@ -52,6 +56,10 @@ npx wrangler whoami
 
 Confirm Wrangler shows the Cloudflare account you intend to use. Never use another person's
 account or OpenEscrow's project account.
+
+Use the stated npm version for installation and upgrades. The lockfile was produced with npm 11;
+npm 10 resolves this wallet dependency tree differently and can reject the clean install before
+any application checks run. CI and release packaging install npm 11.16.0 explicitly.
 
 ## 3. Create isolated storage
 

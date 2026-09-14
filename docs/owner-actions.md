@@ -15,6 +15,12 @@ provider or hosting control that owns the secret.
 
 ## Recommended weekend sequence
 
+September 14 update: use the [selected execution board](roadmap-progress-2026-09-14.md) and
+[Ohio reviewer matrix](ohio-pilot-review.md). The active August 16 contract cohort and September
+13 application are already deployed; the historical broadcast steps below do not request another
+broadcast. Current work is acceptance, Ohio compliance/legal preparation, self-host updates and
+[funding/continuity](organization-readiness.md).
+
 1. Review the exact hardened contract candidate and the independent-audit handoff.
 2. In a private PowerShell window, use the encrypted Foundry keystore to broadcast the
    unified Base Sepolia escrow/reserve/registry cohort. Never paste the key or password here.
@@ -63,7 +69,8 @@ provider or hosting control that owns the secret.
 - [x] **Approve and publish the reviewer-safe repository tranche — completed 2026-08-10.** The
   owner authorized reconciliation of the public default branch with the live application,
   verified cohort, community-health, funding-transparency, and evidence-manifest state. The
-  published evidence distinguishes the clean live release `4281a1f`, the exact contract source
+  published evidence records that historical release and now distinguishes the clean live
+  application release `356f76e`, the exact active contract source
   and immutable deployment manifests, and the remaining external-review and supervised-pilot
   gates. A
   read-only 2026-08-09 inspection proved that the independently modified
@@ -95,31 +102,31 @@ provider or hosting control that owns the secret.
   runtime hash; `ESCROW()` returned F18; and no-broadcast calls succeeded for the live landlord and
   both tenants while rejecting an outsider. The retired C004 registry remains an immutable
   historical reference and is not a fallback for the active escrow.
-- [x] **Broadcast, verify, and activate the reviewed bounded test-token cohort — completed
-  2026-08-09.** Exact contract source `200848d` deployed fresh testUSDC, capped taUSDC, reserve,
-  escrow `0x9F8C...4b10`, and registry `0x88b5...0f53`. Two public RPC providers agreed on all six
-  successful receipts, all five exact runtime bytecodes, the one-time reciprocal reserve binding,
-  and every immutable token/escrow/registry address. Canonical app release `b941a67` activated the
-  cohort without changing the existing Cloudflare D1, private R2 bucket, secrets, or migrations.
-  The F18 cohort and its `0x5ba6...092e` registry remain in
-  `deployments/base-sepolia-rollback-f18.json`; no old agreement or balance was migrated.
-- [ ] **Run the separate-account synthetic pilot on the new cohort.** Create an invented landlord,
-  tenant, and optional arbiter flow using only test tokens; confirm discovery, notification,
-  evidence, registry, claim, refund, and withdrawal behavior before inviting outside testers.
-  The strict hosted pilot gate also remains fail-closed on three compliance-source alerts (Chicago,
-  Arkansas, and New Hampshire); review or repair those sources rather than accepting a new baseline
-  automatically.
-- [ ] **Choose the first pilot markets for local-rule coverage.**
-  State law is routed nationwide, but only Chicago, Seattle, and Portland have
-  reviewed city overlays. Name the cities/counties most likely to be used in
-  the first pilot so Codex can prioritize official-source local profiles.
-- [ ] **Activate the New Hampshire external source workflow after this release reaches `main`.**
-  In GitHub repository settings, confirm Actions has `Read and write permissions`, then manually
-  run the **Compliance source monitor** workflow once. Confirm it creates the public
-  `compliance-attestations` branch with `state-nh.json` reporting `unchanged`, and confirm the next
-  scheduled run succeeds. No new secret is required. Do not edit the attestation by hand or turn
-  off the hosted compliance monitor. The app will block New Hampshire proposals if the
-  observation is changed, malformed, unavailable, or more than 48 hours old.
+- [x] **Broadcast, verify, and activate the revised bounded test-token cohort — completed
+  2026-08-13.** Exact contract source `d1d1eabd8497c10b3b5d99860f43b0f139bdd77e` deployed fresh
+  testUSDC, bounded taUSDC, reserve, escrow `0x96fe...16e3`, and registry `0x1435...f952`. Two public
+  RPC providers agreed on successful receipts, exact runtime bytecode, reciprocal reserve binding,
+  and every immutable token/escrow/registry address. Exact application release `356f76e` activated
+  the cohort on `openescrow.io` and the retained Sites mirror without changing the canonical
+  Cloudflare D1, private R2 bucket, secrets, or migrations. Prior cohorts remain rollback evidence;
+  no historical agreement or balance was migrated.
+- [ ] **Finish the hosted separate-account synthetic rehearsal on the active cohort.** A fresh
+  landlord/two-tenant proposal (`69e2ba50`) was created with invented data, and both role-bound
+  tenant invitations were accepted by their recipient mail servers. Tenant link opening, approval,
+  finalization, funding, claim/refund, withdrawal, stale-link, wrong-account, and inbox-versus-spam
+  checks still require the named participant sessions. The strict compliance-source alerts remain
+  a separately scoped, fail-closed baseline and are not being accepted or changed in this milestone.
+- [x] **Select the first pilot state and segment — confirmed September 14, 2026.** Unsubsidized
+  residential rentals in Ottawa Hills (Lucas County), Brady Lake (now Franklin Township,
+  Portage County), or both. Actual parcels and fixed-term versus month-to-month remain open;
+  see the Ohio reviewer matrix and local scope review before extending local coverage.
+- [x] **Activate the New Hampshire external source workflow — operation verified September 14.**
+  Scheduled GitHub runs publish fresh observations. The latest run failed because the official
+  document hash changed; setup is complete, legal-source review is not.
+- [ ] **Review changed sources and activate Ohio's exact statutory observation with the candidate.**
+  New Hampshire's reviewed hash remains unchanged pending content review. Ohio candidate v6
+  monitors the actual R.C. 5321.16 text. Validate the exact workflow source, observation and
+  deployed profile before treating it as current; retain changed/stale/malformed-source blocks.
 - [ ] **Approve a property-timezone source and local-time policy for the pilot.** The candidate
   rejects ambiguous stored timestamps and shows the participant's device timezone, but it cannot
   yet attest that the device and property share the same IANA timezone or decide how a legal
@@ -164,8 +171,9 @@ provider or hosting control that owns the secret.
 
 - [ ] **Retain qualified counsel** for the selected pilot jurisdictions,
   escrow/custody, money-transmission, consumer-finance, privacy, tax, sanctions,
-  and yield-product analysis. Software research is not a substitute for legal
-  advice.
+  and yield-product analysis. Start with [`legal-review-handoff.md`](./legal-review-handoff.md),
+  require the reviewer to name the exact commit and deployment, and preserve the written issue
+  matrix privately. Software research is not a substitute for legal advice.
 - [ ] **Commission an independent smart-contract and application security
   audit** for the exact release candidate and deployed configuration. Start with
   [`independent-audit-handoff.md`](./independent-audit-handoff.md) and require the reviewer to name

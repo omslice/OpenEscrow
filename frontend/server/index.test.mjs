@@ -37,6 +37,7 @@ import {
 } from "../shared/us-compliance-overlays.js";
 import { COMPLIANCE_SOURCE_REGISTRY } from "../shared/compliance-sources.js";
 import { createFundingIntent } from "../shared/funding-routes.js";
+import { ACTIVE_DEPLOYMENT } from "../scripts/active-deployment.mjs";
 
 const TEST_ADDRESS_ATTESTATION_SECRET =
   "openescrow-test-address-attestation-secret-2026";
@@ -102,12 +103,17 @@ test("the packaged D1 migration applies cleanly", () => {
     "0019_api_rate_limits.sql",
     "0020_query_path_indexes.sql",
     "0021_notification_delivery_events.sql",
+    "0022_onchain_activity_indexer.sql",
+    "0023_notification_scheduler_cursor.sql",
+    "0024_onchain_activity_record_details.sql",
   ]) {
     applyMigration(migrationName);
   }
   applyMigration("0001_negotiation_account_access.sql");
   applyMigration("0020_query_path_indexes.sql");
   applyMigration("0021_notification_delivery_events.sql");
+  applyMigration("0022_onchain_activity_indexer.sql");
+  applyMigration("0023_notification_scheduler_cursor.sql");
   const tables = database
     .prepare("SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name")
     .all()
@@ -130,6 +136,9 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.ok(tables.includes("arbiter_replacement_account_access"));
   assert.ok(tables.includes("negotiation_receipt_guards"));
   assert.ok(tables.includes("api_rate_limits"));
+  assert.ok(tables.includes("onchain_indexer_state"));
+  assert.ok(tables.includes("indexed_chain_events"));
+  assert.ok(tables.includes("scheduled_job_cursors"));
   const deliveryIndexes = database
     .prepare("PRAGMA index_list(notification_deliveries)")
     .all()
@@ -243,11 +252,13 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.match(
     queryPlan(
       `SELECT * FROM agreement_negotiations
-       WHERE status = 'finalized'
-       ORDER BY updated_at ASC
-       LIMIT 250`,
+       WHERE status = 'finalized' AND id > ?
+       ORDER BY id ASC
+       LIMIT ?`,
+      "agreement-250",
+      250,
     ),
-    /USING (?:COVERING )?INDEX agreement_negotiations_status_updated_idx/,
+    /USING (?:COVERING )?INDEX agreement_negotiations_status_id_idx/,
   );
   assert.match(
     queryPlan(
@@ -928,12 +939,14 @@ test("the implemented registry covers every state and the District of Columbia",
   const ohioProfile = US_JURISDICTION_PROFILES.find(
     (profile) => profile.postalCode === "OH",
   );
-  assert.equal(ohioProfile.version, "oh-rules-2026-08-08.v5");
+  assert.equal(ohioProfile.version, "oh-rules-2026-09-14.v6");
   assert.equal(
     ohioProfile.statuteUrl,
-    "https://www.supremecourt.ohio.gov/rod/docs/pdf/10/2025/2025-Ohio-2840.pdf",
+    "https://codes.ohio.gov/ohio-revised-code/section-5321.16",
   );
-  assert.equal(ohioProfile.researchedOn, "2026-08-08");
+  assert.equal(ohioProfile.researchedOn, "2026-09-14");
+  assert.equal(ohioProfile.sourceExternalMonitor.maximumAgeMs, 48 * 60 * 60 * 1000);
+  assert.ok(ohioProfile.sourceExternalMonitor.requiredMarkers.includes("within thirty days"));
   const tennesseeProfile = US_JURISDICTION_PROFILES.find(
     (profile) => profile.postalCode === "TN",
   );
@@ -2178,6 +2191,16 @@ async function act(db, id, token, action, env = {}) {
   );
 }
 
+function advancePastClaimDeadline(t, agreementTerms = terms) {
+  const claimDeadline =
+    new Date(agreementTerms.claimWindowStart).getTime() +
+    Number(agreementTerms.claimDays) * 24 * 60 * 60 * 1000;
+  t.mock.timers.enable({
+    apis: ["Date"],
+    now: claimDeadline + 1_000,
+  });
+}
+
 function transactionHash(index) {
   return `0x${BigInt(index).toString(16).padStart(64, "0")}`;
 }
@@ -2198,12 +2221,15 @@ const RECEIPT_TEST_LANDLORD = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 const RECEIPT_TEST_TENANT = "0x1111111111111111111111111111111111111111";
 const RECEIPT_TEST_OTHER_TENANT = "0x2222222222222222222222222222222222222222";
 const RECEIPT_TEST_ARBITER = "0x3333333333333333333333333333333333333333";
-const RECEIPT_TEST_USDC = "0x3d147c9c4a9191caba99be3174c674c04b33e152";
-const RECEIPT_TEST_YIELD_USDC = "0x596bf42f18d2a82c346b7007402fe9f22c1ad32f";
-const RECEIPT_TEST_OPEN_ESCROW =
-  "0x9F8C9555f28C10347C58fc71F430F4cbc3724b10";
-const RECEIPT_TEST_OPERATIONS_RESERVE =
-  "0xDB6637e5A858A8FD3a3CD85c1625d9A0b022A626";
+const RECEIPT_TEST_USDC = ACTIVE_DEPLOYMENT.usdc;
+const RECEIPT_TEST_YIELD_USDC = ACTIVE_DEPLOYMENT.yieldUsdc;
+const RECEIPT_TEST_OPEN_ESCROW = ACTIVE_DEPLOYMENT.escrow;
+const RECEIPT_TEST_OPERATIONS_RESERVE = ACTIVE_DEPLOYMENT.operationsReserve;
+const RECEIPT_TEST_ENTRY_POINT =
+  "0x0000000071727de22e5e9d8baf0edac6f37da032";
+const RECEIPT_TEST_BUNDLER = "0x4444444444444444444444444444444444444444";
+const USER_OPERATION_EVENT_TOPIC =
+  "0x49628fd1471006c1482da88028e9ce4dbb080b815c9b0344d39e5a8e6ec1419f";
 const AGREEMENT_PROPOSED_TOPIC =
   "0x664e4c94d146ccef3e51a2b7665242fbd89c9e268a28a1807fc660bfc39327f6";
 const PROPOSAL_CANCELLED_TOPIC =
@@ -2222,14 +2248,20 @@ const CLAIM_AMENDED_TOPIC =
   "0x478de1b8c18ffc9b16915e850b17f80fc5fe83405310df3db31765a38a3365ff";
 const CLAIM_RETRACTED_TOPIC =
   "0x78ed2810f3e800697035ce152a2c6e2d92fe189711545693db5d97ac0b9f7eb9";
+const EVIDENCE_SUBMITTED_TOPIC =
+  "0xbd8d077abfbcb6c3b9f2c11ad4b440f43bd14e08a54cfb2748d117b85f05434b";
 const TENANT_CLAIM_RESPONSE_TOPIC =
   "0x270cfb5d0a1ef7453b09614e7321e2bc1c39e82a0642070b4247c08452dca245";
 const LEGACY_CLAIM_RESPONSE_TOPIC =
   "0x0e3cd88697129d255d76bfa437dbf12aaeaef7601cf1c8d5f75ad2ba18e0cd4b";
+const DISPUTE_CREATED_TOPIC =
+  "0xd486bd2762f0bd86f7e3d4ca20fc220ce40fe6ac09d773491515a417bd6aeba7";
 const DISPUTE_RESOLVED_TOPIC =
   "0x959dc01840aa516bf9407cffa45326c7b6821c48feff7b91eb0c743c8f460fd6";
 const WITHDRAWN_TOPIC =
   "0xcf7d23a3cbe4e8b36ff82fd1b05b1b17373dc7804b4ebbd6e2356716ef202372";
+const WITHDRAWAL_COMPLETED_TOPIC =
+  "0xd88f78449f08dea8008c468f4f93b91e77249c07a5327c0527377160ada9a0ad";
 const NO_CLAIM_WITHDRAWAL_TOPIC =
   "0x845bd4e89218507974962580a9461fcb8f451ebd83d8c3b843d2c9032217d179";
 const RESPONSE_TIMED_OUT_TOPIC =
@@ -2244,6 +2276,8 @@ const ARBITER_REPLACEMENT_CANCELLED_TOPIC =
   "0xea55ed64aa907da9463ef6eb21d16b92c8672b37f1305df22c0555cd0cc175cf";
 const ARBITER_REPLACED_TOPIC =
   "0x61fd94062542edfecb31f240c9ef0bab60274ed951f163e40614c3d4d02146d1";
+const ARBITER_RESIGNED_TOPIC =
+  "0xcdf89760bd3dd0338c147bd48cbbb478470981d1ad6a52f99ec80d7e3c17bc71";
 const RECORD_SNAPSHOT_ANCHORED_TOPIC =
   "0x4012b6d2c58584f354b2ad24151a4b24d5e18ea9aff9ced4667a2ffe01305ab6";
 const ACTIVITY_PUBLISHED_TOPIC =
@@ -2345,6 +2379,27 @@ function agreementStateResult(tokenAddress = RECEIPT_TEST_USDC) {
   return receiptData(...words);
 }
 
+function userOperationEvent({
+  sender = RECEIPT_TEST_TENANT,
+  success = true,
+} = {}) {
+  return {
+    address: RECEIPT_TEST_ENTRY_POINT,
+    topics: [
+      USER_OPERATION_EVENT_TOPIC,
+      transactionHash(9_100),
+      receiptAddressWord(sender),
+      receiptAddressWord("0x0000000000000000000000000000000000000000"),
+    ],
+    data: receiptData(
+      receiptWord(0),
+      receiptWord(success ? 1 : 0),
+      receiptWord(100_000),
+      receiptWord(80_000),
+    ),
+  };
+}
+
 async function finalizeWithoutArbiter(db, created) {
   await jsonResponse(
     await act(db, created.record.id, created.access.tenant, {
@@ -2364,12 +2419,18 @@ async function finalizeWithoutArbiter(db, created) {
 async function finalizeWithVerifiedReceipt(
   db,
   created,
-  { agreementId = 42, arbiterWallet = null } = {},
+  {
+    agreementId = 42,
+    arbiterWallet = null,
+    assetConsent = false,
+    tokenAddress = RECEIPT_TEST_USDC,
+  } = {},
 ) {
   await jsonResponse(
     await act(db, created.record.id, created.access.tenant, {
       type: "approve",
       wallet: RECEIPT_TEST_TENANT,
+      ...(assetConsent ? { assetConsent: true } : {}),
     }),
   );
   if (arbiterWallet) {
@@ -2388,7 +2449,7 @@ async function finalizeWithVerifiedReceipt(
       id: rpcRequest.id,
       result:
         rpcRequest.method === "eth_call"
-          ? agreementStateResult()
+          ? agreementStateResult(tokenAddress)
           : finalizationReceipt(
               agreementId,
               "valid",
@@ -3215,11 +3276,11 @@ test("tenant can request changes, approve, and make an arbiter-free proposal rea
   assert.equal(firstSnapshot.snapshot.onchain.chainId, 84532);
   assert.equal(
     firstSnapshot.snapshot.onchain.escrowAddress.toLowerCase(),
-    "0x9f8c9555f28c10347c58fc71f430f4cbc3724b10",
+    ACTIVE_DEPLOYMENT.escrow.toLowerCase(),
   );
   assert.equal(
     firstSnapshot.snapshot.onchain.activityRegistryAddress.toLowerCase(),
-    "0x88b53d6c35020e82b97462e8a1cbcdc8d6d50f53",
+    ACTIVE_DEPLOYMENT.activityRegistry.toLowerCase(),
   );
 });
 
@@ -3330,6 +3391,27 @@ test("address-routed compliance profiles require their exact version and deadlin
   );
   assert.equal(created.record.terms.jurisdiction, "us-ny");
   assert.equal(created.record.terms.claimDays, "14");
+
+  const agreedTiming = await jsonResponse(
+    await worker.fetch(
+      request("/api/negotiations", "POST", {
+        landlordName: "Lena Landlord",
+        landlordEmail: "landlord@example.com",
+        tenantName: "Terry Tenant",
+        tenantEmail: "tenant@example.com",
+        arbiterName: "",
+        arbiterEmail: null,
+        terms: {
+          ...newYorkResearchTerms,
+          responseDays: "10",
+          arbiterDays: "14",
+        },
+      }),
+      stateEnv,
+    ),
+  );
+  assert.equal(agreedTiming.record.terms.responseDays, "10");
+  assert.equal(agreedTiming.record.terms.arbiterDays, "14");
 
   const invalid = await worker.fetch(
     request("/api/negotiations", "POST", {
@@ -4176,6 +4258,25 @@ test("New Hampshire uses a fresh external official-source attestation and blocks
       )
       .bind(checkedAt, checkedAt)
       .run();
+    await db.prepare(
+      "UPDATE compliance_source_checks SET last_verified_at = ? WHERE source_key = 'state:nh'",
+    ).bind(new Date(now - 48 * 60 * 60 * 1000 - 1).toISOString()).run();
+    const expiredCachedProposal = await worker.fetch(
+      request("/api/negotiations", "POST", proposalBody),
+      {
+        DB: db,
+        ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+        COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+      },
+    );
+    assert.equal(expiredCachedProposal.status, 503,
+      "An unchanged cached observation must expire at its external monitor's 48-hour limit.");
+    const expiredReadiness = await jsonResponse(await worker.fetch(
+      request("/api/system/readiness"),
+      { DB: db, COMPLIANCE_SOURCE_MONITOR_ENABLED: "true" },
+    ));
+    assert.equal(expiredReadiness.complianceSources.blocked, 1);
+    assert.equal(expiredReadiness.complianceSources.stale, 1);
     await db
       .prepare(
         `UPDATE compliance_source_checks
@@ -5255,6 +5356,7 @@ test("address suggestions validate same-origin queries, normalize Photon results
     const { attestation, ...suggestion } = firstBody.suggestions[0];
     assert.deepEqual(suggestion, {
       id: "W:123",
+      provider: "photon-openstreetmap",
       label: "123 Main Street, Los Angeles, California, 90001, United States",
       latitude: 34.0522,
       longitude: -118.2437,
@@ -5303,6 +5405,175 @@ test("address suggestions validate same-origin queries, normalize Photon results
     );
     assert.equal(crossOrigin.status, 403);
     assert.equal(upstreamCalls, 1);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("address suggestions use Census fallback for a U.S. street with city/state or ZIP", async () => {
+  const originalFetch = globalThis.fetch;
+  const upstreamUrls = [];
+  globalThis.fetch = async (input, init) => {
+    const url = new URL(input);
+    upstreamUrls.push(url.toString());
+    assert.equal(init.headers.accept, "application/json");
+    assert.match(init.headers["user-agent"], /openescrow\.io/i);
+    if (url.origin === "https://geocoder.example") {
+      return Response.json({ type: "FeatureCollection", features: [] });
+    }
+    assert.equal(url.origin, "https://census.example");
+    assert.equal(url.pathname, "/geocoder/locations/onelineaddress");
+    assert.equal(
+      url.searchParams.get("address"),
+      "4243 W Bancroft St APT 103E, Ottawa Hills, OH 43615",
+    );
+    assert.equal(url.searchParams.get("benchmark"), "Public_AR_Current");
+    assert.equal(url.searchParams.get("format"), "json");
+    return Response.json({
+      result: {
+        addressMatches: [
+          {
+            matchedAddress: "4243 W BANCROFT ST, OTTAWA HILLS, OH, 43615",
+            coordinates: { x: -83.642754643433, y: 41.662524901584 },
+            tigerLine: { tigerLineId: "33934790", side: "L" },
+            addressComponents: {
+              city: "OTTAWA HILLS",
+              state: "OH",
+              zip: "43615",
+            },
+          },
+          {
+            matchedAddress: "INVALID STATE",
+            coordinates: { x: -83.64, y: 41.66 },
+            tigerLine: { tigerLineId: "invalid" },
+            addressComponents: { city: "NOWHERE", state: "ZZ", zip: "00000" },
+          },
+        ],
+      },
+    });
+  };
+  try {
+    const env = {
+      GEOCODER_BASE_URL: "https://geocoder.example/photon",
+      CENSUS_GEOCODER_BASE_URL: "https://census.example/geocoder",
+      ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+    };
+    const path =
+      "/api/address-suggestions?q=4243%20W%20Bancroft%20St%20APT%20103E%2C%20Ottawa%20Hills%2C%20OH%2043615";
+    const first = await worker.fetch(request(path), env);
+    const firstBody = await jsonResponse(first);
+    assert.equal(firstBody.suggestions.length, 1);
+    const { attestation, ...suggestion } = firstBody.suggestions[0];
+    assert.deepEqual(suggestion, {
+      id: "census:33934790",
+      provider: "census-geocoder",
+      label: "4243 W BANCROFT ST APT 103E, OTTAWA HILLS, OH, 43615",
+      latitude: 41.662524901584,
+      longitude: -83.642754643433,
+      countryCode: "US",
+      stateCode: "OH",
+      city: "OTTAWA HILLS",
+      county: null,
+      postalCode: "43615",
+    });
+    assert.match(attestation, /^oeaddr1\.\d+\.[A-Za-z0-9_-]{43}$/);
+    assert.equal(
+      await verifyAddressAttestation(
+        {
+          ...suggestion,
+          providerFeatureId: suggestion.id,
+          attestation,
+        },
+        TEST_ADDRESS_ATTESTATION_SECRET,
+      ),
+      true,
+    );
+    assert.equal(upstreamUrls.length, 2);
+
+    const cached = await worker.fetch(request(path), env);
+    assert.equal(cached.headers.get("x-openescrow-cache"), "HIT");
+    assert.equal(upstreamUrls.length, 2);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("address suggestions do not require commas or a ZIP when city and state are present", async () => {
+  const originalFetch = globalThis.fetch;
+  const upstreamUrls = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(input);
+    upstreamUrls.push(url.toString());
+    if (url.origin === "https://geocoder.example") {
+      return Response.json({ type: "FeatureCollection", features: [] });
+    }
+    assert.equal(url.origin, "https://census.example");
+    assert.equal(
+      url.searchParams.get("address"),
+      "4243 W Bancroft St Apt 103E Ottawa Hills OH",
+    );
+    return Response.json({
+      result: {
+        addressMatches: [
+          {
+            matchedAddress: "4243 W BANCROFT ST, OTTAWA HILLS, OH, 43615",
+            coordinates: { x: -83.642754643433, y: 41.662524901584 },
+            tigerLine: { tigerLineId: "33934790", side: "L" },
+            addressComponents: {
+              city: "OTTAWA HILLS",
+              state: "OH",
+              zip: "43615",
+            },
+          },
+        ],
+      },
+    });
+  };
+  try {
+    const env = {
+      GEOCODER_BASE_URL: "https://geocoder.example/photon",
+      CENSUS_GEOCODER_BASE_URL: "https://census.example/geocoder",
+      ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+    };
+    const response = await worker.fetch(
+      request(
+        "/api/address-suggestions?q=4243%20W%20Bancroft%20St%20Apt%20103E%20Ottawa%20Hills%20OH",
+      ),
+      env,
+    );
+    const body = await jsonResponse(response);
+    assert.equal(response.status, 200);
+    assert.equal(upstreamUrls.length, 2);
+    assert.equal(body.suggestions.length, 1);
+    assert.equal(
+      body.suggestions[0].label,
+      "4243 W BANCROFT ST Apt 103E, OTTAWA HILLS, OH, 43615",
+    );
+    assert.equal(body.suggestions[0].stateCode, "OH");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("address suggestions do not call Census for ambiguous street-only input", async () => {
+  const originalFetch = globalThis.fetch;
+  const upstreamUrls = [];
+  globalThis.fetch = async (input) => {
+    upstreamUrls.push(new URL(input).toString());
+    return Response.json({ type: "FeatureCollection", features: [] });
+  };
+  try {
+    const response = await worker.fetch(
+      request("/api/address-suggestions?q=4243%20W%20Bancroft%20St"),
+      {
+        GEOCODER_BASE_URL: "https://geocoder.example/photon",
+        CENSUS_GEOCODER_BASE_URL: "https://census.example/geocoder",
+      },
+    );
+    const body = await jsonResponse(response);
+    assert.equal(response.status, 200);
+    assert.deepEqual(body.suggestions, []);
+    assert.equal(upstreamUrls.length, 1);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -6967,7 +7238,7 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
       return Response.json({
         jsonrpc: "2.0",
         id: payload.id,
-        result: `0x${"0".repeat(24)}9f8c9555f28c10347c58fc71f430f4cbc3724b10`,
+        result: receiptAddressWord(ACTIVE_DEPLOYMENT.escrow),
       });
     }
     if (url === "https://mismatched-rpc.example/") {
@@ -7037,7 +7308,7 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     assert.equal(readiness.email.schedulerAgeMinutes, null);
     assert.equal(
       readiness.recordIntegrity.activityRegistry.boundEscrowAddress,
-      "0x9f8c9555f28c10347c58fc71f430f4cbc3724b10",
+      ACTIVE_DEPLOYMENT.escrow.toLowerCase(),
     );
     assert.equal(readiness.complianceSources.configured, false);
     assert.ok(readiness.complianceSources.total >= 57);
@@ -7111,6 +7382,13 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     assert.equal(deliveries.length, 1);
     assert.equal(deliveries[0].url, "https://api.resend.com/emails");
     assert.deepEqual(deliveries[0].body.to, ["tenant@example.com"]);
+    assert.match(deliveries[0].body.text, /Open OpenEscrow: https:\/\/openescrow\.io\/?/);
+    assert.match(
+      deliveries[0].body.html,
+      /openescrow-logo-tapered-dark\.png/,
+    );
+    assert.match(deliveries[0].body.html, />Open OpenEscrow<\/a>/);
+    assert.match(deliveries[0].body.html, /alt="OpenEscrow"/);
 
     const landlordInviteRequest = () =>
       new Request("https://openescrow.example/api/profile/landlord-invite", {
@@ -7134,6 +7412,11 @@ test("email readiness and the signed-in self-test work with Resend and a webhook
     assert.deepEqual(deliveries[1].body.to, ["landlord@example.com"]);
     assert.match(deliveries[1].body.subject, /tenant invited you/i);
     assert.match(deliveries[1].body.text, /https:\/\/openescrow\.example/);
+    assert.match(deliveries[1].body.html, /https:\/\/openescrow\.io\/?/);
+    assert.match(
+      deliveries[1].body.html,
+      /openescrow-logo-tapered-dark\.png/,
+    );
     assert.deepEqual(
       {
         ...db.database
@@ -7250,6 +7533,7 @@ test("proposal invitations are recipient-bound, canonical, tracked, and duplicat
     accessToken = created.access.landlord,
     query = `invite=${role}&proposal=${created.record.id}`,
     fragment = `token=${invitationToken}`,
+    validateOnly = false,
   } = {}) =>
     new Request(
       `https://openescrow.omslice.workers.dev/api/negotiations/${created.record.id}/invitations`,
@@ -7261,11 +7545,29 @@ test("proposal invitations are recipient-bound, canonical, tracked, and duplicat
           invitedRole: role,
           ...(role === "tenant" ? { invitedTenantId: tenantId } : {}),
           invitationUrl: `https://untrusted-client-origin.example/?${query}#${fragment}`,
+          ...(validateOnly ? { validateOnly: true } : {}),
         }),
       },
     );
 
   try {
+    const validation = await jsonResponse(
+      await worker.fetch(invitationRequest({ validateOnly: true }), {
+        DB: db,
+      }),
+    );
+    assert.deepEqual(validation, {
+      current: true,
+      recipientEmail: "tenant@example.com",
+    });
+    assert.equal(deliveries.length, 0);
+    assert.equal(
+      db.database
+        .prepare("SELECT COUNT(*) AS count FROM notification_deliveries")
+        .get().count,
+      0,
+    );
+
     Date.now = () => bucketEdge;
     const first = await jsonResponse(await worker.fetch(invitationRequest(), env));
     Date.now = () => bucketEdge + 2_000;
@@ -7278,10 +7580,10 @@ test("proposal invitations are recipient-bound, canonical, tracked, and duplicat
     assert.deepEqual(deliveries[0].to, ["tenant@example.com"]);
     assert.match(
       deliveries[0].text,
-      new RegExp(
-        `https://openescrow\\.io/\\?invite=tenant&proposal=${created.record.id}#token=`,
-      ),
+      /https:\/\/openescrow\.io\//,
     );
+    assert.equal(deliveries[0].text.includes("#token="), false);
+    assert.equal(deliveries[0].text.includes("?invite="), false);
     assert.equal(deliveries[0].text.includes("untrusted-client-origin.example"), false);
 
     const arbiter = await jsonResponse(
@@ -7329,6 +7631,17 @@ test("proposal invitations are recipient-bound, canonical, tracked, and duplicat
         .get().count,
       2,
     );
+    const reloaded = await jsonResponse(
+      await worker.fetch(
+        negotiationReadRequest(
+          `/api/negotiations/${created.record.id}`,
+          created.access.landlord,
+        ),
+        { DB: db },
+      ),
+    );
+    assert.ok(reloaded.tenants[0].invitationSentAt);
+    assert.ok(reloaded.arbiterInvitationSentAt);
     const storedInvitationState = JSON.stringify({
       deliveries: db.database
         .prepare(
@@ -7359,6 +7672,14 @@ test("proposal invitations are recipient-bound, canonical, tracked, and duplicat
       env,
     );
     assert.equal(wrongParticipantToken.status, 409);
+    const staleValidation = await worker.fetch(
+      invitationRequest({
+        invitationToken: created.access.arbiter,
+        validateOnly: true,
+      }),
+      { DB: db },
+    );
+    assert.equal(staleValidation.status, 409);
     const wrongProposal = await worker.fetch(
       invitationRequest({ query: "invite=tenant&proposal=another-proposal" }),
       env,
@@ -7662,6 +7983,864 @@ test("signed Resend delivery events update status idempotently and suppress unsa
   );
 });
 
+test("the scheduled onchain indexer reconciles direct activity once and emails opted-in parties", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const retired = await create(db);
+  const currentFinalizationTransaction = `0x${"a".repeat(64)}`;
+  const retiredFinalizationTransaction = transactionHash(91_010);
+  const retiredEscrow = "0x9999999999999999999999999999999999999998";
+  db.prepare(
+    `UPDATE agreement_negotiations
+     SET onchain_contract_address = NULL
+     WHERE id = ?`,
+  )
+    .bind(created.record.id)
+    .run();
+  db.prepare(
+    `UPDATE agreement_negotiations
+     SET status = 'finalized', onchain_agreement_id = '42',
+         onchain_tx_hash = ?, onchain_contract_address = NULL
+     WHERE id = ?`,
+  )
+    .bind(retiredFinalizationTransaction, retired.record.id)
+    .run();
+  const consentedAt = "2026-08-10T12:00:00.000Z";
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("landlord-user", "landlord@example.com", consentedAt, consentedAt),
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("tenant-user", "tenant@example.com", consentedAt, consentedAt),
+  ]);
+
+  const deploymentBlock = 45_283_514;
+  const indexedBlock = deploymentBlock + 1;
+  const latestBlock = deploymentBlock + 30;
+  const directTransaction = transactionHash(91_001);
+  const resignedTransaction = transactionHash(91_005);
+  const evidenceTransaction = transactionHash(91_007);
+  const directLog = {
+    address: RECEIPT_TEST_OPEN_ESCROW,
+    topics: [
+      WITHDRAWN_TOPIC,
+      receiptWord(42),
+      receiptAddressWord(RECEIPT_TEST_TENANT),
+    ],
+    data: receiptData(receiptWord(1_200_000_000n)),
+    transactionHash: directTransaction,
+    blockHash: transactionHash(91_002),
+    blockNumber: `0x${indexedBlock.toString(16)}`,
+    logIndex: "0x0",
+    removed: false,
+  };
+  const wrongContractLog = {
+    ...directLog,
+    address: "0x9999999999999999999999999999999999999999",
+    transactionHash: transactionHash(91_003),
+  };
+  const malformedLog = {
+    ...directLog,
+    blockHash: "0x1234",
+    transactionHash: transactionHash(91_004),
+  };
+  const arbiterResignedLog = {
+    address: RECEIPT_TEST_OPEN_ESCROW,
+    topics: [
+      ARBITER_RESIGNED_TOPIC,
+      receiptWord(42),
+      receiptAddressWord("0x4444444444444444444444444444444444444444"),
+    ],
+    data: "0x",
+    transactionHash: resignedTransaction,
+    blockHash: transactionHash(91_006),
+    blockNumber: `0x${(indexedBlock + 1).toString(16)}`,
+    logIndex: "0x1",
+    removed: false,
+  };
+  const evidenceHash = transactionHash(91_008);
+  const evidenceLog = {
+    address: RECEIPT_TEST_OPEN_ESCROW,
+    topics: [
+      EVIDENCE_SUBMITTED_TOPIC,
+      receiptWord(42),
+      receiptAddressWord(RECEIPT_TEST_TENANT),
+    ],
+    data: receiptData(receiptWord(0), evidenceHash, receiptWord(2)),
+    transactionHash: evidenceTransaction,
+    blockHash: transactionHash(91_009),
+    blockNumber: `0x${(indexedBlock + 2).toString(16)}`,
+    logIndex: "0x2",
+    removed: false,
+  };
+  const providerCalls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, options = {}) => {
+    const url = String(input);
+    if (url.includes("api.resend.com/emails")) {
+      providerCalls.push(JSON.parse(options.body));
+      return Response.json({ id: `indexed-email-${providerCalls.length}` });
+    }
+    const payload = JSON.parse(options.body);
+    const finalizationFor = (transactionHashValue, contractAddress) => ({
+      ...finalizationReceipt(42),
+      transactionHash: transactionHashValue,
+      logs: finalizationReceipt(42).logs.map((log) => ({
+        ...log,
+        address: contractAddress,
+      })),
+    });
+    const result =
+      payload.method === "eth_chainId"
+        ? "0x14a34"
+        : payload.method === "eth_blockNumber"
+          ? `0x${latestBlock.toString(16)}`
+          : payload.method === "eth_getLogs"
+            ? [wrongContractLog, malformedLog, directLog, arbiterResignedLog, evidenceLog]
+            : payload.method === "eth_getTransactionReceipt"
+              ? payload.params[0] === currentFinalizationTransaction
+                ? finalizationFor(currentFinalizationTransaction, RECEIPT_TEST_OPEN_ESCROW)
+                : payload.params[0] === retiredFinalizationTransaction
+                  ? finalizationFor(retiredFinalizationTransaction, retiredEscrow)
+                  : null
+            : null;
+    return Response.json({ jsonrpc: "2.0", id: payload.id, result });
+  };
+  const env = {
+    DB: db,
+    ONCHAIN_ACTIVITY_INDEXER_ENABLED: "true",
+    OPEN_ESCROW_ADDRESS: RECEIPT_TEST_OPEN_ESCROW,
+    OPEN_ESCROW_DEPLOYMENT_BLOCK: String(deploymentBlock),
+    RESEND_API_KEY: "re_indexer_test",
+    RESEND_WEBHOOK_SECRET: "whsec_indexer_test",
+    NOTIFICATION_FROM_EMAIL: "OpenEscrow <notifications@updates.openescrow.io>",
+    PUBLIC_APP_URL: "https://openescrow.io/",
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  };
+  try {
+    const runScheduled = async (scheduledTime) => {
+      const waits = [];
+      await worker.scheduled(
+        { scheduledTime },
+        env,
+        { waitUntil(promise) { waits.push(promise); } },
+      );
+      await Promise.all(waits);
+    };
+    await runScheduled(Date.parse("2026-08-10T12:15:00.000Z"));
+    assert.equal(providerCalls.length, 6);
+    assert.deepEqual(
+      providerCalls.flatMap((call) => call.to).sort(),
+      [
+        "landlord@example.com",
+        "landlord@example.com",
+        "landlord@example.com",
+        "tenant@example.com",
+        "tenant@example.com",
+        "tenant@example.com",
+      ],
+    );
+    const indexed = db
+      .prepare(
+        `SELECT negotiation_id, event_type, processing_status, topics_json, data_hex
+         FROM indexed_chain_events WHERE transaction_hash = ?`,
+      )
+      .bind(directTransaction)
+      .first();
+    assert.deepEqual({
+      negotiation_id: indexed.negotiation_id,
+      event_type: indexed.event_type,
+      processing_status: indexed.processing_status,
+    }, {
+      negotiation_id: created.record.id,
+      event_type: "withdrawal_completed",
+      processing_status: "processed",
+    });
+    assert.equal(
+      db.prepare(
+        "SELECT onchain_contract_address FROM agreement_negotiations WHERE id = ?",
+      )
+        .bind(created.record.id)
+        .first().onchain_contract_address,
+      RECEIPT_TEST_OPEN_ESCROW,
+    );
+    assert.equal(
+      db.prepare(
+        "SELECT onchain_contract_address FROM agreement_negotiations WHERE id = ?",
+      )
+        .bind(retired.record.id)
+        .first().onchain_contract_address,
+      retiredEscrow,
+    );
+    assert.equal(
+      db.prepare(
+        `SELECT COUNT(*) AS count FROM negotiation_events
+         WHERE negotiation_id = ? AND action = 'onchain_activity_indexed'`,
+      )
+        .bind(retired.record.id)
+        .first().count,
+      0,
+      "A current-cohort event must never attach to a retired contract's same numeric agreement ID.",
+    );
+    assert.deepEqual(JSON.parse(indexed.topics_json), directLog.topics);
+    assert.equal(indexed.data_hex, directLog.data);
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS count FROM indexed_chain_events").first().count,
+      3,
+      "Malformed and wrong-contract RPC logs must not enter the durable index.",
+    );
+    const resigned = db
+      .prepare(
+        `SELECT negotiation_id, event_type, processing_status
+         FROM indexed_chain_events WHERE transaction_hash = ?`,
+      )
+      .bind(resignedTransaction)
+      .first();
+    assert.deepEqual({ ...resigned }, {
+      negotiation_id: created.record.id,
+      event_type: "arbiter_resigned",
+      processing_status: "processed",
+    });
+    const evidenceTimeline = db
+      .prepare(
+        `SELECT summary, metadata_json FROM negotiation_events
+         WHERE negotiation_id = ? AND action = 'onchain_activity_indexed'
+           AND lower(json_extract(metadata_json, '$.transactionHash')) = ?`,
+      )
+      .bind(created.record.id, evidenceTransaction)
+      .first();
+    const evidenceMetadata = JSON.parse(evidenceTimeline.metadata_json);
+    assert.equal(evidenceMetadata.contentHash, evidenceHash);
+    assert.equal(
+      evidenceMetadata.privateSupportingDocument,
+      "not-attached-to-openescrow-record",
+    );
+    assert.match(evidenceTimeline.summary, /private source document was not uploaded/i);
+    const indexedReportResponse = await worker.fetch(
+      request(
+        `/api/negotiations/${created.record.id}/report?token=${created.access.landlord}`,
+      ),
+      env,
+    );
+    assert.equal(indexedReportResponse.status, 200);
+    const indexedReportHtml = await indexedReportResponse.text();
+    assert.match(indexedReportHtml, /Withdrawal Completed/);
+    assert.match(indexedReportHtml, /\$1200\.00 test USD \(1200 testUSDC\)/);
+    assert.match(indexedReportHtml, /Chain-only entry/);
+    assert.match(indexedReportHtml, new RegExp(evidenceHash.slice(2), "i"));
+    const timelineEvent = db
+      .prepare(
+        `SELECT summary, metadata_json FROM negotiation_events
+         WHERE negotiation_id = ? AND action = 'onchain_activity_indexed'`,
+      )
+      .bind(created.record.id)
+      .first();
+    const timelineMetadata = JSON.parse(timelineEvent.metadata_json);
+    assert.equal(timelineMetadata.transactionHash, directTransaction);
+    assert.equal(timelineMetadata.source, "confirmed-base-sepolia-log");
+    assert.equal(timelineMetadata.recordCompleteness, "chain-only");
+    assert.equal(timelineMetadata.actorWallet, RECEIPT_TEST_TENANT.toLowerCase());
+    assert.equal(timelineMetadata.payoutAmount.tokenAmount, "1200");
+    assert.equal(timelineMetadata.payoutAmount.testUsd, "$1200.00");
+    assert.match(timelineEvent.summary, /\$1200\.00 test USD \(1200 testUSDC\)/);
+    assert.equal(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM notification_deliveries
+           WHERE notification_type = 'agreement_activity_withdrawal_completed'`,
+        )
+        .first().count,
+      2,
+    );
+    assert.equal(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM notification_deliveries
+           WHERE notification_type = 'agreement_activity_arbiter_resigned'`,
+        )
+        .first().count,
+      2,
+    );
+
+    await runScheduled(Date.parse("2026-08-10T12:30:00.000Z"));
+    assert.equal(providerCalls.length, 6, "A finalized indexed log must not resend.");
+    const originalDateNow = Date.now;
+    const readinessNow = originalDateNow() + 60_000;
+    Date.now = () => readinessNow;
+    try {
+      const readiness = await jsonResponse(
+        await worker.fetch(request("/api/system/readiness"), env),
+      );
+      assert.equal(readiness.recordIntegrity.activityIndexer.caughtUp, true);
+      assert.equal(readiness.recordIntegrity.activityIndexer.healthy, true);
+      assert.equal(readiness.recordIntegrity.activityIndexer.pendingEventCount, 0);
+    } finally {
+      Date.now = originalDateNow;
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("the onchain indexer covers every supported lifecycle event and recipient boundary", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const consentedAt = "2026-08-10T12:00:00.000Z";
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("event-map-landlord", "landlord@example.com", consentedAt, consentedAt),
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("event-map-tenant", "tenant@example.com", consentedAt, consentedAt),
+  ]);
+
+  const cases = [
+    [AGREEMENT_PROPOSED_TOPIC, "finalize", ["tenant@example.com"]],
+    [
+      PROPOSAL_CANCELLED_TOPIC,
+      "onchain_proposal_cancelled",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      TENANT_SHARE_FUNDED_TOPIC,
+      "tenant_share_funded",
+      ["landlord@example.com"],
+    ],
+    [AGREEMENT_FUNDED_TOPIC, "agreement_funded", ["landlord@example.com"]],
+    [
+      CLAIM_SUBMITTED_TOPIC,
+      "claim_submitted",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      CLAIM_AMENDED_TOPIC,
+      "claim_amended",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      CLAIM_RETRACTED_TOPIC,
+      "claim_retracted",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      TENANT_CLAIM_RESPONSE_TOPIC,
+      "claim_response",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      LEGACY_CLAIM_RESPONSE_TOPIC,
+      "claim_settled",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      DISPUTE_CREATED_TOPIC,
+      "dispute_created",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      DISPUTE_RESOLVED_TOPIC,
+      "arbiter_ruling",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      WITHDRAWN_TOPIC,
+      "withdrawal_completed",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      NO_CLAIM_WITHDRAWAL_TOPIC,
+      "no_claim_refund_available",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      RESPONSE_TIMED_OUT_TOPIC,
+      "response_timeout_recorded",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      ARBITER_TIMED_OUT_TOPIC,
+      "arbiter_timeout_allocation",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      ARBITER_REPLACEMENT_PROPOSED_TOPIC,
+      "arbiter_replacement_proposed",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      ARBITER_REPLACEMENT_CONFIRMED_TOPIC,
+      "arbiter_replacement_confirmed",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      ARBITER_REPLACEMENT_CANCELLED_TOPIC,
+      "arbiter_replacement_cancelled",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      ARBITER_REPLACED_TOPIC,
+      "arbiter_replacement_accepted",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+    [
+      ARBITER_RESIGNED_TOPIC,
+      "arbiter_resigned",
+      ["landlord@example.com", "tenant@example.com"],
+    ],
+  ];
+  const deploymentBlock = 45_283_514;
+  const indexedBlock = deploymentBlock + 1;
+  const latestBlock = deploymentBlock + 30;
+  const logs = cases.map(([topic], index) => ({
+    address: RECEIPT_TEST_OPEN_ESCROW,
+    topics: [topic, receiptWord(42)],
+    data: "0x",
+    transactionHash: transactionHash(93_000 + index),
+    blockHash: transactionHash(94_000 + index),
+    blockNumber: `0x${indexedBlock.toString(16)}`,
+    logIndex: `0x${index.toString(16)}`,
+    removed: false,
+  }));
+  const providerCalls = [];
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, options = {}) => {
+    if (String(input).includes("api.resend.com/emails")) {
+      providerCalls.push(JSON.parse(options.body));
+      return Response.json({ id: `event-map-${providerCalls.length}` });
+    }
+    const payload = JSON.parse(options.body);
+    const result =
+      payload.method === "eth_chainId"
+        ? "0x14a34"
+        : payload.method === "eth_blockNumber"
+          ? `0x${latestBlock.toString(16)}`
+          : payload.method === "eth_getLogs"
+            ? logs
+            : null;
+    return Response.json({ jsonrpc: "2.0", id: payload.id, result });
+  };
+  const env = {
+    DB: db,
+    ONCHAIN_ACTIVITY_INDEXER_ENABLED: "true",
+    OPEN_ESCROW_ADDRESS: RECEIPT_TEST_OPEN_ESCROW,
+    OPEN_ESCROW_DEPLOYMENT_BLOCK: String(deploymentBlock),
+    RESEND_API_KEY: "re_event_map_test",
+    RESEND_WEBHOOK_SECRET: "whsec_event_map_test",
+    NOTIFICATION_FROM_EMAIL: "OpenEscrow <notifications@updates.openescrow.io>",
+    PUBLIC_APP_URL: "https://openescrow.io/",
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  };
+  try {
+    const waits = [];
+    await worker.scheduled(
+      { scheduledTime: Date.parse("2026-08-10T12:15:00.000Z") },
+      env,
+      { waitUntil(promise) { waits.push(promise); } },
+    );
+    await Promise.all(waits);
+
+    assert.equal(
+      db.prepare("SELECT COUNT(*) AS count FROM indexed_chain_events").first()
+        .count,
+      cases.length,
+    );
+    for (const [, eventType, expectedRecipients] of cases) {
+      const deliveries = db
+        .prepare(
+          `SELECT recipient_email FROM notification_deliveries
+           WHERE notification_type = ? AND status = 'sent'
+           ORDER BY recipient_email`,
+        )
+        .bind(`agreement_activity_${eventType}`)
+        .all();
+      assert.deepEqual(
+        deliveries.results.map((delivery) => delivery.recipient_email),
+        [...expectedRecipients].sort(),
+        `${eventType} must notify only its intended opted-in roles.`,
+      );
+    }
+    assert.equal(
+      providerCalls.length,
+      cases.reduce((count, [, , recipients]) => count + recipients.length, 0),
+    );
+    for (const call of providerCalls) {
+      assert.match(
+        call.text,
+        /Open your signed-in dashboard: https:\/\/openescrow\.io\/?/,
+        `${call.subject} must point to the canonical app.`,
+      );
+      assert.match(
+        call.text,
+        /This email intentionally omits evidence, tenancy details, and private notes\./,
+        `${call.subject} must remain privacy-minimal.`,
+      );
+      assert.match(
+        call.html,
+        /openescrow-logo-tapered-dark\.png/,
+        `${call.subject} must include the OpenEscrow wordmark.`,
+      );
+      assert.match(
+        call.html,
+        />Open OpenEscrow<\/a>/,
+        `${call.subject} must include an app action button.`,
+      );
+    }
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("the onchain indexer emits one terminal claim notice and audits a confirmed-log reorg", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const consentedAt = "2026-08-10T12:00:00.000Z";
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("reorg-landlord", "landlord@example.com", consentedAt, consentedAt),
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("reorg-tenant", "tenant@example.com", consentedAt, consentedAt),
+  ]);
+
+  const deploymentBlock = 45_283_514;
+  const indexedBlock = deploymentBlock + 1;
+  const latestBlock = deploymentBlock + 30;
+  const transaction = transactionHash(91_101);
+  const blockHash = transactionHash(91_102);
+  const baseLog = {
+    address: RECEIPT_TEST_OPEN_ESCROW,
+    transactionHash: transaction,
+    blockHash,
+    blockNumber: `0x${indexedBlock.toString(16)}`,
+    removed: false,
+  };
+  const sameTransactionLogs = [
+    {
+      ...baseLog,
+      topics: [
+        TENANT_CLAIM_RESPONSE_TOPIC,
+        receiptWord(42),
+        receiptAddressWord(RECEIPT_TEST_TENANT),
+      ],
+      data: receiptData(receiptWord(0), receiptWord(1), receiptWord(1)),
+      logIndex: "0x0",
+    },
+    {
+      ...baseLog,
+      topics: [LEGACY_CLAIM_RESPONSE_TOPIC, receiptWord(42)],
+      data: receiptData(receiptWord(0), receiptWord(300)),
+      logIndex: "0x1",
+    },
+    {
+      ...baseLog,
+      topics: [DISPUTE_CREATED_TOPIC, receiptWord(42)],
+      data: receiptData(receiptWord(300), receiptWord(1_800_000_000)),
+      logIndex: "0x2",
+    },
+  ];
+  const providerCalls = [];
+  let logReads = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (input, options = {}) => {
+    if (String(input).includes("api.resend.com/emails")) {
+      providerCalls.push(JSON.parse(options.body));
+      return Response.json({ id: `terminal-claim-${providerCalls.length}` });
+    }
+    const payload = JSON.parse(options.body);
+    const result =
+      payload.method === "eth_chainId"
+        ? "0x14a34"
+        : payload.method === "eth_blockNumber"
+          ? `0x${latestBlock.toString(16)}`
+          : payload.method === "eth_getLogs"
+            ? logReads++ === 0
+              ? sameTransactionLogs
+              : []
+            : null;
+    return Response.json({ jsonrpc: "2.0", id: payload.id, result });
+  };
+  const env = {
+    DB: db,
+    ONCHAIN_ACTIVITY_INDEXER_ENABLED: "true",
+    OPEN_ESCROW_ADDRESS: RECEIPT_TEST_OPEN_ESCROW,
+    OPEN_ESCROW_DEPLOYMENT_BLOCK: String(deploymentBlock),
+    RESEND_API_KEY: "re_terminal_claim_test",
+    RESEND_WEBHOOK_SECRET: "whsec_terminal_claim_test",
+    NOTIFICATION_FROM_EMAIL: "OpenEscrow <notifications@updates.openescrow.io>",
+    PUBLIC_APP_URL: "https://openescrow.io/",
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  };
+  const runScheduled = async (scheduledTime) => {
+    const waits = [];
+    await worker.scheduled(
+      { scheduledTime },
+      env,
+      { waitUntil(promise) { waits.push(promise); } },
+    );
+    await Promise.all(waits);
+  };
+  try {
+    await runScheduled(Date.parse("2026-08-10T12:15:00.000Z"));
+    assert.equal(providerCalls.length, 2);
+    assert.deepEqual(
+      providerCalls.map((call) => call.to[0]).sort(),
+      ["landlord@example.com", "tenant@example.com"],
+    );
+    assert.ok(providerCalls.every((call) => /dispute opened/.test(call.subject)));
+    const indexed = db
+      .prepare(
+        `SELECT event_type, processing_status, block_hash
+         FROM indexed_chain_events WHERE transaction_hash = ?`,
+      )
+      .bind(transaction)
+      .all();
+    assert.deepEqual(indexed.results.map((row) => row.event_type), ["dispute_created"]);
+    assert.equal(indexed.results[0].processing_status, "processed");
+    assert.equal(indexed.results[0].block_hash, blockHash);
+
+    await runScheduled(Date.parse("2026-08-10T12:30:00.000Z"));
+    assert.equal(providerCalls.length, 2, "A reorg audit must not send a second lifecycle email.");
+    assert.equal(
+      db
+        .prepare(
+          `SELECT processing_status FROM indexed_chain_events
+           WHERE transaction_hash = ? AND log_index = 2`,
+        )
+        .bind(transaction)
+        .first().processing_status,
+      "orphaned",
+    );
+    const orphanedAudit = db
+      .prepare(
+        `SELECT metadata_json FROM negotiation_events
+         WHERE negotiation_id = ? AND action = 'onchain_activity_orphaned'`,
+      )
+      .bind(created.record.id)
+      .all();
+    assert.equal(orphanedAudit.results.length, 1);
+    assert.deepEqual(JSON.parse(orphanedAudit.results[0].metadata_json), {
+      eventType: "dispute_created",
+      transactionHash: transaction,
+      blockNumber: indexedBlock,
+      blockHash,
+      logIndex: 2,
+      chainId: 84532,
+    });
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("the onchain indexer retries failed in-app activity email without duplicating the action", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const consentedAt = "2026-08-10T12:00:00.000Z";
+  await db.batch([
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("landlord-user", "landlord@example.com", consentedAt, consentedAt),
+    db
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind("tenant-user", "tenant@example.com", consentedAt, consentedAt),
+  ]);
+
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "operations_reserve_paid",
+      amount: "5",
+      transactionHash: transactionHash(92_000),
+    }),
+  );
+
+  const deploymentBlock = 45_283_514;
+  const indexedBlock = deploymentBlock + 1;
+  const latestBlock = deploymentBlock + 30;
+  const fundingTransaction = transactionHash(92_001);
+  const env = {
+    DB: db,
+    ONCHAIN_ACTIVITY_INDEXER_ENABLED: "true",
+    OPEN_ESCROW_ADDRESS: RECEIPT_TEST_OPEN_ESCROW,
+    OPEN_ESCROW_DEPLOYMENT_BLOCK: String(deploymentBlock),
+    RESEND_API_KEY: "re_indexer_retry_test",
+    RESEND_WEBHOOK_SECRET: "whsec_indexer_retry_test",
+    NOTIFICATION_FROM_EMAIL: "OpenEscrow <notifications@updates.openescrow.io>",
+    PUBLIC_APP_URL: "https://openescrow.io/",
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  };
+  const originalFetch = globalThis.fetch;
+  const failedKeys = [];
+  globalThis.fetch = async (input, options = {}) => {
+    assert.match(String(input), /api\.resend\.com\/emails/);
+    failedKeys.push(options.headers["idempotency-key"]);
+    return Response.json({ error: "provider unavailable" }, { status: 503 });
+  };
+  try {
+    const funded = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.tenant,
+        {
+          type: "tenant_share_funded",
+          amount: "1200",
+          transactionHash: fundingTransaction,
+        },
+        env,
+      ),
+    );
+    assert.equal(
+      funded.events.filter((event) => event.action === "tenant_share_funded").length,
+      1,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+  assert.equal(
+    db
+      .prepare(
+        `SELECT COUNT(*) AS count FROM notification_deliveries
+         WHERE notification_type = 'agreement_activity_tenant_share_funded'
+           AND status = 'failed'`,
+      )
+      .first().count,
+    1,
+  );
+  assert.equal(failedKeys.length, 1);
+
+  const indexedLog = {
+    address: RECEIPT_TEST_OPEN_ESCROW,
+    topics: [
+      TENANT_SHARE_FUNDED_TOPIC,
+      receiptWord(42),
+      receiptAddressWord(RECEIPT_TEST_TENANT),
+    ],
+    data: receiptData(receiptWord(1_200_000_000n)),
+    transactionHash: fundingTransaction,
+    blockHash: transactionHash(92_002),
+    blockNumber: `0x${indexedBlock.toString(16)}`,
+    logIndex: "0x0",
+    removed: false,
+  };
+  const providerCalls = [];
+  globalThis.fetch = async (input, options = {}) => {
+    const url = String(input);
+    if (url.includes("api.resend.com/emails")) {
+      providerCalls.push({
+        body: JSON.parse(options.body),
+        idempotencyKey: options.headers["idempotency-key"],
+      });
+      return Response.json({ id: `indexed-retry-${providerCalls.length}` });
+    }
+    const payload = JSON.parse(options.body);
+    const result =
+      payload.method === "eth_chainId"
+        ? "0x14a34"
+        : payload.method === "eth_blockNumber"
+          ? `0x${latestBlock.toString(16)}`
+          : payload.method === "eth_getLogs"
+            ? [indexedLog]
+            : null;
+    return Response.json({ jsonrpc: "2.0", id: payload.id, result });
+  };
+  try {
+    const runScheduled = async (scheduledTime) => {
+      const waits = [];
+      await worker.scheduled(
+        { scheduledTime },
+        env,
+        { waitUntil(promise) { waits.push(promise); } },
+      );
+      await Promise.all(waits);
+    };
+    await runScheduled(Date.parse("2026-08-10T12:15:00.000Z"));
+    assert.equal(providerCalls.length, 1);
+    assert.ok(
+      providerCalls.every((call) =>
+        call.idempotencyKey.endsWith(fundingTransaction.slice(2)),
+      ),
+      "The app action and indexer retry must share the transaction-bound delivery key.",
+    );
+    assert.deepEqual(
+      providerCalls.map((call) => call.idempotencyKey).sort(),
+      failedKeys.sort(),
+      "The recovery pass must reuse the exact failed app-delivery keys.",
+    );
+    assert.equal(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM notification_deliveries
+           WHERE notification_type = 'agreement_activity_tenant_share_funded'
+             AND status = 'sent'`,
+        )
+        .first().count,
+      1,
+    );
+    const indexed = db
+      .prepare(
+        `SELECT processing_status FROM indexed_chain_events
+         WHERE transaction_hash = ? AND log_index = 0`,
+      )
+      .bind(fundingTransaction)
+      .first();
+    assert.equal(indexed.processing_status, "recorded_in_app");
+    assert.equal(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM negotiation_events
+           WHERE negotiation_id = ? AND action = 'onchain_activity_indexed'`,
+        )
+        .bind(created.record.id)
+        .first().count,
+      0,
+      "The recovery pass must not duplicate the already-recorded agreement action.",
+    );
+
+    await runScheduled(Date.parse("2026-08-10T12:30:00.000Z"));
+    assert.equal(providerCalls.length, 1, "A recovered delivery must not resend.");
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("readiness tracks notification scheduler freshness against the 15-minute cadence", async () => {
   const now = Date.parse("2027-07-02T12:00:00.000Z");
   const freshDb = new TestD1();
@@ -7737,7 +8916,7 @@ test("readiness reports compliance monitor freshness and configuration", async (
     );
     assert.equal(readiness.complianceSources.configured, true);
     assert.equal(readiness.complianceSources.monitorHealthy, true);
-    assert.equal(readiness.complianceSources.monitorExpectedIntervalMinutes, 1440);
+    assert.equal(readiness.complianceSources.monitorExpectedIntervalMinutes, 15);
     assert.equal(readiness.complianceSources.monitorCurrentIntervalMinutes, 15);
     assert.equal(readiness.complianceSources.bootstrapInProgress, true);
     assert.equal(readiness.complianceSources.monitorLastRunAgeMinutes, 5);
@@ -7883,9 +9062,9 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
       .prepare(
         `UPDATE compliance_source_checks
          SET status = 'unchanged', baseline_signature = 'stable',
-             current_signature = 'stable', last_verified_at = ?`,
+             current_signature = 'stable', last_verified_at = ?, last_checked_at = ?`,
       )
-      .bind("2027-07-02T12:15:00.000Z")
+      .bind("2027-07-02T12:15:00.000Z", "2027-07-02T12:15:00.000Z")
       .run();
     const steadyReadiness = await jsonResponse(
       await worker.fetch(request("/api/system/readiness"), {
@@ -7894,7 +9073,7 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
       }),
     );
     assert.equal(steadyReadiness.complianceSources.bootstrapInProgress, false);
-    assert.equal(steadyReadiness.complianceSources.monitorCurrentIntervalMinutes, 1440);
+    assert.equal(steadyReadiness.complianceSources.monitorCurrentIntervalMinutes, 15);
 
     const tooSoonWaits = [];
     await worker.scheduled(
@@ -7940,7 +9119,7 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
     await Promise.all(replacementWaits);
     assert.equal(
       complianceCheckCount(),
-      12,
+      9,
       "A replacement source must enter the 15-minute bootstrap path immediately.",
     );
     const replacement = await db
@@ -7970,7 +9149,57 @@ test("the scheduled compliance monitor baselines a rotating official-source batc
       },
     );
     await Promise.all(dailyWaits);
-    assert.equal(complianceCheckCount(), 16);
+    assert.equal(complianceCheckCount(), 13);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("all overdue sources are revisited within four hours without refetching today's sources", async () => {
+  const db = new TestD1();
+  const env = { DB: db, COMPLIANCE_SOURCE_MONITOR_ENABLED: "true", VERIFY_ACTIVITY_REGISTRY_BINDING: "false" };
+  await worker.fetch(request("/api/system/readiness"), env);
+  let now = Date.parse("2027-07-03T12:00:00.000Z");
+  const oldCheck = new Date(now - 2 * 24 * 60 * 60 * 1000).toISOString();
+  for (const source of COMPLIANCE_SOURCE_REGISTRY) {
+    await db.prepare(`INSERT INTO compliance_source_checks
+      (source_key, scope, jurisdiction, profile_version, citation, url,
+       baseline_signature, current_signature, status, last_checked_at, last_verified_at)
+      VALUES (?, ?, ?, ?, ?, ?, 'old', 'old', 'unchanged', ?, ?)`)
+      .bind(source.key, source.scope, source.jurisdiction, source.version, source.citation,
+        source.url, oldCheck, oldCheck).run();
+  }
+  const originalFetch = globalThis.fetch;
+  const checked = [];
+  globalThis.fetch = async (input) => {
+    const source = COMPLIANCE_SOURCE_REGISTRY.find((item) =>
+      (item.externalMonitor?.url || item.url) === String(input));
+    assert.ok(source, `Unexpected source request: ${input}`);
+    checked.push(source.key);
+    if (source.externalMonitor) {
+      return Response.json({
+        schemaVersion: 1, sourceKey: source.key, profileVersion: source.version,
+        sourceUrl: source.url, finalUrl: source.url, checkedAt: new Date(now).toISOString(),
+        status: "unchanged", httpStatus: 200,
+        bodySha256: source.externalMonitor.expectedBodySha256,
+        markerChecks: source.externalMonitor.requiredMarkers.map((marker) => ({ marker, present: true })),
+      });
+    }
+    return new Response(`<html>${source.key}</html>`, { headers: { "content-type": "text/html" } });
+  };
+  try {
+    for (let batch = 0; batch < 17; batch += 1) {
+      const waits = [];
+      await worker.scheduled({ scheduledTime: now }, env, { waitUntil(promise) { waits.push(promise); } });
+      await Promise.all(waits);
+      now += 15 * 60 * 1000;
+    }
+    assert.equal(new Set(checked).size, COMPLIANCE_SOURCE_REGISTRY.length);
+    assert.equal(checked.length, COMPLIANCE_SOURCE_REGISTRY.length,
+      "Freshly checked sources must not consume another batch slot before their daily refresh.");
+    assert.equal((await db.prepare(
+      "SELECT COUNT(*) AS count FROM compliance_source_checks WHERE last_checked_at = ?",
+    ).bind(oldCheck).first()).count, 0);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -9101,6 +10330,114 @@ test("unsubscribe links turn off optional activity and deadline emails", async (
   assert.equal(preferences.consented_at, null);
 });
 
+test("agreed possession-return reminders reach every party in app and by opted-in email", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const preferenceTime = new Date("2027-06-01T00:00:00.000Z").toISOString();
+  for (const [index, email] of [
+    "landlord@example.com",
+    "tenant@example.com",
+  ].entries()) {
+    await db
+      .prepare(
+        `INSERT INTO notification_preferences
+         (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 0, 1, ?, ?)`,
+      )
+      .bind(`did:privy:possession-${index}`, email, preferenceTime, preferenceTime)
+      .run();
+  }
+
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `possession-${deliveries.length}` });
+  };
+  try {
+    const env = {
+      DB: db,
+      RESEND_API_KEY: "test-resend-key",
+      NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      PUBLIC_APP_URL: "https://openescrow.example/",
+    };
+    const runScheduler = async (scheduledTime) => {
+      const waits = [];
+      await worker.scheduled(
+        { scheduledTime: Date.parse(scheduledTime) },
+        env,
+        { waitUntil(promise) { waits.push(promise); } },
+      );
+      await Promise.all(waits);
+    };
+
+    const possessionReturn = new Date(terms.claimWindowStart).getTime();
+    await runScheduler(
+      new Date(possessionReturn - 7 * 24 * 60 * 60 * 1000).toISOString(),
+    );
+    assert.deepEqual(
+      deliveries.map((delivery) => delivery.to[0]),
+      ["landlord@example.com", "tenant@example.com"],
+    );
+    for (const delivery of deliveries) {
+      assert.match(delivery.subject, /possession-return reminder/);
+      assert.match(delivery.text, /expected possession-return date is in seven days/);
+    }
+
+    const oneDayReminder = new Date(
+      possessionReturn - 24 * 60 * 60 * 1000,
+    ).toISOString();
+    await runScheduler(oneDayReminder);
+    assert.equal(deliveries.length, 4);
+    for (const delivery of deliveries.slice(2)) {
+      assert.match(delivery.text, /expected possession-return date is tomorrow/);
+    }
+
+    const inAppNoticeRows = db
+      .prepare(
+        `SELECT metadata_json FROM negotiation_events
+         WHERE negotiation_id = ? AND action = 'scheduled_notification_due'
+         ORDER BY id`,
+      )
+      .bind(created.record.id)
+      .all();
+    const notices = (inAppNoticeRows.results || []).map((row) =>
+      JSON.parse(row.metadata_json),
+    );
+    assert.deepEqual(
+      notices.map((notice) => notice.notificationType),
+      [
+        "possession_return_7_days",
+        "possession_return_7_days",
+        "possession_return_1_day",
+        "possession_return_1_day",
+      ],
+    );
+    assert.deepEqual(
+      [...new Set(notices.map((notice) => notice.recipientRole))].sort(),
+      ["landlord", `tenant-${created.record.tenants[0].id}`].sort(),
+    );
+
+    await runScheduler(
+      new Date(new Date(oneDayReminder).getTime() + 11 * 60 * 1000).toISOString(),
+    );
+    assert.equal(deliveries.length, 4);
+    assert.equal(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM negotiation_events
+           WHERE negotiation_id = ? AND action = 'scheduled_notification_due'`,
+        )
+        .bind(created.record.id)
+        .first().count,
+      4,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("scheduled claim-window reminders are opted-in and idempotent", async () => {
   const db = new TestD1();
   const created = await create(db);
@@ -9141,7 +10478,29 @@ test("scheduled claim-window reminders are opted-in and idempotent", async () =>
     assert.equal(deliveries.length, 1);
     assert.deepEqual(deliveries[0].to, ["landlord@example.com"]);
     assert.match(deliveries[0].subject, /claim period started/);
-    assert.match(deliveries[0].text, /Turn off optional OpenEscrow emails/);
+    assert.match(
+      deliveries[0].text,
+      /change reminder emails in your OpenEscrow Account settings/,
+    );
+    assert.doesNotMatch(deliveries[0].text, /unsubscribe\?token=/i);
+    const inAppNoticeRows = db
+      .prepare(
+        `SELECT metadata_json FROM negotiation_events
+         WHERE negotiation_id = ? AND action = 'scheduled_notification_due'
+         ORDER BY id`,
+      )
+      .bind(created.record.id)
+      .all();
+    const inAppNotices = (inAppNoticeRows.results || []).map((row) =>
+      JSON.parse(row.metadata_json),
+    );
+    assert.deepEqual(
+      inAppNotices.map((notice) => notice.recipientRole).sort(),
+      ["landlord", `tenant-${created.record.tenants[0].id}`].sort(),
+    );
+    assert.ok(
+      inAppNotices.every((notice) => notice.notificationType === "claim_period_started"),
+    );
 
     const repeated = [];
     await worker.scheduled(controller, env, {
@@ -9151,6 +10510,16 @@ test("scheduled claim-window reminders are opted-in and idempotent", async () =>
     });
     await Promise.all(repeated);
     assert.equal(deliveries.length, 1);
+    assert.equal(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM negotiation_events
+           WHERE negotiation_id = ? AND action = 'scheduled_notification_due'`,
+        )
+        .bind(created.record.id)
+        .first().count,
+      2,
+    );
 
     const deliveryRow = db
       .prepare(
@@ -9204,6 +10573,198 @@ test("scheduled claim-window reminders are opted-in and idempotent", async () =>
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("accelerated reviewer timing stays observable on the fifteen-minute scheduler", async () => {
+  const db = new TestD1();
+  const readiness = await worker.fetch(request("/api/system/readiness"), {
+    DB: db,
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  });
+  assert.equal(readiness.status, 200);
+  const acceleratedTerms = JSON.stringify({
+    ...terms,
+    testnetTimingProfile: "accelerated-review-v1",
+    claimWindowStart: "2027-07-01T12:00:00.000Z",
+  });
+  db.database
+    .prepare(
+      `INSERT INTO agreement_negotiations
+         (id, created_at, updated_at, status, revision, terms_json,
+          landlord_email, tenant_email, landlord_token_hash, tenant_token_hash,
+          onchain_agreement_id)
+       VALUES (?, ?, ?, 'finalized', 1, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      "accelerated-reviewer",
+      "2026-08-10T12:00:00.000Z",
+      "2026-08-10T12:00:00.000Z",
+      acceleratedTerms,
+      "landlord@example.com",
+      "tenant@example.com",
+      "accelerated-landlord-token",
+      "accelerated-tenant-token",
+      "99",
+    );
+  const preferenceTime = "2026-08-10T12:00:00.000Z";
+  for (const [index, email] of [
+    "landlord@example.com",
+    "tenant@example.com",
+  ].entries()) {
+    db.database
+      .prepare(
+        `INSERT INTO notification_preferences
+           (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .run(`did:privy:accelerated-${index}`, email, preferenceTime, preferenceTime);
+  }
+
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `accelerated-${deliveries.length}` });
+  };
+  try {
+    const env = {
+      DB: db,
+      RESEND_API_KEY: "test-resend-key",
+      NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+      PUBLIC_APP_URL: "https://openescrow.example/",
+      VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+    };
+    const runScheduler = async (scheduledTime) => {
+      const waits = [];
+      await worker.scheduled(
+        { scheduledTime: Date.parse(scheduledTime) },
+        env,
+        { waitUntil(promise) { waits.push(promise); } },
+      );
+      await Promise.all(waits);
+    };
+
+    await runScheduler("2027-07-01T11:45:00.000Z");
+    assert.equal(deliveries.length, 2);
+    assert.ok(
+      deliveries.every((delivery) =>
+        delivery.text.includes("possession-return time in about fifteen minutes"),
+      ),
+    );
+
+    await runScheduler("2027-07-01T12:15:00.000Z");
+    assert.equal(deliveries.length, 5);
+    assert.equal(
+      deliveries.filter((delivery) =>
+        delivery.text.includes("claim deadline is about fifteen minutes away"),
+      ).length,
+      1,
+    );
+
+    await runScheduler("2027-07-01T12:31:00.000Z");
+    assert.equal(deliveries.length, 7);
+    const lifecycleEvents = db.database
+      .prepare(
+        `SELECT action, metadata_json
+         FROM negotiation_events
+         WHERE negotiation_id = ?
+           AND action IN ('claim_period_started', 'claim_period_ended')
+         ORDER BY id`,
+      )
+      .all("accelerated-reviewer");
+    assert.deepEqual(
+      lifecycleEvents.map((event) => event.action),
+      ["claim_period_started", "claim_period_ended"],
+    );
+    assert.equal(
+      JSON.parse(lifecycleEvents[1].metadata_json).scheduledFor,
+      "2027-07-01T12:30:00.000Z",
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("the deadline scheduler rotates fairly beyond its 250-agreement batch", async () => {
+  const db = new TestD1();
+  const readiness = await worker.fetch(request("/api/system/readiness"), {
+    DB: db,
+    VERIFY_ACTIVITY_REGISTRY_BINDING: "false",
+  });
+  assert.equal(readiness.status, 200);
+  const insert = db.database.prepare(
+    `INSERT INTO agreement_negotiations
+       (id, created_at, updated_at, status, revision, terms_json,
+        landlord_email, tenant_email, landlord_token_hash, tenant_token_hash,
+        onchain_agreement_id)
+     VALUES (?, ?, ?, 'finalized', 1, ?, ?, ?, ?, ?, ?)`,
+  );
+  const schedulerTerms = JSON.stringify({
+    ...terms,
+    claimWindowStart: "2027-07-01T12:00",
+  });
+  db.database.exec("BEGIN IMMEDIATE");
+  try {
+    for (let index = 0; index < 251; index += 1) {
+      const id = `scheduler-${String(index).padStart(3, "0")}`;
+      insert.run(
+        id,
+        "2026-08-10T12:00:00.000Z",
+        "2026-08-10T12:00:00.000Z",
+        schedulerTerms,
+        `landlord-${index}@example.com`,
+        `tenant-${index}@example.com`,
+        `landlord-token-${index}`,
+        `tenant-token-${index}`,
+        String(index),
+      );
+    }
+    db.database.exec("COMMIT");
+  } catch (error) {
+    db.database.exec("ROLLBACK");
+    throw error;
+  }
+
+  const runScheduled = async (scheduledTime) => {
+    const waits = [];
+    await worker.scheduled(
+      { scheduledTime },
+      { DB: db, VERIFY_ACTIVITY_REGISTRY_BINDING: "false" },
+      { waitUntil(promise) { waits.push(promise); } },
+    );
+    await Promise.all(waits);
+  };
+  const transitionCount = () =>
+    db.database
+      .prepare(
+        `SELECT COUNT(DISTINCT negotiation_id) AS count
+         FROM negotiation_events WHERE action = 'claim_period_started'`,
+      )
+      .get().count;
+
+  await runScheduled(Date.parse("2027-07-02T12:00:00.000Z"));
+  assert.equal(transitionCount(), 250);
+  assert.equal(
+    db.database
+      .prepare(
+        "SELECT cursor_id FROM scheduled_job_cursors WHERE name = ?",
+      )
+      .get("notification-reminders-finalized-agreements").cursor_id,
+    "scheduler-249",
+  );
+
+  await runScheduled(Date.parse("2027-07-02T12:15:00.000Z"));
+  assert.equal(transitionCount(), 251);
+  assert.equal(
+    db.database
+      .prepare(
+        `SELECT COUNT(*) AS count FROM negotiation_events
+         WHERE negotiation_id = 'scheduler-250'
+           AND action = 'claim_period_started'`,
+      )
+      .get().count,
+    1,
+  );
 });
 
 test("a delayed scheduler sends only the current no-claim lifecycle notice", async () => {
@@ -9442,23 +11003,38 @@ test("scheduled response and allocation notices respect every tenant", async () 
       { waitUntil(promise) { resolutionWaits.push(promise); } },
     );
     await Promise.all(resolutionWaits);
-    assert.equal(deliveries.length, 4);
+    assert.equal(deliveries.length, 1);
+
+    const claimDeadline =
+      new Date(terms.claimWindowStart).getTime() +
+      Number(terms.claimDays) * 24 * 60 * 60 * 1000;
+    const deadlineWaits = [];
+    await worker.scheduled(
+      { scheduledTime: claimDeadline },
+      env,
+      { waitUntil(promise) { deadlineWaits.push(promise); } },
+    );
+    await Promise.all(deadlineWaits);
+    const allocationDeliveries = deliveries.filter((delivery) =>
+      /allocation ready/.test(delivery.subject),
+    );
+    assert.equal(allocationDeliveries.length, 3);
     assert.deepEqual(
-      deliveries.slice(1).map((delivery) => delivery.to[0]),
+      allocationDeliveries.map((delivery) => delivery.to[0]),
       ["landlord@example.com", "tenant@example.com", "casey@example.com"],
     );
-    for (const delivery of deliveries.slice(1)) {
+    for (const delivery of allocationDeliveries) {
       assert.match(delivery.subject, /allocation ready/);
     }
 
     const duplicateWaits = [];
     await worker.scheduled(
-      { scheduledTime: reminderTime + 22 * 60 * 1000 },
+      { scheduledTime: claimDeadline + 11 * 60 * 1000 },
       env,
       { waitUntil(promise) { duplicateWaits.push(promise); } },
     );
     await Promise.all(duplicateWaits);
-    assert.equal(deliveries.length, 4);
+    assert.equal(deliveries.length, 7);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -9577,12 +11153,27 @@ test("scheduled allocation notices wait for an arbiter to resolve a dispute", as
       { waitUntil(promise) { resolutionWaits.push(promise); } },
     );
     await Promise.all(resolutionWaits);
-    assert.equal(deliveries.length, 3);
+    assert.equal(deliveries.length, 1);
+
+    const claimDeadline =
+      new Date(terms.claimWindowStart).getTime() +
+      Number(terms.claimDays) * 24 * 60 * 60 * 1000;
+    const deadlineWaits = [];
+    await worker.scheduled(
+      { scheduledTime: claimDeadline },
+      env,
+      { waitUntil(promise) { deadlineWaits.push(promise); } },
+    );
+    await Promise.all(deadlineWaits);
+    const allocationDeliveries = deliveries.filter((delivery) =>
+      /allocation ready/.test(delivery.subject),
+    );
+    assert.equal(allocationDeliveries.length, 2);
     assert.deepEqual(
-      deliveries.slice(1).map((delivery) => delivery.to[0]),
+      allocationDeliveries.map((delivery) => delivery.to[0]),
       ["landlord@example.com", "tenant@example.com"],
     );
-    for (const delivery of deliveries.slice(1)) {
+    for (const delivery of allocationDeliveries) {
       assert.match(delivery.subject, /allocation ready/);
     }
   } finally {
@@ -9645,6 +11236,8 @@ test("every tenant reviewer must approve and adding a tenant resets the revision
   );
   assert.equal(primaryApproved.status, "draft");
   assert.equal(primaryApproved.tenantApproved, false);
+  assert.equal(primaryApproved.viewerTenantId, created.record.tenants[0].id);
+  assert.equal(primaryApproved.viewerEmail, "tenant@example.com");
 
   const coTenantView = await jsonResponse(
     await worker.fetch(
@@ -9663,6 +11256,8 @@ test("every tenant reviewer must approve and adding a tenant resets the revision
   );
   assert.equal(allApproved.status, "ready");
   assert.equal(allApproved.tenantApproved, true);
+  assert.equal(allApproved.viewerTenantId, created.record.tenants[1].id);
+  assert.equal(allApproved.viewerEmail, "cotenant@example.com");
 
   const added = await jsonResponse(
     await worker.fetch(
@@ -10185,6 +11780,60 @@ test("cancelling a proposal removes it from active work while preserving its rec
   assert.match(await report.text(), /status cancelled/);
 });
 
+test("proposal cancellation emails every opted-in party once", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const consentedAt = new Date().toISOString();
+  for (const [index, email] of ["landlord@example.com", "tenant@example.com"].entries()) {
+    await db
+      .prepare(
+        `INSERT INTO notification_preferences
+         (user_id, email, agreement_activity, deadline_reminders, consented_at, updated_at)
+         VALUES (?, ?, 1, 1, ?, ?)`,
+      )
+      .bind(`did:privy:cancel-${index}`, email, consentedAt, consentedAt)
+      .run();
+  }
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `cancel-email-${deliveries.length}` });
+  };
+  try {
+    const cancelled = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.landlord,
+        { type: "cancel_proposal" },
+        {
+          RESEND_API_KEY: "re_cancel_test",
+          NOTIFICATION_FROM_EMAIL: "OpenEscrow <notifications@updates.openescrow.io>",
+          PUBLIC_APP_URL: "https://openescrow.io/",
+        },
+      ),
+    );
+    assert.equal(cancelled.status, "cancelled");
+    assert.deepEqual(
+      deliveries.flatMap((delivery) => delivery.to).sort(),
+      ["landlord@example.com", "tenant@example.com"],
+    );
+    assert.ok(deliveries.every((delivery) => /cancelled/.test(delivery.subject)));
+    assert.equal(
+      db
+        .prepare(
+          `SELECT COUNT(*) AS count FROM notification_deliveries
+           WHERE notification_type = 'agreement_activity_cancel_proposal'`,
+        )
+        .first().count,
+      2,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
 test("onchain proposal cancellation is landlord-only, receipt-bound, idempotent, and preserves the Record", async () => {
   const db = new TestD1();
   const created = await create(db);
@@ -10375,6 +12024,119 @@ test("the landlord is notified when all required approvals make a proposal ready
         status: "sent",
         provider_message_id: "ready-message-1",
       },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("finalization sends the tenant a required ready-to-fund email with the canonical app link", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await jsonResponse(
+    await act(db, created.record.id, created.access.tenant, {
+      type: "approve",
+      wallet: RECEIPT_TEST_TENANT,
+    }),
+  );
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `finalized-funding-${deliveries.length}` });
+  };
+  try {
+    const finalized = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.landlord,
+        {
+          type: "finalize",
+          agreementId: "42",
+          transactionHash: transactionHash(80_001),
+        },
+        {
+          RESEND_API_KEY: "re_finalization_test",
+          NOTIFICATION_FROM_EMAIL:
+            "OpenEscrow <notifications@updates.openescrow.io>",
+          PUBLIC_APP_URL: "https://openescrow.io/",
+        },
+      ),
+    );
+    assert.equal(finalized.status, "finalized");
+    assert.equal(deliveries.length, 1);
+    assert.deepEqual(deliveries[0].to, ["tenant@example.com"]);
+    assert.match(deliveries[0].subject, /agreement #42 is ready to fund/i);
+    assert.match(deliveries[0].text, /security-deposit share is now ready to fund/i);
+    assert.match(deliveries[0].text, /Open your signed-in dashboard: https:\/\/openescrow\.io/);
+    assert.doesNotMatch(deliveries[0].text, /[?&](?:id|invite)=/);
+    assert.doesNotMatch(deliveries[0].text, /Turn off optional OpenEscrow emails/i);
+    assert.deepEqual(
+      {
+        ...db
+          .prepare(
+            `SELECT recipient_email, notification_type, status, provider_message_id
+             FROM notification_deliveries
+             WHERE negotiation_id = ? AND notification_type = 'agreement_activity_finalize'`,
+          )
+          .bind(created.record.id)
+          .first(),
+      },
+      {
+        recipient_email: "tenant@example.com",
+        notification_type: "agreement_activity_finalize",
+        status: "sent",
+        provider_message_id: "finalized-funding-1",
+      },
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("each tenant contribution sends the landlord a required funding confirmation", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  await finalizeWithoutArbiter(db, created);
+  const originalFetch = globalThis.fetch;
+  const deliveries = [];
+  globalThis.fetch = async (_url, options) => {
+    deliveries.push(JSON.parse(options.body));
+    return Response.json({ id: `tenant-funded-${deliveries.length}` });
+  };
+  try {
+    const funded = await jsonResponse(
+      await act(
+        db,
+        created.record.id,
+        created.access.tenant,
+        {
+          type: "tenant_share_funded",
+          transactionHash: transactionHash(80_002),
+        },
+        {
+          RESEND_API_KEY: "re_tenant_funded_test",
+          NOTIFICATION_FROM_EMAIL:
+            "OpenEscrow <notifications@updates.openescrow.io>",
+          PUBLIC_APP_URL: "https://openescrow.io/",
+        },
+      ),
+    );
+    assert.equal(deliveries.length, 1);
+    assert.deepEqual(deliveries[0].to, ["landlord@example.com"]);
+    assert.match(deliveries[0].subject, /Tenant funding received.*agreement #42/i);
+    assert.match(deliveries[0].text, /separate confirmation as each tenant contribution/i);
+    assert.match(deliveries[0].text, /Open your signed-in dashboard: https:\/\/openescrow\.io/);
+    assert.doesNotMatch(deliveries[0].text, /[?&](?:id|invite)=/);
+    assert.equal(
+      funded.events.filter(
+        (event) =>
+          event.action === "agreement_activity_notification_sent" &&
+          event.metadata?.eventType === "tenant_share_funded" &&
+          event.metadata?.recipientRole === "landlord",
+      ).length,
+      1,
     );
   } finally {
     globalThis.fetch = originalFetch;
@@ -10586,8 +12348,9 @@ test("claim-response activity emails name the outcome and stay within the agreem
       ["casey@example.com", "landlord@example.com", "tenant@example.com"],
     );
     for (const delivery of deliveries) {
-      assert.match(delivery.subject, /deduction disputed/);
-      assert.match(delivery.text, /recorded explanation and resolution status/);
+      assert.match(delivery.subject, /claim response recorded/);
+      assert.match(delivery.text, /preserved the explanation in the shared record/);
+      assert.match(delivery.text, /documented claim allocation is ready to review/);
       assert.doesNotMatch(delivery.text, /different unit|unrelated@example.com/);
     }
   } finally {
@@ -10699,7 +12462,7 @@ test("role-bound actions are strictly enforced by session role", async () => {
   );
 });
 
-test("deduction claim emails isolate each tenant's private invitation", async () => {
+test("deduction claim emails validate private credentials but send the general app link", async () => {
   const db = new TestD1();
   const created = await jsonResponse(
     await worker.fetch(
@@ -10825,8 +12588,8 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
     for (const [index, tenant] of created.access.tenants.entries()) {
       const sent = sentEmails[index];
       assert.deepEqual(sent.body.to, [tenant.email]);
-      assert.match(sent.body.text, new RegExp(`#token=${tenant.token}`));
-      assert.match(sent.body.text, /https:\/\/openescrow\.io/);
+      assert.match(sent.body.text, /https:\/\/openescrow\.io\//);
+      assert.doesNotMatch(sent.body.text, /#token=|\?invite=|\?proposal=/);
       assert.doesNotMatch(sent.body.text, /openescrow\.example/);
       assert.equal(sent.body.text.includes("?token="), false);
       for (const otherTenant of created.access.tenants) {
@@ -10891,6 +12654,7 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
         "multi-tenant-claim-message-1",
         "multi-tenant-claim-message-2",
       ],
+      recipientEmails: ["tenant@example.com", "casey@example.com"],
       duplicate: true,
     });
     assert.equal(sentEmails.length, 2);
@@ -10904,6 +12668,46 @@ test("deduction claim emails isolate each tenant's private invitation", async ()
       JSON.parse(recordedDelivery.metadata_json).claimTransactionHash,
       `0x${"c".repeat(64)}`,
     );
+    assert.deepEqual(
+      JSON.parse(recordedDelivery.metadata_json).recipientEmails,
+      ["tenant@example.com", "casey@example.com"],
+    );
+
+    const resendRequestId = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+    const resendResponse = await worker.fetch(
+      request("/api/notifications/claim", "POST", {
+        ...notificationInput,
+        reviewLinks: validReviewLinks,
+        resend: true,
+        resendRequestId,
+      }),
+      {
+        DB: db,
+        RESEND_API_KEY: "test-resend-key",
+        NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+        PUBLIC_APP_URL: "https://openescrow.io/",
+      },
+    );
+    assert.equal(resendResponse.status, 200);
+    assert.equal((await resendResponse.json()).duplicate, false);
+    assert.equal(sentEmails.length, 4);
+
+    const duplicateResend = await worker.fetch(
+      request("/api/notifications/claim", "POST", {
+        ...notificationInput,
+        reviewLinks: validReviewLinks,
+        resend: true,
+        resendRequestId,
+      }),
+      {
+        DB: db,
+        RESEND_API_KEY: "test-resend-key",
+        NOTIFICATION_FROM_EMAIL: "OpenEscrow <notices@example.com>",
+        PUBLIC_APP_URL: "https://openescrow.io/",
+      },
+    );
+    assert.equal((await duplicateResend.json()).duplicate, true);
+    assert.equal(sentEmails.length, 4);
   } finally {
     globalThis.fetch = originalFetch;
   }
@@ -11340,6 +13144,10 @@ test("pilot rehearsal: record export and proof include claim, decision, and rece
   assert.match(claimReportHtml, /0x1111111111111111111111111111111111111111/);
   assert.match(claimReportHtml, /Recorded transaction receipts/);
   assert.match(claimReportHtml, /External supporting documentation recorded/);
+  assert.match(
+    claimReportHtml,
+    /href="https:\/\/openescrow\.io\/\?id=42&amp;panel=claims"/,
+  );
   assert.doesNotMatch(claimReportHtml, /ipfs:\/\/bafy-test-invoice/);
   assert.match(claimReportHtml, new RegExp(`0x${"9".repeat(64)}`));
   const downloadedReport = await worker.fetch(
@@ -11551,7 +13359,7 @@ test("pilot rehearsal: record export and proof include claim, decision, and rece
   }
 });
 
-test("transaction receipt retries are atomic and remain bound to the exact participant", async () => {
+test("transaction receipt retries are atomic and remain bound to the exact participant", async (t) => {
   const db = new TestD1();
   const created = await jsonResponse(
     await worker.fetch(
@@ -11740,6 +13548,8 @@ test("transaction receipt retries are atomic and remain bound to the exact parti
     ruling,
   );
   assert.equal(crossRoleReplay.status, 403);
+
+  advancePastClaimDeadline(t);
 
   const tenantWithdrawal = {
     type: "withdrawal_completed",
@@ -11962,7 +13772,7 @@ test("deadline receipt retries are atomic and exact-tenant bound", async () => {
   );
 });
 
-test("pilot rehearsal: a disputed claim completes funding, ruling, and withdrawals once", async () => {
+test("pilot rehearsal: a disputed claim completes funding, ruling, and withdrawals once", async (t) => {
   const db = new TestD1();
   const created = await jsonResponse(
     await worker.fetch(
@@ -12112,7 +13922,7 @@ test("pilot rehearsal: a disputed claim completes funding, ruling, and withdrawa
     },
   );
   assert.equal(prematureWithdrawal.status, 409);
-  assert.match((await prematureWithdrawal.json()).error, /must be resolved/);
+  assert.match((await prematureWithdrawal.json()).error, /claim period ends/);
 
   const excessiveAward = await act(
     db,
@@ -12135,6 +13945,7 @@ test("pilot rehearsal: a disputed claim completes funding, ruling, and withdrawa
       transactionHash: transactionHash(13),
     }),
   );
+  advancePastClaimDeadline(t, { ...terms, deposit: "1000", responseDays: "10" });
   const withdrawalActors = [
     [created.access.landlord, "landlord", "225"],
     [primary.token, "tenant", "465"],
@@ -12192,10 +14003,10 @@ test("pilot rehearsal: a disputed claim completes funding, ruling, and withdrawa
   const reportHtml = await report.text();
   assert.match(reportHtml, /Casey Co-tenant/);
   assert.match(reportHtml, /The documentation supports half/);
-  assert.match(reportHtml, /withdrew 310 shares/);
+  assert.match(reportHtml, /withdrew 310 payout units/);
 });
 
-test("pilot rehearsal: an accepted claim resolves allocations, withdrawals, and record export", async () => {
+test("pilot rehearsal: an accepted claim resolves allocations, withdrawals, and record export", async (t) => {
   const db = new TestD1();
   const created = await create(db);
   await finalizeWithoutArbiter(db, created);
@@ -12228,6 +14039,40 @@ test("pilot rehearsal: an accepted claim resolves allocations, withdrawals, and 
   );
   assert.equal(accepted.events.at(-1).action, "claim_response_submitted");
   assert.equal(accepted.events.at(-1).metadata.decision, "approve");
+
+  const prematureLandlordWithdrawal = await act(
+    db,
+    created.record.id,
+    created.access.landlord,
+    {
+      type: "withdrawal_completed",
+      amount: "300",
+      transactionHash: transactionHash(224),
+    },
+  );
+  assert.equal(prematureLandlordWithdrawal.status, 409);
+  assert.match(
+    (await prematureLandlordWithdrawal.json()).error,
+    /claim period ends/,
+  );
+
+  const prematureTenantWithdrawal = await act(
+    db,
+    created.record.id,
+    created.access.tenant,
+    {
+      type: "withdrawal_completed",
+      amount: "900",
+      transactionHash: transactionHash(225),
+    },
+  );
+  assert.equal(prematureTenantWithdrawal.status, 409);
+  assert.match(
+    (await prematureTenantWithdrawal.json()).error,
+    /claim period ends/,
+  );
+
+  advancePastClaimDeadline(t);
 
   await jsonResponse(
     await act(db, created.record.id, created.access.landlord, {
@@ -12268,8 +14113,11 @@ test("pilot rehearsal: an accepted claim resolves allocations, withdrawals, and 
   );
   const reportHtml = await report.text();
   assert.match(reportHtml, /approved the deduction in full/);
-  assert.match(reportHtml, /Landlord withdrew 300 shares/);
-  assert.match(reportHtml, /Terry Tenant withdrew 900 shares/);
+  assert.match(reportHtml, /Landlord withdrew 300 payout units/);
+  assert.match(reportHtml, /Terry Tenant withdrew 900 payout units/);
+  assert.match(reportHtml, /<details class="revision-snapshot">/);
+  assert.match(reportHtml, /\$300\.00<\/strong> <small>test USD<\/small>/);
+  assert.match(reportHtml, /300 testUSDC/);
 
   const firstSnapshot = await jsonResponse(
     await worker.fetch(
@@ -12298,7 +14146,7 @@ test("pilot rehearsal: an accepted claim resolves allocations, withdrawals, and 
   );
 });
 
-test("pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-time", async () => {
+test("pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-time", async (t) => {
   const db = new TestD1();
   const created = await create(db);
   const appId = "test-privy-no-claim-app";
@@ -12397,7 +14245,7 @@ test("pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-ti
       transactionHash: transactionHash(33),
     });
     assert.equal(prematureWithdrawal.status, 409);
-    assert.match((await prematureWithdrawal.json()).error, /must be resolved/);
+    assert.match((await prematureWithdrawal.json()).error, /claim period ends/);
 
     const landlordRefund = await act(db, created.record.id, landlordToken, {
       type: "timeout_executed",
@@ -12439,19 +14287,22 @@ test("pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-ti
     assert.equal(claimAfterRefund.status, 409);
     assert.match((await claimAfterRefund.json()).error, /refund is already recorded/);
 
+    advancePastClaimDeadline(t);
+
     await jsonResponse(
-      await act(db, created.record.id, tenantToken, {
+      await act(db, created.record.id, created.access.tenant, {
         type: "withdrawal_completed",
         amount: "1200",
         transactionHash: transactionHash(38),
       }),
     );
-    const duplicateWithdrawal = await act(db, created.record.id, tenantToken, {
+    const duplicateWithdrawal = await act(db, created.record.id, created.access.tenant, {
       type: "withdrawal_completed",
       amount: "1",
       transactionHash: transactionHash(39),
     });
     assert.equal(duplicateWithdrawal.status, 409);
+    t.mock.timers.reset();
 
     const record = await jsonResponse(
       await worker.fetch(
@@ -12502,7 +14353,7 @@ test("pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-ti
     assert.equal(report.status, 200);
     const reportHtml = await report.text();
     assert.match(reportHtml, /no-claim full tenant refund/i);
-    assert.match(reportHtml, /Terry Tenant withdrew 1200 shares/);
+    assert.match(reportHtml, /Terry Tenant withdrew 1200 payout units/);
     assert.match(reportHtml, new RegExp(transactionHash(32)));
     assert.match(reportHtml, new RegExp(transactionHash(35)));
     assert.match(reportHtml, new RegExp(transactionHash(38)));
@@ -12536,7 +14387,7 @@ test("pilot rehearsal: a no-claim refund and withdrawal are role-safe and one-ti
   }
 });
 
-test("a landlord can retract an unanswered claim but cannot replace or increase it", async () => {
+test("a landlord can retract an unanswered claim but cannot replace or increase it", async (t) => {
   const db = new TestD1();
   const created = await create(db);
   await finalizeWithoutArbiter(db, created);
@@ -12620,6 +14471,8 @@ test("a landlord can retract an unanswered claim but cannot replace or increase 
     }),
   );
   assert.equal(retracted.events.at(-1).action, "deduction_claim_amended");
+
+  advancePastClaimDeadline(t);
 
   await jsonResponse(
     await act(db, created.record.id, created.access.tenant, {
@@ -13642,10 +15495,13 @@ test("receipt verification binds the operations reserve to its escrow, tenant, t
     token = RECEIPT_TEST_USDC,
     amount = 5_000_000n,
     from = RECEIPT_TEST_TENANT,
+    accountAbstractionSender = null,
+    userOperationSuccess = true,
   } = {}) => ({
     status: "0x1",
     blockNumber: "0x2b",
-    from,
+    from: accountAbstractionSender ? RECEIPT_TEST_BUNDLER : from,
+    ...(accountAbstractionSender ? { to: RECEIPT_TEST_ENTRY_POINT } : {}),
     logs: [
       {
         address: reserve,
@@ -13657,6 +15513,14 @@ test("receipt verification binds the operations reserve to its escrow, tenant, t
         ],
         data: receiptData(receiptAddressWord(token), receiptWord(amount)),
       },
+      ...(accountAbstractionSender
+        ? [
+            userOperationEvent({
+              sender: accountAbstractionSender,
+              success: userOperationSuccess,
+            }),
+          ]
+        : []),
     ],
   });
   const action = {
@@ -13714,6 +15578,21 @@ test("receipt verification binds the operations reserve to its escrow, tenant, t
       128,
       "wrong sender",
     ],
+    [
+      reserveReceipt({
+        accountAbstractionSender: RECEIPT_TEST_OTHER_TENANT,
+      }),
+      130,
+      "wrong smart-wallet sender",
+    ],
+    [
+      reserveReceipt({
+        accountAbstractionSender: RECEIPT_TEST_TENANT,
+        userOperationSuccess: false,
+      }),
+      131,
+      "failed smart-wallet operation",
+    ],
   ]) {
     const rejected = await actWithVerifiedReceipt(
       db,
@@ -13731,7 +15610,7 @@ test("receipt verification binds the operations reserve to its escrow, tenant, t
       created,
       created.access.tenant,
       { ...action, transactionHash: transactionHash(129) },
-      reserveReceipt(),
+      reserveReceipt({ accountAbstractionSender: RECEIPT_TEST_TENANT }),
     ),
   );
   assert.equal(
@@ -13831,10 +15710,16 @@ test("receipt verification binds tenant funding to the exact participant and amo
         blockNumber: "0x2c",
         blockHash: transactionHash(9_003),
         transactionHash: rpcRequest.params[0],
-        from: RECEIPT_TEST_TENANT,
+        from:
+          receiptMode === "account-abstraction"
+            ? RECEIPT_TEST_BUNDLER
+            : RECEIPT_TEST_TENANT,
+        ...(receiptMode === "account-abstraction"
+          ? { to: RECEIPT_TEST_ENTRY_POINT }
+          : {}),
         logs: [
           {
-            address: "0x9F8C9555f28C10347C58fc71F430F4cbc3724b10",
+            address: ACTIVE_DEPLOYMENT.escrow,
             topics:
               eventTopic === TENANT_SHARE_FUNDED_TOPIC
                 ? [
@@ -13848,6 +15733,9 @@ test("receipt verification binds tenant funding to the exact participant and amo
                 ? receiptData(receiptWord(amount), receiptWord(amount))
                 : receiptData(receiptWord(amount)),
           },
+          ...(receiptMode === "account-abstraction"
+            ? [userOperationEvent({ sender: RECEIPT_TEST_TENANT })]
+            : []),
         ],
       },
     });
@@ -13887,7 +15775,7 @@ test("receipt verification binds tenant funding to the exact participant and amo
     );
     assert.equal(aggregateOnly.status, 400);
 
-    receiptMode = "valid";
+    receiptMode = "account-abstraction";
     const funded = await jsonResponse(
       await act(
         db,
@@ -14104,7 +15992,122 @@ test("receipt verification binds deduction claims and amendments to exact values
   );
 });
 
-test("receipt verification binds tenant responses, rulings, and withdrawals to exact parties and values", async () => {
+test("yield agreement receipt verification expects settlement-time allocation rather than premature share release", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const yieldTerms = {
+    ...created.record.terms,
+    tokenChoice: "yield",
+    depositAssetId: "aave-usdc",
+    depositAssetSnapshot: createDepositAssetSnapshot("aave-usdc"),
+    yieldConsent: true,
+  };
+  await db
+    .prepare("UPDATE agreement_negotiations SET terms_json = ? WHERE id = ?")
+    .bind(JSON.stringify(yieldTerms), created.record.id)
+    .run();
+  await finalizeWithVerifiedReceipt(db, created, {
+    assetConsent: true,
+    tokenAddress: RECEIPT_TEST_YIELD_USDC,
+  });
+
+  const action = {
+    type: "claim_submitted",
+    amount: "300",
+    category: "Damage beyond ordinary wear",
+    items: [{ category: "11", description: "Documented repair", amount: "300" }],
+    note: "",
+    evidenceUri: "openescrow://evidence/yield-receipt-claim",
+    evidenceHash: transactionHash(181),
+    californiaConfirmations: {
+      itemizedStatement: true,
+      supportingDocuments: true,
+    },
+    transactionHash: transactionHash(182),
+  };
+  const receipt = (unclaimedAllocated) => ({
+    status: "0x1",
+    blockNumber: "0x3e",
+    from: RECEIPT_TEST_LANDLORD,
+    logs: [{
+      address: RECEIPT_TEST_OPEN_ESCROW,
+      topics: [CLAIM_SUBMITTED_TOPIC, receiptWord(42)],
+      data: receiptData(receiptWord(300_000_000n), receiptWord(unclaimedAllocated)),
+    }],
+  });
+
+  const prematureRelease = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.landlord,
+    action,
+    receipt(900_000_000n),
+  );
+  assert.equal(prematureRelease.status, 400);
+
+  const claimed = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.landlord,
+      { ...action, transactionHash: transactionHash(183) },
+      receipt(0n),
+    ),
+  );
+  assert.equal(
+    claimed.events.filter((event) => event.action === "deduction_claim_submitted").length,
+    1,
+  );
+
+  const amendment = {
+    type: "claim_amended",
+    amount: "200",
+    items: [{ category: "11", description: "Reduced documented repair", amount: "200" }],
+    note: "Reduced after reviewing the invoice.",
+    evidenceUri: "openescrow://evidence/yield-receipt-amendment",
+    evidenceHash: transactionHash(184),
+    californiaConfirmations: {
+      itemizedStatement: true,
+      supportingDocuments: true,
+    },
+    transactionHash: transactionHash(185),
+  };
+  const amendmentReceipt = (additionallyAllocated) => ({
+    status: "0x1",
+    blockNumber: "0x3f",
+    from: RECEIPT_TEST_LANDLORD,
+    logs: [{
+      address: RECEIPT_TEST_OPEN_ESCROW,
+      topics: [CLAIM_AMENDED_TOPIC, receiptWord(42)],
+      data: receiptData(receiptWord(200_000_000n), receiptWord(additionallyAllocated)),
+    }],
+  });
+
+  const prematureAmendmentRelease = await actWithVerifiedReceipt(
+    db,
+    created,
+    created.access.landlord,
+    amendment,
+    amendmentReceipt(100_000_000n),
+  );
+  assert.equal(prematureAmendmentRelease.status, 400);
+
+  const amended = await jsonResponse(
+    await actWithVerifiedReceipt(
+      db,
+      created,
+      created.access.landlord,
+      { ...amendment, transactionHash: transactionHash(186) },
+      amendmentReceipt(0n),
+    ),
+  );
+  assert.equal(
+    amended.events.filter((event) => event.action === "deduction_claim_amended").length,
+    1,
+  );
+});
+
+test("receipt verification binds tenant responses, rulings, and withdrawals to exact parties and values", async (t) => {
   const db = new TestD1();
   const created = await create(db, "arbiter@example.com");
   await finalizeWithVerifiedReceipt(db, created, {
@@ -14261,6 +16264,8 @@ test("receipt verification binds tenant responses, rulings, and withdrawals to e
     1,
   );
 
+  advancePastClaimDeadline(t);
+
   const withdrawalReceipt = (party, amount, from = party) => ({
     status: "0x1",
     blockNumber: "0x33",
@@ -14274,6 +16279,32 @@ test("receipt verification binds tenant responses, rulings, and withdrawals to e
           receiptAddressWord(party),
         ],
         data: receiptData(receiptWord(amount)),
+      },
+    ],
+  });
+  const withdrawalCompletedReceipt = (
+    party,
+    payoutAmount,
+    reserveAmount,
+    from = party,
+  ) => ({
+    status: "0x1",
+    blockNumber: "0x33",
+    from,
+    logs: [
+      {
+        address: RECEIPT_TEST_OPEN_ESCROW,
+        topics: [
+          WITHDRAWAL_COMPLETED_TOPIC,
+          receiptWord(42),
+          receiptAddressWord(party),
+        ],
+        data: receiptData(
+          receiptAddressWord(RECEIPT_TEST_USDC),
+          receiptWord(payoutAmount),
+          receiptAddressWord(RECEIPT_TEST_USDC),
+          receiptWord(reserveAmount),
+        ),
       },
     ],
   });
@@ -14303,6 +16334,7 @@ test("receipt verification binds tenant responses, rulings, and withdrawals to e
   const tenantWithdrawal = {
     type: "withdrawal_completed",
     amount: "1125",
+    reserveRefundAmount: "5",
     transactionHash: transactionHash(102),
   };
   const wrongTenantAmount = await actWithVerifiedReceipt(
@@ -14310,7 +16342,11 @@ test("receipt verification binds tenant responses, rulings, and withdrawals to e
     created,
     created.access.tenant,
     tenantWithdrawal,
-    withdrawalReceipt(RECEIPT_TEST_TENANT, 1_124_000_000n),
+    withdrawalCompletedReceipt(
+      RECEIPT_TEST_TENANT,
+      1_124_000_000n,
+      5_000_000n,
+    ),
   );
   assert.equal(wrongTenantAmount.status, 400);
   const withdrawn = await jsonResponse(
@@ -14319,7 +16355,11 @@ test("receipt verification binds tenant responses, rulings, and withdrawals to e
       created,
       created.access.tenant,
       { ...tenantWithdrawal, transactionHash: transactionHash(103) },
-      withdrawalReceipt(RECEIPT_TEST_TENANT, 1_125_000_000n),
+      withdrawalCompletedReceipt(
+        RECEIPT_TEST_TENANT,
+        1_125_000_000n,
+        5_000_000n,
+      ),
     ),
   );
   assert.equal(
@@ -14330,7 +16370,7 @@ test("receipt verification binds tenant responses, rulings, and withdrawals to e
   );
 });
 
-test("legacy finalized records re-prove and preserve the landlord wallet before landlord receipts", async () => {
+test("legacy finalized records re-prove and preserve the landlord wallet before landlord receipts", async (t) => {
   const db = new TestD1();
   const created = await create(db);
   await finalizeWithoutArbiter(db, created);
@@ -14360,6 +16400,8 @@ test("legacy finalized records re-prove and preserve the landlord wallet before 
     }),
   );
 
+  advancePastClaimDeadline(t);
+
   const originalTransactionHash = `0x${"a".repeat(64)}`;
   const otherWallet = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
   const withdrawalReceipt = (party) => ({
@@ -14385,7 +16427,7 @@ test("legacy finalized records re-prove and preserve the landlord wallet before 
     from: RECEIPT_TEST_LANDLORD,
     logs: [
       {
-        address: "0x88b53d6C35020e82B97462E8a1cBCDc8D6d50f53",
+        address: ACTIVE_DEPLOYMENT.activityRegistry,
         topics: [
           ACTIVITY_PUBLISHED_TOPIC,
           receiptWord(42),
@@ -14604,6 +16646,51 @@ test("receipt verification binds deadline actions to the exact outcome amount", 
     1,
   );
 
+  const yieldNoClaimDb = new TestD1();
+  const yieldNoClaimCreated = await create(yieldNoClaimDb);
+  const yieldTerms = {
+    ...yieldNoClaimCreated.record.terms,
+    tokenChoice: "yield",
+    depositAssetId: "aave-usdc",
+    depositAssetSnapshot: createDepositAssetSnapshot("aave-usdc"),
+    yieldConsent: true,
+  };
+  await yieldNoClaimDb
+    .prepare("UPDATE agreement_negotiations SET terms_json = ? WHERE id = ?")
+    .bind(JSON.stringify(yieldTerms), yieldNoClaimCreated.record.id)
+    .run();
+  await finalizeWithVerifiedReceipt(yieldNoClaimDb, yieldNoClaimCreated, {
+    agreementId: 144,
+    assetConsent: true,
+    tokenAddress: RECEIPT_TEST_YIELD_USDC,
+  });
+  const yieldNoClaimRefunded = await jsonResponse(
+    await actWithVerifiedReceipt(
+      yieldNoClaimDb,
+      yieldNoClaimCreated,
+      yieldNoClaimCreated.access.tenant,
+      {
+        type: "timeout_executed",
+        timeout: "no_claim_refund",
+        transactionHash: transactionHash(187),
+      },
+      timeoutReceipt({
+        agreementId: 144,
+        topic: NO_CLAIM_WITHDRAWAL_TOPIC,
+        amount: 1_275_000_000n,
+        from: RECEIPT_TEST_TENANT,
+      }),
+    ),
+  );
+  assert.equal(
+    yieldNoClaimRefunded.events.filter(
+      (event) =>
+        event.action === "timeout_executed" &&
+        event.metadata.timeout === "no_claim_refund",
+    ).length,
+    1,
+  );
+
   const noResponseDb = new TestD1();
   const noResponseCreated = await create(noResponseDb);
   await finalizeWithVerifiedReceipt(noResponseDb, noResponseCreated, {
@@ -14615,9 +16702,25 @@ test("receipt verification binds deadline actions to the exact outcome amount", 
   });
   const noResponseAction = {
     type: "timeout_executed",
-    timeout: "no_response_dispute",
+    timeout: "no_response_recorded",
     transactionHash: transactionHash(106),
   };
+  const legacyDisputeLabelRejected = await actWithVerifiedReceipt(
+    noResponseDb,
+    noResponseCreated,
+    noResponseCreated.access.landlord,
+    {
+      ...noResponseAction,
+      timeout: "no_response_dispute",
+      transactionHash: transactionHash(114),
+    },
+    timeoutReceipt({
+      agreementId: 45,
+      topic: RESPONSE_TIMED_OUT_TOPIC,
+      amount: 300_000_000n,
+    }),
+  );
+  assert.equal(legacyDisputeLabelRejected.status, 409);
   const wrongNoResponseAmount = await actWithVerifiedReceipt(
     noResponseDb,
     noResponseCreated,
@@ -14642,6 +16745,62 @@ test("receipt verification binds deadline actions to the exact outcome amount", 
         amount: 300_000_000n,
       }),
     ),
+  );
+
+  const arbiterNoResponseDb = new TestD1();
+  const arbiterNoResponseCreated = await create(
+    arbiterNoResponseDb,
+    "arbiter@example.com",
+  );
+  await finalizeWithVerifiedReceipt(
+    arbiterNoResponseDb,
+    arbiterNoResponseCreated,
+    { agreementId: 47, arbiterWallet: RECEIPT_TEST_ARBITER },
+  );
+  await submitStandardClaim(arbiterNoResponseDb, arbiterNoResponseCreated, {
+    amount: "300",
+    transactionByte: "e",
+  });
+  const arbiterRecordOnlyRejected = await actWithVerifiedReceipt(
+    arbiterNoResponseDb,
+    arbiterNoResponseCreated,
+    arbiterNoResponseCreated.access.landlord,
+    {
+      type: "timeout_executed",
+      timeout: "no_response_recorded",
+      transactionHash: transactionHash(115),
+    },
+    timeoutReceipt({
+      agreementId: 47,
+      topic: RESPONSE_TIMED_OUT_TOPIC,
+      amount: 300_000_000n,
+    }),
+  );
+  assert.equal(arbiterRecordOnlyRejected.status, 409);
+  const arbiterNoResponse = await jsonResponse(
+    await actWithVerifiedReceipt(
+      arbiterNoResponseDb,
+      arbiterNoResponseCreated,
+      arbiterNoResponseCreated.access.landlord,
+      {
+        type: "timeout_executed",
+        timeout: "no_response_dispute",
+        transactionHash: transactionHash(116),
+      },
+      timeoutReceipt({
+        agreementId: 47,
+        topic: RESPONSE_TIMED_OUT_TOPIC,
+        amount: 300_000_000n,
+      }),
+    ),
+  );
+  assert.equal(
+    arbiterNoResponse.events.filter(
+      (event) =>
+        event.action === "timeout_executed" &&
+        event.metadata.timeout === "no_response_dispute",
+    ).length,
+    1,
   );
 
   const arbiterTimeoutDb = new TestD1();
@@ -14746,7 +16905,7 @@ test("receipt verification binds private record anchors to the submitted hash, t
         logs: [
           isActivity
             ? {
-                address: "0x88b53d6C35020e82B97462E8a1cBCDc8D6d50f53",
+                address: ACTIVE_DEPLOYMENT.activityRegistry,
                 topics: [
                   ACTIVITY_PUBLISHED_TOPIC,
                   receiptWord(42),
@@ -14759,7 +16918,7 @@ test("receipt verification binds private record anchors to the submitted hash, t
                 ),
               }
             : {
-                address: "0x88b53d6C35020e82B97462E8a1cBCDc8D6d50f53",
+                address: ACTIVE_DEPLOYMENT.activityRegistry,
                 topics: [
                   RECORD_SNAPSHOT_ANCHORED_TOPIC,
                   receiptWord(42),
@@ -14806,7 +16965,7 @@ test("receipt verification binds private record anchors to the submitted hash, t
       await act(
         db,
         created.record.id,
-        created.access.tenant,
+        created.access.landlord,
         {
           type: "record_snapshot_anchored",
           snapshotHash,
@@ -14820,6 +16979,14 @@ test("receipt verification binds private record anchors to the submitted hash, t
         (event) => event.action === "record_snapshot_anchored",
       ).length,
       1,
+    );
+    assert.equal(
+      anchored.events.find(
+        (event) =>
+          event.action === "transaction_receipt_verified" &&
+          event.metadata.eventType === "record_snapshot_anchored",
+      ).metadata.actorAddress,
+      RECEIPT_TEST_TENANT.toLowerCase(),
     );
 
     for (const [activityMode, hashIndex] of [

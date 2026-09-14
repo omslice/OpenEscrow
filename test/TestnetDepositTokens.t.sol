@@ -15,7 +15,7 @@ contract TestnetDepositTokensTest is Test {
 
     function setUp() public {
         plain = new TestUSDC();
-        yieldShares = new TestAaveUSDC();
+        yieldShares = new TestAaveUSDC(address(plain));
     }
 
     function test_plainTokenIsFreelyMintableAndFixedValue() public {
@@ -53,6 +53,21 @@ contract TestnetDepositTokensTest is Test {
         assertEq(yieldShares.previewAssetsAt(shares, firstFunding, laterFunding), 1_050e6);
         assertEq(yieldShares.previewAssetsAt(shares, laterFunding, laterFunding), shares);
         assertEq(yieldShares.previewAssetsAt(shares, 0, laterFunding), shares);
+    }
+
+    function test_yieldSharesRedeemToBoundedTestAssets() public {
+        uint256 shares = 1_000e6;
+        uint256 fundedAt = 1_000;
+        vm.warp(fundedAt);
+        yieldShares.mint(tenant, shares);
+        vm.warp(fundedAt + 2 hours);
+
+        vm.prank(tenant);
+        uint256 assets = yieldShares.redeemAssetsSince(shares, fundedAt, tenant);
+
+        assertEq(assets, 1_020e6);
+        assertEq(yieldShares.balanceOf(tenant), 0);
+        assertEq(plain.balanceOf(tenant), 1_020e6);
     }
 
     function test_bothTokensAreFunctionalEscrowSelections() public {

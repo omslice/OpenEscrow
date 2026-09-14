@@ -34,6 +34,7 @@ type TestSnapshot = {
 
 type AccountSwitchTestControl = {
   switchAccount: (accountId: TestAccountId) => void;
+  setWalletsReady: (ready: boolean) => void;
   resolveWallet: (accountId: TestAccountId) => void;
   snapshot: () => TestSnapshot;
 };
@@ -71,6 +72,7 @@ type MockContextValue = {
   accountId: TestAccountId;
   account: TestAccount;
   authenticated: boolean;
+  walletsReady: boolean;
   wallets: TestWallet[];
   createWallet: () => Promise<void>;
   login: (options?: {
@@ -90,6 +92,9 @@ function useMockPrivyContext() {
 
 export function PrivyProvider({ children }: { children: ReactNode }) {
   const [accountId, setAccountId] = useState<TestAccountId>("account-a");
+  const [walletsReady, setWalletsReady] = useState(
+    () => !new URLSearchParams(window.location.search).has("wallets-loading-test"),
+  );
   const [authenticated, setAuthenticated] = useState(
     () =>
       !new URLSearchParams(window.location.search).has(
@@ -158,6 +163,7 @@ export function PrivyProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     window.__openEscrowAccountSwitchTest = {
       switchAccount,
+      setWalletsReady,
       resolveWallet(requestedAccount) {
         const resolvers = walletResolvers.current[requestedAccount].splice(0);
         resolvers.forEach((resolve) => resolve());
@@ -186,6 +192,7 @@ export function PrivyProvider({ children }: { children: ReactNode }) {
         accountId,
         account: ACCOUNTS[accountId],
         authenticated,
+        walletsReady,
         wallets: wallets[accountId],
         createWallet,
         login,
@@ -234,8 +241,8 @@ export function useIdentityToken() {
 }
 
 export function useWallets() {
-  const { wallets } = useMockPrivyContext();
-  return { ready: true, wallets };
+  const { wallets, walletsReady } = useMockPrivyContext();
+  return { ready: walletsReady, wallets };
 }
 
 export function useCreateWallet() {

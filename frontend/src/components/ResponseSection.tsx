@@ -7,7 +7,7 @@ import {
   YIELD_USDC_ADDRESS,
   ZERO_ADDRESS,
 } from "../contracts/config";
-import { agreementAmountUnit } from "../lib/agreementAmountDisplay";
+import { claimAmountUnit } from "../lib/agreementAmountDisplay";
 import { agreementReference } from "../lib/displayIds";
 import { formatUSDC, parseUSDC } from "../lib/format";
 import { publicAppOrigin } from "../lib/publicAppOrigin";
@@ -96,7 +96,7 @@ export function ResponseSection({
   negotiationAccess?: NegotiationAccess | null;
 }) {
   const { address } = useAccount();
-  const amountUnit = agreementAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
+  const amountUnit = claimAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
   const [mode, setMode] = useState<Mode>("accept");
   const [partialAmount, setPartialAmount] = useState("");
   const [note, setNote] = useState("");
@@ -486,9 +486,10 @@ export function ResponseSection({
     <div className="action-section" id={`agreement-${id.toString()}-response`} tabIndex={-1}>
       <h3>Review and answer the deduction claim</h3>
       <p className="hint">
-        The landlord claimed {formatUSDC(claimed)} {amountUnit}. Review the supporting document, then
-        approve all, approve part, or dispute the deduction. Funds stay locked until the claim is
-        settled or the dispute process finishes.
+        The landlord claimed {formatUSDC(claimed)} {amountUnit}. Review the supporting document,
+        then approve all, approve part, or dispute the deduction. {agreement.arbiter === ZERO_ADDRESS
+          ? "Your response becomes part of the shared record; it does not change the landlord’s documented claim allocation in this no-arbiter version."
+          : "Funds stay locked until the claim is settled or the agreed dispute process finishes."}
       </p>
       {recordLoadError && (
         <div
@@ -520,9 +521,10 @@ export function ResponseSection({
       )}
       {requiredResponseCount > 1 && (
         <p className="field-help">
-          Every tenant records a decision. A deduction is accepted only up to the lowest amount
-          approved by all tenants. {responseCount} of {requiredResponseCount} responses are
-          currently recorded.
+          {agreement.arbiter === ZERO_ADDRESS
+            ? "Each tenant’s response is recorded independently."
+            : "The arbiter-backed allocation treats the lowest amount approved by every tenant as undisputed."}{" "}
+          {responseCount} of {requiredResponseCount} responses are currently recorded.
         </p>
       )}
 
@@ -573,7 +575,9 @@ export function ResponseSection({
             </fieldset>
             {mode === "partial" && (
               <label>
-                Amount to approve ({amountUnit}; the rest becomes disputed)
+                Amount to approve ({amountUnit}; {agreement.arbiter === ZERO_ADDRESS
+                  ? "the rest is recorded as disputed"
+                  : "the rest becomes disputed"})
                 <input
                   value={partialAmount}
                   onChange={(event) => setPartialAmount(event.target.value)}

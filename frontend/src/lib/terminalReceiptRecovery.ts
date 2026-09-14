@@ -35,6 +35,14 @@ function isPositiveTokenAmount(value: unknown): value is string {
   );
 }
 
+function isNonNegativeTokenAmount(value: unknown): value is string {
+  return (
+    typeof value === "string" &&
+    value.length <= 80 &&
+    /^\d+(?:\.\d{1,6})?$/.test(value)
+  );
+}
+
 export function isWithdrawalReceiptAction(
   value: unknown,
 ): value is WithdrawalReceiptAction {
@@ -44,9 +52,13 @@ export function isWithdrawalReceiptAction(
   return (
     hasOnlyKeys(
       value,
-      new Set(["type", "amount", "transactionHash"]),
+      new Set(["type", "amount", "reserveRefundAmount", "transactionHash"]),
     ) &&
-    isPositiveTokenAmount(value.amount) &&
+    isNonNegativeTokenAmount(value.amount) &&
+    (isPositiveTokenAmount(value.amount) ||
+      isPositiveTokenAmount(value.reserveRefundAmount)) &&
+    (value.reserveRefundAmount === undefined ||
+      isNonNegativeTokenAmount(value.reserveRefundAmount)) &&
     isTransactionHash(value.transactionHash)
   );
 }
@@ -63,6 +75,7 @@ export function isTimeoutReceiptAction(
       new Set(["type", "timeout", "transactionHash"]),
     ) &&
     (value.timeout === "no_claim_refund" ||
+      value.timeout === "no_response_recorded" ||
       value.timeout === "no_response_dispute" ||
       value.timeout === "arbiter_timeout_refund") &&
     isTransactionHash(value.transactionHash)

@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useReadContract } from "wagmi";
 import { OpenEscrowABI, OPEN_ESCROW_ADDRESS } from "../contracts/config";
 import {
+  loadPrivateEvidenceDocument,
   privateEvidencePath,
   publicEvidenceUrl,
 } from "../lib/evidenceAccess";
@@ -33,6 +35,8 @@ export function EvidenceList({
   id: bigint;
   negotiationAccess?: NegotiationAccess | null;
 }) {
+  const [openingEvidence, setOpeningEvidence] = useState<string | null>(null);
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const { data } = useReadContract({
     address: OPEN_ESCROW_ADDRESS,
     abi: OpenEscrowABI,
@@ -43,6 +47,37 @@ export function EvidenceList({
 
   const entries = (data as EvidenceEntry[] | undefined) ?? [];
   if (entries.length === 0) return null;
+
+  async function openPrivateEvidence(path: string, token: string, key: string) {
+    if (openingEvidence) return;
+    setEvidenceError(null);
+    const preview = window.open("about:blank", "_blank");
+    if (!preview) {
+      setEvidenceError(
+        "Your browser blocked the supporting-file window. Allow pop-ups for OpenEscrow and try again.",
+      );
+      return;
+    }
+    preview.opener = null;
+    try {
+      preview.document.title = "Opening supporting file...";
+      preview.document.body.textContent = "Opening supporting file...";
+      setOpeningEvidence(key);
+      const blob = await loadPrivateEvidenceDocument(path, token);
+      const objectUrl = URL.createObjectURL(blob);
+      preview.location.replace(objectUrl);
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 60_000);
+    } catch (error) {
+      preview.close();
+      setEvidenceError(
+        error instanceof Error
+          ? error.message
+          : "The supporting file could not be opened.",
+      );
+    } finally {
+      setOpeningEvidence(null);
+    }
+  }
 
   return (
     <div className="evidence-list">
@@ -66,27 +101,24 @@ export function EvidenceList({
                 <span>Added {formatTimestamp(e.timestamp)}</span>
               </div>
               {privatePath && negotiationAccess ? (
-                <form
-                  className="evidence-document-form"
-                  action={privatePath}
-                  method="post"
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  className="evidence-document-link"
+                  type="button"
+                  disabled={Boolean(openingEvidence)}
+                  aria-label={`View supporting file for ${typeLabel}`}
+                  onClick={() =>
+                    void openPrivateEvidence(
+                      privatePath,
+                      negotiationAccess.token,
+                      `${e.contentHash}:${e.timestamp.toString()}:${i}`,
+                    )
+                  }
                 >
-                  <input
-                    type="hidden"
-                    name="token"
-                    value={negotiationAccess.token}
-                    readOnly
-                  />
-                  <button
-                    className="evidence-document-link"
-                    type="submit"
-                    aria-label={`View supporting file for ${typeLabel}`}
-                  >
-                    View supporting file
-                  </button>
-                </form>
+                  {openingEvidence ===
+                  `${e.contentHash}:${e.timestamp.toString()}:${i}`
+                    ? "Opening supporting file..."
+                    : "View supporting file"}
+                </button>
               ) : documentUrl ? (
                 <a
                   className="evidence-document-link"
@@ -112,6 +144,11 @@ export function EvidenceList({
           );
         })}
       </ul>
+      {evidenceError && (
+        <p className="tx-error" role="alert">
+          {evidenceError}
+        </p>
+      )}
     </div>
   );
 }

@@ -1,10 +1,9 @@
 import path from "node:path";
+import { ACTIVE_DEPLOYMENT } from "./active-deployment.mjs";
 
 export const BASE_SEPOLIA_CHAIN_ID = 84_532;
-export const ACTIVE_ESCROW_ADDRESS =
-  "0x9F8C9555f28C10347C58fc71F430F4cbc3724b10";
-export const ACTIVE_REGISTRY_ADDRESS =
-  "0x88b53d6C35020e82B97462E8a1cBCDc8D6d50f53";
+export const ACTIVE_ESCROW_ADDRESS = ACTIVE_DEPLOYMENT.escrow;
+export const ACTIVE_REGISTRY_ADDRESS = ACTIVE_DEPLOYMENT.activityRegistry;
 
 const OFFICIAL_ACCOUNT_ID = "ac83ad901f0f00358a9b59e81487d354";
 const OFFICIAL_RESOURCE_NAMES = new Set([
@@ -88,6 +87,10 @@ export function buildSelfHostConfig({
     r2_buckets: [{ binding: "EVIDENCE", bucket_name: bucketName }],
     vars: {
       ACTIVITY_REGISTRY_ADDRESS: ACTIVE_REGISTRY_ADDRESS,
+      OPEN_ESCROW_ADDRESS: ACTIVE_ESCROW_ADDRESS,
+      OPERATIONS_RESERVE_ADDRESS: ACTIVE_DEPLOYMENT.operationsReserve,
+      OPEN_ESCROW_DEPLOYMENT_BLOCK: String(ACTIVE_DEPLOYMENT.deploymentBlock),
+      ONCHAIN_ACTIVITY_INDEXER_ENABLED: "true",
       API_RATE_LIMIT_ENABLED: "true",
       COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
       EVIDENCE_STORAGE_MODE: "private-r2",
@@ -178,6 +181,10 @@ export function validateSelfHostConfig(config) {
   }
   const requiredVars = {
     ACTIVITY_REGISTRY_ADDRESS: ACTIVE_REGISTRY_ADDRESS,
+    OPEN_ESCROW_ADDRESS: ACTIVE_ESCROW_ADDRESS,
+    OPERATIONS_RESERVE_ADDRESS: ACTIVE_DEPLOYMENT.operationsReserve,
+    OPEN_ESCROW_DEPLOYMENT_BLOCK: String(ACTIVE_DEPLOYMENT.deploymentBlock),
+    ONCHAIN_ACTIVITY_INDEXER_ENABLED: "true",
     API_RATE_LIMIT_ENABLED: "true",
     COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
     EVIDENCE_STORAGE_MODE: "private-r2",

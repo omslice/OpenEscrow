@@ -11,19 +11,19 @@ export {
 } from "./activityRegistryConfig";
 
 // Base Sepolia deployment (see deployments/base-sepolia-latest.json for receipts).
-// Deployed 2026-08-09 as one independently verified escrow, reserve, registry,
+// Deployed 2026-08-15 as one independently verified escrow, reserve, registry,
 // and bounded test-token cohort. Earlier addresses remain historical rollback data.
-export const OPEN_ESCROW_ADDRESS = "0x9F8C9555f28C10347C58fc71F430F4cbc3724b10" as const;
-export const USDC_ADDRESS = "0x3d147C9c4a9191cAbA99be3174C674C04B33E152" as const;
-export const YIELD_USDC_ADDRESS = "0x596bF42F18d2a82C346b7007402Fe9f22C1ad32f" as const;
-export const OPERATIONS_RESERVE_ADDRESS = "0xDB6637e5A858A8FD3a3CD85c1625d9A0b022A626" as const;
+export const OPEN_ESCROW_ADDRESS = "0x8a46cfed7153c53fd080e16624f9702887c78b54" as const;
+export const USDC_ADDRESS = "0xcea540421894c031684a0f0ac1679b0af94935d9" as const;
+export const YIELD_USDC_ADDRESS = "0x606352797c4cc30b7a50d82e1032042b9ac35edb" as const;
+export const OPERATIONS_RESERVE_ADDRESS = "0x5f6c341fcb0a154d10724aba28040ca81ff670d1" as const;
 export const OPERATIONS_RESERVE_AMOUNT = 5_000_000n;
 export const USDC_DECIMALS = 6;
 export const ZERO_ADDRESS = "0x0000000000000000000000000000000000000000" as const;
 
 // Block OpenEscrow was deployed at (broadcast/DeployOpenEscrow.s.sol/84532/run-latest.json) -
 // bounds event-log scans so "discover my agreements" doesn't have to search from genesis.
-export const DEPLOYMENT_BLOCK = 45283514n;
+export const DEPLOYMENT_BLOCK = 45540281n;
 export const chain = baseSepolia;
 
 // Mirrors OpenEscrow's MIN_PERIOD/MAX_PERIOD/MAX_CLAIM_WINDOW_OFFSET constants exactly -

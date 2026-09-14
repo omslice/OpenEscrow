@@ -39,7 +39,7 @@ export interface AgreementTerms {
   policyVersion?: string;
   propertyAddress: string;
   addressResolution?: {
-    provider: "photon-openstreetmap";
+    provider: "photon-openstreetmap" | "census-geocoder";
     providerFeatureId: string;
     label: string;
     countryCode: "US";
@@ -67,6 +67,7 @@ export interface AgreementTerms {
   claimDays: string;
   responseDays: string;
   arbiterDays: string;
+  testnetTimingProfile?: "accelerated-review-v1";
 }
 
 export interface DeductionLineItem {
@@ -138,6 +139,19 @@ export interface ServiceReadiness {
       boundEscrowAddress: string | null;
       checkedAt: string | null;
       error: string | null;
+    };
+    activityIndexer: {
+      configured: boolean;
+      healthy: boolean;
+      caughtUp: boolean;
+      lastStartedAt: string | null;
+      lastSucceededAt: string | null;
+      nextBlock: number | null;
+      latestFinalizedBlock: number | null;
+      pendingEventCount: number;
+      unmatchedEventCount: number;
+      error: string | null;
+      confirmationBlocks: number;
     };
   };
   addressValidation: {
@@ -216,6 +230,7 @@ export interface NegotiationTenant {
   wallet: string | null;
   isFundingTenant: boolean;
   acceptedAt: string | null;
+  invitationSentAt?: string | null;
   depositShareBps: number;
 }
 
@@ -232,6 +247,7 @@ export interface NegotiationRecord {
   tenants: NegotiationTenant[];
   arbiterName: string | null;
   arbiterEmail: string | null;
+  arbiterInvitationSentAt?: string | null;
   terms: AgreementTerms;
   tenantApproved: boolean;
   arbiterApproved: boolean;
@@ -292,6 +308,11 @@ export type ProposalInvitationResult =
       provider: "resend" | "webhook";
       recipientEmail: string;
     };
+
+export interface ProposalInvitationValidation {
+  current: true;
+  recipientEmail: string;
+}
 
 type SerializableFundingIntent = Omit<FundingIntent, "amountMicros"> & {
   amountMicros: string;
@@ -801,7 +822,14 @@ async function request<T>(url: string, init?: RequestInit): Promise<T> {
       ...init?.headers,
     },
   });
-  const data = (await response.json()) as T & { error?: string };
+  let data: T & { error?: string };
+  try {
+    data = (await response.json()) as T & { error?: string };
+  } catch {
+    throw new Error(
+      "OpenEscrow could not read the server response. Check your connection and try again.",
+    );
+  }
   if (!response.ok) throw new Error(data.error || "The agreement record could not be updated.");
   return data;
 }
@@ -828,6 +856,8 @@ export function sendNegotiationInvitation(
     invitedRole: InviteRole;
     invitedTenantId?: string;
     invitationUrl: string;
+    resend?: boolean;
+    resendRequestId?: string;
   },
 ) {
   return request<ProposalInvitationResult>(
@@ -837,6 +867,27 @@ export function sendNegotiationInvitation(
       body: JSON.stringify({
         token: access.token,
         ...invitation,
+      }),
+    },
+  );
+}
+
+export function validateNegotiationInvitation(
+  access: NegotiationAccess,
+  invitation: {
+    invitedRole: InviteRole;
+    invitedTenantId?: string;
+    invitationUrl: string;
+  },
+) {
+  return request<ProposalInvitationValidation>(
+    `/api/negotiations/${encodeURIComponent(access.proposalId)}/invitations`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        token: access.token,
+        ...invitation,
+        validateOnly: true,
       }),
     },
   );
@@ -958,6 +1009,20 @@ export async function discoverNegotiationsForAccount(
   }));
   accesses.forEach((access) => storeNegotiationAccess(access, true));
   return accesses;
+}
+
+export async function recoverNegotiationAccessForAccount(
+  access: NegotiationAccess,
+  identityToken: string,
+) {
+  const accesses = await discoverNegotiationsForAccount(access.role, identityToken);
+  return (
+    accesses.find(
+      (candidate) =>
+        candidate.proposalId === access.proposalId &&
+        candidate.role === access.role,
+    ) || null
+  );
 }
 
 export function revokeAccountSessions(identityToken: string) {
@@ -1209,12 +1274,14 @@ export type NegotiationAction =
     | {
         type: "withdrawal_completed";
         amount: string;
+        reserveRefundAmount?: string;
         transactionHash: string;
       }
     | {
         type: "timeout_executed";
         timeout:
           | "no_claim_refund"
+          | "no_response_recorded"
           | "no_response_dispute"
           | "arbiter_timeout_refund";
         transactionHash: string;
@@ -1383,9 +1450,16 @@ export async function sendClaimNotification(
       email: string;
       reviewUrl: string;
     }>;
+    resend?: boolean;
+    resendRequestId?: string;
   },
 ) {
-  return request<{ messageId: string }>("/api/notifications/claim", {
+  return request<{
+    messageId: string;
+    messageIds: string[];
+    recipientEmails: string[];
+    duplicate: boolean;
+  }>("/api/notifications/claim", {
     method: "POST",
     body: JSON.stringify({ proposalId: access.proposalId, token: access.token, ...input }),
   });

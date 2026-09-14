@@ -149,6 +149,8 @@ function validSnapshotOverlay(value) {
 
 export function normalizeAddressResolution(value) {
   if (!value || typeof value !== "object") return null;
+  const suppliedProvider = cleanString(value.provider, 80);
+  const provider = suppliedProvider || "photon-openstreetmap";
   const countryCode = cleanString(value.countryCode, 2).toUpperCase();
   const stateCode = cleanString(value.stateCode, 2).toUpperCase();
   const label = cleanString(value.label);
@@ -157,6 +159,7 @@ export function normalizeAddressResolution(value) {
   const longitude = finiteCoordinate(value.longitude, -180, 180);
   if (
     countryCode !== "US" ||
+    !["photon-openstreetmap", "census-geocoder"].includes(provider) ||
     !/^[A-Z]{2}$/.test(stateCode) ||
     label.length < 5 ||
     !providerFeatureId ||
@@ -166,7 +169,7 @@ export function normalizeAddressResolution(value) {
     return null;
   }
   return Object.freeze({
-    provider: "photon-openstreetmap",
+    provider,
     providerFeatureId,
     label,
     countryCode,
@@ -331,12 +334,29 @@ export function complianceSnapshotMatchesProfile(
   context = {},
 ) {
   const expected = buildComplianceSnapshot(profile, resolution, context);
-  return Boolean(
-    expected &&
-      snapshot &&
-      typeof snapshot === "object" &&
-      JSON.stringify(snapshot) === JSON.stringify(expected),
-  );
+  if (!expected || !snapshot || typeof snapshot !== "object") return false;
+
+  const serializedSnapshot = JSON.stringify(snapshot);
+  if (serializedSnapshot === JSON.stringify(expected)) return true;
+
+  // A small number of early hosted proposals were saved after a transport layer
+  // replaced non-ASCII punctuation with question marks. Keep the policy gate
+  // fail-closed, but recognize that exact legacy representation on display-only
+  // text fields. Operative terms, versions, URLs, facts, deadlines, amounts, and
+  // requirements still have to match byte-for-byte.
+  const legacyExpected = JSON.parse(JSON.stringify(expected));
+  const replaceLegacyDisplayPunctuation = (container, key) => {
+    if (typeof container?.[key] === "string") {
+      container[key] = Array.from(container[key], (character) =>
+        character.codePointAt(0) > 127 ? "?" : character,
+      ).join("");
+    }
+  };
+  replaceLegacyDisplayPunctuation(legacyExpected.source, "citation");
+  replaceLegacyDisplayPunctuation(legacyExpected.depositCap, "summary");
+  replaceLegacyDisplayPunctuation(legacyExpected.claimPolicy?.source, "citation");
+
+  return serializedSnapshot === JSON.stringify(legacyExpected);
 }
 
 function conditionStatus(condition, facts) {

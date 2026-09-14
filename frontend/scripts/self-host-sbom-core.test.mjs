@@ -33,6 +33,10 @@ test("builds a deterministic component inventory from every package-lock path", 
 
   assert.deepEqual(first, second);
   assert.equal(first.bomFormat, "CycloneDX");
+  assert.match(
+    first.serialNumber,
+    /^urn:uuid:[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+  );
   assert.equal(first.components.length, 2);
   assert.equal(first.components[0].purl, "pkg:npm/%40scope/widget@3.1.0");
   assert.match(first.components[1].properties[0].value, /node_modules\/example/);

@@ -2,14 +2,43 @@
 param(
     [string]$BroadcastPath = "broadcast/DeployBaseSepolia.s.sol/84532/run-latest.json",
     [string]$OutputPath = "deployments/base-sepolia-candidate.json",
-    [string]$ExpectedCommit = ""
+    [string]$ExpectedCommit = "",
+    [string]$RpcUrl = "https://sepolia.base.org"
 )
 
 $ErrorActionPreference = "Stop"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$foundryBin = Join-Path $env:USERPROFILE ".foundry\bin"
 $broadcastFile = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $BroadcastPath))
 $outputFile = [System.IO.Path]::GetFullPath((Join-Path $repoRoot $OutputPath))
+
+function Invoke-CastAddressCall {
+    param(
+        [string]$ContractAddress,
+        [string]$Signature
+    )
+
+    $result = & "$foundryBin\cast.exe" call $ContractAddress $Signature --rpc-url $RpcUrl 2>$null
+    $exitCode = $LASTEXITCODE
+    $result = ([string]$result).Trim()
+    if ($exitCode -ne 0 -or $result -notmatch '^0x[0-9a-fA-F]{40}$') {
+        throw "Could not read $Signature from deployed contract $ContractAddress."
+    }
+    return $result
+}
+
+function Assert-LiveAddressBinding {
+    param(
+        [string]$Label,
+        [string]$Actual,
+        [string]$Expected
+    )
+
+    if ($Actual -ine $Expected) {
+        throw "$Label does not match the exact deployment cohort."
+    }
+}
 
 if (-not (Test-Path -LiteralPath $broadcastFile -PathType Leaf)) {
     throw "Broadcast file not found: $broadcastFile"
@@ -124,8 +153,69 @@ if (
     [string]$reserveTransaction.arguments[0] -ine $plainToken -or
     [string]$reserveTransaction.arguments[1] -ine $yieldToken
 ) {
-    throw "OpenEscrow and OperationsReserve were deployed with different plain tokens."
+    throw "OpenEscrow and OperationsReserve were deployed with different token bindings."
 }
+
+$chainIdOutput = & "$foundryBin\cast.exe" chain-id --rpc-url $RpcUrl 2>$null
+$chainIdExitCode = $LASTEXITCODE
+if ($chainIdExitCode -ne 0 -or ([string]$chainIdOutput).Trim() -ne '84532') {
+    throw "The deployment verification RPC did not return Base Sepolia chain ID 84532."
+}
+
+$liveContracts = [ordered]@{
+    TestUSDC = [string]$plainTokenTransaction.contractAddress
+    TestAaveUSDC = [string]$yieldTokenTransaction.contractAddress
+    OpenEscrow = [string]$escrowTransaction.contractAddress
+    OperationsReserve = [string]$reserveTransaction.contractAddress
+    AgreementActivityRegistry = [string]$registryTransaction.contractAddress
+}
+$propagationAttempts = 12
+for ($attempt = 1; $attempt -le $propagationAttempts; $attempt++) {
+    $allCodeReadable = $true
+    foreach ($entry in $liveContracts.GetEnumerator()) {
+        $code = & "$foundryBin\cast.exe" code $entry.Value --rpc-url $RpcUrl 2>$null
+        $codeExitCode = $LASTEXITCODE
+        $code = ([string]$code).Trim()
+        if ($codeExitCode -ne 0 -or $code -notmatch '^0x[0-9a-fA-F]+$' -or $code -eq '0x') {
+            $allCodeReadable = $false
+            break
+        }
+    }
+    if ($allCodeReadable) {
+        break
+    }
+    if ($attempt -lt $propagationAttempts) {
+        Write-Host "Waiting for Base Sepolia RPC propagation (attempt $attempt of $propagationAttempts)..."
+        Start-Sleep -Seconds 5
+    }
+}
+if (-not $allCodeReadable) {
+    throw "At least one deployed cohort address has no readable Base Sepolia code."
+}
+
+$deployerAddress = [string]$reserveTransaction.transaction.from
+if ($deployerAddress -notmatch '^0x[0-9a-fA-F]{40}$') {
+    throw "The reserve deployment does not identify a valid treasury/deployer address."
+}
+
+Assert-LiveAddressBinding 'TestAaveUSDC.SETTLEMENT_ASSET()' `
+    (Invoke-CastAddressCall $yieldToken 'SETTLEMENT_ASSET()(address)') $plainToken
+Assert-LiveAddressBinding 'OpenEscrow.TOKEN()' `
+    (Invoke-CastAddressCall $escrowTransaction.contractAddress 'TOKEN()(address)') $plainToken
+Assert-LiveAddressBinding 'OpenEscrow.YIELD_TOKEN()' `
+    (Invoke-CastAddressCall $escrowTransaction.contractAddress 'YIELD_TOKEN()(address)') $yieldToken
+Assert-LiveAddressBinding 'OpenEscrow.OPERATIONS_RESERVE()' `
+    (Invoke-CastAddressCall $escrowTransaction.contractAddress 'OPERATIONS_RESERVE()(address)') $reserveTransaction.contractAddress
+Assert-LiveAddressBinding 'OperationsReserve.ESCROW()' `
+    (Invoke-CastAddressCall $reserveTransaction.contractAddress 'ESCROW()(address)') $escrowTransaction.contractAddress
+Assert-LiveAddressBinding 'OperationsReserve.TOKEN()' `
+    (Invoke-CastAddressCall $reserveTransaction.contractAddress 'TOKEN()(address)') $plainToken
+Assert-LiveAddressBinding 'OperationsReserve.YIELD_TOKEN()' `
+    (Invoke-CastAddressCall $reserveTransaction.contractAddress 'YIELD_TOKEN()(address)') $yieldToken
+Assert-LiveAddressBinding 'OperationsReserve.TREASURY()' `
+    (Invoke-CastAddressCall $reserveTransaction.contractAddress 'TREASURY()(address)') $deployerAddress
+Assert-LiveAddressBinding 'AgreementActivityRegistry.ESCROW()' `
+    (Invoke-CastAddressCall $registryTransaction.contractAddress 'ESCROW()(address)') $escrowTransaction.contractAddress
 
 $commit = [string](& git -C $repoRoot rev-parse HEAD 2>$null)
 if ($LASTEXITCODE -ne 0) {
@@ -183,6 +273,8 @@ $manifest = [ordered]@{
         transactionHash = [string]$configureTransaction.hash
         reserveAddress = [string]$reserveTransaction.contractAddress
         escrowAddress = [string]$escrowTransaction.contractAddress
+        treasuryAddress = $deployerAddress
+        liveBindingsVerified = $true
     }
     tokens = [ordered]@{
         plain = $plainToken

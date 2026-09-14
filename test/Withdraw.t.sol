@@ -34,6 +34,11 @@ contract WithdrawTest is Base {
 
         uint256 balBefore = usdc.balanceOf(landlord);
         vm.prank(landlord);
+        vm.expectRevert(OpenEscrow.ClaimWindowStillOpen.selector);
+        escrow.withdraw(id);
+
+        vm.warp(_claimSubmissionDeadline(id));
+        vm.prank(landlord);
         escrow.withdraw(id);
 
         assertEq(usdc.balanceOf(landlord), balBefore + DEPOSIT / 2);
@@ -116,6 +121,11 @@ contract WithdrawTest is Base {
         escrow.resolveDispute(id, DEPOSIT / 8); // award 125 more
 
         uint256 expectedLandlord = DEPOSIT / 4 + DEPOSIT / 8;
+        vm.prank(landlord);
+        vm.expectRevert(OpenEscrow.ClaimWindowStillOpen.selector);
+        escrow.withdraw(id);
+
+        vm.warp(_claimSubmissionDeadline(id));
         vm.prank(landlord);
         escrow.withdraw(id);
         assertEq(usdc.balanceOf(landlord), expectedLandlord);

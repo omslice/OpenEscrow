@@ -6,7 +6,7 @@ import {
   Phase,
   YIELD_USDC_ADDRESS,
 } from "../contracts/config";
-import { agreementAmountUnit } from "../lib/agreementAmountDisplay";
+import { claimAmountUnit } from "../lib/agreementAmountDisplay";
 import { formatUSDC, parseUSDC } from "../lib/format";
 import type { Agreement } from "../lib/useAgreement";
 import { TxButton } from "./TxButton";
@@ -107,7 +107,7 @@ export function DisputeResolutionSection({
   }
 
   const disputed = agreement.locked;
-  const amountUnit = agreementAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
+  const amountUnit = claimAmountUnit(agreement.token, YIELD_USDC_ADDRESS);
   let awardRaw: bigint | null = null;
   try {
     awardRaw = award ? parseUSDC(award) : null;

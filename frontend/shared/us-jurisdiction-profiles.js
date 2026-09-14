@@ -328,10 +328,22 @@ const PROFILE_METADATA_OVERRIDES = Object.freeze({
     researchedOn: "2026-08-08",
   }),
   OH: Object.freeze({
-    version: "oh-rules-2026-08-08.v5",
-    statuteUrl:
-      "https://www.supremecourt.ohio.gov/rod/docs/pdf/10/2025/2025-Ohio-2840.pdf",
-    researchedOn: "2026-08-08",
+    version: "oh-rules-2026-09-14.v6",
+    statuteUrl: "https://codes.ohio.gov/ohio-revised-code/section-5321.16",
+    researchedOn: "2026-09-14",
+    sourceExternalMonitor: Object.freeze({
+      kind: "github-source-attestation",
+      url: "https://raw.githubusercontent.com/omslice/OpenEscrow/compliance-attestations/state-oh.json",
+      expectedBodySha256:
+        "e81d3dfe1e00552f7b8ea81f79237d4d7da646a25e597f5d5b4fecc62e246017",
+      maximumAgeMs: 48 * 60 * 60 * 1000,
+      requiredMarkers: Object.freeze([
+        "Section 5321.16",
+        "five per cent per annum",
+        "within thirty days",
+        "forwarding address",
+      ]),
+    }),
   }),
   PA: Object.freeze({
     statuteUrl:

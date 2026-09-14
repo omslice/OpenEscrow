@@ -3,6 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "packageManager": "npm@11.16.0",
   "scripts": {
     "dev": "vite",
     "build": "tsc -b && vite build",
@@ -12,11 +13,13 @@
     "lint": "oxlint",
     "test:client-logic": "node --test --experimental-strip-types src/lib/*.test.ts scripts/*.test.mjs",
     "test:account-switch": "node scripts/check-account-switch.mjs",
+    "test:sample-workspace": "node scripts/check-sample-workspace.mjs",
     "test:funding-recovery": "node scripts/check-funding-recovery.mjs",
     "test:funding-production-lock": "node scripts/check-funding-production-lock.mjs",
     "test:evidence-recovery": "node scripts/check-evidence-recovery.mjs",
     "test:record-verification": "node scripts/check-record-verification.mjs",
     "test:accessibility": "node scripts/check-accessibility.mjs",
+    "test:ux-primitives": "node scripts/check-ux-primitives.mjs",
     "test:load-recovery": "node scripts/check-load-recovery.mjs",
     "test:deposit-list": "node scripts/check-deposit-list.mjs",
     "test:record-list": "node scripts/check-record-list.mjs",
@@ -43,7 +46,8 @@
     "contract:assure": "node scripts/check-contract-release.mjs",
     "contract:dependencies:verify": "node scripts/check-contract-release.mjs --verify-dependencies",
     "deploy:rehearse": "node scripts/rehearse-contract-deployment.mjs",
-    "check": "npm run lint && npm run test:server && npm run test:client-logic && npm run test:account-switch && npm run test:funding-recovery && npm run test:funding-production-lock && npm run test:evidence-recovery && npm run test:record-verification && npm run test:accessibility && npm run test:load-recovery && npm run test:deposit-list && npm run test:record-list && npm run test:private-record-recovery && npm run test:pilot-lifecycle && npm run check:roadmap && npm run check:community && npm run build && npm run check:bundle && npm run check:landing-load",
+    "deploy:apply-candidate": "node scripts/apply-deployment-candidate.mjs",
+    "check": "npm run lint && npm run test:server && npm run test:client-logic && npm run test:account-switch && npm run test:sample-workspace && npm run test:funding-recovery && npm run test:funding-production-lock && npm run test:evidence-recovery && npm run test:record-verification && npm run test:accessibility && npm run test:ux-primitives && npm run test:load-recovery && npm run test:deposit-list && npm run test:record-list && npm run test:private-record-recovery && npm run test:pilot-lifecycle && npm run check:roadmap && npm run check:community && npm run build && npm run check:bundle && npm run check:landing-load",
     "release:check:frontend": "npm run check && npm run check:reviewer-evidence && npm run check:audit && npm run check:wallet-dependencies && node scripts/check-release-config.mjs",
     "release:check": "npm run contract:assure && npm run release:check:frontend",
     "pilot:check": "node scripts/check-pilot-readiness.mjs",
@@ -97,7 +101,9 @@
   },
   "overrides": {
     "axios": "1.18.1",
-    "hono": "4.12.34",
+    "decode-uri-component": "0.5.0",
+    "hono": "4.13.5",
+    "query-string": "9.5.1",
     "uuid": "11.1.1",
     "ws": "8.21.1"
   }

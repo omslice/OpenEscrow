@@ -8,6 +8,10 @@ const accountCenterSource = readFileSync(
 );
 const appStyles = readFileSync(new URL("../App.css", import.meta.url), "utf8");
 const appSource = readFileSync(new URL("../App.tsx", import.meta.url), "utf8");
+const appProvidersSource = readFileSync(
+  new URL("../AppProviders.tsx", import.meta.url),
+  "utf8",
+);
 const connectWalletSource = readFileSync(
   new URL("../components/PrivyConnectWallet.tsx", import.meta.url),
   "utf8",
@@ -133,6 +137,25 @@ test("account-bound wallet and inventory callbacks reject stale identity complet
   );
 });
 
+test("an existing embedded wallet is activated automatically for a signed-in account", () => {
+  assert.match(
+    appProvidersSource,
+    /createOnLogin: "users-without-wallets"/,
+  );
+  assert.match(
+    accountCenterSource,
+    /wallets\.find\(\(wallet\) => wallet\.walletClientType === "privy"\) \?\? wallets\[0\]/,
+  );
+  assert.match(
+    accountCenterSource,
+    /activationAttemptedForUser\.current = user\.id;\s*void Promise\.resolve\(setActiveWallet\(preferredWallet\)\)/,
+  );
+  assert.match(
+    accountCenterSource,
+    /activeAccountIdentity\.current !== user\.id \|\| !accountScopeActive\.current/,
+  );
+});
+
 test("mobile account security recovery actions retain full-width touch targets", () => {
   assert.match(
     appStyles,
@@ -162,11 +185,19 @@ test("the signed-out header keeps its brand readable before stacking", () => {
   assert.match(layoutSource, /!showNotifications \|\| accountEntry !== undefined/);
   assert.match(
     appStyles,
-    /\.app-header-account-entry\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) minmax\(360px, 420px\);[^}]*align-items:\s*center;/s,
+    /\.app-header-account-entry\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\);[^}]*align-items:\s*start;/s,
   );
   assert.match(
     appStyles,
-    /\.app-header-account-entry \.account-entry \.btn\s*\{[^}]*flex:\s*1 1 180px;[^}]*min-width:\s*0;/s,
+    /\.app-header-account-entry \.account-entry \.btn\s*\{[^}]*flex:\s*1 1 160px;[^}]*min-width:\s*0;[^}]*overflow-wrap:\s*anywhere;/s,
+  );
+  assert.match(
+    appStyles,
+    /\.app-header-account-entry \.account-entry\s*\{[^}]*flex:\s*1 1 0;[^}]*width:\s*auto;[^}]*min-width:\s*0;/s,
+  );
+  assert.match(
+    appStyles,
+    /\.app-header-account-entry \.notification-center\s*\{[^}]*flex:\s*0 0 auto;/s,
   );
   assert.match(
     appStyles,

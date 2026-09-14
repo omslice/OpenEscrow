@@ -45,6 +45,19 @@ const baseReadiness = (): ServiceReadiness => ({
       checkedAt: "2026-07-26T00:00:00.000Z",
       error: null,
     },
+    activityIndexer: {
+      configured: true,
+      healthy: true,
+      caughtUp: true,
+      lastStartedAt: "2026-07-26T00:00:00.000Z",
+      lastSucceededAt: "2026-07-26T00:00:00.000Z",
+      nextBlock: 45_300_000,
+      latestFinalizedBlock: 45_299_999,
+      pendingEventCount: 0,
+      unmatchedEventCount: 0,
+      error: null,
+      confirmationBlocks: 20,
+    },
   },
   addressValidation: {
     configured: true,
@@ -161,6 +174,21 @@ test("readiness distinguishes an account-only test sender from participant deliv
   assert.equal(actions.length, 1);
   assert.equal(actions[0].label, "Verify participant email domain");
   assert.match(actions[0].detail, /updates\.openescrow\.io/);
+});
+
+test("readiness requires a healthy direct-onchain activity indexer", () => {
+  const degraded = baseReadiness();
+  degraded.recordIntegrity.activityIndexer.healthy = false;
+  degraded.recordIntegrity.activityIndexer.error = "Base Sepolia RPC is unavailable.";
+
+  const summary = summarizeServiceReadiness(degraded);
+  assert.equal(summary.issueCount, 1);
+  assert.match(summary.blockers[0], /activity indexer/i);
+
+  const actions = getServiceReadinessActions(degraded);
+  assert.equal(actions.length, 1);
+  assert.equal(actions[0].label, "Restore onchain activity indexing");
+  assert.match(actions[0].detail, /Base Sepolia RPC/);
 });
 
 test("readiness blocks an incomplete retained evidence keyring", () => {

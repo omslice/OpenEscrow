@@ -112,16 +112,32 @@ export function AgreementCard({
   useEffect(() => {
     if (!focusRequest || isLoading || error || !exists || !agreement) return;
     if (handledFocusNonce.current === focusRequest.nonce) return;
-    const target =
-      document.getElementById(focusRequest.targetId) ||
-      document.getElementById(`agreement-${id.toString()}`);
-    if (!target) return;
-    handledFocusNonce.current = focusRequest.nonce;
-    target?.scrollIntoView({
-      behavior: preferredScrollBehavior(),
-      block: "start",
-    });
-    target?.focus({ preventScroll: true });
+    let cancelled = false;
+    let attempts = 0;
+    let timer: number | undefined;
+    const focusTarget = () => {
+      if (cancelled) return;
+      const target = document.getElementById(focusRequest.targetId);
+      if (!target && attempts < 12) {
+        attempts += 1;
+        timer = window.setTimeout(focusTarget, 75);
+        return;
+      }
+      const resolvedTarget =
+        target || document.getElementById(`agreement-${id.toString()}`);
+      if (!resolvedTarget) return;
+      handledFocusNonce.current = focusRequest.nonce;
+      resolvedTarget.scrollIntoView({
+        behavior: preferredScrollBehavior(),
+        block: "start",
+      });
+      resolvedTarget.focus({ preventScroll: true });
+    };
+    focusTarget();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) window.clearTimeout(timer);
+    };
   }, [
     agreement,
     error,

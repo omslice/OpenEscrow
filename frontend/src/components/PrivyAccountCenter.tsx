@@ -33,6 +33,7 @@ import {
   reloadBrowserPage,
 } from "../lib/browserActions";
 import { createAccountOperationGuard } from "../lib/accountOperationGuard";
+import { WalletConnectionPending } from "./WalletConnectionPending";
 
 const DEFAULT_PREFERENCES: NotificationPreferences = {
   agreementActivity: true,
@@ -78,6 +79,7 @@ export function PrivyAccountCenter({
   const [walletSetup, setWalletSetup] = useState<"idle" | "creating" | "slow" | "error">("idle");
   const [walletError, setWalletError] = useState<string | null>(null);
   const attemptedForUser = useRef<string | null>(null);
+  const activationAttemptedForUser = useRef<string | null>(null);
   const inviteRole = useInviteRole();
   const activeIdentityToken = useRef(identityToken);
   activeIdentityToken.current = identityToken;
@@ -109,6 +111,7 @@ export function PrivyAccountCenter({
     setWalletError(null);
     setWalletCopyStatus(null);
     attemptedForUser.current = null;
+    activationAttemptedForUser.current = null;
     return () => {
       accountScopeActive.current = false;
     };
@@ -233,6 +236,34 @@ export function PrivyAccountCenter({
       setWalletError(null);
     }
   }, [hasWallet]);
+
+  useEffect(() => {
+    if (
+      !ready ||
+      !authenticated ||
+      !walletsReady ||
+      !user ||
+      address ||
+      wallets.length === 0 ||
+      activationAttemptedForUser.current === user.id
+    ) {
+      return;
+    }
+
+    const preferredWallet =
+      wallets.find((wallet) => wallet.walletClientType === "privy") ?? wallets[0];
+    activationAttemptedForUser.current = user.id;
+    void Promise.resolve(setActiveWallet(preferredWallet)).catch((cause) => {
+      if (activeAccountIdentity.current !== user.id || !accountScopeActive.current) return;
+      activationAttemptedForUser.current = null;
+      setWalletSetup("error");
+      setWalletError(
+        cause instanceof Error
+          ? cause.message
+          : "Your OpenEscrow wallet could not be activated. Open Account to retry.",
+      );
+    });
+  }, [address, authenticated, ready, setActiveWallet, user, wallets, walletsReady]);
 
   async function updatePreference(
     name: "agreementActivity" | "deadlineReminders",
@@ -596,7 +627,7 @@ export function PrivyAccountCenter({
               <div className="account-info-card account-wallet-card">
                 <h3>Wallets</h3>
                 {!walletsReady ? (
-                  <p className="hint">Loading wallets...</p>
+                  <WalletConnectionPending key={accountIdentity} />
                 ) : !hasWallet ? (
                   <div className="wallet-setup-state">
                     <p className="hint" role="status">

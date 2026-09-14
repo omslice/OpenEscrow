@@ -52,7 +52,7 @@ export function NextAction({
       title = "Review and fund";
       message =
         agreement.arbiter === ZERO_ADDRESS
-          ? "No arbiter is preselected. Confirm every term before depositing; if a dispute occurs, both parties can mutually appoint one or let the fixed timeout return disputed funds to you."
+          ? "No arbiter is preselected. Confirm every term before depositing. Any later claim and tenant response will be preserved in the shared record."
           : "The arbiter accepted. Confirm every term before approving and depositing yield-test shares.";
     } else {
       title = "Waiting for tenant funding";
@@ -87,19 +87,24 @@ export function NextAction({
     if (isTenant) {
       title = "Respond before the deadline";
       message =
-        "Accept all, accept part, or dispute. If you do nothing, the claim becomes a dispute—it is never auto-paid.";
+        agreement.arbiter === ZERO_ADDRESS
+          ? "Approve, partially approve, or dispute the documented claim. Your response is recorded; if you do nothing, the record will show “No response,” and the documented claim can still be finalized."
+          : "Approve, partially approve, or dispute. If you do nothing, the unanswered amount moves to the agreed dispute process.";
     } else if (isLandlord) {
-      title = "Waiting for the tenant";
-      message = "You may reduce the claim once. You cannot increase it or extend the response deadline.";
+      title = agreement.arbiter === ZERO_ADDRESS ? "Tenant response period" : "Waiting for the tenant";
+      message =
+        agreement.arbiter === ZERO_ADDRESS
+          ? "Tenant responses are preserved in the shared record. After the deadline, finalize the documented claim and record any non-response."
+          : "The tenant may approve, partially approve, or dispute before the response deadline.";
     } else if (isArbiter) {
       title = "Stand by";
       message = "You act only if the tenant disputes some or all of the claim.";
     }
   } else if (agreement.phase === Phase.Disputed) {
     if (agreement.arbiter === ZERO_ADDRESS) {
-      title = "Mutually appoint an arbiter—or wait for timeout";
+      title = "Legacy dispute awaiting resolution";
       message =
-        "The landlord and tenant may appoint a neutral arbiter by mutual consent. The deadline does not extend; if nobody rules, the disputed balance goes to the tenant.";
+        "This older agreement entered the dispute workflow without a preselected arbiter. Follow its recorded timeout terms; newer no-arbiter agreements keep responses in the shared record instead.";
     } else if (isArbiter && !agreement.arbiterResigned) {
       title = "Ruling required";
       message = "Review the evidence and allocate no more than the disputed balance before the deadline.";

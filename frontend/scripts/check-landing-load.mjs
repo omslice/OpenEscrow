@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { stat } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +10,13 @@ const host = "127.0.0.1";
 const port = 4179;
 const baseUrl = `http://${host}:${port}`;
 const frontendRoot = fileURLToPath(new URL("..", import.meta.url));
+const repositoryRoot = path.resolve(frontendRoot, "..");
+const deploymentManifest = JSON.parse(
+  readFileSync(path.join(repositoryRoot, "deployments", "base-sepolia-latest.json"), "utf8"),
+);
+const OPEN_ESCROW_ADDRESS = deploymentManifest.openEscrow.address;
+const ACTIVITY_REGISTRY_ADDRESS =
+  deploymentManifest.agreementActivityRegistry.address;
 const assetsRoot = path.join(frontendRoot, "dist", "assets");
 const viteEntrypoint = fileURLToPath(
   new URL("../node_modules/vite/bin/vite.js", import.meta.url),
@@ -165,6 +173,14 @@ try {
   assert.equal(
     await landingPage
       .locator(".legal-links")
+      .getByRole("link", { name: "Help & Guides", exact: true })
+      .getAttribute("href"),
+    "/help",
+    "Public help must remain available to signed-out visitors.",
+  );
+  assert.equal(
+    await landingPage
+      .locator(".legal-links")
       .getByRole("link", { name: "Project Funding", exact: true })
       .getAttribute("href"),
     "/funding",
@@ -190,6 +206,69 @@ try {
     await landingPage.locator(".legal-consent-note").count() >= 1,
     "Sign-in controls must link the Terms of Use and Privacy Policy before authentication.",
   );
+  await landingPage.setViewportSize({ width: 1126, height: 900 });
+  await landingPage.evaluate(() => {
+    const headerActions = document.querySelector(".header-actions");
+    const buttons = headerActions?.querySelectorAll(".account-entry .btn");
+    if (!headerActions || !buttons || buttons.length !== 2) {
+      throw new Error("The signed-out header controls are unavailable for layout verification.");
+    }
+    const notifications = document.createElement("details");
+    notifications.className = "notification-center invite-layout-fixture";
+    const summary = document.createElement("summary");
+    summary.setAttribute("aria-label", "Notifications (7 unread)");
+    summary.innerHTML = '<span aria-hidden="true">Bell</span><b>7</b>';
+    notifications.append(summary);
+    headerActions.prepend(notifications);
+    buttons[0].textContent = "Continue as tenant with Google";
+    buttons[1].textContent = "Use a tenant wallet";
+  });
+  const inviteHeaderBounds = await landingPage.evaluate(() => {
+    const header = document.querySelector(".app-header");
+    const accountEntry = document.querySelector(".header-actions .account-entry");
+    const controls = document.querySelectorAll(
+      ".header-actions .notification-center, .header-actions .account-entry .btn, .header-actions .legal-consent-note",
+    );
+    if (!header || !accountEntry || controls.length !== 4) {
+      throw new Error("The invite-header layout fixture is incomplete.");
+    }
+    const headerRect = header.getBoundingClientRect();
+    const accountRect = accountEntry.getBoundingClientRect();
+    return {
+      headerLeft: headerRect.left,
+      headerRight: headerRect.right,
+      accountLeft: accountRect.left,
+      accountRight: accountRect.right,
+      controlBounds: [...controls].map((control) => {
+        const rect = control.getBoundingClientRect();
+        return { left: rect.left, right: rect.right };
+      }),
+      pageFitsViewport: document.documentElement.scrollWidth <= window.innerWidth,
+    };
+  });
+  assert.equal(
+    inviteHeaderBounds.pageFitsViewport,
+    true,
+    "The role-restricted invite header must not create page-level horizontal overflow.",
+  );
+  assert.ok(
+    inviteHeaderBounds.accountLeft >= inviteHeaderBounds.headerLeft - 0.5 &&
+      inviteHeaderBounds.accountRight <= inviteHeaderBounds.headerRight + 0.5 &&
+      inviteHeaderBounds.controlBounds.every(
+        ({ left, right }) =>
+          left >= inviteHeaderBounds.headerLeft - 0.5 &&
+          right <= inviteHeaderBounds.headerRight + 0.5,
+      ),
+    "Every invite sign-in control and legal notice must stay inside the header boundary.",
+  );
+  await landingPage.evaluate(() => {
+    document.querySelector(".invite-layout-fixture")?.remove();
+    const buttons = document.querySelectorAll(".header-actions .account-entry .btn");
+    if (buttons.length === 2) {
+      buttons[0].textContent = "Continue with Google";
+      buttons[1].textContent = "Continue with a wallet";
+    }
+  });
   await landingPage.getByRole("heading", { name: "Built by Omri Gross" }).waitFor();
   const projectWalkthrough = landingPage.locator(".project-demo-video video");
   await projectWalkthrough.waitFor({ state: "visible" });
@@ -212,10 +291,29 @@ try {
   );
   assert.equal(
     await landingPage
+      .getByRole("link", { name: "Read the help and role guides", exact: true })
+      .getAttribute("href"),
+    "/help",
+    "The public overview should provide a text alternative beside the video.",
+  );
+  assert.equal(
+    (await landingPage.getByRole("heading", { level: 1 }).textContent())?.trim(),
+    "OpenEscrow",
+    "The image-led wordmark must retain an indexable textual H1.",
+  );
+  assert.equal(
+    await landingPage
+      .getByRole("link", { name: "Try the mock demo", exact: true })
+      .getAttribute("href"),
+    "/explore",
+    "The mock demo should be an optional choice on the About landing page.",
+  );
+  assert.equal(
+    await landingPage
       .getByRole("link", { name: "View on GitHub", exact: true })
       .getAttribute("href"),
     "https://github.com/omslice/OpenEscrow",
-    "The signed-out landing page should expose the source repository beside its primary action.",
+    "The signed-out About page should retain its View on GitHub action.",
   );
   assert.equal(
     await landingPage
@@ -291,7 +389,7 @@ try {
     "A clean logged-out visit must not ask the visitor to choose a workspace role.",
   );
   await landingPage
-    .getByRole("button", { name: "Try the testnet demo" })
+    .getByRole("button", { name: "Try the testnet demo", exact: true })
     .click();
   await landingPage.waitForFunction(
     () => document.activeElement?.id === "public-access-title",
@@ -469,6 +567,53 @@ try {
     "/funding must not create horizontal overflow at mobile width.",
   );
   await fundingContext.close();
+
+  for (const helpPath of ["/help", "/docs"]) {
+    const helpContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+    await isolateFromExternalProviders(helpContext);
+    const helpPage = await helpContext.newPage();
+    const helpAssets = observeLocalScripts(helpPage);
+    const helpResponse = await helpPage.goto(`${baseUrl}${helpPath}`, {
+      waitUntil: "domcontentloaded",
+    });
+    assert.equal(helpResponse?.status(), 200, `${helpPath} must load through the SPA fallback.`);
+    await helpPage
+      .getByRole("heading", { name: "OpenEscrow help and quick-start guides", exact: true })
+      .waitFor({ state: "visible" });
+    for (const role of ["Landlord", "Tenant"]) {
+      await helpPage.getByRole("heading", { name: role, exact: true }).waitFor();
+    }
+    assert.equal(
+      await helpPage.getByText("Base Sepolia · chain 84532", { exact: true }).count(),
+      1,
+      `${helpPath} must display the active network and chain identity.`,
+    );
+    assert.equal(
+      await helpPage
+        .getByRole("link", { name: OPEN_ESCROW_ADDRESS, exact: true })
+        .getAttribute("href"),
+      `https://sepolia.basescan.org/address/${OPEN_ESCROW_ADDRESS}`,
+      `${helpPath} must label and link the active escrow contract.`,
+    );
+    assert.equal(
+      await helpPage
+        .getByRole("link", { name: ACTIVITY_REGISTRY_ADDRESS, exact: true })
+        .getAttribute("href"),
+      `https://sepolia.basescan.org/address/${ACTIVITY_REGISTRY_ADDRESS}`,
+      `${helpPath} must label and link the separate activity registry.`,
+    );
+    assert.equal(
+      [...helpAssets].some((assetName) => assetName.startsWith("AuthenticatedRoot-")),
+      false,
+      `${helpPath} must not load the account provider.`,
+    );
+    assert.equal(
+      await helpPage.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      true,
+      `${helpPath} must not create page-level horizontal overflow at mobile width.`,
+    );
+    await helpContext.close();
+  }
 
   const demoContext = await browser.newContext();
   await isolateFromExternalProviders(demoContext);

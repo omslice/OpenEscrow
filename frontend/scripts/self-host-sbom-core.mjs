@@ -1,5 +1,19 @@
 import { createHash } from "node:crypto";
 
+const UUID_V5_DNS_NAMESPACE = Buffer.from("6ba7b8109dad11d180b400c04fd430c8", "hex");
+
+function cycloneDxSerialNumber(sourceCommit) {
+  const digest = createHash("sha1")
+    .update(UUID_V5_DNS_NAMESPACE)
+    .update(`openescrow-self-host:${sourceCommit}`)
+    .digest();
+  const bytes = Buffer.from(digest.subarray(0, 16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x50;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = bytes.toString("hex");
+  return `urn:uuid:${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
 function packageNameFromPath(packagePath, entry) {
   if (entry.name) return entry.name;
   const marker = "node_modules/";
@@ -75,6 +89,7 @@ export function buildCycloneDxSbom(packageLock, { commitDate, sourceCommit }) {
   const rootVersion = root.version || packageLock.version || `0.0.0-${sourceCommit.slice(0, 12)}`;
   return {
     bomFormat: "CycloneDX",
+    serialNumber: cycloneDxSerialNumber(sourceCommit),
     specVersion: "1.5",
     version: 1,
     metadata: {

@@ -67,8 +67,8 @@
 
 .app-header-account-entry {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
-  align-items: center;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: start;
 }
 
 .app-header-account-entry .app-brand {
@@ -88,15 +88,27 @@
   max-width: 30ch;
 }
 
-.app-header-account-entry .header-actions,
-.app-header-account-entry .account-entry {
+.app-header-account-entry .header-actions {
   width: 100%;
+  min-width: 0;
+  justify-content: flex-end;
+}
+
+.app-header-account-entry .account-entry {
+  flex: 1 1 0;
+  width: auto;
   min-width: 0;
 }
 
+.app-header-account-entry .notification-center {
+  flex: 0 0 auto;
+}
+
 .app-header-account-entry .account-entry .btn {
-  flex: 1 1 180px;
+  flex: 1 1 160px;
   min-width: 0;
+  overflow-wrap: anywhere;
+  text-align: center;
 }
 
 .notification-center {
@@ -328,35 +340,44 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px 16px;
+  gap: 12px 20px;
   flex-wrap: wrap;
-  padding: 14px 16px;
-  border: 1px solid color-mix(in srgb, var(--accent) 38%, var(--border));
-  border-radius: 12px;
-  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+  padding: 18px 20px;
+  border: 1px solid color-mix(in srgb, var(--accent) 68%, var(--border));
+  border-radius: 14px;
+  background:
+    radial-gradient(circle at 92% 0%, color-mix(in srgb, var(--accent) 20%, transparent), transparent 34%),
+    color-mix(in srgb, var(--accent) 12%, var(--surface));
+  box-shadow: 0 12px 34px color-mix(in srgb, var(--accent) 13%, transparent);
   color: var(--muted);
   text-align: left;
 }
 
-.donation-message strong {
+.donation-message-copy {
+  flex: 1 1 320px;
+  min-width: 0;
   color: var(--text-h);
+  font-size: 16px;
+  line-height: 1.45;
 }
 
 .donation-address-control {
   display: inline-flex;
   align-items: stretch;
+  flex-shrink: 0;
+  margin-inline-start: auto;
   gap: 8px;
 }
 
 .donation-address {
   display: inline-flex;
   align-items: center;
-  padding: 5px 10px;
+  padding: 8px 14px;
   border-radius: 999px;
   background: color-mix(in srgb, var(--accent) 16%, var(--surface));
   color: var(--accent);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 800;
   letter-spacing: 0.02em;
   overflow-wrap: anywhere;
@@ -579,6 +600,217 @@
   text-underline-offset: 3px;
 }
 
+.help-page {
+  display: grid;
+  gap: 22px;
+  max-width: 1040px;
+  margin: 0 auto;
+}
+
+.help-page-heading,
+.help-page > section,
+.testnet-deployment-card {
+  min-width: 0;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.help-page-heading h2,
+.help-section-heading h3,
+.testnet-deployment-card h3 {
+  margin: 0;
+}
+
+.help-page-heading > p:last-of-type,
+.help-section-heading + p,
+.testnet-deployment-card p,
+.help-page > section > p {
+  color: var(--muted);
+}
+
+.help-page a {
+  color: var(--accent);
+  font-weight: 750;
+  text-underline-offset: 3px;
+}
+
+.help-page a.btn-primary {
+  color: var(--accent-on);
+  text-decoration: none;
+}
+
+.help-section-nav,
+.help-actions,
+.project-demo-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 18px;
+  align-items: center;
+}
+
+.help-section-nav {
+  margin-top: 18px;
+}
+
+.testnet-deployment-card {
+  display: grid;
+  gap: 18px;
+  scroll-margin-top: 20px;
+}
+
+.network-badge {
+  display: inline-flex;
+  margin-bottom: 10px;
+  padding: 7px 11px;
+  border: 1px solid color-mix(in srgb, var(--success) 55%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+  color: var(--text-h);
+  font-size: 12px;
+  font-weight: 850;
+  letter-spacing: 0.02em;
+}
+
+.deployment-links {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+}
+
+.deployment-links > div {
+  min-width: 0;
+  padding: 12px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 6%, var(--bg));
+}
+
+.deployment-links dt {
+  margin-bottom: 4px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.deployment-links dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 13px;
+}
+
+.help-section-heading {
+  margin-bottom: 16px;
+}
+
+.role-guide-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.role-guide-grid article {
+  min-width: 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg));
+}
+
+.role-guide-grid h4 {
+  margin: 0 0 10px;
+  color: var(--text-h);
+}
+
+.role-guide-grid ol {
+  display: grid;
+  gap: 9px;
+  margin: 0;
+  padding-left: 20px;
+  color: var(--muted);
+}
+
+.help-page section,
+.testnet-deployment-card {
+  scroll-margin-top: 20px;
+}
+
+.help-page section > h4 {
+  margin: 24px 0 10px;
+}
+
+.help-table-scroll {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: auto;
+  border-radius: 12px;
+}
+
+.help-table-scroll:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 3px;
+}
+
+.help-table {
+  width: 100%;
+  min-width: 680px;
+  border-collapse: collapse;
+}
+
+.help-table th,
+.help-table td {
+  padding: 11px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.help-table thead th {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.help-table tbody th {
+  color: var(--text-h);
+  font-size: 14px;
+}
+
+.faq-list {
+  display: grid;
+  gap: 10px;
+}
+
+.faq-list details {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 4%, var(--bg));
+}
+
+.faq-list summary {
+  cursor: pointer;
+  color: var(--text-h);
+  font-weight: 800;
+}
+
+.faq-list p {
+  margin: 10px 0 0;
+  color: var(--muted);
+}
+
+.about-download-release {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.about-download-release small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
 @media (max-width: 720px) {
   .funding-page-heading,
   .funding-page > section,
@@ -588,6 +820,16 @@
 
   .funding-summary,
   .funding-principles {
+    grid-template-columns: 1fr;
+  }
+
+  .help-page-heading,
+  .help-page > section,
+  .testnet-deployment-card {
+    padding: 18px;
+  }
+
+  .role-guide-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -1234,7 +1476,7 @@ html.demo-route #root {
 .about-links a {
   display: inline-flex;
   align-items: center;
-  min-height: 42px;
+  min-height: 44px;
   padding: 9px 13px;
   border: 1px solid var(--accent-border);
   border-radius: 9px;
@@ -1254,6 +1496,18 @@ html.demo-route #root {
   border-color: var(--accent);
   background: color-mix(in srgb, var(--accent) 16%, var(--surface));
   transform: translateY(-2px);
+}
+
+.about-links .about-download-release {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.about-links .about-download-release small {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
 }
 
 .about-download-coming-soon {
@@ -1420,9 +1674,17 @@ html.demo-route #root {
 
 .card {
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 14px;
   padding: 20px;
   margin-bottom: 20px;
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--accent) 4%, transparent),
+      transparent 42%
+    ),
+    var(--surface);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--text-h) 9%, transparent);
   text-align: left;
 }
 
@@ -1443,14 +1705,39 @@ html.demo-route #root {
   display: block;
   width: 100%;
   margin-top: 4px;
-  padding: 8px 10px;
-  border-radius: 6px;
+  min-height: 44px;
+  padding: 10px 12px;
+  border-radius: 10px;
   border: 1px solid var(--border);
   background: var(--input-bg);
   color: var(--text-h);
   font-size: 14px;
   box-sizing: border-box;
   font-family: inherit;
+  transition:
+    border-color 140ms ease,
+    box-shadow 140ms ease,
+    background 140ms ease;
+}
+
+.card textarea {
+  min-height: 112px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.card input:hover:not(:disabled),
+.card textarea:hover:not(:disabled),
+.card select:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--accent) 42%, var(--border));
+}
+
+.card input:focus-visible,
+.card textarea:focus-visible,
+.card select:focus-visible {
+  border-color: var(--accent);
+  outline: 0;
+  box-shadow: 0 0 0 3px var(--accent-bg);
 }
 
 .card input::placeholder,
@@ -1483,17 +1770,46 @@ html.demo-route #root {
 }
 
 .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 42px;
   padding: 8px 16px;
-  border-radius: 8px;
+  border-radius: 11px;
   border: 1px solid transparent;
   cursor: pointer;
   font-size: 14px;
+  font-weight: 750;
+  line-height: 1.2;
   font-family: inherit;
+  touch-action: manipulation;
+  transition:
+    transform 120ms ease,
+    filter 120ms ease,
+    border-color 120ms ease,
+    background 120ms ease,
+    box-shadow 120ms ease;
+}
+
+.btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.btn:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 70%, transparent);
+  outline-offset: 3px;
 }
 
 .btn-primary {
   background: var(--accent);
   color: var(--accent-on);
+  box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 24%, transparent);
 }
 
 .btn-primary:disabled {
@@ -1506,11 +1822,16 @@ html.demo-route #root {
   color: var(--text-h);
 }
 
+.btn-ghost:hover:not(:disabled) {
+  border-color: var(--accent-border);
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
 .btn-secondary {
   background: var(--accent-bg);
   border-color: var(--accent-border);
   color: var(--accent);
-  font-weight: 650;
+  font-weight: 750;
 }
 
 .btn:disabled {
@@ -1523,8 +1844,9 @@ html.demo-route #root {
 }
 
 .btn-ghost.small {
+  min-height: 36px;
   font-size: 12px;
-  padding: 4px 10px;
+  padding: 7px 10px;
   color: var(--text);
 }
 
@@ -2889,6 +3211,12 @@ html.demo-route #root {
   margin-bottom: 0.75rem;
 }
 
+.wallet-connection-pending {
+  display: grid;
+  justify-items: start;
+  gap: 8px;
+}
+
 .role-mismatch,
 .role-pending {
   margin: 0.75rem 0;
@@ -3172,6 +3500,42 @@ html.demo-route #root {
   color: var(--text);
   font-size: 12px;
   line-height: 1.5;
+}
+
+.reviewer-timing-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+  align-items: center;
+  margin: 0 0 18px;
+  padding: 16px;
+  border: 1px solid var(--accent-border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent) 7%, var(--surface));
+}
+
+.reviewer-timing-card.is-active {
+  border-color: color-mix(in srgb, var(--success) 60%, var(--border));
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+  box-shadow: inset 4px 0 0 var(--success);
+}
+
+.reviewer-timing-card h3 {
+  margin: 3px 0 6px;
+  color: var(--text-h);
+  font-size: 18px;
+}
+
+.reviewer-timing-card p {
+  max-width: 760px;
+  margin: 0 0 7px;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.reviewer-timing-card strong {
+  color: var(--success);
+  font-size: 13px;
 }
 
 .test-funds-stack {
@@ -3703,6 +4067,18 @@ a.btn.disabled {
   background: color-mix(in srgb, var(--surface) 96%, var(--accent-bg));
 }
 
+.deposit-list-item.needs-funding {
+  border-color: color-mix(in srgb, var(--success) 62%, var(--border));
+  background: color-mix(in srgb, var(--success) 10%, var(--surface));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--success) 16%, transparent);
+}
+
+.deposit-list-item.needs-funding .deposit-status-badge {
+  border-color: color-mix(in srgb, var(--success) 70%, var(--border));
+  background: color-mix(in srgb, var(--success) 18%, var(--surface));
+  color: var(--success);
+}
+
 .deposit-list-row {
   padding: 16px 18px;
 }
@@ -3949,7 +4325,13 @@ a.btn.disabled {
 
 .workspace-stat.has-action {
   border-color: color-mix(in srgb, var(--success) 52%, var(--border));
-  background: color-mix(in srgb, var(--success) 7%, var(--surface));
+  background: color-mix(in srgb, var(--success) 12%, var(--surface));
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--success) 18%, transparent);
+}
+
+.workspace-stat.has-action span,
+.workspace-stat.has-action strong {
+  color: var(--success);
 }
 
 .workspace-stat span {
@@ -4031,6 +4413,10 @@ a.btn.disabled {
 
 .urgent-work h2 {
   margin: 5px 0 7px;
+}
+
+.tenant-funding-attention {
+  box-shadow: inset 4px 0 0 var(--success);
 }
 
 .workspace-discovery {
@@ -4157,6 +4543,21 @@ a.btn.disabled {
   margin: 24px 0;
 }
 
+.proposal-composer-inline {
+  margin: 0 0 24px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--success) 45%, var(--border));
+  border-top: 0;
+  border-radius: 0 0 12px 12px;
+  background: color-mix(in srgb, var(--success) 4%, var(--surface));
+}
+
+.saved-proposal-card:has(+ .proposal-composer-inline) {
+  margin-bottom: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
 .proposal-composer-toolbar {
   display: flex;
   width: 100%;
@@ -4170,6 +4571,14 @@ a.btn.disabled {
   background: color-mix(in srgb, var(--accent) 6%, var(--surface));
   color: var(--text-h);
   font-weight: 700;
+}
+
+.invite-delivery-status {
+  align-self: center;
+  color: var(--success);
+  font-size: 13px;
+  font-weight: 800;
+  white-space: nowrap;
 }
 
 .workspace-empty {
@@ -5032,6 +5441,11 @@ a.btn.disabled {
   color: var(--muted);
 }
 
+.claim-notice-recipient .claim-email-sent {
+  color: var(--success);
+  font-weight: 800;
+}
+
 .claim-notice-recipient .button-row {
   justify-content: flex-end;
   margin: 0;
@@ -5044,6 +5458,45 @@ a.btn.disabled {
 .claim-notice-actions > .btn {
   justify-self: start;
   min-height: 44px;
+}
+
+.participant-balance-summary {
+  display: grid;
+  gap: 0.85rem;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-bottom: 1rem;
+}
+
+.participant-balance-tile {
+  background: color-mix(in srgb, var(--surface) 88%, var(--accent-bg));
+  border: 1px solid color-mix(in srgb, var(--border) 72%, var(--accent) 28%);
+  border-radius: 14px;
+  display: grid;
+  gap: 0.25rem;
+  padding: 1rem;
+}
+
+.participant-balance-tile > span,
+.participant-balance-tile > small,
+.participant-balance-tile strong small {
+  color: var(--muted);
+}
+
+.participant-balance-tile strong {
+  font-size: clamp(1.35rem, 2.4vw, 2rem);
+  line-height: 1.1;
+}
+
+.participant-balance-tile strong small {
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.participant-balance-summary > p {
+  color: var(--muted);
+  font-size: 0.82rem;
+  grid-column: 1 / -1;
+  margin: 0;
 }
 
 .claim-line-items {
@@ -5163,6 +5616,166 @@ a.btn.disabled {
   margin: 12px 0 0;
 }
 
+/* Shared, scannable presentation for compact facts and statuses. Variants keep
+   their existing semantic colors; this only standardizes shape and rhythm. */
+.network-badge,
+.test-example-badge,
+.chain-badge,
+.address-badge,
+.account-role-badge,
+.account-status,
+.settings-status,
+.active-wallet,
+.policy-test,
+.implementation-badge,
+.phase-badge,
+.deposit-status-badge,
+.party-role-badge,
+.record-count-pill,
+.negotiation-status,
+.tab-count {
+  display: inline-flex;
+  width: fit-content;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  line-height: 1.15;
+  white-space: nowrap;
+}
+
+/* Give dense groups one consistent surface hierarchy without changing their
+   DOM, order, labels, or interaction model. */
+.account-info-card,
+.account-security-option,
+.additional-tenant,
+.optional-arbiter,
+.deposit-split,
+.proposal-metadata-grid > div,
+.proposal-status-overview > div,
+.participant-grid > div,
+.approval,
+.amount-tile,
+.participant-balance-tile,
+.claim-line-item,
+.tenant-invite-row {
+  border-radius: 13px;
+  background:
+    linear-gradient(
+      145deg,
+      color-mix(in srgb, var(--accent) 5%, transparent),
+      transparent 46%
+    ),
+    var(--surface);
+  box-shadow: 0 7px 18px color-mix(in srgb, var(--text-h) 7%, transparent);
+}
+
+.amount-tile,
+.participant-balance-tile,
+.proposal-status-overview > div,
+.proposal-metadata-grid > div {
+  border: 1px solid color-mix(in srgb, var(--border) 76%, var(--accent) 24%);
+}
+
+.tenant-invite-row.awaiting,
+.participant-grid > .participant-awaiting {
+  box-shadow:
+    inset 4px 0 0 color-mix(in srgb, var(--danger) 72%, transparent),
+    0 7px 18px color-mix(in srgb, var(--text-h) 7%, transparent);
+}
+
+.tenant-invite-row.approved,
+.participant-grid > .participant-approved,
+.approval.approved {
+  box-shadow:
+    inset 4px 0 0 color-mix(in srgb, var(--success) 72%, transparent),
+    0 7px 18px color-mix(in srgb, var(--text-h) 7%, transparent);
+}
+
+.claim-line-item {
+  border-left: 3px solid color-mix(in srgb, var(--accent) 72%, var(--border));
+}
+
+.notification-preferences .notification-choice:has(input:checked),
+.california-deposit-exception label:has(input:checked),
+.california-claim-checklist label:has(input:checked),
+.deposit-asset-option.selected,
+.role-choice.selected {
+  border-color: color-mix(in srgb, var(--accent) 62%, var(--border));
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  box-shadow: inset 4px 0 0 var(--accent);
+}
+
+.notification-preferences .notification-choice:has(input:focus-visible),
+.california-deposit-exception label:has(input:focus-visible),
+.california-claim-checklist label:has(input:focus-visible),
+.deposit-asset-option:has(input:focus-visible) {
+  outline: 3px solid color-mix(in srgb, var(--accent) 68%, transparent);
+  outline-offset: 3px;
+}
+
+.technical-details > summary,
+.asset-disclosures > summary,
+.notification-technical-details > summary,
+.activity-verification-details > summary,
+.record-archive-section > summary {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  border-radius: 9px;
+  padding: 9px 11px;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.technical-details > summary:hover,
+.asset-disclosures > summary:hover,
+.notification-technical-details > summary:hover,
+.activity-verification-details > summary:hover,
+.record-archive-section > summary:hover {
+  color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 7%, transparent);
+}
+
+.technical-details > summary:focus-visible,
+.asset-disclosures > summary:focus-visible,
+.notification-technical-details > summary:focus-visible,
+.activity-verification-details > summary:focus-visible,
+.record-archive-section > summary:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--accent) 68%, transparent);
+  outline-offset: 3px;
+}
+
+.funding-table,
+.help-table {
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.funding-table tbody tr,
+.help-table tbody tr {
+  transition: background 120ms ease;
+}
+
+.funding-table tbody tr:nth-child(even),
+.help-table tbody tr:nth-child(even) {
+  background: color-mix(in srgb, var(--accent) 3%, var(--surface));
+}
+
+.funding-table tbody tr:hover,
+.help-table tbody tr:hover {
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.button-row,
+.proposal-step-actions,
+.settings-actions,
+.invite-actions {
+  gap: 10px;
+}
+
 .agreement-activity {
   margin-top: 20px;
   border-top: 1px solid var(--border);
@@ -5211,6 +5824,43 @@ a.btn.disabled {
 }
 
 @media (max-width: 680px) {
+  .card {
+    padding: 16px;
+  }
+
+  .btn.small,
+  .btn-ghost.small {
+    min-height: 44px;
+    padding-block: 8px;
+  }
+
+  .button-row,
+  .proposal-step-actions,
+  .settings-actions,
+  .invite-actions {
+    align-items: stretch;
+  }
+
+  .proposal-step-actions .btn,
+  .tenant-invite-row .btn,
+  .claim-line-item .btn,
+  .notification-choice-list + .button-row .btn {
+    flex: 1 1 100%;
+    width: 100%;
+  }
+
+  .participant-balance-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .reviewer-timing-card {
+    grid-template-columns: 1fr;
+  }
+
+  .reviewer-timing-card .btn {
+    width: 100%;
+  }
+
   .app-header-account-entry .app-brand {
     display: block;
   }
@@ -5252,11 +5902,11 @@ a.btn.disabled {
   }
 
   .workspace-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     top: 4px;
     gap: 4px;
-    overflow-x: auto;
-    scrollbar-color: var(--accent-border) transparent;
-    scrollbar-width: thin;
+    overflow-x: visible;
   }
 
   .workspace-tabs::-webkit-scrollbar {
@@ -5269,9 +5919,10 @@ a.btn.disabled {
   }
 
   .workspace-tabs .tab {
-    flex: 0 0 auto;
+    width: 100%;
     min-height: 44px;
-    padding: 9px 14px;
+    padding: 9px 8px;
+    gap: 6px;
     font-size: 13px;
   }
 
@@ -5693,6 +6344,17 @@ a.btn.disabled {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .btn,
+  .card input,
+  .card textarea,
+  .card select,
+  .technical-details > summary,
+  .asset-disclosures > summary,
+  .notification-technical-details > summary,
+  .activity-verification-details > summary,
+  .record-archive-section > summary,
+  .funding-table tbody tr,
+  .help-table tbody tr,
   .how-it-works li,
   .record-list-item,
   .record-list-item::before,
@@ -5702,6 +6364,10 @@ a.btn.disabled {
   .california-deposit-exception label,
   .california-claim-checklist label {
     transition: none;
+  }
+
+  .btn:hover:not(:disabled) {
+    transform: none;
   }
 
   .how-it-works li:hover,

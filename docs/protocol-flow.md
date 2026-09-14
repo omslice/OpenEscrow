@@ -1,42 +1,46 @@
 # OpenEscrow protocol flow
 
-The Base Sepolia MVP is a single-token, shared-contract escrow with a designated arbiter fallback.
+The Base Sepolia MVP is a shared-contract rental-deposit record with two explicit claim modes. The default public flow has no arbiter and treats tenant responses as part of a standardized shared record. An agreement created with a mutually accepted arbiter uses the optional dispute workflow.
 
 ## Agreement setup
 
-1. The landlord proposes the tenant, deposit amount, deadlines, and arbiter.
-2. The arbiter accepts or declines the nomination.
-3. A declined nomination must be replaced or the proposal cancelled.
-4. Only after arbiter acceptance may the tenant approve the token transfer and fund.
+1. The landlord proposes tenants, deposit shares, deadlines, and whether an optional arbiter is named.
+2. Every tenant accepts the current terms. A named arbiter must also accept before finalization.
+3. The finalized agreement becomes active after every tenant funds their assigned share.
 
-## End-of-tenancy flow
+## Default no-arbiter end-of-tenancy flow
 
 ```mermaid
 flowchart TD
-    A["Deposit funded and locked"] --> B{"Landlord submits a timely claim?"}
-    B -->|No| C["Tenant finalizes full refund"]
-    B -->|Yes| D["Unclaimed balance credited to tenant immediately"]
-    D --> E{"Tenant response"}
-    E -->|Accept all| F["Claim credited to landlord"]
-    E -->|Accept part| G["Accepted amount credited to landlord; remainder disputed"]
-    E -->|Dispute all| H["Claimed amount disputed"]
-    E -->|No response by deadline| H
-    G --> I{"Arbiter rules by deadline?"}
-    H --> I
-    I -->|Yes| J["Disputed amount split according to ruling"]
-    I -->|No| K["Disputed amount credited to tenant"]
-    C --> L["Parties withdraw credited balances"]
-    F --> L
-    J --> L
-    K --> L
+    A["Deposit funded and locked"] --> B{"Landlord submits a timely documented claim?"}
+    B -->|No| C["Anyone finalizes the full tenant refund"]
+    B -->|Yes| D["Tenants review and record approve, partial, or dispute responses"]
+    D --> E{"Every tenant responds before deadline?"}
+    E -->|Yes| F["Documented claim allocated to landlord; responses preserved"]
+    E -->|No| G["No response recorded; documented claim allocated to landlord"]
+    C --> H["Parties withdraw credited balances"]
+    F --> H
+    G --> H
 ```
+
+Tenant silence is neither approval nor a dispute. It is recorded as **No response**. The contract does not decide whether a landlord's documented deduction is legally valid; it produces a shared record and deterministic test-token allocation.
+
+When parties select the yield-test asset, the agreement keeps fixed taUSDC shares until a terminal
+outcome. It then converts the full position to its deterministic testUSDC-equivalent demo value,
+pays the landlord no more than the principal-denominated documented claim, and allocates the
+remaining principal plus all positive demo yield to tenants. The separate operations reserve is
+fully returned in the original agreement token because the MVP does not yet meter actual costs.
+
+## Optional arbiter-backed flow
+
+When the agreement names an arbiter who accepts before funding, an amount tenants do not accept enters the fixed dispute period. The arbiter may allocate no more than that disputed amount. If no ruling is recorded by the deadline, the disputed test-token amount is allocated to the tenant side.
 
 ## Core protections
 
-- Tenant silence never approves a landlord claim.
+- Tenant responses and non-responses remain distinguishable in the record.
 - The landlord cannot increase a submitted claim.
-- The arbiter cannot award more than the disputed balance.
-- Replacement cannot extend the ruling deadline.
+- An optional arbiter cannot award more than the disputed balance.
+- Arbiter replacement cannot extend the ruling deadline.
 - No administrator can redirect funds.
 - Each agreement has independent accounting.
 - Onchain evidence is a public commitment, not private document storage.
@@ -49,7 +53,7 @@ The contract does not prove:
 - The landlord's deduction is legally permitted.
 - Evidence is authentic or complete.
 - The selected deadlines comply with local law.
-- The arbiter is licensed, neutral, or legally authorized.
+- An optional arbiter is licensed, neutral, or legally authorized.
 - A blockchain-held deposit satisfies applicable custody requirements.
 
-Those questions must be resolved for one selected jurisdiction before any real-money use.
+Those questions require legal, security, and jurisdiction-specific review before any real-money use.

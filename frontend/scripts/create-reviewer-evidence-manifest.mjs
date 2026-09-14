@@ -109,7 +109,7 @@ export const REVIEWER_EXCLUDED_WORKTREE_PATHS = Object.freeze({
 
 const REQUIRED_PUBLIC_COPY = Object.freeze([
   ["README.md", "https://openescrow.io/demo"],
-  ["README.md", "238 passing Foundry tests across 23 suites"],
+  ["README.md", "251 passing Foundry tests across 24 suites"],
   ["README.md", "Base Sepolia"],
   ["README.md", "has not been independently audited"],
   ["SECURITY.md", "Base Sepolia public-interest prototype"],

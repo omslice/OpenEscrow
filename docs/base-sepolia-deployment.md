@@ -131,9 +131,11 @@ Get-Content .\deployments\base-sepolia-candidate.json
 ```
 
 The exporter verifies chain ID `84532`, one successful receipt for each of the five deployed
-contracts, reciprocal escrow/reserve construction and configuration, exact registry binding,
-matching token constructor arguments, deployment blocks, transaction hashes, and the exact source
-commit before writing a candidate manifest. It deliberately leaves
+contracts, readable live code at every deployed address, the yield token's live settlement-asset
+binding, every live escrow/reserve/registry binding (including the reserve treasury), matching
+constructor arguments, deployment blocks, transaction hashes, and the exact source commit before
+writing a candidate manifest. It retries briefly for RPC propagation and fails closed rather than
+exporting an unverified manifest. It deliberately leaves
 `base-sepolia-latest.json` unchanged so the active cohort remains the rollback target.
 
 Before releasing the site, confirm on a Base Sepolia explorer that:
@@ -147,8 +149,40 @@ Before releasing the site, confirm on a Base Sepolia explorer that:
 - `OperationsReserve.TREASURY()` equals the intended deployer address;
 - `AgreementActivityRegistry.ESCROW()` equals the newly deployed escrow.
 
+Run the repository's independent two-RPC verification before promoting the candidate:
+
+```powershell
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\Verify-BaseSepoliaCandidate.ps1 `
+  -ExpectedSourceCommit (Get-Content .\deployments\base-sepolia-candidate.json -Raw | ConvertFrom-Json).sourceCommit
+```
+
+This independently requires Base Sepolia chain identity, successful receipts for all six
+deployment/configuration transactions, nonempty and identical runtime code through both RPCs,
+the complete reciprocal binding set, and an exact match to the explicitly reviewed source
+commit. It writes public evidence to
+`deployments/base-sepolia-candidate-verification.json`.
+
 Do not edit the frontend addresses yet. Share only the public transaction hashes and
 candidate manifest for verification. After the exact onchain code and bindings pass,
 Codex can apply one reviewed configuration switch, retain the current cohort as the
 explicit rollback target, regenerate/check the frontend ABIs, and produce an undeployed
 Sites candidate for separate approval.
+
+The reviewed post-verification switch is automated and fail-closed:
+
+```powershell
+$env:OPENESCROW_DEPLOYMENT_SOURCE_COMMIT = (
+  Get-Content .\deployments\base-sepolia-candidate.json -Raw | ConvertFrom-Json
+).sourceCommit
+Push-Location .\frontend
+npm.cmd run deploy:apply-candidate
+Pop-Location
+Remove-Item Env:OPENESCROW_DEPLOYMENT_SOURCE_COMMIT
+```
+
+It requires the public manifest's live-binding verification, rehearses an exact and reversible
+switch, updates client/server and both Cloudflare configuration scopes together, promotes the
+candidate manifest, and saves the prior active manifest as
+`deployments/base-sepolia-rollback-prior.json`. Do not deploy if this operation or the complete
+release candidate gate fails.

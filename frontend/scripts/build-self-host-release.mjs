@@ -47,6 +47,9 @@ const { stdout: commitOutput } = await execFileAsync("git", ["rev-parse", "HEAD"
 });
 const sourceCommit = commitOutput.trim();
 if (!/^[0-9a-f]{40}$/.test(sourceCommit)) throw new Error("Could not identify the source commit.");
+const activeDeployment = JSON.parse(
+  await readFile(path.join(repository, "deployments", "base-sepolia-latest.json"), "utf8"),
+);
 const { stdout: commitDateOutput } = await execFileAsync(
   "git",
   ["show", "-s", "--format=%cI", sourceCommit],
@@ -134,6 +137,7 @@ for (const directory of [
   await copy(directory);
 }
 for (const file of [
+  "frontend/scripts/active-deployment.mjs",
   "frontend/scripts/check-self-host-config.mjs",
   "frontend/scripts/configure-self-host.mjs",
   "frontend/scripts/generate-self-host-secrets.mjs",
@@ -216,6 +220,7 @@ const sourceInventoryFiles = [
   "frontend/package-lock.json",
   "frontend/package.json",
   "frontend/prepare-self-host.mjs",
+  "frontend/scripts/active-deployment.mjs",
   "frontend/scripts/check-self-host-config.mjs",
   "frontend/scripts/configure-self-host.mjs",
   "frontend/scripts/generate-self-host-secrets.mjs",
@@ -249,8 +254,8 @@ const releaseManifest = {
   network: "base-sepolia",
   chainId: 84_532,
   contracts: {
-    escrow: "0x9F8C9555f28C10347C58fc71F430F4cbc3724b10",
-    activityRegistry: "0x88b53d6C35020e82B97462E8a1cBCDc8D6d50f53",
+    escrow: activeDeployment.openEscrow.address,
+    activityRegistry: activeDeployment.agreementActivityRegistry.address,
   },
   boundaries: {
     realMoneyEnabled: false,

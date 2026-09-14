@@ -1,10 +1,11 @@
 # OpenEscrow release and grant evidence index
 
-Last reviewed: 2026-08-10.
+Last reviewed: 2026-09-14.
 
 This index helps reviewers, contributors, auditors, partners, and funders locate authoritative
-evidence. It is not itself an audit, legal approval, deployment authorization, or claim that the
-newest source is publicly deployed.
+evidence. It is not itself an audit, legal approval, deployment authorization, or a claim that the
+newest source is publicly deployed. Any statement about the public deployment is bound to the exact
+manifests and hosted provenance named below.
 
 ## Canonical public references
 
@@ -34,17 +35,66 @@ contract cohort and repository HEAD all match.
 
 ## Current source and deployment boundary
 
-- The complete credential-free pilot-candidate envelope first passed on exact source commit
-  [`7cb1e20`](https://github.com/omslice/OpenEscrow/commit/7cb1e20588ebb9cdc2bffbf7ea6a914b94453634)
-  and passed again after the signed-out layout correction on exact commit
-  [`fca5f13`](https://github.com/omslice/OpenEscrow/commit/fca5f13cdba668f1dc2bcbd432a241f9384939d8).
-  It covers the bounded testUSDC/taUSDC cohort, participant notification delivery, landlord and
-  multi-tenant lifecycle checks, rendered accessibility/UX checks, deployment and incident
+September 14, 2026 superseding observation:
+
+- Canonical Cloudflare and retained Sites release: clean application commit
+  `592c6d04f0fb3c1de1faf9b956be4e8c4067952e`, verified after the September 13 deployment.
+- Active contract source: `5073f2a98de0741f577ca443f249541f08e4d67e`. The active escrow is
+  `0x8a46cfed7153c53fd080e16624f9702887c78b54` and registry is
+  `0xcf032b7da95d2710baa599979b8b9f350ce88a62`, as recorded in the current manifests and live
+  registry-binding check. Older addresses below are historical.
+- The release included the optional `/explore` mock workspace, original About entry, footer and
+  wallet recovery changes, and dependency patches. Application validation included 372
+  client/script checks. Contract assurance at parent `42b386c` passed 251 tests with one opt-in
+  external-RPC skip; contract inputs were unchanged by the dependency-only `592c6d0` delta.
+- Core and dual-host checks passed. This is not a newly regenerated complete pilot-candidate
+  envelope on `592c6d0`, an independent audit, or a completed participant rehearsal.
+- September 14 strict operator readiness passes hosted email/scheduler, private encrypted R2,
+  retained-key checks, registry binding, address attestation and caught-up activity indexing.
+  The compliance-source gate remains non-green. See the
+  [selected execution board](roadmap-progress-2026-09-14.md) for the active remediation work.
+
+## September 14 candidate verification
+
+The full credential-free envelope passed on exact application candidate
+[`f988fff4a2068367f48e72c4bd583bfcebbc5333`](https://github.com/omslice/OpenEscrow/commit/f988fff4a2068367f48e72c4bd583bfcebbc5333).
+This is a candidate after the hosted `592c6d0` release; it does not change the live application or
+the active immutable contract cohort by itself.
+
+- Deterministic contract assurance: 251 passed, zero failed, one opt-in live-fork skip;
+  five ABI/runtime/storage-layout checks and the pinned dependency checks passed.
+- Application release envelope: 137 server tests, 373 client/script checks, required rendered
+  browser checks, production build/load/bundle gates, dependency audit and wallet compatibility.
+- Credential-free deployment/rollback rehearsal, 23 pilot scenarios and 19 incident scenarios.
+- Exact-source Cloudflare build/configuration and retained Sites build. The packaged Sites build
+  was independently extracted and all 418 files matched the passing candidate's directory digest.
+- [Linux CI](https://github.com/omslice/OpenEscrow/actions/runs/34892937204) and
+  [self-host packaging](https://github.com/omslice/OpenEscrow/actions/runs/34892931296) passed.
+  The self-host archive's 697 file hashes and separate provenance/SBOM attestations verified.
+- Synthetic self-host installation, additive upgrade and backup restoration passed on `2c5db06`;
+  later changes through this candidate affected metadata, workflows, documents and rehearsal
+  measurement/selection, with no application or migration delta. All 24 published migrations
+  remain unchanged; migrations 0024 and 0025 are additive.
+
+The [execution board](roadmap-progress-2026-09-14.md) and [PR #11](https://github.com/omslice/OpenEscrow/pull/11)
+track publication separately. The subsequent `6bb6210` documentation tranche records the owner's
+unsubsidized Ottawa Hills/Brady Lake scope and the property-timezone review; its
+[GitHub checks also passed](https://github.com/omslice/OpenEscrow/actions/runs/34895309880).
+Do not describe draft artifacts, local simulations or an unchanged-source observation as a
+completed hosted participant session, legal approval or production readiness.
+
+## Historical August 13 release evidence
+
+- The August 13 complete credential-free pilot-candidate envelope passed on exact application source
+  [`356f76e`](https://github.com/omslice/OpenEscrow/commit/356f76e8684a0078b04d43f4ef15528710081531).
+  It covers the revised tenant-only-yield settlement, participant notification delivery, landlord
+  and multi-tenant lifecycle checks, rendered accessibility/UX checks, deployment and incident
   rehearsals, and exact-source Cloudflare and Sites builds.
-- The canonical hosted app and retained Sites mirror report clean release commit `4281a1f`. It
-  preserves the fresh bounded
-  test-token cohort compiled from exact contract source `200848d`: escrow `0x9F8C...4b10`, reserve
-  `0xDB66...A626`, and activity registry `0x88b5...0f53`.
+- At that release, the canonical hosted app and retained Sites mirror reported clean commit `356f76e`. It
+  uses the independently verified Base Sepolia cohort compiled from exact contract source
+  `d1d1eabd8497c10b3b5d99860f43b0f139bdd77e`: escrow `0x96fe...16e3`, reserve
+  `0xfb5a...7374`, activity registry `0x1435...f952`, testUSDC `0xB58F...98Dc`, and taUSDC
+  `0x7c4E...7D43`.
 - The modified `frontend-site-dist.tar` is a separately owned obsolete generated archive and was
   excluded from both exact-source hosting builds and the candidate source envelope. It still needs
   an explicit owner decision before any future Sites packaging; it is not current release evidence.
@@ -77,16 +127,17 @@ Update this section whenever a clean, exact later candidate passes or a deployme
 
 Repository release documentation records:
 
-- 238 passing Foundry tests across 23 suites;
+- 251 passing Foundry tests across 24 suites;
 - one opt-in live Base Sepolia Aave fork test skipped without an RPC URL;
 - nine stateful accounting properties exercised for 32,768 calls each; and
 - five ABI/runtime/storage-layout checks and two pinned dependency-tree checks; and
-- complete credential-free pilot-candidate envelopes on `7cb1e20` and `fca5f13`.
+- a complete credential-free pilot-candidate envelope on `f988fff`, with the earlier `356f76e`
+  envelope retained below as historical evidence.
 
-On 2026-08-09, exact candidate `7cb1e20` completed all seven credential-free candidate stages:
+On 2026-08-13, exact candidate `356f76e` completed all credential-free candidate stages:
 the repository release envelope, deployment rehearsal, pilot rehearsal, incident rehearsal,
-Cloudflare build/configuration validation, and Sites build. The envelope included 122 server tests,
-320 client/script logic tests, the Foundry snapshot above, rendered account/funding/evidence/
+Cloudflare build/configuration validation, and Sites build. The envelope included 136 server tests,
+358 client/script logic tests, the Foundry snapshot above, rendered account/funding/evidence/
 accessibility/deposit/record/multi-party checks, TypeScript/Vite production builds, bundle budgets,
 and provider-free landing checks. The resulting candidate JSON reports `ok: true` and binds every
 stage to the full 40-character commit.
@@ -94,14 +145,14 @@ stage to the full 40-character commit.
 Treat these as exact development and release-candidate evidence, not as proof of an independent
 audit, production readiness, legal approval, or approval for real funds.
 
-On 2026-08-09, the unified cohort broadcast produced six successful Base Sepolia transactions.
+On 2026-08-13, the revised cohort broadcast produced six successful Base Sepolia transactions.
 Two public RPC providers independently returned the same receipts, exact deployed runtime bytes,
-and reciprocal bindings for the five new contracts. Canonical app release `b941a67` activated that
-cohort. On 2026-08-10, clean release `4281a1f` was then deployed to both public hosts and passed
-HTTP, clean-provenance, canonical redirect, registry-binding, receipt-verification, email,
-scheduler, and private-R2 keyring checks without replacing hosted storage or secrets. The separate
-strict pilot gate still reports three compliance-source alerts and no independent security audit
-has been completed.
+and reciprocal bindings for all five contracts. Application release `356f76e` activated that cohort
+on Cloudflare and the retained Sites mirror and passed HTTP, clean-provenance, dual-host,
+registry-binding, receipt-verification, email, scheduler, and private-R2 keyring checks without
+replacing hosted D1/R2 or secrets. The separately scoped compliance-source baseline remains
+non-green, the supervised three-account lifecycle remains in progress, and no independent security
+audit has been completed.
 
 ## Community-health evidence
 

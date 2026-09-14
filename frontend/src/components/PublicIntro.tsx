@@ -8,9 +8,11 @@ import { replaceRecoveryUrl } from "../lib/browserRecovery";
 export function PublicIntro({
   onStart,
   showAboutDetails = false,
+  showSampleDemo = false,
 }: {
   onStart: () => void;
   showAboutDetails?: boolean;
+  showSampleDemo?: boolean;
 }) {
   const yieldDialogRef = useRef<HTMLDialogElement>(null);
   const yieldDialogCloseRef = useRef<HTMLButtonElement>(null);
@@ -111,6 +113,11 @@ export function PublicIntro({
           >
             View on GitHub
           </a>
+          {showSampleDemo && (
+            <a className="btn btn-secondary intro-demo-cta" href="/explore">
+              Try the mock demo
+            </a>
+          )}
         </div>
       </div>
 
@@ -120,7 +127,7 @@ export function PublicIntro({
           <h3 id="project-demo-video-title">Get to know OpenEscrow</h3>
           <p id="project-demo-video-description">
             A quick introduction to what OpenEscrow is, why it was created, and how it helps
-            landlords and tenants manage rental security deposits more clearly.
+            landlords and tenants manage rental security deposits more reliably.
           </p>
         </header>
         <video
@@ -134,9 +141,14 @@ export function PublicIntro({
           Your browser cannot play this video. You can{" "}
           <a href="/openescrow-demo.mp4">open the OpenEscrow overview directly</a>.
         </video>
-        <a className="project-demo-page-link" href="/demo">
-          Open the standalone demo
-        </a>
+        <div className="project-demo-links">
+          <a className="project-demo-page-link" href="/demo">
+            Open the standalone demo
+          </a>
+          <a className="project-demo-page-link" href="/help">
+            Read the help and role guides
+          </a>
+        </div>
       </section>
 
       <div className="how-it-works-block" id="how-it-works">
@@ -367,15 +379,15 @@ export function PublicIntro({
               >
                 Farcaster
               </a>
-              <button
-                className="about-download-coming-soon"
-                type="button"
-                disabled
-                aria-label="Download self-hosted OpenEscrow (coming soon)"
+              <a
+                className="about-download-release"
+                href="https://github.com/omslice/OpenEscrow/releases/tag/selfhost-v0.1.0-testnet"
+                target="_blank"
+                rel="noreferrer"
               >
                 <span>Download self-hosted app</span>
-                <small>Coming soon</small>
-              </button>
+                <small>Base Sepolia testnet release</small>
+              </a>
             </div>
           </article>
 
@@ -383,11 +395,12 @@ export function PublicIntro({
             <p className="eyebrow">About the builder</p>
             <h3>Built by Omri Gross</h3>
             <p>
-              Omri works at the intersection of housing policy, public-interest technology, and
-              blockchain. His work has included policy, guidance, workflows, tracking,
-              contractor management, and implementation across multiple complex national program
-              environments. OpenEscrow demonstrates how verifiable shared systems can
-              reduce confusion and conflict around an everyday housing process.
+              Omri works at the intersection of housing, regulatory compliance, and emerging
+              technology. His experience spans the public and private sectors, including policy,
+              guidance, workflow design, program tracking, contractor management, and
+              implementation across complex national programs. OpenEscrow demonstrates how
+              verifiable shared systems can reduce confusion and conflict around an everyday
+              housing process.
             </p>
             <p>
               Omri&apos;s essay{" "}

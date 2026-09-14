@@ -116,6 +116,9 @@ try {
   const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
   let destructiveProposalRequests = 0;
   let complianceSourceChecks = 0;
+  let sentProposalInvites = 0;
+  let validatedProposalInvites = 0;
+  let refreshedProposalInvites = 0;
   let savedProposal = null;
 
   await page.route("**/api/address-suggestions**", async (route) => {
@@ -219,6 +222,62 @@ try {
       body: JSON.stringify(savedProposal.record),
     });
   });
+  await page.route(/\/api\/negotiations\/OE-P-RECOVERY\/invitations$/, async (route) => {
+    assert.equal(route.request().method(), "POST");
+    const input = route.request().postDataJSON();
+    assert.equal(input.invitedRole, "tenant");
+    assert.equal(input.invitedTenantId, "tenant-1");
+    if (input.validateOnly === true) {
+      validatedProposalInvites += 1;
+      if (validatedProposalInvites === 1) {
+        await route.fulfill({
+          status: 409,
+          contentType: "application/json",
+          body: JSON.stringify({
+            error: "This invitation link was replaced. Send the current link instead.",
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          current: true,
+          recipientEmail: "taylor.tenant@example.com",
+        }),
+      });
+      return;
+    }
+    sentProposalInvites += 1;
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        sent: true,
+        duplicate: false,
+        recipientEmail: "taylor.tenant@example.com",
+      }),
+    });
+  });
+  await page.route(
+    /\/api\/negotiations\/OE-P-RECOVERY\/tenants\/tenant-1$/,
+    async (route) => {
+      assert.equal(route.request().method(), "POST");
+      refreshedProposalInvites += 1;
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          record: savedProposal.record,
+          invite: {
+            ...savedProposal.access.tenants[0],
+            token: "tenant-1-refreshed-token",
+          },
+        }),
+      });
+    },
+  );
   await page.route(/\/api\/negotiations\/[^/]+\/actions$/, async (route) => {
     destructiveProposalRequests += 1;
     await route.fulfill({
@@ -272,13 +331,13 @@ try {
     "https://linktr.ee/omslice",
     "The About tab should link to Omri's Linktree.",
   );
-  const selfHostDownload = page.getByRole("button", {
-    name: "Download self-hosted OpenEscrow (coming soon)",
+  const selfHostDownload = page.getByRole("link", {
+    name: /Download self-hosted app/,
   });
   assert.equal(
-    await selfHostDownload.isDisabled(),
-    true,
-    "The self-host download should remain explicitly unavailable until a supported package exists.",
+    await selfHostDownload.getAttribute("href"),
+    "https://github.com/omslice/OpenEscrow/releases/tag/selfhost-v0.1.0-testnet",
+    "The self-host download should link to the supported Base Sepolia release.",
   );
 
   const yieldSummary = page.getByText("Earn yield?", { exact: true });
@@ -376,7 +435,40 @@ try {
     "Opening the proposal editor should move focus to its labeled region.",
   );
 
+  await page.getByRole("button", { name: "Continue to deposit terms" }).click();
+  await page.getByRole("button", { name: "Continue to review" }).click();
+  await page.getByRole("button", { name: "Save proposal for review" }).click();
+  const emptyTenantName = page.getByLabel("Tenant first and last name");
+  await emptyTenantName.waitFor({ state: "visible" });
+  await page.waitForFunction(
+    () => document.activeElement?.getAttribute("data-proposal-field") === "tenantName",
+  );
+  assert.equal(
+    await emptyTenantName.getAttribute("aria-invalid"),
+    "true",
+    "An incomplete proposal should identify the first invalid field.",
+  );
+  assert.equal(
+    await emptyTenantName.evaluate((element) => element === document.activeElement),
+    true,
+    "An incomplete proposal should focus the first invalid field.",
+  );
+  const tenantNameErrorId = await emptyTenantName.getAttribute("aria-errormessage");
+  assert.ok(tenantNameErrorId, "The invalid tenant name should identify its visible error message.");
+  const tenantNameError = page.locator(`[id="${tenantNameErrorId}"]`);
+  await tenantNameError.waitFor({ state: "visible" });
+  assert.match(
+    (await tenantNameError.textContent()) || "",
+    /first and last name/i,
+    "The validation message should explain how to correct the tenant name.",
+  );
+
   await page.getByLabel("Tenant first and last name").fill("Taylor Tenant");
+  assert.equal(
+    await tenantNameError.count(),
+    0,
+    "Correcting the invalid field should remove its stale error message.",
+  );
   await page.getByLabel("Tenant email address").fill("taylor.tenant@example.com");
   const address = page.getByRole("combobox", { name: "Rental property address" });
   const addressListId = await address.getAttribute("aria-controls");
@@ -486,8 +578,39 @@ try {
   );
   await page.getByRole("button", { name: "Save proposal for review" }).click();
   await page.getByText(
-    "Proposal saved. Invitations are now unlocked for this exact revision.",
+    "Proposal published and invitation email sent to every tenant.",
   ).waitFor({ state: "visible" });
+  assert.equal(
+    await page.getByRole("button", { name: "Resend", exact: true }).count(),
+    1,
+    "A published proposal should expose one resend action after automatic delivery.",
+  );
+  assert.equal(
+    await page.getByRole("button", { name: "Send manually", exact: true }).count(),
+    1,
+    "A published proposal should expose one manual-send fallback for its tenant.",
+  );
+  assert.equal(
+    await page.getByRole("button", { name: "Reset link", exact: true }).count(),
+    0,
+    "Participant links should rotate automatically instead of exposing a manual reset action.",
+  );
+  await page.getByText("✓ Email sent", { exact: true }).waitFor();
+  assert.equal(
+    sentProposalInvites,
+    1,
+    "Publishing should deliver the invitation exactly once.",
+  );
+  assert.equal(
+    refreshedProposalInvites,
+    0,
+    "A newly published proposal should use its newly issued invitation without rotating it again.",
+  );
+  assert.equal(
+    validatedProposalInvites,
+    0,
+    "Automatic delivery should not need a separate stale-link check for a newly issued invitation.",
+  );
   await page.getByRole("button", { name: "Refresh account proposals" }).click();
   const savedProposalCard = page.locator(".saved-proposal-card", {
     hasText: "OE-P-RECOVERY",
@@ -542,13 +665,13 @@ try {
   );
   assert.equal(
     await page.getByText(
-      "Proposal saved. Invitations are now unlocked for this exact revision.",
+      "Proposal published and invitation email sent to every tenant.",
     ).count(),
     0,
     "A stale success message should not remain beside a blocked-confirmation error.",
   );
 
-  await page.getByRole("button", { name: "Start another proposal" }).click();
+  await page.getByRole("button", { name: "Start replacement proposal" }).click();
   await page.waitForFunction(
     () => document.activeElement?.id === "proposal-panel-participants",
   );

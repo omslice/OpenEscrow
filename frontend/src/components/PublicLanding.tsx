@@ -72,7 +72,7 @@ export function PublicLanding({
 
   return (
     <Layout showNotifications={false} accountEntry={accountEntry}>
-      <PublicIntro onStart={focusSignInSection} showAboutDetails />
+      <PublicIntro onStart={focusSignInSection} showAboutDetails showSampleDemo />
       <section
         id="public-access"
         className="card public-access-prompt"

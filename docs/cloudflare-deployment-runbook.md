@@ -35,8 +35,10 @@ kept only for rollback history and does not replace the signed-out introduction 
 - Staging R2 name: `openescrow-mvp-evidence-staging`
 - Production-testnet R2 name: `openescrow-mvp-evidence-testnet`
 
-All 21 repository D1 migrations have been applied to the staging D1 database. Production-testnet
-migrations remain intentionally unapplied until the data-continuity decision and release gate.
+The September 14, 2026 remote preflight verified that the staging database has all 26 repository
+D1 migrations through `0025_agreement_contract_cohort.sql`. Rerun the current-migrations preflight
+before deployment. The separate production-testnet database remains outside this release target;
+its historical migration hold is not authorization to migrate or activate it.
 
 On 2026-08-08 the owner activated R2 in the pinned account. The two named buckets above were then
 created through Wrangler and verified empty and private: their `r2.dev` URLs are disabled and they
@@ -70,8 +72,11 @@ address-attestation, receipt verification, the activity-registry verification bo
 compliance monitor. A dirty-source package is available solely for local dry runs and is stamped
 `sourceDirty: true`. The stricter pilot verifier and readiness command remain separate gates
 because notification delivery and a version-matched registry still require owner-controlled
-configuration. Scheduler health and all 61 compliance-source gates are currently passing but stay
-in the strict check so later regressions fail closed.
+configuration. The September 14 operator check verified the notification provider, scheduler and
+active registry binding, but 36 of 61 source checks blocked the strict compliance gate. The
+[source triage](compliance-source-triage-2026-09-14.md) and
+[current execution board](roadmap-progress-2026-09-14.md) track remediation. A successful core
+deployment check must not be reported as strict pilot readiness.
 
 The one-time staging bootstrap refuses to run if the `openescrow` Worker already exists. It creates
 fresh staging-only evidence-encryption and address-attestation secrets, verifies a Windows
@@ -112,11 +117,15 @@ Already configured and required for Cloudflare core readiness:
 - `EVIDENCE_ENCRYPTION_KEY_ID`
 - `ADDRESS_ATTESTATION_SECRET`
 
-Still required for strict pilot readiness:
+Configured in the September 14 operator check and still required for strict pilot readiness:
 
 - notification provider values (`RESEND_API_KEY`, or the documented webhook alternative);
 - a verified `ACTIVITY_REGISTRY_ADDRESS` bound to the active escrow while
   `VERIFY_ACTIVITY_REGISTRY_BINDING=true` remains enabled.
+
+Preserve these existing values. Do not repeat provider setup or rotate secrets merely because an
+older checklist described them as missing. Fresh verification, compliance-source review and
+separate participant acceptance remain required.
 
 The canonical staging origin is already accepted by Privy and its Google chooser has been
 verified. Add any future custom-domain origin to Privy and applicable OAuth allowlists before it is

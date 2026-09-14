@@ -54,12 +54,26 @@ saved response transaction; the Worker derives the decision and canonical landlo
 instead of accepting them from the browser. Users who explicitly enable agreement-activity
 email also receive privacy-minimal notices for finalization, funding, claim amendments, tenant
 responses, and arbiter rulings. These messages omit evidence pointers, tenancy details, amounts,
-and private notes. The hosted worker also has idempotent reminder checks for the landlord claim
-window, tenant response window, and optional arbiter ruling window. Checks run opportunistically
+and private notes. The hosted worker also has idempotent reminder checks seven days and one day
+before the agreed possession-return date, for the landlord claim window, tenant response window,
+and optional arbiter ruling window. Checks run opportunistically
 when the app is opened and through a scheduled-worker handler where that trigger is configured.
 It sends allocation-ready notices after recorded decisions or refund timeouts. Optional messages include a durable
-unsubscribe link that disables activity and deadline email. Contract activity performed outside
-the OpenEscrow UI still needs a production event indexer before it can reliably trigger an email.
+unsubscribe link that disables activity and deadline email. A scheduled Base Sepolia indexer now
+reads confirmed lifecycle events from the active OpenEscrow deployment, reconciles them to exactly
+one finalized D1 agreement, and sends the same opted-in activity notices for actions submitted
+outside the OpenEscrow UI. It never guesses an email-to-wallet association; unknown agreements are
+retained as unmatched public events without exposing them to hosted accounts.
+Transaction-bound delivery keys also let the indexer retry an email that failed after an in-app
+onchain action was recorded, without duplicating the agreement action or a provider-accepted send.
+Readiness is healthy only after the durable cursor is caught up to the confirmation-delayed chain
+head and no matched event remains pending.
+
+Every due agreement reminder is also written once to the shared D1 timeline independently of email
+consent or provider availability. The notification menu shows that reminder only to its intended
+landlord, tenant, or arbiter role. Email remains a second, consent-based channel with its own
+idempotency and delivery ledger. Saving a proposal never sends an invitation: participant invites
+remain an intentional landlord action through **Send invite**.
 
 For transaction-backed proposal actions, the browser keeps a narrowly scoped pending receipt after
 the chain confirms but before the D1 activity record succeeds. Finalization, the operations reserve,
@@ -85,7 +99,8 @@ Shares default evenly, must total exactly 100%, and any tenant or share change c
 revision that resets approvals. After finalization, each approved tenant wallet funds only its
 onchain share. The agreement remains in a partially funded state until the complete refundable
 deposit is received. The separate 5 testUSDC pilot operations reserve is divided equally among
-tenant wallets and is never counted as refundable deposit principal. The optional arbiter
+tenant wallets, is never counted as security-deposit principal, and is fully returned at terminal
+tenant withdrawal because the current MVP does not meter actual costs. The optional arbiter
 implementation remains in the codebase but its normal proposal UI is feature-flagged off for the
 tenant/landlord-only pilot.
 
@@ -120,12 +135,10 @@ webhook signing secret, or email-provider API key must remain server-side.
 Email delivery needs a server-side service; it must not be implemented by putting an email API key
 in this Vite client. The minimum credible service should:
 
-1. Index OpenEscrow events from the configured deployment block and map affected wallet addresses
-   to opted-in accounts.
-2. Reconcile indexed events with the current action-triggered and scheduled delivery records.
-3. Monitor failed deliveries, chain reorganizations, RPC outages, delayed event processing, and
-   evidence-bucket failures.
-4. Add retention and deletion controls approved by counsel and the pilot partner.
+1. Monitor failed deliveries, chain reorganizations, RPC outages, and delayed event processing.
+2. Rehearse all activity, deadline, invitation, suppression, and unsubscribe paths with genuinely
+   separate hosted participant accounts.
+3. Add retention and deletion controls approved by counsel and the pilot partner.
 
 Before real participants are invited, counsel and the pilot partner must approve consent language,
 retention, deletion, access controls, incident response, and the legal status of email notices.

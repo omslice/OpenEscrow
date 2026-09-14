@@ -1,6 +1,8 @@
 # OpenEscrow testnet MVP roadmap
 
-Updated 2026-08-10. This is the canonical high-level project status. The
+Current status reconciled 2026-09-14. Historical implementation entries retain their original
+release context and are superseded by the current execution board and release evidence index.
+This is the canonical high-level project status. The
 [validation ledger](./mvp-checkpoint-2026-07-29.md) contains detailed evidence, and
 [owner actions](./owner-actions.md) contains only work that needs credentials, signatures,
 external professional review, or an owner decision.
@@ -19,6 +21,20 @@ The product remains a Base Sepolia demonstration. Nothing here authorizes real d
 production custody, or reliance on the compliance research as legal advice.
 
 ## In progress
+
+- **Verified:** The September 14 operator check identifies clean live application `592c6d0`,
+  active August 16 contract cohort `5073f2a`, healthy email/scheduler/private evidence/registry/
+  address/indexer services, and a non-green compliance-source gate. The retained Sites build is
+  synchronized. See [release evidence](release-evidence-index.md).
+- **Verified:** The owner selected Ohio residential rentals and prioritized acceptance,
+  compliance, production legal design, self-host updates, and funding/continuity. The
+  [execution board](roadmap-progress-2026-09-14.md), [Ohio matrix](ohio-pilot-review.md), and
+  [organization checklist](organization-readiness.md) identify concrete work and unresolved inputs.
+- **Verified:** The first Cloudflare self-host package and download action already exist.
+  Updating and validating that package remains work; creating the initial download is no longer
+  a future milestone.
+
+### Historical implementation and release record
 
 - **Verified:** Repeatable landlord/tenant rehearsals cover no-claim refund, accepted claim,
   disputed claim, archive/restore, record export and verification, privacy requests, service
@@ -109,7 +125,9 @@ production custody, or reliance on the compliance research as legal advice.
   wallet-provider tree; all UUID paths now resolve to the reviewed bounds-safe release, connector
   imports are exercised on every candidate, and the production dependency audit is clean with no
   active exceptions. A newly disclosed Hono CORS middleware advisory is also removed: the
-  transitive wallet path is pinned to 4.12.34 and verified offline before each release.
+  transitive wallet path is pinned to 4.13.5 and verified offline before each release.
+  Wallet URL parsing uses query-string 9.5.1 with decode-uri-component 0.5.0;
+  pairing parameters, encoded names, malformed input, and connector imports are checked.
 - **Verified:** Critical flows have rendered accessibility, keyboard/focus, mobile-width, loading,
   error, and retry checks. Remaining usability work requires moderated human sessions rather than
   another code-only claim. The validated-address combobox keeps its controlled listbox present but
@@ -333,12 +351,27 @@ production custody, or reliance on the compliance research as legal advice.
   provider acceptance and signed delivery webhook events recorded in canonical D1. SPF, DKIM,
   DMARC, default participant preferences, suppression handling, and the notification scheduler are
   configured and independently tested.
+- **Verified:** The hosted notification architecture now covers both action-triggered and
+  agreement-timeline notices. Claim-window, claim-response, arbiter-ruling, allocation, and
+  recorded-agreement deadline reminders are persisted once for the intended in-app role even when
+  email is disabled; opted-in email is a separate idempotent channel. Cancellation, claim
+  retraction, refund/allocation, withdrawal, and arbiter-replacement events have privacy-minimal
+  activity mappings. Proposal invitations remain an intentional **Send invite** action.
+- **Verified:** A confirmation-delayed Base Sepolia Worker indexer now scans bounded ranges from
+  the active deployment block, deduplicates logs by chain/transaction/log index, reconciles only a
+  unique finalized or cancelled D1 agreement, and safely reuses the activity-email ledger for
+  supported direct onchain actions. Transaction-bound delivery keys let the same indexer retry
+  email when an in-app onchain action was saved during a temporary provider failure, without
+  duplicating the action or an accepted send. Cursor, pending, unmatched, and error state are
+  exposed in readiness; local regressions prove one direct withdrawal is recorded and emailed once
+  across repeated schedules.
 - **Verified:** The canonical Cloudflare app and both local readiness endpoints exposed the same
-  exact release provenance on 2026-08-08. Cloudflare scheduler health, evidence
+  exact release provenance on 2026-08-08. At that checkpoint, Cloudflare scheduler health, evidence
   encryption/keyring, address attestation, Google sign-in origin, private R2 storage, D1, static
-  assets, and the fifteen-minute trigger are configured. Pilot readiness remains fail-closed for
-  the version-matched activity registry; the official-source gate is
-  current across all 61 profiles, including the disclosed time-limited New Hampshire review.
+  assets, and the fifteen-minute trigger were configured. The then-open version-matched registry
+  gate and passing 61-profile source observation are historical: the September 14 check verified
+  the current registry binding but found 36 blocked source checks. Use the dated
+  [execution board](roadmap-progress-2026-09-14.md) for current remediation status.
 - **Verified:** The latest approved public deployment matches its exact release-checked and pushed
   source. Each subsequent coherent slice is validated and saved separately for explicit review;
   D1, R2, hosted data, runtime secrets, and configuration remain unchanged.
@@ -431,22 +464,19 @@ production custody, or reliance on the compliance research as legal advice.
   healthy 15-minute notification scheduler, encrypted private-R2 evidence with a ready keyring, and
   an activity registry immutably bound to the current F18 escrow. Cloudflare remote preflight also
   confirmed the expected D1/R2 bindings and current migrations without changing hosted state.
-- **Verified:** Exact contract source `200848d` deployed a fresh bounded Base Sepolia test-token,
-  reserve, escrow, and activity-registry cohort on 2026-08-09. Two independent public RPCs agreed
-  on all successful receipts, exact runtime bytes, the 1%-per-hour/5%-maximum taUSDC demo bounds,
-  and every reciprocal binding. Canonical release `b941a67` then switched the client and server to
-  escrow `0x9F8C...4b10` and registry `0x88b5...0f53` while preserving the existing D1, private R2,
-  secrets, migrations, and F18 rollback manifest. The live app and readiness endpoint returned 200;
-  release provenance was clean, registry binding ready, receipt verification enabled, participant
-  email ready, notification scheduler healthy, and the evidence keyring ready.
-- **Verified:** Exact application release `4281a1f` was pushed, built from clean source, and
-  deployed to both `openescrow.io` and the retained ChatGPT Sites mirror on 2026-08-10 without
-  replacing either host's D1/R2 bindings, secrets, migrations, or stored data. Both public sites
-  and readiness endpoints returned HTTP 200, reported the same clean 40-character commit, and
-  passed the dual-host canonical redirect check. The complete credential-free release envelope
-  passed on its immediate application predecessor `fca5f13`; `4281a1f` changes only the public
-  capitalization of “Project Funding” and separately passed lint, focused account/accessibility
-  regressions, both exact-source builds, hosted deployment verification, and the dual-host check.
+- **Verified:** Exact contract source `d1d1eabd8497c10b3b5d99860f43b0f139bdd77e` deployed the revised
+  bounded Base Sepolia test-token, reserve, escrow, and activity-registry cohort on 2026-08-13. Two
+  independent public RPCs agreed on successful receipts, exact runtime bytes, tenant-only-yield
+  settlement behavior, refundable reserve accounting, and every reciprocal binding. The active
+  escrow is `0x96fe...16e3` and registry is `0x1435...f952`; earlier cohorts remain historical
+  rollback evidence and their agreements and balances were not migrated.
+- **Verified:** Exact application release `356f76e` was pushed, built from clean source, and deployed
+  to both `openescrow.io` and the retained ChatGPT Sites mirror on 2026-08-13 without replacing the
+  canonical Cloudflare D1/R2 bindings, secrets, migrations, or stored data. Both public sites and
+  readiness endpoints returned HTTP 200, reported the same clean 40-character commit, and passed
+  the dual-host check. The complete credential-free release envelope passed with 136 server tests,
+  358 client/script checks, 251 contract tests with one opt-in external-RPC skip, and the documented
+  deployment, accessibility, UX, pilot, and incident rehearsals.
 
 ## Remaining
 
@@ -457,10 +487,10 @@ production custody, or reliance on the compliance research as legal advice.
 - **Planned:** Review and explicitly approve each newer saved candidate before deployment. The live
   site currently matches the last approved exact source; every future deployment must rerun the
   public readiness and release-provenance checks.
-- **Planned:** Run the separate-account synthetic lifecycle and incident/privacy rehearsal on the
-  activated cohort. The strict hosted pilot gate currently remains closed on three official-source
-  monitoring alerts; review Chicago and Arkansas changes and repair the New Hampshire external
-  attestation before calling the deployment pilot-ready.
+- **In progress:** Finish the hosted landlord/two-tenant synthetic lifecycle on proposal `69e2ba50`.
+  Both role-bound invitations have provider-confirmed delivery; participant link opening, approval,
+  finalization, funding, claim/refund, withdrawal, stale-link, wrong-account, and inbox placement
+  checks remain. The strict compliance-source baseline is deferred from this functionality milestone.
 - **Planned:** Keep verifying the version-matched activity registry after every public release,
   together with custom-domain notification delivery, scheduler freshness, private-R2 evidence
   encryption and retained-key recovery, and address attestation.
@@ -481,13 +511,10 @@ production custody, or reliance on the compliance research as legal advice.
 - **Planned:** Validate managed hosting, professional workflows, integrations, and support as
   optional monetization paths while preserving the free, self-hostable core and free access to
   essential records.
-- **Planned:** Add a prominent **Download / self-host OpenEscrow** action only after a supported,
-  reproducible release package exists. The first supported path will package the complete
-  Cloudflare Worker application with reviewed D1 migrations, private R2 configuration, safe
-  testnet defaults, a guided setup checker, backup/restore instructions, release checksums, an
-  SBOM, and signed upgrade notes. A later provider-neutral package may add Docker, SQLite, and
-  S3-compatible storage, but it must preserve the same private-record, encryption, receipt,
-  migration, and rollback boundaries rather than presenting a source archive as a one-click app.
+- **Planned:** Update the published Cloudflare self-host package with the current fixes and
+  validate installation, additive migration, upgrade, backup and rollback. Preserve safe testnet
+  defaults, private R2, checksums, SBOM and provenance. A later Docker/SQLite/S3-compatible
+  package remains optional and must preserve the same privacy and recovery boundaries.
 
 ## Material unknowns
 
@@ -495,7 +522,9 @@ production custody, or reliance on the compliance research as legal advice.
   This does not block the adopted fresh Cloudflare dataset; it matters only if the owner later
   requests a verified historical import. The comparison tooling intentionally cannot turn a
   partial provider export into continuity evidence.
-- First pilot cities/counties and tenancy segment.
+- Unsubsidized residential rentals in Ottawa Hills, Brady Lake, or both are the selected first
+  scope. Actual parcels and fixed-term versus month-to-month remain open; see the
+  [local scope review](ohio-local-pilot-scope.md) for the governing jurisdictions.
 - The authoritative property-timezone source and qualified local civil-time/DST interpretation
   for each pilot market. The candidate stores explicit instants deterministically but does not
   yet attest that a participant device timezone matches the property.
