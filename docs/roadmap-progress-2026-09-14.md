@@ -50,6 +50,19 @@ the broader [roadmap](../ROADMAP.md) retains the other workstreams.
 The complete [61-source triage snapshot](compliance-source-triage-2026-09-14.md) distinguishes
 stored status from freshness and gives the remaining source-review queue.
 
+## Validation checkpoint
+
+The full application check passed for the first candidate tranche: 137 server tests, 372
+client/script checks, every required browser recovery/lifecycle/accessibility check, and the
+production build/load/bundle gates. The production dependency audit is clean and wallet
+dependency compatibility passes. The source-expiry regression failed before the fix and passed
+afterward; a separate test verifies all 61 overdue sources are revisited without repeat fetching.
+
+Self-host review then found missing explicit escrow/reserve/block/indexer configuration. The
+generator and validator now require the active manifest's values and enabled indexing; all five
+focused configuration/SBOM tests pass. Fresh-package installation and publication remain separate
+checks. None of these results is a new hosted deployment or a completed participant session.
+
 ## Remaining owner and external inputs
 
 - Municipality/county and residential lease subtype; identify any subsidized/special housing.

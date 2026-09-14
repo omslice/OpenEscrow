@@ -22,6 +22,10 @@ address as a migration of existing funds. Consult the bundled current deployment
 5. Extract the new package into a new directory. Do not copy its template over your live config.
 6. Copy only your reviewed `wrangler.selfhost.jsonc` and `.env.production.local`, then rerun
    `npm run selfhost:check`.
+   Older configurations must add the exact escrow, reserve, deployment block and enabled
+   activity indexer from the current manifest. Compare a separately generated configuration;
+   preserve your own account, D1, R2, public origin and secrets. The checker rejects missing or
+   mixed-cohort values rather than relying on a historical server fallback.
 7. Run the full local tests and `wrangler deploy --dry-run`.
 8. Apply D1 migrations. Never edit a migration that has already run.
 9. Deploy the new Worker, verify `/api/system/readiness`, and complete a synthetic two-account
