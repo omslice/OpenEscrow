@@ -74,11 +74,18 @@ packaging now pin npm 11.16.0; fresh installation and packaging passed on Linux 
 The GitHub `4c708bc` archive's checksum verified, but its default provenance verification failed:
 the workflow had only created an SBOM attestation. The candidate now generates and verifies both
 build provenance and SBOM attestations separately before publishing artifacts.
+The amended workflow passed on `c6514db`, including both signature checks bound to that exact
+source and the release workflow identity.
 
 The mobile recovery check also exposed CDP measurement rounding during a hover translation:
 a 44px DOM rectangle can be reported as 43.999998px by the browser protocol's quad subtraction.
 The check now reads the DOM rectangle directly and retains the exact 44px minimum. The focused
 recovery check passes; final Linux CI and the amended artifact workflow must also pass.
+
+The incident rehearsal identified a stale scenario name after claim emails were changed to
+use the general app link. Its manifest now selects the existing credential-validation test and
+accurately describes credential-free notices; all 19 incident-control scenarios pass. This is
+local simulation, including mocked notification delivery, and does not send external messages.
 
 Ohio's exact-source observation was published from `4c708bc` and verified unchanged; New
 Hampshire's changed-source alert remains open. Candidate source is tracked in

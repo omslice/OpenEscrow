@@ -102,7 +102,7 @@ jobs:
           printf '%s\n' \
             'Supported Cloudflare-oriented distribution of the complete OpenEscrow Base Sepolia testnet application.' \
             '' \
-            'This release is for synthetic testing and qualified self-host operators. It does not enable mainnet, real rental deposits, a production fiat route, or production yield assets. Read the bundled self-host/cloudflare/README.md, SECURITY.md, BACKUP-AND-RESTORE.md, and UPGRADE.md before deployment.' \
+            'This release is for synthetic testing and qualified self-host operators. It does not enable mainnet, real rental deposits, a production fiat route, or production yield assets. Read README.md, SECURITY.md, BACKUP-AND-RESTORE.md, and UPGRADE.md in the extracted package root before deployment.' \
             '' \
             'Verify the archive checksum and GitHub artifact attestation before use.' > "$notes"
           gh release create "$GITHUB_REF_NAME" \

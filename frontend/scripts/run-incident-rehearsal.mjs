@@ -53,9 +53,9 @@ const expectedScenarios = [
   },
   {
     id: "multi-tenant-notice-isolation",
-    name: "deduction claim emails isolate each tenant's private invitation",
+    name: "deduction claim emails validate private credentials but send the general app link",
     covers: [
-      "recipient-specific invitations",
+      "recipient-specific notices without emailed bearer credentials",
       "cross-tenant link denial",
       "query credential denial",
       "per-tenant delivery idempotency",
