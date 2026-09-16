@@ -70,6 +70,7 @@ async function inspectSource(sourceItem, checkedAt) {
       etag: response.headers.get("etag") || "",
       lastModified: response.headers.get("last-modified") || "",
       markerChecks,
+      ...(structurallyValid ? { sourceBytes: body } : {}),
       ...(structurallyValid ? {} : { error: "The official source response did not match the expected document structure." }),
     };
   } catch (error) {
@@ -109,6 +110,12 @@ await mkdir(outputDirectory, { recursive: true });
 const results = [];
 for (const sourceItem of sources) {
   const attestation = await inspectSource(sourceItem, checkedAt);
+  const sourceBytes = attestation.sourceBytes;
+  delete attestation.sourceBytes;
+  if (sourceBytes) {
+    const sourceFile = safeOutputName(sourceItem.key).replace(/\.json$/, `-${attestation.bodySha256}.source`);
+    await writeFile(path.join(outputDirectory, sourceFile), sourceBytes);
+  }
   const outputPath = path.join(outputDirectory, safeOutputName(sourceItem.key));
   await writeFile(outputPath, `${JSON.stringify(attestation, null, 2)}\n`, { encoding: "utf8", flag: "w" });
   results.push({ sourceKey: sourceItem.key, status: attestation.status, outputPath });

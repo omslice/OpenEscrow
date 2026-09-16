@@ -6,6 +6,7 @@
   "compatibility_date": "2026-08-07",
   "workers_dev": true,
   "preview_urls": true,
+  "ai": { "binding": "AI" },
   "assets": {
     "directory": "./cloudflare-dist/client",
     "binding": "ASSETS",
@@ -35,6 +36,7 @@
     "ONCHAIN_ACTIVITY_INDEXER_ENABLED": "true",
     "API_RATE_LIMIT_ENABLED": "true",
     "COMPLIANCE_SOURCE_MONITOR_ENABLED": "true",
+    "COMPLIANCE_AUTO_UPDATE_ENABLED": "true",
     "EVIDENCE_STORAGE_MODE": "private-r2",
     "PRIVY_APP_ID": "replace-with-your-privy-app-id",
     "PUBLIC_APP_URL": "https://replace.example/",

@@ -1,3 +1,7 @@
+import { arizonaSourceDigest, buildAutomaticArizonaProfile } from "../../shared/arizona-compliance.js";
+import { automaticStateVersion, buildAutomaticStateProfile, STATE_SOURCE_ADAPTER } from "../../shared/automatic-state-profile.js";
+import { jurisdictionProfile, type USJurisdictionProfile } from "./jurisdictions.ts";
+
 export type ComplianceSourceEntry = {
   key: string;
   scope: string;
@@ -13,6 +17,7 @@ export type ComplianceSourceEntry = {
   lastCheckedAt: string | null;
   lastVerifiedAt: string | null;
   requiresReview: boolean;
+  updateError?: string;
   monitoringException: {
     kind: "reviewed-origin-incompatibility";
     reviewedAt: string;
@@ -33,6 +38,9 @@ export type ComplianceSourceStatus = {
   source: ComplianceSourceEntry;
   sources: readonly ComplianceSourceEntry[];
   immutableSnapshotNotice: string;
+  automaticUpdate?: { profile: USJurisdictionProfile; changes: string[] };
+  automaticUpdatesEnabled?: boolean;
+  requirementHistory?: { version: string; date: string; requirements: string[]; depositCapSummary: string; deadlineSummary: string }[];
 };
 
 export type ExpectedComplianceSource = {
@@ -109,7 +117,7 @@ function isConsistentSourceState(
     return (
       lastCheckedAt !== null &&
       lastVerifiedAt !== null &&
-      lastCheckedAt === lastVerifiedAt
+      lastVerifiedAt <= lastCheckedAt
     );
   }
   if (source.status === "changed" || source.status === "unreachable") {
@@ -135,6 +143,11 @@ function isExactComplianceSourceStatus(
     candidate.jurisdiction === jurisdiction &&
       candidate.profileVersion === profileVersion &&
       typeof candidate.immutableSnapshotNotice === "string" &&
+      (candidate.automaticUpdatesEnabled === undefined || typeof candidate.automaticUpdatesEnabled === "boolean") &&
+      (candidate.requirementHistory === undefined || (Array.isArray(candidate.requirementHistory) && candidate.requirementHistory.length <= 6 && candidate.requirementHistory.every((item) =>
+        typeof item.version === "string" && item.version.length <= 100 && typeof item.date === "string" && /^\d{4}-\d\d-\d\d$/.test(item.date) &&
+        typeof item.depositCapSummary === "string" && item.depositCapSummary.length <= 2000 && typeof item.deadlineSummary === "string" && item.deadlineSummary.length <= 2000 &&
+        Array.isArray(item.requirements) && item.requirements.length <= 80 && item.requirements.every((text) => typeof text === "string" && text.length <= 2200)))) &&
       candidate.immutableSnapshotNotice.trim() &&
       source &&
       Array.isArray(sources) &&
@@ -156,6 +169,7 @@ function isExactComplianceSourceStatus(
             isNullableTimestamp(item.lastCheckedAt) &&
             isNullableTimestamp(item.lastVerifiedAt) &&
             typeof item.requiresReview === "boolean" &&
+            (item.updateError === undefined || (typeof item.updateError === "string" && item.updateError.length <= 2000)) &&
             Object.prototype.hasOwnProperty.call(item, "monitoringException") &&
             isConsistentSourceState(item),
         );
@@ -187,11 +201,20 @@ export async function checkComplianceSourceStatus(
   expectedSources: readonly ExpectedComplianceSource[],
   overlays: readonly ComplianceOverlayVersion[] = [],
 ): Promise<ComplianceSourceStatus> {
-  const response = await fetch("/api/compliance/source-status", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify({ jurisdiction, profileVersion, overlays }),
-  });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 390000);
+  let response: Response;
+  try {
+    response = await fetch("/api/compliance/source-status", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ jurisdiction, profileVersion, overlays }),
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error("The official source check took too long. Your proposal has not been submitted. Try checking again.");
+    throw error;
+  } finally { clearTimeout(timer); }
   if (!response.ok) throw new Error(await responseError(response));
   let result: unknown;
   try {
@@ -210,6 +233,22 @@ export async function checkComplianceSourceStatus(
   ) {
     throw new Error(INVALID_SOURCE_RESPONSE);
   }
+  if (result.automaticUpdate) {
+    try {
+      const { profile, changes } = result.automaticUpdate;
+      const update = profile.sourceUpdate;
+      const base = jurisdictionProfile(jurisdiction);
+      const isGeneralUpdate = update?.adapter === STATE_SOURCE_ADAPTER;
+      if (!base || !update ||
+          !Array.isArray(changes) || changes.length > 16 || changes.some((change) => typeof change !== "string" || change.length > 2000) ||
+          (isGeneralUpdate
+            ? await automaticStateVersion(base, update.sourceDigest, update.patch) !== profile.version || JSON.stringify(buildAutomaticStateProfile(base, update)) !== JSON.stringify(profile)
+            : jurisdiction !== "us-az" || await arizonaSourceDigest(update.sourceText, update.baseVersion) !== update.sourceDigest || JSON.stringify(buildAutomaticArizonaProfile(base, update)) !== JSON.stringify(profile)) ||
+          !result.source.lastCheckedAt || Date.parse(update.generatedAt) > Date.parse(result.source.lastCheckedAt)) {
+        throw new Error(INVALID_SOURCE_RESPONSE);
+      }
+    } catch { throw new Error(INVALID_SOURCE_RESPONSE); }
+  }
   return result;
 }
 
@@ -220,7 +259,7 @@ export function complianceSourceStatusMessage(
     return "The official source matches the reviewed profile baseline.";
   }
   if (source.status === "changed") {
-    return "The official source appears to have changed. OpenEscrow will not rewrite the profile automatically; this version requires review.";
+    return source.updateError || "The official webpage changed. Check the source details; this does not by itself establish that a legal requirement changed.";
   }
   if (source.status === "unreachable") {
     return "The official source could not be reached. The recorded profile remains unchanged.";
@@ -240,7 +279,7 @@ export function complianceSourceStatusSummary(
       : `All ${sources.length} official sources match the reviewed requirements.`;
   }
   if (sources.some((source) => source.status === "changed")) {
-    return "At least one official source appears to have changed. OpenEscrow will not rewrite the requirements automatically; this version needs review.";
+    return sources.find((source) => source.status === "changed" && source.updateError)?.updateError || "An official webpage changed. Requirements that the automatic updater cannot interpret still need review; a webpage change alone is not evidence of a legal change.";
   }
   if (sources.some((source) => source.status === "pending")) {
     return "Some official sources still need their first successful check.";

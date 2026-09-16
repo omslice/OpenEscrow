@@ -108,6 +108,7 @@ for (const file of [
   "docs/privacy-threat-model.md",
   "docs/security-review.md",
   "docs/testnet-incident-response-runbook.md",
+  "docs/automatic-state-requirements.md",
 ]) {
   await copy(file);
 }
@@ -141,6 +142,7 @@ for (const file of [
   "frontend/scripts/check-self-host-config.mjs",
   "frontend/scripts/configure-self-host.mjs",
   "frontend/scripts/generate-self-host-secrets.mjs",
+  "frontend/scripts/fixtures/automatic-state-profile.mjs",
   "frontend/scripts/self-host-config-core.mjs",
   "frontend/scripts/self-host-config-core.test.mjs",
   "frontend/scripts/self-host-sbom-core.mjs",
@@ -224,6 +226,7 @@ const sourceInventoryFiles = [
   "frontend/scripts/check-self-host-config.mjs",
   "frontend/scripts/configure-self-host.mjs",
   "frontend/scripts/generate-self-host-secrets.mjs",
+  "frontend/scripts/fixtures/automatic-state-profile.mjs",
   "frontend/scripts/self-host-config-core.mjs",
   "frontend/scripts/self-host-config-core.test.mjs",
   "frontend/scripts/self-host-sbom-core.mjs",

@@ -69,6 +69,7 @@ export function buildSelfHostConfig({
     compatibility_date: "2026-08-07",
     workers_dev: true,
     preview_urls: true,
+    ai: { binding: "AI" },
     assets: {
       directory: "./cloudflare-dist/client",
       binding: "ASSETS",
@@ -93,6 +94,7 @@ export function buildSelfHostConfig({
       ONCHAIN_ACTIVITY_INDEXER_ENABLED: "true",
       API_RATE_LIMIT_ENABLED: "true",
       COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+      COMPLIANCE_AUTO_UPDATE_ENABLED: "true",
       EVIDENCE_STORAGE_MODE: "private-r2",
       PRIVY_APP_ID: privyAppId,
       PUBLIC_APP_URL: normalizePublicUrl(publicUrl),
@@ -187,6 +189,7 @@ export function validateSelfHostConfig(config) {
     ONCHAIN_ACTIVITY_INDEXER_ENABLED: "true",
     API_RATE_LIMIT_ENABLED: "true",
     COMPLIANCE_SOURCE_MONITOR_ENABLED: "true",
+    COMPLIANCE_AUTO_UPDATE_ENABLED: "true",
     EVIDENCE_STORAGE_MODE: "private-r2",
     VERIFY_ACTIVITY_REGISTRY_BINDING: "true",
     VERIFY_TRANSACTION_RECEIPTS: "true",
@@ -196,6 +199,7 @@ export function validateSelfHostConfig(config) {
       errors.push(`${name} must remain ${expected} for the supported Base Sepolia package.`);
     }
   }
+  if (config.ai?.binding !== "AI") errors.push("The AI binding is required for automatic U.S. state requirement updates.");
   if (vars.VITE_FIAT_ONRAMP_ENABLED === "true" || vars.FIAT_ONRAMP_ENABLED === "true") {
     errors.push("Real-money and fiat funding must remain disabled in this package.");
   }

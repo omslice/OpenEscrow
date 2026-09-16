@@ -38,6 +38,23 @@ jobs:
         working-directory: frontend
         run: npm run selfhost:package -- --output-dir=../self-host-dist
 
+      - name: Verify the packaged application rebuilds
+        shell: bash
+        run: |
+          package="$GITHUB_WORKSPACE/self-host-dist/openescrow-cloudflare-self-host-${GITHUB_SHA:0:12}"
+          ln -s "$GITHUB_WORKSPACE/frontend/node_modules" "$package/frontend/node_modules"
+          cd "$package/frontend"
+          node scripts/configure-self-host.mjs \
+            --worker-name oe-package-smoke-testnet \
+            --account-id 11111111111111111111111111111111 \
+            --database-name oe-package-smoke-db \
+            --database-id 11111111-1111-4111-8111-111111111111 \
+            --bucket-name oe-package-smoke-evidence \
+            --public-url https://oe-package-smoke-testnet.tenantcoop.workers.dev/ \
+            --privy-app-id oe_synthetic_smoke_123
+          npm run build:selfhost
+          npm run selfhost:dry-run
+
       - name: Locate release artifacts
         id: artifacts
         shell: bash

@@ -106,6 +106,8 @@ test("the packaged D1 migration applies cleanly", () => {
     "0022_onchain_activity_indexer.sql",
     "0023_notification_scheduler_cursor.sql",
     "0024_onchain_activity_record_details.sql",
+    "0025_agreement_contract_cohort.sql",
+    "0026_automatic_compliance_profiles.sql",
   ]) {
     applyMigration(migrationName);
   }
@@ -129,6 +131,8 @@ test("the packaged D1 migration applies cleanly", () => {
   assert.ok(tables.includes("notification_unsubscribe_tokens"));
   assert.ok(tables.includes("scheduled_job_runs"));
   assert.ok(tables.includes("compliance_source_checks"));
+  assert.ok(tables.includes("compliance_source_texts"));
+  assert.ok(tables.includes("compliance_generated_profiles"));
   assert.ok(tables.includes("account_record_archives"));
   assert.ok(tables.includes("funding_checkout_attempts"));
   assert.ok(tables.includes("funding_checkout_events"));
@@ -3556,6 +3560,158 @@ test("reports fail closed on malformed saved compliance snapshots", async () => 
   assert.match(html, /did not substitute today's rules/);
   assert.doesNotMatch(html, /forged-requirements/);
   assert.equal(html.includes(newYorkProfile.requirements[0]), false);
+});
+
+test("Arizona source updates unblock current proposals, version real changes, and preserve approved snapshots", async () => {
+  const db = new TestD1();
+  const env = { DB: db, COMPLIANCE_SOURCE_MONITOR_ENABLED: "true", ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET, VERIFY_ACTIVITY_REGISTRY_BINDING: "false" };
+  const base = US_JURISDICTION_PROFILES.find((profile) => profile.code === "us-az");
+  const originalHtml = readFileSync(new URL("./fixtures/arizona-33-1321.html", import.meta.url), "utf8");
+  let html = originalHtml;
+  let etag = "old";
+  let requests = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => {
+    assert.equal(String(url), base.statuteUrl);
+    requests++;
+    return new Response(html, { headers: { "content-type": "text/html", etag } });
+  };
+  const check = async (version = base.version) => jsonResponse(await worker.fetch(request("/api/compliance/source-status", "POST", {
+    jurisdiction: "us-az", profileVersion: version, overlays: [],
+  }), env));
+  const expire = () => db.prepare("UPDATE compliance_source_checks SET last_checked_at = ? WHERE source_key = 'state:az'").bind(new Date(Date.now() - 3600000).toISOString()).run();
+  try {
+    const first = await check();
+    assert.equal(first.source.status, "unchanged");
+    assert.equal(first.automaticUpdate.profile.depositCap.months, 1.5);
+    const profile = first.automaticUpdate.profile;
+    const unsignedAddress = { ...unsignedNewYorkAddressResolution, label: "100 Test Street, Phoenix, AZ 85001", stateCode: "AZ", city: "Phoenix", county: "Maricopa County", postalCode: "85001", latitude: 33.4484, longitude: -112.074 };
+    const address = { ...unsignedAddress, attestation: await createAddressAttestation(unsignedAddress, TEST_ADDRESS_ATTESTATION_SECRET) };
+    const facts = { ...newYorkComplianceFacts, housingProgram: "conventional" };
+    const proposalTerms = (candidate) => ({ ...terms, jurisdiction: "us-az", policyVersion: candidate.version, claimDays: candidate.defaultClaimDays, propertyAddress: address.label, addressResolution: address, complianceFacts: facts, complianceSnapshot: buildComplianceSnapshot(candidate, address, { facts }) });
+    const body = { landlordName: "Lena Landlord", landlordEmail: "landlord@example.com", tenantName: "Terry Tenant", tenantEmail: "tenant@example.com", terms: proposalTerms(profile) };
+    const obsolete = await worker.fetch(request("/api/negotiations", "POST", { ...body, terms: proposalTerms(base) }), env);
+    assert.equal(obsolete.status, 503);
+    assert.match((await obsolete.json()).error, /Updated state requirements/);
+    const saved = await jsonResponse(await worker.fetch(request("/api/negotiations", "POST", body), env));
+    const approved = await jsonResponse(await act(db, saved.record.id, saved.access.tenant, { type: "approve", wallet: "0x1111111111111111111111111111111111111111" }, env));
+    assert.equal(approved.status, "ready");
+    const storedTerms = db.database.prepare("SELECT terms_json FROM agreement_negotiations WHERE id = ?").get(saved.record.id).terms_json;
+    expire();
+    etag = "new metadata";
+    html = originalHtml.replace("09/09/26", "09/17/26");
+    const cosmetic = await check(profile.version);
+    assert.equal(cosmetic.automaticUpdate.profile.version, profile.version);
+    assert.equal(cosmetic.automaticUpdate.profile.sourceUpdate.generatedAt, profile.sourceUpdate.generatedAt);
+    assert.equal(db.database.prepare("SELECT COUNT(*) AS n FROM compliance_generated_profiles").get().n, 1);
+    expire();
+    html = originalHtml.replaceAll("one and one-half", "two").replace("Within fourteen", "Within twenty-one");
+    const changed = await check(profile.version);
+    assert.notEqual(changed.automaticUpdate.profile.version, profile.version);
+    assert.equal(changed.automaticUpdate.profile.deadlines[0].days, 21);
+    assert.equal(changed.automaticUpdate.changes.length, 2);
+    assert.equal((await act(db, saved.record.id, saved.access.landlord, { type: "preflight_finalize" }, env)).status, 503);
+    assert.equal(db.database.prepare("SELECT terms_json FROM agreement_negotiations WHERE id = ?").get(saved.record.id).terms_json, storedTerms);
+    const current = await worker.fetch(request("/api/negotiations", "POST", { ...body, terms: proposalTerms(changed.automaticUpdate.profile) }), env);
+    assert.equal(current.status, 201);
+    const forged = structuredClone(proposalTerms(changed.automaticUpdate.profile));
+    forged.complianceSnapshot.depositCap.months = 99;
+    assert.equal((await worker.fetch(request("/api/negotiations", "POST", { ...body, terms: forged }), env)).status, 400);
+    expire();
+    html = html.replace("shall not demand", "shall demand");
+    const unknown = await check(changed.automaticUpdate.profile.version);
+    assert.equal(unknown.source.status, "changed");
+    assert.match(unknown.source.updateError, /cannot interpret/);
+    assert.equal(unknown.automaticUpdate, undefined);
+    const requestsBeforeRetry = requests;
+    await check(changed.automaticUpdate.profile.version);
+    assert.equal(requests, requestsBeforeRetry, "unsupported text respects the refresh interval");
+    assert.equal(db.database.prepare("SELECT COUNT(*) AS n FROM compliance_generated_profiles").get().n, 2);
+    assert.equal(db.database.prepare("SELECT COUNT(*) AS n FROM compliance_source_texts").get().n, 3);
+    assert.equal((await worker.fetch(request("/api/negotiations", "POST", { ...body, terms: proposalTerms(changed.automaticUpdate.profile) }), env)).status, 503);
+    expire();
+    html = originalHtml.replace("</BODY>", "");
+    assert.equal((await check(profile.version)).source.status, "changed");
+    expire();
+    globalThis.fetch = async () => { throw new Error("Network unavailable"); };
+    await check(profile.version);
+    assert.equal((await worker.fetch(request("/api/negotiations", "POST", body), env)).status, 503, "an outage cannot clear an unparseable-source block");
+  } finally { globalThis.fetch = originalFetch; }
+});
+
+test("a non-Arizona PDF source uses AI verification, preserves equivalent versions, and validates saved terms", async () => {
+  const db = new TestD1();
+  const base = US_JURISDICTION_PROFILES.find((profile) => profile.code === "us-al");
+  let documentText = "Synthetic test document, not actual law. A deposit may not exceed one month's rent. Return the balance and itemization within fourteen days after tenancy termination. This text exists only to test document conversion and proposal version handling.";
+  let days = 14;
+  let reviewApproved = true;
+  let inferences = 0;
+  const env = { DB: db, COMPLIANCE_SOURCE_MONITOR_ENABLED: "true", COMPLIANCE_AUTO_UPDATE_ENABLED: "true", ADDRESS_ATTESTATION_SECRET: TEST_ADDRESS_ATTESTATION_SECRET,
+    AI: {
+      toMarkdown: async (document) => { assert.equal(document.blob.type, "application/pdf"); return { format: "text", data: documentText }; },
+      run: async (_model, input) => {
+        inferences++;
+        assert.equal(db.database.prepare("SELECT status FROM compliance_source_checks WHERE source_key = 'state:al'").get().status, "changed", "The old requirements must be suspended during analysis, including calls from another Worker instance.");
+        const data = JSON.parse(input.messages.at(-1).content);
+        assert.equal(data.jurisdiction, "us-al");
+        assert.equal(data.sourceUrl, base.statuteUrl);
+        const citation = "Synthetic testing § 1";
+        const quote = documentText.split(" This text")[0];
+        const patch = { ready: true, effectiveNow: true, reason: "Synthetic fixture", requirements: [{ text: `Return and itemize the deposit within ${days} days after tenancy termination.`, citation, quote }],
+          depositCap: { kind: "months-rent", months: 1, summary: "One month's rent.", citation, quote },
+          deadlines: [{ id: "return-accounting", label: "Return and itemize", days, trigger: "tenancyTerminatedAt", triggerDescription: "tenancy termination", dayType: "calendar", statutory: true, condition: null, comparison: null, citation, quote }],
+          claimDeadlineIds: ["return-accounting"], defaultClaimDays: days, statutoryDeadlineDays: days, deadlineSummary: `Return within ${days} days.`, exceptions: [], stateAttestations: [] };
+        return { response: data.candidate ? { approved: reviewApproved, issues: reviewApproved ? [] : ["An exception was omitted."] } : patch };
+      },
+    },
+  };
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => { assert.equal(String(url), base.statuteUrl); return new Response("%PDF synthetic fixture", { headers: { "content-type": "application/pdf", etag: crypto.randomUUID() } }); };
+  const check = async (version = base.version) => jsonResponse(await worker.fetch(request("/api/compliance/source-status", "POST", { jurisdiction: base.code, profileVersion: version, overlays: [] }), env));
+  const expire = () => db.prepare("UPDATE compliance_source_checks SET last_checked_at = ? WHERE source_key = 'state:al'").bind(new Date(Date.now() - 3600000).toISOString()).run();
+  try {
+    const first = await check();
+    assert.equal(first.source.status, "unchanged");
+    assert.equal(first.automaticUpdatesEnabled, true);
+    assert.equal(inferences, 2);
+    const profile = first.automaticUpdate.profile;
+    const unsignedAddress = { ...unsignedNewYorkAddressResolution, label: "100 Test Street, Montgomery, AL 36104", stateCode: "AL", city: "Montgomery", county: "Montgomery County", postalCode: "36104" };
+    const address = { ...unsignedAddress, attestation: await createAddressAttestation(unsignedAddress, TEST_ADDRESS_ATTESTATION_SECRET) };
+    const facts = { ...newYorkComplianceFacts, housingProgram: "conventional" };
+    const proposalTerms = { ...terms, jurisdiction: base.code, policyVersion: profile.version, claimDays: profile.defaultClaimDays, propertyAddress: address.label, addressResolution: address, complianceFacts: facts, complianceSnapshot: buildComplianceSnapshot(profile, address, { facts }) };
+    const body = { landlordName: "Lena Landlord", landlordEmail: "landlord@example.com", tenantName: "Terry Tenant", tenantEmail: "tenant@example.com", terms: proposalTerms };
+    const saved = await jsonResponse(await worker.fetch(request("/api/negotiations", "POST", body), env));
+    assert.equal(saved.record.terms.policyVersion, profile.version);
+    expire();
+    await check(profile.version);
+    assert.equal(inferences, 2, "identical converted text reuses its verified profile");
+    expire();
+    documentText += " Page design updated 2026-09-17.";
+    const cosmetic = await check(profile.version);
+    assert.equal(cosmetic.automaticUpdate.profile.version, profile.version);
+    assert.equal(db.database.prepare("SELECT COUNT(*) AS n FROM compliance_generated_profiles").get().n, 1);
+    assert.equal((await worker.fetch(request("/api/negotiations", "POST", body), env)).status, 201);
+    expire();
+    documentText = documentText.replace("fourteen", "twenty-one");
+    days = 21;
+    const changed = await check(profile.version);
+    assert.notEqual(changed.automaticUpdate.profile.version, profile.version);
+    assert.equal(changed.automaticUpdate.profile.defaultClaimDays, "21");
+    assert.equal(changed.requirementHistory.length, 3);
+    assert.equal((await worker.fetch(request("/api/negotiations", "POST", body), env)).status, 503);
+    assert.equal(JSON.parse(db.database.prepare("SELECT terms_json FROM agreement_negotiations WHERE id = ?").get(saved.record.id).terms_json).policyVersion, profile.version);
+    expire();
+    documentText += " Additional exception applies.";
+    reviewApproved = false;
+    const rejected = await check(changed.automaticUpdate.profile.version);
+    assert.equal(rejected.source.status, "changed");
+    assert.match(rejected.source.updateError, /exception was omitted/);
+    assert.equal(rejected.automaticUpdate, undefined);
+    const callsAfterFailure = inferences;
+    expire();
+    await check(changed.automaticUpdate.profile.version);
+    assert.equal(inferences, callsAfterFailure, "failed verification is cached instead of repeatedly spending on inference");
+  } finally { globalThis.fetch = originalFetch; }
 });
 
 test("monitored compliance sources fail closed for pending, changed, and stale profiles", async () => {

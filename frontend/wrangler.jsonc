@@ -6,6 +6,7 @@
   "compatibility_date": "2026-08-07",
   "workers_dev": true,
   "preview_urls": true,
+  "ai": { "binding": "AI" },
   "assets": {
     "directory": "./cloudflare-dist/client",
     "binding": "ASSETS",
@@ -31,6 +32,7 @@
     "ACTIVITY_REGISTRY_ADDRESS": "0xcf032b7da95d2710baa599979b8b9f350ce88a62",
     "API_RATE_LIMIT_ENABLED": "true",
     "COMPLIANCE_SOURCE_MONITOR_ENABLED": "true",
+    "COMPLIANCE_AUTO_UPDATE_ENABLED": "true",
     "EVIDENCE_STORAGE_MODE": "private-r2",
     "ONCHAIN_ACTIVITY_INDEXER_ENABLED": "true",
     "OPEN_ESCROW_ADDRESS": "0x8a46cfed7153c53fd080e16624f9702887c78b54",
@@ -55,6 +57,7 @@
       "name": "openescrow",
       "workers_dev": true,
       "preview_urls": true,
+      "ai": { "binding": "AI" },
       "routes": [
         {
           "pattern": "openescrow.io",
@@ -86,6 +89,7 @@
         "ACTIVITY_REGISTRY_ADDRESS": "0xcf032b7da95d2710baa599979b8b9f350ce88a62",
         "API_RATE_LIMIT_ENABLED": "true",
         "COMPLIANCE_SOURCE_MONITOR_ENABLED": "true",
+        "COMPLIANCE_AUTO_UPDATE_ENABLED": "true",
         "EVIDENCE_STORAGE_MODE": "private-r2",
         "ONCHAIN_ACTIVITY_INDEXER_ENABLED": "true",
         "OPEN_ESCROW_ADDRESS": "0x8a46cfed7153c53fd080e16624f9702887c78b54",

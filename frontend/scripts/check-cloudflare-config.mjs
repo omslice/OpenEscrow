@@ -63,6 +63,7 @@ for (const key of Object.keys(vars)) {
 }
 assert(vars.API_RATE_LIMIT_ENABLED === "true", "Hosted API rate limiting must remain enabled.");
 assert(vars.COMPLIANCE_SOURCE_MONITOR_ENABLED === "true", "Compliance source monitoring must remain enabled.");
+assert(vars.COMPLIANCE_AUTO_UPDATE_ENABLED === "true" && selected.ai?.binding === "AI", "Automatic state requirement updates need the AI binding and enabled update path.");
 assert(vars.EVIDENCE_STORAGE_MODE === "private-r2", "Evidence storage must remain private R2.");
 assert(vars.ONCHAIN_ACTIVITY_INDEXER_ENABLED === "true", "Onchain activity indexing must remain enabled.");
 assert(/^0x[0-9a-fA-F]{40}$/.test(vars.OPEN_ESCROW_ADDRESS || ""), "OpenEscrow indexer address is invalid.");

@@ -21,6 +21,21 @@ import {
   readRecoveryValue,
   writeRecoveryValue,
 } from "./browserRecovery.ts";
+import { buildAutomaticArizonaProfile } from "../../shared/arizona-compliance.js";
+import { buildAutomaticStateProfile, STATE_SOURCE_ADAPTER } from "../../shared/automatic-state-profile.js";
+
+export type AutomaticSourceUpdate = {
+  adapter: string;
+  baseVersion: string;
+  sourceDigest: string;
+  sourceText?: string;
+  generatedAt: string;
+  sourceUrl?: string;
+  profileVersion?: string;
+  model?: string;
+  reviewer?: string;
+  patch?: unknown;
+};
 
 export type ComplianceFactValue = string | number | boolean | null;
 
@@ -132,6 +147,7 @@ export type ComplianceSnapshot = {
   requirements: readonly string[];
   exceptions: readonly string[];
   claimPolicy?: ClaimPolicy;
+  sourceUpdate?: AutomaticSourceUpdate;
   overlays: readonly ComplianceOverlaySnapshot[];
   missingFacts: readonly string[];
   unresolvedOverlays: readonly string[];
@@ -163,6 +179,7 @@ export type USJurisdictionProfile = {
   researchedOn: string;
   localOverlayRequired: boolean;
   legalReviewRequired: boolean;
+  sourceUpdate?: AutomaticSourceUpdate;
 };
 
 export const US_JURISDICTION_PROFILES =
@@ -243,6 +260,28 @@ export function jurisdictionProfileForPostalCode(
 ): USJurisdictionProfile | null {
   const normalized = postalCode?.trim().toUpperCase();
   return normalized ? US_PROFILE_BY_POSTAL_CODE[normalized] ?? null : null;
+}
+
+export function jurisdictionProfileForTerms(terms: {
+  jurisdiction: string; policyVersion?: string; complianceSnapshot?: ComplianceSnapshot | null;
+}): USJurisdictionProfile | null {
+  const base = jurisdictionProfile(terms.jurisdiction);
+  if (base?.version === terms.policyVersion) return base;
+  if (!base || !terms.complianceSnapshot?.sourceUpdate) return null;
+  try {
+    const update = terms.complianceSnapshot.sourceUpdate;
+    const profile = (update.adapter === STATE_SOURCE_ADAPTER ? buildAutomaticStateProfile(base, update) : buildAutomaticArizonaProfile(base, update)) as USJurisdictionProfile;
+    return profile.version === terms.policyVersion ? profile : null;
+  } catch { return null; }
+}
+
+export function requirementSourceQuotes(profile: USJurisdictionProfile): { citation: string; quote: string }[] {
+  const patch = profile.sourceUpdate?.patch as { requirements?: unknown } | undefined;
+  if (!Array.isArray(patch?.requirements)) return [];
+  return patch.requirements.map((item) => ({
+    citation: typeof item?.citation === "string" ? item.citation : "",
+    quote: typeof item?.quote === "string" ? item.quote : "",
+  }));
 }
 
 export function isUSJurisdictionCode(value: string): value is USJurisdictionCode {
