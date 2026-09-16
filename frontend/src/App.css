@@ -1969,6 +1969,10 @@ html.demo-route #root {
   align-items: center;
 }
 
+.account-connection-controls .btn {
+  min-height: 48px;
+}
+
 .account-connection-note,
 .account-connection-error {
   flex-basis: 100%;
@@ -6144,7 +6148,7 @@ a.btn.disabled {
   }
 
   .account-connection-controls .btn {
-    min-height: 44px;
+    min-height: 48px;
   }
 
   .account-connection-note,

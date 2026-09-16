@@ -475,7 +475,7 @@ try {
   const mobileSignInRetryBox = await retrySecureSignIn.boundingBox();
   assert.ok(
     mobileSignInRetryBox && mobileSignInRetryBox.height >= 44,
-    "The account-provider retry must remain a full-size mobile touch target.",
+    `The account-provider retry must remain a full-size mobile touch target: ${JSON.stringify(mobileSignInRetryBox)}`,
   );
   await landingContext.close();
 

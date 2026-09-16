@@ -7023,6 +7023,9 @@ async function serialize(db, row) {
         }
       : null,
     onchainAgreementId: row.onchain_agreement_id,
+    onchainContractAddress: WALLET_PATTERN.test(row.onchain_contract_address || "")
+      ? row.onchain_contract_address.toLowerCase()
+      : null,
     onchainTxHash: row.onchain_tx_hash,
     events,
   };

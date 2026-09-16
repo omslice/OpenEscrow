@@ -262,6 +262,7 @@ export interface NegotiationRecord {
     confirmedAt: string | null;
   } | null;
   onchainAgreementId: string | null;
+  onchainContractAddress?: string | null;
   onchainTxHash: string | null;
   viewerTenantId?: string;
   viewerEmail?: string;

@@ -18,6 +18,8 @@ import { useDiscoverAgreements } from "./lib/useDiscoverAgreements";
 import { PublicIntro } from "./components/PublicIntro";
 import { AccountCenter } from "./components/AccountCenter";
 import { DepositAgreementListItem } from "./components/DepositAgreementListItem";
+import { HistoricalDepositCard } from "./components/HistoricalDepositCard";
+import { filterTrackedAgreementIds, isCurrentAgreement } from "./lib/agreementDeployment";
 import { RecordListItem } from "./components/RecordListItem";
 import { DeferredLoadBoundary } from "./components/DeferredLoadBoundary";
 import {
@@ -135,6 +137,14 @@ function savedRecordKey(item: SavedProposal) {
 
 function onchainRecordKey(agreementId: bigint | string) {
   return `onchain:${agreementId.toString()}`;
+}
+
+function savedRecordDomId(item: SavedProposal) {
+  return isCurrentAgreement(item.record, OPEN_ESCROW_ADDRESS)
+    ? `record-agreement-${item.record.onchainAgreementId}`
+    : item.record.onchainAgreementId
+      ? `record-proposal-${item.record.id}-${item.access.role}`
+      : `record-proposal-${item.record.id}`;
 }
 
 function linkedAgreementIdFromUrl(): string | undefined {
@@ -299,6 +309,8 @@ function AppView({
   );
   const [requestedDepositId, setRequestedDepositId] =
     useState<RequestedDepositId>(() => linkedAgreementIdFromUrl());
+  const [requestedHistoricalKey, setRequestedHistoricalKey] = useState<string | null>(null);
+  const [walletConfirmedIds, setWalletConfirmedIds] = useState<bigint[]>([]);
   const [isRecordArchiveOpen, setIsRecordArchiveOpen] = useState(false);
   const [isProposalArchiveOpen, setIsProposalArchiveOpen] = useState(false);
   const [recordArchivePendingKey, setRecordArchivePendingKey] = useState<string | null>(
@@ -324,17 +336,28 @@ function AppView({
   const [unavailableAgreementIds, setUnavailableAgreementIds] = useState<
     Set<string>
   >(() => new Set());
-  const finalizedProposals = compactActiveProposals(
+  const finalizedRecords = compactActiveProposals(
     savedRecords.filter((item) => item.record.status === "finalized"),
+  );
+  const finalizedProposals = finalizedRecords.filter((item) =>
+    isCurrentAgreement(item.record, OPEN_ESCROW_ADDRESS),
+  );
+  const historicalDeposits = finalizedRecords.filter((item) =>
+    !isCurrentAgreement(item.record, OPEN_ESCROW_ADDRESS) &&
+    /^\d+$/.test(item.record.onchainAgreementId || "") &&
+    (!item.access.archived || savedRecordKey(item) === requestedHistoricalKey),
+  );
+  const eligibleTrackedIds = filterTrackedAgreementIds(
+    ids, savedRecords.map((item) => item.record), OPEN_ESCROW_ADDRESS, walletConfirmedIds,
   );
   const participantAgreementIds = finalizedProposals.flatMap(({ record }) =>
     record.onchainAgreementId ? [BigInt(record.onchainAgreementId)] : [],
   );
   const discoveredAgreementIds = ACCOUNT_AUTH_ENABLED
     ? accountIdentity
-      ? mergeAgreementIds(participantAgreementIds, ids)
+      ? mergeAgreementIds(participantAgreementIds, eligibleTrackedIds)
       : []
-    : ids;
+    : eligibleTrackedIds;
   const displayedIds = discoveredAgreementIds.filter(
     (id) =>
       !unavailableAgreementIds.has(id.toString()) &&
@@ -631,6 +654,8 @@ function AppView({
     setFindError(null);
     setIsFinding(false);
     setUnavailableAgreementIds(new Set());
+    setRequestedHistoricalKey(null);
+    setWalletConfirmedIds([]);
     setAgreementPanels({});
     setAgreementFocusRequests({});
     setProposalAccess((current) =>
@@ -669,6 +694,7 @@ function AppView({
         return;
       }
       found.forEach(addId);
+      setWalletConfirmedIds(found);
     }
 
     void discoverConnectedWalletAgreements();
@@ -809,7 +835,7 @@ function AppView({
       );
 
       const accountAgreementIds = records.flatMap(({ record }) =>
-        record.status === "finalized" && record.onchainAgreementId
+        record.status === "finalized" && isCurrentAgreement(record, OPEN_ESCROW_ADDRESS) && record.onchainAgreementId
           ? [BigInt(record.onchainAgreementId)]
           : [],
       );
@@ -820,10 +846,11 @@ function AppView({
         if (!requestIsCurrent()) return;
         found.forEach(addId);
         onchainCount = mergeAgreementIds(accountAgreementIds, found).length;
+        setWalletConfirmedIds(found);
       }
       const skipped = loaded.filter((result) => result.status === "rejected").length;
       setScanMessage(
-        `Found ${proposals.length} saved proposal(s) and ${onchainCount} onchain agreement(s).${
+        `Found ${proposals.length} saved proposal(s) and ${onchainCount} current onchain agreement(s).${
           skipped ? ` ${skipped} unavailable saved link(s) were skipped.` : ""
         }`,
       );
@@ -850,6 +877,15 @@ function AppView({
       item.record.status === "finalized" &&
       item.record.onchainAgreementId
     ) {
+      if (!isCurrentAgreement(item.record, OPEN_ESCROW_ADDRESS)) {
+        setRequestedHistoricalKey(savedRecordKey(item));
+        setRequestedDepositId(null);
+        setProposalAccess(null);
+        setActiveLandlordAccess(null);
+        setIsProposalComposerOpen(false);
+        setTab("agreements");
+        return;
+      }
       const agreementId = item.record.onchainAgreementId;
       addId(BigInt(agreementId));
       setProposalAccess(null);
@@ -886,6 +922,14 @@ function AppView({
     }
     setProposalAccess(item.access);
     setTab("proposals");
+  }
+
+  function openSavedRecord(item: SavedProposal) {
+    setExpandedRecordKeys((current) => ({ ...current, [savedRecordKey(item)]: true }));
+    if (item.access.archived) setIsRecordArchiveOpen(true);
+    setProposalAccess(null);
+    setTab("record");
+    scrollToNotificationTarget(savedRecordDomId(item), "record-workspace");
   }
 
   function openTenantFundingAttention() {
@@ -961,6 +1005,11 @@ function AppView({
 
   function openProposalNotification(item: SavedProposal, action: string) {
     const agreementId = item.record.onchainAgreementId;
+    if (agreementId && !isCurrentAgreement(item.record, OPEN_ESCROW_ADDRESS)) {
+      if (isRecordAction(action)) openSavedRecord(item);
+      else openSavedProposal(item);
+      return;
+    }
     if (isRecordAction(action)) {
       if (agreementId) addId(BigInt(agreementId));
       setExpandedRecordKeys((current) => ({
@@ -1296,7 +1345,7 @@ function AppView({
             {archivedAccountProposals.length
               ? "Open Archived proposals below to review or restore them."
               : workspaceRole === "landlord"
-                ? "Use Start a new proposal below, or refresh after another party responds."
+                ? "Use Start a new proposal above, or refresh after another party responds."
                 : "Accepted invitations and proposals associated with this account will appear here."}
           </span>
         </div>
@@ -1390,7 +1439,7 @@ function AppView({
               onClick={() => openSavedProposal(item)}
             >
               {isFinalized
-                ? "Open active deposit"
+                ? "Open deposit"
                 : isReadyForLandlord
                   ? "Review and finalize"
                   : "Open proposal"}
@@ -1462,7 +1511,7 @@ function AppView({
     return (
       <>
         {renderAgreementDiscovery()}
-        {displayedIds.length === 0 && (
+        {displayedIds.length === 0 && historicalDeposits.length === 0 && (
           <div className="workspace-empty">
             <strong>No finalized security deposits tracked yet.</strong>
             <span>
@@ -1558,6 +1607,17 @@ function AppView({
             })}
           </div>
         )}
+        {historicalDeposits.length > 0 && (
+          <div className="deposit-list" role="list" aria-label="Earlier saved deposits">
+            {historicalDeposits.map((item) => {
+              const key = savedRecordKey(item);
+              return <HistoricalDepositCard key={key} record={item.record} recordKey={`${item.record.id}-${item.access.role}`}
+                expanded={requestedHistoricalKey === key}
+                onToggle={() => setRequestedHistoricalKey((current) => current === key ? null : key)}
+                onOpenRecord={() => openSavedRecord(item)} />;
+            })}
+          </div>
+        )}
         {workspaceRole === "tenant" && (
           <DeferredLoadBoundary
             area="workspace"
@@ -1573,7 +1633,8 @@ function AppView({
   function renderRecordWorkspace() {
     const linkedAgreementIds = new Set(
       savedRecords.flatMap((item) =>
-        item.record.onchainAgreementId ? [item.record.onchainAgreementId] : [],
+        isCurrentAgreement(item.record, OPEN_ESCROW_ADDRESS) && item.record.onchainAgreementId
+          ? [item.record.onchainAgreementId] : [],
       ),
     );
     const unlinkedAgreementIds = displayedIds.filter(
@@ -1626,11 +1687,7 @@ function AppView({
         : proposalReference(item.record.id);
       return (
         <RecordListItem
-          id={
-            agreementId
-              ? `record-agreement-${agreementId}`
-              : `record-proposal-${item.record.id}`
-          }
+          id={savedRecordDomId(item)}
           key={`${item.access.proposalId}-${item.access.role}`}
           detailsId={contentId}
           expanded={expanded}
@@ -1687,6 +1744,7 @@ function AppView({
             <RecordSnapshotControls
               access={item.access}
               agreementId={agreementId ? BigInt(agreementId) : undefined}
+              historical={Boolean(agreementId) && !isCurrentAgreement(item.record, OPEN_ESCROW_ADDRESS)}
             />
           </DeferredLoadBoundary>
           <details className="technical-details agreement-activity">
@@ -2217,83 +2275,6 @@ function AppView({
             </>
           ) : (
             <>
-              <section className="card active-proposals-section">
-                <div className="active-proposals-header">
-                  <div>
-                    <span className="eyebrow">Account proposals</span>
-                    <h2>
-                      {workspaceRole === "landlord"
-                        ? "Your proposals"
-                        : "Your invitations and proposals"}
-                    </h2>
-                    <p>
-                      Pending and finalized proposals are listed here. Finalized proposals
-                      open their active deposit; the complete revision history remains in the
-                      Record tab.
-                    </p>
-                  </div>
-                  <button
-                    className="refresh-icon-button"
-                    type="button"
-                    aria-label="Refresh account proposals"
-                    title="Refresh account proposals"
-                    disabled={isScanning || isFinding}
-                    onClick={() => void findProposalsAndAgreements()}
-                  >
-                    <span aria-hidden="true">↻</span>
-                  </button>
-                </div>
-                {currentAccountProposals.length > 0 && (
-                  <div
-                    className="proposal-status-overview"
-                    aria-label="Proposal status summary"
-                  >
-                    <div>
-                      <strong>{proposalStatusCounts.ready}</strong>
-                      <span>Ready</span>
-                    </div>
-                    <div>
-                      <strong>{proposalStatusCounts.inReview}</strong>
-                      <span>In review</span>
-                    </div>
-                    <div>
-                      <strong>{proposalStatusCounts.activeDeposits}</strong>
-                      <span>Active deposits</span>
-                    </div>
-                  </div>
-                )}
-                {renderSavedProposalCards(currentAccountProposals)}
-                {archivedAccountProposals.length > 0 && (
-                  <details
-                    className="record-archive-section proposal-archive-section"
-                    open={isProposalArchiveOpen}
-                    onToggle={(event) =>
-                      setIsProposalArchiveOpen(event.currentTarget.open)
-                    }
-                  >
-                    <summary id="proposal-archive-summary">
-                      Archived proposals ({archivedAccountProposals.length})
-                    </summary>
-                    <p>
-                      Archived proposals stay available to you and can be restored at any
-                      time. Archiving does not delete the proposal, deposit, or audit trail.
-                    </p>
-                    <div className="record-list proposal-archive-list">
-                      {renderSavedProposalCards(archivedAccountProposals, true)}
-                    </div>
-                  </details>
-                )}
-                {scanMessage && (
-                  <p className="tx-success" role="status">
-                    {scanMessage}
-                  </p>
-                )}
-                {findError && (
-                  <p className="tx-error" role="alert">
-                    {findError}
-                  </p>
-                )}
-              </section>
               {workspaceRole === "landlord" && !inviteRole && !activeLandlordAccess && (
                 <section className="proposal-composer-launcher">
                   {!isProposalComposerOpen ? (
@@ -2359,6 +2340,83 @@ function AppView({
                   )}
                 </section>
               )}
+              <section className="card active-proposals-section">
+                <div className="active-proposals-header">
+                  <div>
+                    <span className="eyebrow">Account proposals</span>
+                    <h2>
+                      {workspaceRole === "landlord"
+                        ? "Your proposals"
+                        : "Your invitations and proposals"}
+                    </h2>
+                    <p>
+                      Pending and finalized proposals are listed here. Finalized proposals
+                      open their deposit details; the complete revision history remains in the
+                      Record tab.
+                    </p>
+                  </div>
+                  <button
+                    className="refresh-icon-button"
+                    type="button"
+                    aria-label="Refresh account proposals"
+                    title="Refresh account proposals"
+                    disabled={isScanning || isFinding}
+                    onClick={() => void findProposalsAndAgreements()}
+                  >
+                    <span aria-hidden="true">↻</span>
+                  </button>
+                </div>
+                {currentAccountProposals.length > 0 && (
+                  <div
+                    className="proposal-status-overview"
+                    aria-label="Proposal status summary"
+                  >
+                    <div>
+                      <strong>{proposalStatusCounts.ready}</strong>
+                      <span>Ready</span>
+                    </div>
+                    <div>
+                      <strong>{proposalStatusCounts.inReview}</strong>
+                      <span>In review</span>
+                    </div>
+                    <div>
+                      <strong>{proposalStatusCounts.activeDeposits}</strong>
+                      <span>Active deposits</span>
+                    </div>
+                  </div>
+                )}
+                {renderSavedProposalCards(currentAccountProposals)}
+                {archivedAccountProposals.length > 0 && (
+                  <details
+                    className="record-archive-section proposal-archive-section"
+                    open={isProposalArchiveOpen}
+                    onToggle={(event) =>
+                      setIsProposalArchiveOpen(event.currentTarget.open)
+                    }
+                  >
+                    <summary id="proposal-archive-summary">
+                      Archived proposals ({archivedAccountProposals.length})
+                    </summary>
+                    <p>
+                      Archived proposals stay available to you and can be restored at any
+                      time. Archiving does not delete the proposal, deposit, or audit trail.
+                    </p>
+                    <div className="record-list proposal-archive-list">
+                      {renderSavedProposalCards(archivedAccountProposals, true)}
+                    </div>
+                  </details>
+                )}
+                {scanMessage && (
+                  <p className="tx-success" role="status">
+                    {scanMessage}
+                  </p>
+                )}
+                {findError && (
+                  <p className="tx-error" role="alert">
+                    {findError}
+                  </p>
+                )}
+              </section>
             </>
           )}
         </div>

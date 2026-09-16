@@ -310,9 +310,11 @@ function AnchorAction(props: AnchorProps) {
 export function RecordSnapshotControls({
   access,
   agreementId,
+  historical = false,
 }: {
   access: NegotiationAccess;
   agreementId?: bigint;
+  historical?: boolean;
 }) {
   const registry = useActivityRegistryReadiness();
   const [snapshot, setSnapshot] = useState<AgreementSnapshot | null>(null);
@@ -585,7 +587,9 @@ export function RecordSnapshotControls({
                 {snapshot.algorithm}: {snapshot.hash}
               </code>
             </details>
-            {agreementId !== undefined && registry.isReady ? (
+            {historical ? (
+              <p className="field-help">Public proof transactions for an earlier or unverified deployment are unavailable in this view. Your saved record can still be downloaded.</p>
+            ) : agreementId !== undefined && registry.isReady ? (
               <AnchorAction
                 key={snapshot.hash}
                 access={access}
@@ -618,7 +622,7 @@ export function RecordSnapshotControls({
         <RecordSnapshotVerifier
           proposalId={access.proposalId}
           agreementId={agreementId}
-          registryReady={registry.isReady}
+          registryReady={!historical && registry.isReady}
           registryChecking={registry.isChecking}
         />
       </section>
