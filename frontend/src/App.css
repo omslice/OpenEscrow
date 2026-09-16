@@ -1970,7 +1970,7 @@ html.demo-route #root {
 }
 
 .account-connection-controls .btn {
-  min-height: 44px;
+  min-height: 48px;
 }
 
 .account-connection-note,
@@ -6148,7 +6148,7 @@ a.btn.disabled {
   }
 
   .account-connection-controls .btn {
-    min-height: 44px;
+    min-height: 48px;
   }
 
   .account-connection-note,
