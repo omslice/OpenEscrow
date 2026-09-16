@@ -91,7 +91,7 @@ export function AgreementCard({
   onPanelChange?: (panel: AgreementPanel) => void;
   focusRequest?: AgreementFocusRequest;
 }) {
-  const { agreement, exists, isLoading, isFetching, error, refetch } = useAgreement(id);
+  const { agreement, exists, isLoading, isFetching, isMissing, error, refetch } = useAgreement(id);
   const [localPanel, setLocalPanel] = useState<AgreementPanel | null>(null);
   const [visitedPanels, setVisitedPanels] = useState<readonly AgreementPanel[]>([
     "summary",
@@ -157,6 +157,15 @@ export function AgreementCard({
   }
   if (!error && (!exists || !agreement)) {
     return null;
+  }
+  if (isMissing) {
+    return (
+      <section className="card" role="status">
+        <h2>{agreementReference(id)} is not in this testnet release</h2>
+        <p>Earlier deposits are listed separately below and remain available in the Record tab.</p>
+        {onRemove && <button className="btn btn-secondary" onClick={onRemove}>Dismiss outdated shortcut</button>}
+      </section>
+    );
   }
   if (error) {
     return (

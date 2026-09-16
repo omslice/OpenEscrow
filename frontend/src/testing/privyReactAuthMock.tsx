@@ -249,3 +249,11 @@ export function useCreateWallet() {
   const { createWallet } = useMockPrivyContext();
   return { createWallet };
 }
+
+export function useSendTransaction() {
+  return {
+    sendTransaction: async () => {
+      throw new Error("Transactions are disabled in the account-workspace regression.");
+    },
+  };
+}

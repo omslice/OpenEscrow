@@ -12973,6 +12973,28 @@ test("claim response notices bind to the exact recorded tenant decision", async 
   }
 });
 
+test("private agreement reads preserve the original deployment and leave unbound records unknown", async () => {
+  const db = new TestD1();
+  const created = await create(db);
+  const finalized = await finalizeWithoutArbiter(db, created);
+  assert.equal(finalized.onchainContractAddress, ACTIVE_DEPLOYMENT.escrow.toLowerCase());
+  const original = "0xBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB";
+  for (const address of [original, null]) {
+    db.prepare("UPDATE agreement_negotiations SET onchain_contract_address = ? WHERE id = ?")
+      .bind(address, created.record.id).run();
+    const record = await jsonResponse(await worker.fetch(
+      negotiationReadRequest(`/api/negotiations/${created.record.id}`, created.access.landlord),
+      { DB: db },
+    ));
+    assert.equal(record.onchainContractAddress, address?.toLowerCase() ?? null);
+    assert.equal(record.onchainAgreementId, "42");
+  }
+  const forbidden = await worker.fetch(
+    negotiationReadRequest(`/api/negotiations/${created.record.id}`, "unrelated-access"), { DB: db },
+  );
+  assert.equal(forbidden.status, 403);
+});
+
 test("one finalization receipt cannot be assigned to two proposal records", async () => {
   const db = new TestD1();
   const first = await create(db);

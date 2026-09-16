@@ -1,5 +1,6 @@
 import { useReadContract } from "wagmi";
-import { OpenEscrowABI, OPEN_ESCROW_ADDRESS } from "../contracts/config";
+import { chain, OpenEscrowABI, OPEN_ESCROW_ADDRESS } from "../contracts/config";
+import { isMissingAgreementError } from "./agreementDeployment";
 
 // Mirrors contracts/OpenEscrow.sol's Agreement struct field order exactly.
 export interface Agreement {
@@ -34,9 +35,13 @@ export interface Agreement {
   withdrawn: bigint;
 }
 
-export function useAgreement(id: bigint | undefined) {
+export function useAgreement(
+  id: bigint | undefined,
+  contractAddress: `0x${string}` = OPEN_ESCROW_ADDRESS,
+) {
   const query = useReadContract({
-    address: OPEN_ESCROW_ADDRESS,
+    address: contractAddress,
+    chainId: chain.id,
     abi: OpenEscrowABI,
     functionName: "getAgreement",
     args: id !== undefined ? [id] : undefined,
@@ -49,5 +54,5 @@ export function useAgreement(id: bigint | undefined) {
   const agreement = query.data as Agreement | undefined;
   const exists = !!agreement && agreement.phase !== 0;
 
-  return { ...query, agreement, exists };
+  return { ...query, agreement, exists, isMissing: isMissingAgreementError(query.error) };
 }
