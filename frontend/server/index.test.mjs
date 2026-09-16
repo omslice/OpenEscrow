@@ -3571,8 +3571,9 @@ test("Arizona source updates unblock current proposals, version real changes, an
   let etag = "old";
   let requests = 0;
   const originalFetch = globalThis.fetch;
-  globalThis.fetch = async (url) => {
+  globalThis.fetch = async (url, options) => {
     assert.equal(String(url), base.statuteUrl);
+    assert.equal(options.redirect, "manual", "Workers supports manual redirect rejection, not redirect:error.");
     requests++;
     return new Response(html, { headers: { "content-type": "text/html", etag } });
   };

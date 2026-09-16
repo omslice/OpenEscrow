@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { US_JURISDICTION_PROFILES } from "../shared/us-jurisdiction-profiles.js";
-import { generateVerifiedStateProfile } from "../server/state-source-updater.js";
-import { validateStateExtraction, preserveSourceWording, buildAutomaticStateProfile, automaticStateVersion } from "../shared/automatic-state-profile.js";
+import { generateVerifiedStateProfile, fetchRegisteredDocument } from "../server/state-source-updater.js";
+import { COMPLIANCE_SOURCE_REGISTRY } from "../shared/compliance-sources.js";
+import { validateStateExtraction, preserveSourceWording, buildAutomaticStateProfile, automaticStateVersion, digestText } from "../shared/automatic-state-profile.js";
 
 // Synthetic evidence tests the transport/validation path for every jurisdiction;
 // it is deliberately not a claim that these are any state's actual laws.
@@ -17,6 +18,34 @@ function extraction() {
     exceptions: [], stateAttestations: [],
   };
 }
+
+test("externally archived sources use Workers-supported fetch options and reject redirects", async () => {
+  const item = COMPLIANCE_SOURCE_REGISTRY.find((source) => source.key === "state:oh");
+  const now = new Date("2026-09-16T20:00:00Z");
+  const body = item.externalMonitor.requiredMarkers.join("\n");
+  const bodySha256 = await digestText(body);
+  const payload = { schemaVersion: 1, sourceKey: item.key, profileVersion: item.version,
+    sourceUrl: item.url, finalUrl: item.url, checkedAt: now.toISOString(), httpStatus: 200,
+    contentType: "text/html", bodySha256, status: "changed",
+    markerChecks: item.externalMonitor.requiredMarkers.map((marker) => ({ marker, present: true })) };
+  const originalFetch = globalThis.fetch;
+  const urls = [];
+  let redirect = false;
+  globalThis.fetch = async (url, options) => {
+    assert.equal(options.redirect, "manual");
+    urls.push(url);
+    if (redirect) return new Response(null, { status: 302, headers: { location: "https://unregistered.example/source" } });
+    return String(url).endsWith(".json") ? Response.json(payload) : new Response(body);
+  };
+  try {
+    const document = await fetchRegisteredDocument(item, now);
+    assert.equal(new TextDecoder().decode(document.bytes), body);
+    assert.deepEqual(urls, [item.externalMonitor.url, item.externalMonitor.url.replace(/\.json$/, `-${bodySha256}.source`)]);
+    redirect = true;
+    await assert.rejects(fetchRegisteredDocument(item, now), /unavailable/);
+    assert.equal(urls.length, 3, "An unexpected redirect must not be followed.");
+  } finally { globalThis.fetch = originalFetch; }
+});
 
 test("all 50 states and D.C. use source extraction, separate verification, and bound versions", async () => {
   assert.equal(US_JURISDICTION_PROFILES.length, 51);
