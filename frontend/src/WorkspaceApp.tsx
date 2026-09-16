@@ -344,7 +344,8 @@ function AppView({
   );
   const historicalDeposits = finalizedRecords.filter((item) =>
     !isCurrentAgreement(item.record, OPEN_ESCROW_ADDRESS) &&
-    /^\d+$/.test(item.record.onchainAgreementId || "") && !item.access.archived,
+    /^\d+$/.test(item.record.onchainAgreementId || "") &&
+    (!item.access.archived || savedRecordKey(item) === requestedHistoricalKey),
   );
   const eligibleTrackedIds = filterTrackedAgreementIds(
     ids, savedRecords.map((item) => item.record), OPEN_ESCROW_ADDRESS, walletConfirmedIds,

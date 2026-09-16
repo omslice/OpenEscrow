@@ -30,7 +30,7 @@ function record(id, contractAddress) {
   };
 }
 function records() {
-  return [record("earlier-one", first), record("earlier-two", second), record("unverified", null),
+  return [record("earlier-one", first), record("earlier-two", second), record("unverified", null), record("archived", null),
     ...(currentPresent ? [record("current-one", current)] : [])];
 }
 function agreement(address) {
@@ -84,7 +84,7 @@ try {
       addressValidation: { configured: false }, complianceSources: { configured: false },
     };
     else if (path === "/api/profile/notification-preferences") body = { agreementActivity: false, deadlineReminders: false, consentedAt: null, updatedAt: null };
-    else if (path === "/api/negotiations/discover") body = { accesses: records().map((r) => ({ proposalId: r.id, role: "landlord", token: `test-${r.id}` })) };
+    else if (path === "/api/negotiations/discover") body = { accesses: records().map((r) => ({ proposalId: r.id, role: "landlord", token: `test-${r.id}`, archived: r.id === "archived" })) };
     else if (path.startsWith("/api/negotiations/")) {
       const selected = records().find((r) => path === `/api/negotiations/${r.id}`);
       if (selected) {
@@ -165,6 +165,15 @@ try {
   await page.setViewportSize({ width: 390, height: 844 });
   await history.getByRole("listitem").filter({ hasText: "earlier-one Test Street" }).getByRole("button", { name: /Show earlier deposit/ }).click();
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), true);
+  await page.getByRole("tab", { name: "Proposals", exact: true }).click();
+  await page.locator("#proposal-archive-summary").click();
+  await page.locator(".saved-proposal-card").filter({ hasText: "archived Test Street" }).getByRole("button", { name: "Open deposit", exact: true }).click();
+  const archivedCard = history.getByRole("listitem").filter({ hasText: "archived Test Street" });
+  await archivedCard.getByText(/does not yet have a verified contract address/).waitFor();
+  await archivedCard.getByRole("button", { name: "Open saved record" }).click();
+  await page.locator("#record-proposal-archived-landlord").getByRole("button", { name: "Download complete record report" }).waitFor();
+  assert.equal(await page.locator("#record-proposal-archived-landlord").getByRole("button", { name: "Restore", exact: true }).isVisible(), true,
+    "Opening an archived historical deposit must not restore its record.");
   assert.deepEqual(errors, []);
   console.log("Deposit deployment browser check passed: original-contract reads, overlapping IDs, unverified records, stale local shortcuts, Record access and mobile layout.");
 } catch (error) {
