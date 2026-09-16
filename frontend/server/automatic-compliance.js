@@ -86,7 +86,7 @@ async function completeSourceText(response) {
 }
 
 export async function refreshAutomaticArizonaSource(db, sourceRow, now, signal) {
-  const response = await fetch(ARIZONA_SOURCE_URL, { redirect: "error", signal, headers: { accept: "text/html" } });
+  const response = await fetch(ARIZONA_SOURCE_URL, { redirect: "manual", signal, headers: { accept: "text/html" } });
   if (!response.ok) throw new Error(`Official source returned HTTP ${response.status}.`);
   const checkedAt = now.toISOString();
   let sourceText;

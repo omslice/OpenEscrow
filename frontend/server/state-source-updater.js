@@ -23,15 +23,15 @@ async function boundedBytes(response, maximum) {
   return bytes;
 }
 
-async function fetchRegisteredDocument(sourceItem, now, signal) {
+export async function fetchRegisteredDocument(sourceItem, now, signal) {
   if (sourceItem.externalMonitor) {
     const monitor = validateExternalComplianceMonitor(sourceItem);
-    const response = await fetch(monitor.url, { redirect: "error", signal });
+    const response = await fetch(monitor.url, { redirect: "manual", signal });
     if (response.status !== 200) throw new Error("The external official-source check is unavailable.");
     const payload = JSON.parse(new TextDecoder().decode(await boundedBytes(response, 32768)));
     const observation = validateExternalComplianceAttestation(payload, sourceItem, now);
     const bodyUrl = monitor.url.replace(/\.json$/, `-${observation.bodySha256}.source`);
-    const bodyResponse = await fetch(bodyUrl, { redirect: "error", signal });
+    const bodyResponse = await fetch(bodyUrl, { redirect: "manual", signal });
     if (bodyResponse.status !== 200) throw new Error("The external monitor has not yet published the complete official source for automatic updates.");
     const bytes = await boundedBytes(bodyResponse, 1024 * 1024);
     const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map((byte) => byte.toString(16).padStart(2, "0")).join("");
