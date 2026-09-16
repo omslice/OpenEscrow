@@ -44,6 +44,9 @@ import {
   verifyAddressAttestation,
 } from "./address-attestation.js";
 import { RELEASE_PROVENANCE } from "./release-provenance.js";
+import { AUTOMATIC_COMPLIANCE_SCHEMAS, automaticComplianceProfile, automaticComplianceHistory, refreshAutomaticArizonaSource } from "./automatic-compliance.js";
+import { refreshAutomaticStateSource } from "./state-source-updater.js";
+import { isAutomaticStateVersion } from "../shared/automatic-state-profile.js";
 
 const AGREEMENTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS agreement_negotiations (
@@ -3248,7 +3251,9 @@ async function validTerms(terms, env) {
     terms.operationsReserve === GENERIC_TEST_POLICY.operationsReserve;
   if (isGenericPolicy) return true;
 
-  const profile = US_JURISDICTION_PROFILE_BY_CODE[terms.jurisdiction];
+  const profile = isAutomaticStateVersion(terms.policyVersion)
+    ? (await automaticComplianceProfile(env.DB, terms.jurisdiction, terms.policyVersion))?.profile
+    : US_JURISDICTION_PROFILE_BY_CODE[terms.jurisdiction];
   const monthlyRent = tokenMicros(terms.monthlyRent);
   const profileTermsAreValid = Boolean(
     profile &&
@@ -3284,7 +3289,8 @@ function requiredComplianceSources(terms) {
     return [];
   }
   const expectedVersions = new Map([
-    [cleanText(terms.jurisdiction, 100), cleanText(terms.policyVersion, 100)],
+    [cleanText(terms.jurisdiction, 100), isAutomaticStateVersion(terms.policyVersion)
+      ? US_JURISDICTION_PROFILE_BY_CODE[terms.jurisdiction]?.version : cleanText(terms.policyVersion, 100)],
     ...(Array.isArray(terms.complianceSnapshot.overlays)
       ? terms.complianceSnapshot.overlays.map((overlay) => [
           cleanText(overlay?.id, 100),
@@ -3381,6 +3387,12 @@ async function complianceSourceGate(terms, env, now = new Date(Date.now())) {
     return { allowed: true, enforced: false, sources: [] };
   }
   const requiredSources = requiredComplianceSources(terms);
+  if (US_JURISDICTION_PROFILE_BY_CODE[terms?.jurisdiction] && env.DB) {
+    const current = await automaticComplianceProfile(env.DB, terms.jurisdiction);
+    if (current && current.profile.version !== terms.policyVersion) {
+      return { allowed: false, enforced: true, sources: [], reason: "requirements-updated" };
+    }
+  }
   const expectedSourceCount =
     1 +
     (Array.isArray(terms?.complianceSnapshot?.overlays)
@@ -3476,8 +3488,10 @@ function complianceSourceGateResponse(gate) {
   const changed = gate.sources?.some((sourceItem) => sourceItem.status === "changed");
   return json(
     {
-      error: changed
-        ? "An official compliance source changed after this rule version was reviewed. Publish a reviewed profile version before creating or finalizing an agreement."
+      error: gate.reason === "requirements-updated"
+        ? "Updated state requirements are available. Check official sources in the property step, review the changes, and save a new proposal revision. Existing approvals must be collected again."
+        : changed
+        ? "An official source changed. Check official sources in the property step to update supported requirements or see which wording still needs review."
         : "The official sources for this compliance profile need a fresh successful check before creating or finalizing an agreement.",
       code: "compliance-source-review-required",
       sourceStatus: gate.sources || [],
@@ -3523,9 +3537,10 @@ async function complianceSourceStatus(request, env) {
   ) {
     return json({ error: "A valid set of compliance overlays is required." }, 400);
   }
+  await initialize(env.DB);
   const profile = US_JURISDICTION_PROFILE_BY_CODE[jurisdiction];
   const expectedVersions = new Map([
-    [jurisdiction, profileVersion],
+    [jurisdiction, isAutomaticStateVersion(profileVersion) ? profile?.version : profileVersion],
     ...overlayVersions.map((overlay) => [overlay.id, overlay.version]),
   ]);
   const sourceItems = COMPLIANCE_SOURCE_REGISTRY.filter(
@@ -3541,7 +3556,8 @@ async function complianceSourceStatus(request, env) {
   );
   if (
     !profile ||
-    profile.version !== profileVersion ||
+    (profile.version !== profileVersion && !(isAutomaticStateVersion(profileVersion) &&
+      await automaticComplianceProfile(env.DB, jurisdiction, profileVersion))) ||
     !stateSource ||
     overlayVersions.some((overlay) => !registeredOverlayIds.has(overlay.id))
   ) {
@@ -3562,9 +3578,12 @@ async function complianceSourceStatus(request, env) {
       : Number.NaN;
     if (
       !Number.isFinite(lastCheckedMs) ||
-      Date.now() - lastCheckedMs >= minimumRefreshIntervalMs
+      Date.now() - lastCheckedMs >= minimumRefreshIntervalMs ||
+      (sourceItem.scope === "state" && (env.COMPLIANCE_AUTO_UPDATE_ENABLED === "true" || sourceItem.key === "state:az") && row?.current_signature && !(await env.DB.prepare(
+        "SELECT source_digest FROM compliance_source_texts WHERE source_key = ? AND source_digest = ?",
+      ).bind(sourceItem.key, row.current_signature).first()))
     ) {
-      await checkComplianceSourceOnce(env.DB, row, new Date(Date.now()));
+      await checkComplianceSourceOnce(env.DB, row, new Date(Date.now()), env);
       row = await env.DB
         .prepare("SELECT * FROM compliance_source_checks WHERE source_key = ?")
         .bind(sourceItem.key)
@@ -3593,17 +3612,22 @@ async function complianceSourceStatus(request, env) {
       requiresReview:
         status !== "unchanged" && status !== "manual-review-current",
       monitoringException,
+      ...(sourceItem.scope === "state" && row?.error ? { updateError: row.error } : {}),
     });
   }
 
+  const automaticUpdate = await automaticComplianceProfile(env.DB, jurisdiction);
   return json({
     jurisdiction,
     profileVersion,
     overlays: overlayVersions,
     source: sourceRows[0],
     sources: sourceRows,
+    ...(automaticUpdate ? { automaticUpdate } : {}),
+    automaticUpdatesEnabled: env.COMPLIANCE_AUTO_UPDATE_ENABLED === "true" || jurisdiction === "us-az",
+    requirementHistory: await automaticComplianceHistory(env.DB, jurisdiction),
     immutableSnapshotNotice:
-      "Finalized agreements keep their recorded compliance snapshot. A source change must be reviewed and published as a new profile version before a draft can adopt it.",
+      "Finalized agreements keep their recorded compliance snapshot. Updated requirements are saved as a new proposal revision and require fresh approvals.",
   });
 }
 
@@ -5000,6 +5024,7 @@ async function initialize(db) {
     db.prepare(SCHEDULED_IN_APP_NOTIFICATION_INDEX),
     db.prepare(COMPLIANCE_SOURCE_CHECKS_SCHEMA),
     db.prepare(COMPLIANCE_SOURCE_CHECKS_INDEX),
+    ...AUTOMATIC_COMPLIANCE_SCHEMAS.map((schema) => db.prepare(schema)),
     db.prepare(API_RATE_LIMITS_SCHEMA),
     db.prepare(API_RATE_LIMITS_UPDATED_INDEX),
     db.prepare(SQLITE_OPTIMIZE),
@@ -8885,7 +8910,7 @@ function validateComplianceSourceDestination(response) {
   }
 }
 
-async function checkComplianceSource(db, sourceRow, now) {
+async function checkComplianceSource(db, sourceRow, now, env = {}) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8_000);
   const checkedAt = now.toISOString();
@@ -8896,6 +8921,18 @@ async function checkComplianceSource(db, sourceRow, now) {
         item.version === sourceRow.profile_version &&
         item.url === sourceRow.url,
     );
+    if (sourceItem?.key === "state:az") {
+      await refreshAutomaticArizonaSource(db, sourceRow, now, controller.signal);
+      if (env.COMPLIANCE_AUTO_UPDATE_ENABLED === "true") {
+        const row = await db.prepare("SELECT * FROM compliance_source_checks WHERE source_key = ?").bind(sourceItem.key).first();
+        if (row.status === "changed") await refreshAutomaticStateSource(env, row, sourceItem, now, controller.signal);
+      }
+      return;
+    }
+    if (sourceItem?.scope === "state" && env.COMPLIANCE_AUTO_UPDATE_ENABLED === "true") {
+      await refreshAutomaticStateSource(env, sourceRow, sourceItem, now, controller.signal);
+      return;
+    }
     if (sourceItem?.externalMonitor) {
       const monitor = validateExternalComplianceMonitor(sourceItem);
       const response = await fetch(monitor.url, {
@@ -9051,13 +9088,16 @@ async function checkComplianceSource(db, sourceRow, now) {
     await db
       .prepare(
         `UPDATE compliance_source_checks
-         SET status = 'unreachable', last_checked_at = ?, error = ?
+         SET status = ?, last_checked_at = ?, error = ?,
+             current_signature = CASE WHEN ? THEN NULL ELSE current_signature END
          WHERE source_key = ? AND profile_version = ? AND url = ?
            AND (last_checked_at IS NULL OR last_checked_at <= ?)`,
       )
       .bind(
+        error?.requiresSourceReview ? "changed" : "unreachable",
         checkedAt,
         cleanText(error instanceof Error ? error.message : "Source check failed.", 300),
+        error?.requiresSourceReview ? 1 : 0,
         sourceRow.source_key,
         sourceRow.profile_version,
         sourceRow.url,
@@ -9069,7 +9109,7 @@ async function checkComplianceSource(db, sourceRow, now) {
   }
 }
 
-function checkComplianceSourceOnce(db, sourceRow, now) {
+function checkComplianceSourceOnce(db, sourceRow, now, env = {}) {
   let checksForDatabase = complianceSourceChecksInFlight.get(db);
   if (!checksForDatabase) {
     checksForDatabase = new Map();
@@ -9079,11 +9119,12 @@ function checkComplianceSourceOnce(db, sourceRow, now) {
     sourceRow.source_key,
     sourceRow.profile_version,
     sourceRow.url,
+    env.COMPLIANCE_AUTO_UPDATE_ENABLED === "true",
   ]);
   const existing = checksForDatabase.get(checkKey);
   if (existing) return existing;
 
-  const pending = checkComplianceSource(db, sourceRow, now).finally(() => {
+  const pending = checkComplianceSource(db, sourceRow, now, env).finally(() => {
     if (checksForDatabase.get(checkKey) === pending) {
       checksForDatabase.delete(checkKey);
     }
@@ -9125,9 +9166,7 @@ async function runComplianceSourceAudit(env, now = new Date()) {
       now.toISOString(),
     )
     .all();
-  for (const row of pending.results || []) {
-    await checkComplianceSourceOnce(env.DB, row, now);
-  }
+  await Promise.all((pending.results || []).map((row) => checkComplianceSourceOnce(env.DB, row, now, env)));
 }
 
 async function runNotificationJob(env, now = new Date()) {

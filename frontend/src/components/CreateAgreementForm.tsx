@@ -33,8 +33,9 @@ import {
   addressResolutionMatchesProfile,
   buildComplianceSnapshot,
   isJurisdictionCode,
-  jurisdictionProfile,
   jurisdictionProfileForPostalCode,
+  jurisdictionProfileForTerms,
+  requirementSourceQuotes,
   normalizeComplianceFacts,
   normalizeAddressResolution,
   rememberJurisdiction,
@@ -421,14 +422,15 @@ function AgreementForm({
   const [complianceFacts, setComplianceFacts] = useState<ComplianceFacts>({
     ...DEFAULT_COMPLIANCE_FACTS,
   });
+  const complianceJurisdictionCode = selectedJurisdiction?.code;
   const complianceSourceScope = useMemo(
     () =>
       createAsyncOperationScope(
-        selectedJurisdiction
-          ? `${selectedJurisdiction.code}:${selectedJurisdiction.version}`
+        complianceJurisdictionCode
+          ? `${complianceJurisdictionCode}:${addressResolution?.providerFeatureId || ""}:${initialAccess?.proposalId || "new"}`
           : "no-jurisdiction",
       ),
-    [selectedJurisdiction],
+    [complianceJurisdictionCode, addressResolution?.providerFeatureId, initialAccess?.proposalId],
   );
   const [complianceSourceResult, setComplianceSourceResult] =
     useState<ComplianceSourceStatus | null>(null);
@@ -557,7 +559,7 @@ function AgreementForm({
   }, [complianceSourceScope, complianceSourceSelectionKey]);
 
   async function refreshComplianceSource() {
-    if (!selectedJurisdiction || !compliancePreview) return;
+    if (!selectedJurisdiction || !compliancePreview) return null;
     const operationId = complianceSourceScope.start();
     setComplianceSourceResult(null);
     setComplianceSourceError(null);
@@ -580,6 +582,11 @@ function AgreementForm({
       );
       if (!complianceSourceScope.isCurrent(operationId)) return;
       setComplianceSourceResult(result);
+      if (result.automaticUpdate && !approvedTermsLocked) {
+        setSelectedJurisdiction(result.automaticUpdate.profile);
+        setClaimDays(result.automaticUpdate.profile.defaultClaimDays);
+      }
+      return result;
     } catch (cause) {
       if (!complianceSourceScope.isCurrent(operationId)) return;
       setComplianceSourceError(
@@ -587,6 +594,7 @@ function AgreementForm({
           ? cause.message
           : "OpenEscrow could not check the official source right now. Try again later.",
       );
+      return null;
     } finally {
       if (complianceSourceScope.isCurrent(operationId)) {
         setIsCheckingComplianceSource(false);
@@ -732,7 +740,7 @@ function AgreementForm({
     const isLegacyCalifornia =
       record.terms.jurisdiction === CALIFORNIA_POLICY.jurisdiction &&
       record.terms.policyVersion === CALIFORNIA_POLICY.version;
-    const savedProfile = jurisdictionProfile(record.terms.jurisdiction);
+    const savedProfile = jurisdictionProfileForTerms(record.terms);
     setSelectedJurisdiction(
       savedProfile?.version === record.terms.policyVersion ? savedProfile : null,
     );
@@ -1094,6 +1102,17 @@ function AgreementForm({
 
     setIsSavingDraft(true);
     try {
+      if (selectedJurisdiction) {
+        const checked = await refreshComplianceSource();
+        if (!checked) throw new Error("The official source check could not be completed. Review the source message in the property step and try again.");
+        if (checked.sources.some((source) => source.requiresReview)) throw new Error(complianceSourceStatusSummary(checked.sources));
+        if (checked.automaticUpdatesEnabled && !checked.automaticUpdate) throw new Error("State requirements could not be regenerated from the official source. Check the source details before saving.");
+        if (checked.automaticUpdate && checked.automaticUpdate.profile.version !== selectedJurisdiction.version) {
+          setProposalStep("terms");
+          setFormMessage(`${selectedJurisdiction.name} requirements have been updated from the official source. Review the change details in Official requirements sources, then save the proposal for review.`);
+          return;
+        }
+      }
       if (!draft) {
         const created = await createNegotiation({
           landlordName,
@@ -1941,7 +1960,7 @@ function AgreementForm({
       draft.terms.policyVersion === GENERIC_TEST_POLICY.version &&
       draft.terms.jurisdiction === GENERIC_TEST_POLICY.jurisdiction &&
       draft.terms.operationsReserve === GENERIC_TEST_POLICY.operationsReserve;
-    const approvedResearchProfile = jurisdictionProfile(draft.terms.jurisdiction);
+    const approvedResearchProfile = jurisdictionProfileForTerms(draft.terms);
     const approvedAddressPolicy =
       approvedResearchProfile !== null &&
       draft.terms.policyVersion === approvedResearchProfile.version &&
@@ -2179,6 +2198,8 @@ function AgreementForm({
           </button>
         ))}
       </div>
+
+      {formMessage && <p className="tx-success" role="status">{formMessage}</p>}
 
       <section
         className="proposal-step-panel"
@@ -3109,10 +3130,21 @@ function AgreementForm({
             </ul>
             <details>
               <summary>Applied statewide requirement checklist</summary>
+              {selectedJurisdiction.sourceUpdate?.patch && (
+                <p className="field-help">This checklist was updated with AI and checked against the official source. Entries retain the source wording and citations.</p>
+              )}
               <ul>
-                {selectedJurisdiction.requirements.map((requirement) => (
-                  <li key={requirement}>{requirement}</li>
-                ))}
+                {selectedJurisdiction.requirements.map((requirement, index) => {
+                  const evidence = requirementSourceQuotes(selectedJurisdiction)[index];
+                  return <li key={requirement}>
+                    {requirement}
+                    {evidence?.quote && <details>
+                      <summary>Read cited passage</summary>
+                      <blockquote>{evidence.quote}</blockquote>
+                      <a href={selectedJurisdiction.statuteUrl} target="_blank" rel="noreferrer">{evidence.citation}</a>
+                    </details>}
+                  </li>;
+                })}
               </ul>
             </details>
             {compliancePreview && (
@@ -3188,7 +3220,7 @@ function AgreementForm({
                   })}
                 </ul>
                 <p className="field-help">
-                  Profile research date:{" "}
+                  Requirements version date:{" "}
                   <time dateTime={selectedJurisdiction.researchedOn}>
                     {readableComplianceDate(selectedJurisdiction.researchedOn)}
                   </time>
@@ -3204,6 +3236,7 @@ function AgreementForm({
                   ? "Checking official sources..."
                   : "Check official sources for updates"}
               </button>
+              {isCheckingComplianceSource && <p className="field-help" role="status">Reading the official sources and checking the requirements. A first analysis may take a few minutes; previously verified versions load faster.</p>}
               {complianceSourceResult && (
                 <p
                   className={
@@ -3217,9 +3250,35 @@ function AgreementForm({
                   aria-live="polite"
                   aria-atomic="true"
                 >
-                  {complianceSourceStatusSummary(complianceSourceResult.sources)}{" "}
+                  {complianceSourceResult.automaticUpdate && !complianceSourceResult.sources.some((source) => source.requiresReview)
+                    ? approvedTermsLocked && complianceSourceResult.automaticUpdate.profile.version !== selectedJurisdiction.version
+                      ? "Updated state requirements are available. Unlock edits and check sources again to prepare a new revision with fresh approvals."
+                      : complianceSourceResult.automaticUpdate.profile.version === complianceSourceResult.profileVersion
+                        ? "The official source still supports this requirements version."
+                        : `${selectedJurisdiction.name} requirements have been regenerated from the official source.`
+                    : complianceSourceStatusSummary(complianceSourceResult.sources)}{" "}
                   Finalized agreements keep their recorded compliance snapshot.
                 </p>
+              )}
+              {complianceSourceResult?.automaticUpdate && (
+                <div className="field-help" role="status">
+                  <strong>What changed in this requirements version</strong>
+                  <ul>{complianceSourceResult.automaticUpdate.changes.map((change) => <li key={change}>{change}</li>)}</ul>
+                  <p>Source text is retained with this version. Website formatting, creation dates, and HTTP headers do not count as requirement changes.</p>
+                </div>
+              )}
+              {Boolean(complianceSourceResult?.requirementHistory?.length) && (
+                <details className="field-help">
+                  <summary>Compare requirements versions</summary>
+                  {complianceSourceResult!.requirementHistory!.map((version) => (
+                    <details key={version.version}>
+                      <summary>{version.version} · {version.date}</summary>
+                      <p>Deposit cap: {version.depositCapSummary}</p>
+                      <p>Deadline: {version.deadlineSummary}</p>
+                      <ul>{version.requirements.map((requirement) => <li key={requirement}>{requirement}</li>)}</ul>
+                    </details>
+                  ))}
+                </details>
               )}
               {complianceSourceError && (
                 <p className="tx-error" role="alert">
@@ -3229,8 +3288,9 @@ function AgreementForm({
             </section>
             <p className="field-help">
               City, county, housing-program, property-type, and fact-specific overlays remain
-              flagged for resolution. A source check detects possible changes but never rewrites
-              legal requirements automatically. This software output is not legal advice or a
+              flagged for resolution. State source checks automatically rewrite verified
+              requirements and retain each version. Incomplete sources or requirements that
+              cannot be verified remain flagged for review. This software output is not legal advice or a
               guarantee.
             </p>
           </>
@@ -3681,7 +3741,6 @@ function AgreementForm({
         aria-live="assertive"
         tabIndex={-1}
       >
-        {formMessage && <p className="tx-success">{formMessage}</p>}
         {formError && !invalidField && <p className="tx-error">{formError}</p>}
       </div>
       {draft && draft.status !== "finalized" && (

@@ -33,7 +33,7 @@ jobs:
           COMPLIANCE_ATTESTATION_BRANCH: compliance-attestations
         run: node scripts/publish-compliance-attestations.mjs ../.compliance-attestations
 
-      - name: Fail closed on source changes or invalid responses
+      - name: Check source availability for automatic requirement updates
         shell: bash
         run: |
           node - <<'NODE'
@@ -43,7 +43,7 @@ jobs:
           const alerts = fs.readdirSync(directory)
             .filter((name) => name.endsWith(".json"))
             .map((name) => JSON.parse(fs.readFileSync(path.join(directory, name), "utf8")))
-            .filter((item) => item.status !== "unchanged");
+            .filter((item) => !["unchanged", "changed"].includes(item.status));
           if (alerts.length) {
             console.error(`Compliance source review required: ${alerts.map((item) => `${item.sourceKey}=${item.status}`).join(", ")}`);
             process.exit(1);

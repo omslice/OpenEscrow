@@ -41,7 +41,9 @@ try {
   });
 }
 
-const files = (await readdir(outputDirectory)).filter((name) => name.endsWith(".json")).sort();
+// Content-addressed source bodies are published before their small attestations.
+// Legacy readers continue to consume the unchanged JSON envelope.
+const files = (await readdir(outputDirectory)).filter((name) => /^[a-z0-9-]+\.(?:json|source)$/.test(name)).sort();
 if (files.length === 0) throw new Error("No compliance-source attestations were generated.");
 for (const name of files) {
   const content = await readFile(path.join(outputDirectory, name));

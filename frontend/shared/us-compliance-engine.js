@@ -313,6 +313,7 @@ export function buildComplianceSnapshot(profile, resolution, context = {}) {
     requirements: profile.requirements,
     exceptions: profile.exceptions,
     claimPolicy: profile.claimPolicy,
+    ...(profile.sourceUpdate ? { sourceUpdate: profile.sourceUpdate } : {}),
     overlays,
     missingFacts,
     unresolvedOverlays: [

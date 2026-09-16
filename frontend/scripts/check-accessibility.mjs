@@ -3,6 +3,8 @@ import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { chromium } from "playwright";
 import { COMPLIANCE_SOURCE_REGISTRY } from "../shared/compliance-sources.js";
+import { US_JURISDICTION_PROFILE_BY_CODE } from "../shared/us-jurisdiction-profiles.js";
+import { syntheticStateProfile } from "./fixtures/automatic-state-profile.mjs";
 
 const host = "127.0.0.1";
 const port = 4174;
@@ -120,6 +122,7 @@ try {
   let validatedProposalInvites = 0;
   let refreshedProposalInvites = 0;
   let savedProposal = null;
+  const updatedProfile = await syntheticStateProfile(US_JURISDICTION_PROFILE_BY_CODE["us-ca"]);
 
   await page.route("**/api/address-suggestions**", async (route) => {
     await route.fulfill({
@@ -175,7 +178,7 @@ try {
       contentType: "application/json",
       body: JSON.stringify((() => {
         const expectedVersions = new Map([
-          [input.jurisdiction, input.profileVersion],
+          [input.jurisdiction, US_JURISDICTION_PROFILE_BY_CODE[input.jurisdiction].version],
           ...(input.overlays || []).map((overlay) => [
             overlay.id,
             overlay.version,
@@ -187,8 +190,8 @@ try {
         ).map((sourceItem) => ({
           ...sourceItem,
           status: "unchanged",
-          lastCheckedAt: "2026-07-30T12:00:00.000Z",
-          lastVerifiedAt: "2026-07-30T12:00:00.000Z",
+          lastCheckedAt: "2026-09-16T20:05:00.000Z",
+          lastVerifiedAt: "2026-09-16T20:00:00.000Z",
           requiresReview: false,
         }));
         return {
@@ -197,6 +200,11 @@ try {
           overlays: input.overlays || [],
           source: sources[0],
           sources,
+          ...(complianceSourceChecks >= 4 ? {
+            automaticUpdatesEnabled: true,
+            automaticUpdate: { profile: updatedProfile, changes: ["Synthetic test requirement updated."] },
+            requirementHistory: [updatedProfile, US_JURISDICTION_PROFILE_BY_CODE["us-ca"]].map((profile) => ({ version: profile.version, date: profile.researchedOn, requirements: profile.requirements, depositCapSummary: profile.depositCapSummary, deadlineSummary: profile.deadlineSummary })),
+          } : {}),
           immutableSnapshotNotice:
             "Finalized agreements keep their recorded compliance snapshot.",
         };
@@ -576,6 +584,16 @@ try {
     "proposal-panel-review",
     "Continuing should move focus into the newly visible proposal-review panel.",
   );
+  await page.getByRole("button", { name: "Save proposal for review" }).click();
+  await page.getByText(/California requirements have been updated from the official source/).waitFor();
+  assert.equal(savedProposal, null, "An automatic update must be reviewed before a proposal is published.");
+  assert.equal(sentProposalInvites, 0, "Source updates must not send invitations before the next save.");
+  await page.getByText("Applied statewide requirement checklist", { exact: true }).click();
+  await page.getByText("Read cited passage", { exact: true }).click();
+  await page.getByText(/Synthetic fixture: return and itemize/).waitFor();
+  await page.getByText("Compare requirements versions", { exact: true }).click();
+  await page.locator("summary").filter({ hasText: updatedProfile.version }).waitFor();
+  await page.getByRole("button", { name: "Continue to review" }).click();
   await page.getByRole("button", { name: "Save proposal for review" }).click();
   await page.getByText(
     "Proposal published and invitation email sent to every tenant.",
