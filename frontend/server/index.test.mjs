@@ -3651,6 +3651,7 @@ test("a non-Arizona PDF source uses AI verification, preserves equivalent versio
       toMarkdown: async (document) => { assert.equal(document.blob.type, "application/pdf"); return { format: "text", data: documentText }; },
       run: async (_model, input) => {
         inferences++;
+        assert.equal(db.database.prepare("SELECT status FROM compliance_source_checks WHERE source_key = 'state:al'").get().status, "changed", "The old requirements must be suspended during analysis, including calls from another Worker instance.");
         const data = JSON.parse(input.messages.at(-1).content);
         assert.equal(data.jurisdiction, "us-al");
         assert.equal(data.sourceUrl, base.statuteUrl);

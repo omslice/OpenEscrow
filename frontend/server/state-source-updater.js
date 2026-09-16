@@ -116,6 +116,9 @@ export async function refreshAutomaticStateSource(env, sourceRow, sourceItem, no
     await persistAutomaticObservation(env.DB, sourceRow, { digest, sourceText, checkedAt: now.toISOString(), verifiedAt: document.verifiedAt, ...knownProfile });
     return;
   }
+  // Suspend the previous version as soon as unfamiliar source text is observed.
+  // Other Worker instances must not approve a save while this analysis runs.
+  if (sourceRow.current_signature !== digest) await persistAutomaticObservation(env.DB, sourceRow, { digest, sourceText, checkedAt: now.toISOString(), issue: "The official source is being analyzed. Check again after the update completes." });
   const lockKey = `${sourceItem.key}:${digest}`;
   const owner = crypto.randomUUID();
   const lock = await env.DB.prepare(`INSERT INTO compliance_update_locks (source_key, owner, expires_at) VALUES (?, ?, ?)
