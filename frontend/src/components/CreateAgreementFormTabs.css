@@ -76,6 +76,7 @@
 .proposal-builder .proposal-step-panel {
   min-height: 360px;
   padding-top: 6px;
+  scroll-margin-top: 5.5rem;
 }
 
 .proposal-builder .proposal-step-panel[hidden] {

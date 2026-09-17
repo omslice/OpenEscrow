@@ -91,7 +91,7 @@ import {
   type NegotiationAccess,
   type NegotiationRecord,
 } from "../lib/negotiations";
-import { agreementReference } from "../lib/displayIds";
+import { agreementReference, proposalReference } from "../lib/displayIds";
 import { AddressAutocomplete, type AddressSuggestion } from "./AddressAutocomplete";
 import { DepositAssetSelector } from "./DepositAssetSelector";
 import {
@@ -2128,7 +2128,9 @@ function AgreementForm({
   function goToProposalStep(step: ProposalStep) {
     setProposalStep(step);
     window.requestAnimationFrame(() => {
-      document.getElementById(`proposal-panel-${step}`)?.focus({ preventScroll: true });
+      const panel = document.getElementById(`proposal-panel-${step}`);
+      panel?.focus({ preventScroll: true });
+      panel?.scrollIntoView({ behavior: preferredScrollBehavior(), block: "start" });
     });
   }
 
@@ -2165,8 +2167,9 @@ function AgreementForm({
         <div>
           <span className="eyebrow">Landlord-initiated workflow</span>
           <h2 id="proposal-builder-title">
-            {draft ? `Agreement proposal ${draft.id}` : "Set up a new agreement proposal"}
+            {draft ? draft.terms.propertyAddress?.trim() || "Rental agreement proposal" : "Set up a new agreement proposal"}
           </h2>
+          {draft && <small className="proposal-reference">Reference: {proposalReference(draft.id)}</small>}
         </div>
         {draft && <span className={`negotiation-status status-${draft.status}`}>Revision {draft.revision}</span>}
       </div>

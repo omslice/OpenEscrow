@@ -601,9 +601,12 @@ function AgreementNegotiationView({
       <div className="negotiation-heading">
         <div>
           <span className="eyebrow">
-            {proposalReference(record.id)} · revision {record.revision}
+            Review the landlord’s agreement
           </span>
-          <h2 id="proposal-review-title">Review the landlord’s agreement</h2>
+          <h2 id="proposal-review-title">{record.terms.propertyAddress?.trim() || "Rental agreement proposal"}</h2>
+          <small className="proposal-reference">
+            Reference: {proposalReference(record.id)} · Revision {record.revision}
+          </small>
         </div>
         <span className={`negotiation-status status-${record.status}`}>
           {record.status === "draft"

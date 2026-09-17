@@ -4194,6 +4194,21 @@ a.btn.disabled {
   gap: 12px;
 }
 
+.proposal-card-title-group > div,
+.proposal-builder-heading > div,
+.negotiation-heading > div {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.proposal-reference {
+  display: block;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.5;
+}
+
 .proposal-card-icon {
   width: 40px;
   height: 40px;
@@ -4237,10 +4252,6 @@ a.btn.disabled {
   border-radius: 9px;
   padding: 10px 12px;
   background: color-mix(in srgb, var(--surface) 92%, var(--bg));
-}
-
-.proposal-metadata-grid .proposal-metadata-property {
-  grid-column: span 2;
 }
 
 .proposal-metadata-grid dt {
@@ -6208,10 +6219,6 @@ a.btn.disabled {
 
   .proposal-metadata-grid {
     grid-template-columns: 1fr;
-  }
-
-  .proposal-metadata-grid .proposal-metadata-property {
-    grid-column: auto;
   }
 
   .proposal-card-title-group {

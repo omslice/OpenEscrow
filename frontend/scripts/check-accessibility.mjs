@@ -87,6 +87,17 @@ async function waitForServer() {
   throw new Error(`Timed out waiting for ${baseUrl}.`);
 }
 
+async function assertProposalStepAtTop(page, step) {
+  await page.waitForFunction((step) => {
+    const panel = document.getElementById(`proposal-panel-${step}`);
+    const tabs = document.querySelector(".proposal-workflow-tabs");
+    if (!panel || !tabs || panel.hidden || document.activeElement !== panel) return false;
+    const top = panel.getBoundingClientRect().top;
+    const expectedTop = parseFloat(getComputedStyle(panel).scrollMarginTop);
+    return Math.abs(top - expectedTop) < 2 && top >= tabs.getBoundingClientRect().bottom;
+  }, step);
+}
+
 const server = spawn(
   process.execPath,
   [
@@ -444,7 +455,9 @@ try {
   );
 
   await page.getByRole("button", { name: "Continue to deposit terms" }).click();
+  await assertProposalStepAtTop(page, "terms");
   await page.getByRole("button", { name: "Continue to review" }).click();
+  await assertProposalStepAtTop(page, "review");
   await page.getByRole("button", { name: "Save proposal for review" }).click();
   const emptyTenantName = page.getByLabel("Tenant first and last name");
   await emptyTenantName.waitFor({ state: "visible" });
@@ -634,6 +647,16 @@ try {
     hasText: "OE-P-RECOVERY",
   });
   await savedProposalCard.waitFor({ state: "visible" });
+  assert.equal(
+    await savedProposalCard.getByRole("heading", { level: 2 }).innerText(),
+    "123 Main Street, Los Angeles, CA 90012",
+    "The property address should be the primary proposal identifier.",
+  );
+  assert.equal(
+    await page.locator("#proposal-builder-title").innerText(),
+    "123 Main Street, Los Angeles, CA 90012",
+    "The open proposal should keep the property address as its title.",
+  );
   assert.match(
     await page.getByLabel("Proposal status summary").textContent(),
     /1\s*In review/,
@@ -718,6 +741,17 @@ try {
   );
   await page.locator("#start-proposal-button").click();
   await page.locator(".proposal-composer-toolbar").waitFor({ state: "visible" });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.getByRole("button", { name: "Continue to deposit terms" }).click();
+  await assertProposalStepAtTop(page, "terms");
+  await page.getByRole("button", { name: "Continue to review" }).click();
+  await assertProposalStepAtTop(page, "review");
+  await page.getByRole("button", { name: "Back to deposit terms" }).click();
+  await assertProposalStepAtTop(page, "terms");
+  await page.getByRole("button", { name: "Back to parties & property" }).click();
+  await assertProposalStepAtTop(page, "participants");
+  await page.locator("#proposal-tab-review").click();
+  await assertProposalStepAtTop(page, "review");
   const mobileOverflow = await page.evaluate(() => ({
     documentWidth: document.documentElement.scrollWidth,
     viewportWidth: window.innerWidth,
@@ -765,7 +799,7 @@ try {
   );
 
   process.stdout.write(
-    "Accessibility smoke check passed: modal focus, workspace tabs, proposal focus recovery, blocked destructive confirmation, address keyboard selection, source-check retry recovery, and the open proposal editor at mobile width.\n",
+    "Accessibility smoke check passed: modal focus, workspace tabs, proposal step scrolling and focus, property-first proposal titles, blocked destructive confirmation, address keyboard selection, source-check retry recovery, and the open proposal editor at mobile width.\n",
   );
 } catch (error) {
   if (serverError) process.stderr.write(serverError);

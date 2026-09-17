@@ -594,7 +594,7 @@ try {
     "The collapsed account summary must identify the active workspace role.",
   );
   await page.getByRole("tab", { name: "Proposals" }).click();
-  await page.getByRole("heading", { name: "OE-P-AAAAAAAA" }).waitFor();
+  await page.getByRole("heading", { name: "100 Test Street" }).waitFor();
   await page.waitForFunction(
     () =>
       window.__openEscrowAccountSwitchTest?.snapshot().walletAttempts[
@@ -614,9 +614,9 @@ try {
   await page.getByTitle("account.b@example.test").waitFor();
   await page.getByRole("button", { name: /I am a landlord/ }).click();
   await page.getByRole("tab", { name: "Proposals" }).click();
-  await page.getByRole("heading", { name: "OE-P-BBBBBBBB" }).waitFor();
+  await page.getByRole("heading", { name: "200 Test Street" }).waitFor();
   assert.equal(
-    await page.getByRole("heading", { name: "OE-P-AAAAAAAA" }).count(),
+    await page.getByRole("heading", { name: "100 Test Street" }).count(),
     0,
     "Account A's proposal must disappear immediately after selecting account B.",
   );
@@ -635,7 +635,7 @@ try {
     "A completed account A archive must not announce or update inside account B.",
   );
   assert.equal(
-    await page.getByRole("heading", { name: "OE-P-BBBBBBBB" }).count(),
+    await page.getByRole("heading", { name: "200 Test Street" }).count(),
     1,
     "Account B's proposal must remain visible after account A's archive completes.",
   );
