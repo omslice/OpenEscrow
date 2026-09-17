@@ -1391,7 +1391,7 @@ function AppView({
                   {archived ? "Archived proposal" : "Proposal"} ·{" "}
                   {roleLabel[item.access.role]} access
                 </span>
-                <h2>{proposalReference(item.record.id)}</h2>
+                <h2>{propertyAddress || "Rental agreement proposal"}</h2>
               </div>
             </div>
             <div className="proposal-card-status">
@@ -1402,9 +1402,9 @@ function AppView({
             </div>
           </div>
           <dl className="proposal-metadata-grid">
-            <div className="proposal-metadata-property">
-              <dt>Property</dt>
-              <dd>{propertyAddress || "Address not added yet"}</dd>
+            <div>
+              <dt>Reference</dt>
+              <dd>{proposalReference(item.record.id)}</dd>
             </div>
             <div>
               <dt>{item.access.role === "landlord" ? "Tenant" : "Landlord"}</dt>
@@ -1470,7 +1470,7 @@ function AppView({
         {isSelectedLandlordProposal && (
           <section
             className="proposal-composer-launcher proposal-composer-inline"
-            aria-label={`Review and finalize ${proposalReference(item.record.id)}`}
+            aria-label={`Review and finalize ${propertyAddress || "rental agreement proposal"}, ${proposalReference(item.record.id)}`}
           >
             <div className="proposal-composer-toolbar">
               <span>Reviewing the selected proposal</span>
